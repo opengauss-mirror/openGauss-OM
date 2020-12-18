@@ -1301,12 +1301,13 @@ def core_copy():
         g_jobInfo.successTask.append("find core files")
         isEmpty = 1
         for core in cores:
-            if len(str(core.split("/")[-1]).split("-")) < 2:
+            tempName = str(core.split("/")[-1])
+            if not tempName.startswith("core-"):
                 g_logger.debug(
                     "WARNING: core file %s is not match core-e-p-t." % (
                         str(core.split("/")[-1])))
                 continue
-            p = str(core.split("/")[-1]).split("-")[1]
+            p = tempName.split("-")[1]
             if "".join(p).lower() in ",".join(g_opts.content).lower():
                 p_stack = "%s_stack" % p
                 cmdList = []
@@ -1619,7 +1620,7 @@ def parseConfig():
     """
     if g_opts.config != "":
         d = json.loads(g_opts.config)
-        g_opts.content = d['Content'].split(",")
+        g_opts.content = list(filter(None, d['Content'].split(",")))
 
 
 def main():

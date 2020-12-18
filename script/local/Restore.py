@@ -40,6 +40,7 @@ HOSTNAME = DefaultValue.GetHostIpOrName()
 # init global paramter
 g_clusterUser = ""
 g_ignoreMiss = False
+g_forceRestore = False
 g_staticFile = ""
 
 
@@ -110,12 +111,16 @@ class LocalRestore(LocalBaseOM):
 
         try:
             self.clusterInfo = dbClusterInfo()
-            self.clusterInfo.initFromStaticConfig(self.user, g_staticFile)
-            hostName = DefaultValue.GetHostIpOrName()
-            self.dbNodeInfo = self.clusterInfo.getDbNodeByName(hostName)
-            if (self.dbNodeInfo is None):
-                self.logger.logExit(
-                    ErrorCode.GAUSS_516["GAUSS_51619"] % hostName)
+            gaussHome = os.getenv("GAUSSHOME")
+            if g_forceRestore and self.restoreBin:
+                self.clusterInfo.appPath = gaussHome
+            else:
+                self.clusterInfo.initFromStaticConfig(self.user, g_staticFile)
+                hostName = DefaultValue.GetHostIpOrName()
+                self.dbNodeInfo = self.clusterInfo.getDbNodeByName(hostName)
+                if self.dbNodeInfo is None:
+                    self.logger.logExit(
+                        ErrorCode.GAUSS_516["GAUSS_51619"] % hostName)
             # Getting local installation path for restoration.
             self.logger.log("Getting local installation path for restoration.")
             self.installPath = os.path.realpath(self.clusterInfo.appPath)
@@ -214,6 +219,16 @@ class LocalRestore(LocalBaseOM):
 
         if self.restorePara:
             self.logger.log("Restoring parameter files.")
+            # Re-obtaining clusterInfo because the restoreBin succeeded
+            if self.dbNodeInfo is None:
+                self.clusterInfo.initFromStaticConfig(self.user, g_staticFile)
+                hostName = DefaultValue.GetHostIpOrName()
+                self.dbNodeInfo = self.clusterInfo.getDbNodeByName(
+                        hostName)
+                if self.dbNodeInfo is None:
+                    self.logger.logExit(
+                        ErrorCode.GAUSS_516["GAUSS_51619"] % hostName)
+
             # Restoring parameter files.
             try:
                 # decompress tar file
@@ -317,7 +332,6 @@ class LocalRestore(LocalBaseOM):
         output: NA
         """
         storedParaFileNum = len(os.listdir(temp_dir)) - 1
-
         for inst in self.dbNodeInfo.datanodes:
             self.__checkSingleParaFile(inst, temp_dir, paraFileList)
         if ((storedParaFileNum > len(paraFileList)) -
@@ -449,10 +463,10 @@ def main():
     """
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "U:P:l:pbhis:", \
+        opts, args = getopt.getopt(sys.argv[1:], "U:P:l:pbhifs:",
                                    ["position=", "parameter", "binary_file",
                                     "logpath=", "help", "ingore_miss",
-                                    "static_file="])
+                                    "force", "static_file="])
     except getopt.GetoptError as e:
         GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"] % e.msg)
     if (len(args) > 0):
@@ -462,6 +476,7 @@ def main():
     global g_clusterUser
     global g_ignoreMiss
     global g_staticFile
+    global g_forceRestore
     restoreDir = ""
     restorePara = False
     restoreBin = False
@@ -485,6 +500,8 @@ def main():
             g_staticFile = value.strip()
         elif (key == "-l" or key == "--logpath"):
             logFile = value
+        elif (key == "-f" or key == "--force"):
+            g_forceRestore = True
         else:
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"] % value)
 

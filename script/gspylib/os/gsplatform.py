@@ -100,7 +100,8 @@ EULEROS = "euleros"
 KYLIN = "kylin"
 OPENEULER = "openeuler"
 ASIANUX = "asianux"
-SUPPORT_WHOLE_PLATFORM_LIST = [SUSE, REDHAT, CENTOS, EULEROS, OPENEULER, KYLIN, ASIANUX]
+SUPPORT_WHOLE_PLATFORM_LIST = [SUSE, REDHAT, CENTOS, EULEROS,
+                               OPENEULER, KYLIN, ASIANUX]
 # RedhatX platform
 SUPPORT_RHEL_SERIES_PLATFORM_LIST = [REDHAT, CENTOS, "kylin", "asianux"]
 SUPPORT_RHEL6X_VERSION_LIST = ["6.4", "6.5", "6.6", "6.7", "6.8", "6.9", "10"]
@@ -128,7 +129,6 @@ PAK_EULER = "Euler"
 PAK_OPENEULER = "openEuler"
 PAK_REDHAT = "RedHat"
 PAK_ASIANUX = "asianux"
-
 
 #######################################################
 _supported_dists = (
@@ -1998,4 +1998,3 @@ class UserPlatform():
 
 # global platform class
 g_Platform = UserPlatform().userPlatform
-

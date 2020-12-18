@@ -51,6 +51,7 @@ class Backup(ParallelBaseOM):
         self.backupDir = ""
         self.isParameter = False
         self.isBinary = False
+        self.isForce = False
 
     ####################################################################################
     # Help context. U:R:oC:v: 
@@ -66,6 +67,7 @@ Usage:
                                              [--binary] [--all] [-l LOGFILE]
   gs_backup -t restore --backup-dir=BACKUPDIR [-h HOSTNAME] [--parameter]
                                               [--binary] [--all] [-l LOGFILE]
+                                              [--force]
  
 General options:
   -t                            Operation type. It can be backup or restore.
@@ -78,6 +80,8 @@ General options:
                                 (This option is used by default.)
       --binary                  Back up or restore binary files only.
       --all                     Back up or restore both parameter files and binary files.
+      --force                   Force to restore binary files  even if the
+                                cluster_static_config is lost
   -l                            Path of log file.
   -?, --help                    Show help information for this utility,
                                 and exit the command line mode.
@@ -90,13 +94,17 @@ General options:
     def checkAction(self):
         """
         function: check action
-        if action if null, throw error
+        if action not in (ACTION_BACKUP, ACTION_RESTORE), throw error
         input : NA
         output: NA
         """
         if (self.action == ""):
             GaussLog.exitWithError(
                 ErrorCode.GAUSS_500["GAUSS_50001"] % 't' + ".")
+        if self.action not in (ACTION_BACKUP, ACTION_RESTORE):
+            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % 't'
+                                   + " The value of the '-t' parameter :"
+                                     " backup or restore.")
 
     def checkUserParameter(self):
         """
@@ -158,12 +166,14 @@ General options:
             sys.exit(0)
         # parse --all parameter
         backupAll = False
+        forceRestore = False
         parameter_map = {"action": self.action,
                          "backupDir": self.backupDir,
                          "isBinary": self.isBinary,
                          "isParameter": self.isParameter,
                          "logFile": self.logFile,
-                         "all": backupAll}
+                         "all": backupAll,
+                         "force": forceRestore}
         parameter_keys = parameter_map.keys()
 
         for key in parameter_keys:
@@ -175,6 +185,7 @@ General options:
         self.isBinary = parameter_map["isBinary"]
         self.isParameter = parameter_map["isParameter"]
         self.logFile = parameter_map["logFile"]
+        self.isForce = parameter_map["force"]
 
         if (parameter_map["all"]):
             self.isBinary = True
@@ -206,10 +217,7 @@ General options:
                                   "and '--all' were not specified." +
                                   " Only parameter files will be backed up.")
             self.isParameter = True
-        if self.action not in (ACTION_BACKUP, ACTION_RESTORE):
-            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % 't'
-                                   + " The value of the '-t' parameter :"
-                                     " backup or restore.")
+
 
 
 if __name__ == '__main__':

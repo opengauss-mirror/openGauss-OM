@@ -1410,9 +1410,9 @@ class dbClusterInfo():
         """
         try:
             with open(staticConfigFile, "rb") as fp:
-                info = fp.read(32)
+                info = fp.read(28)
             (crc, lenth, version, currenttime, nodeNum,
-             localNodeId) = struct.unpack("=qIIqiI", info)
+             localNodeId) = struct.unpack("=IIIqiI", info)
         except Exception as e:
             raise Exception(
                 ErrorCode.GAUSS_512["GAUSS_51236"] + " Error: \n%s." % str(e))
@@ -1935,7 +1935,7 @@ class dbClusterInfo():
                                 "failed to connect") >= 0:
                             continue
                         else:
-                            output='\n'.join(output.split('\n')[1:])
+                            output = '\n'.join(output.split('\n')[1:])
                     else:
                         cmd = "gsql -m -d postgres -p %s -c \"%s\"" % (
                             dnInst.port, secondSql)
@@ -2151,6 +2151,7 @@ class dbClusterInfo():
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"]
                             % cmd + " Error: \n%s" % output)
         return output.split("\n")[0]
+
     def __getStatusByOM(self, user):
         """
         function :Get the environment parameter.
@@ -2220,9 +2221,9 @@ class dbClusterInfo():
             try:
                 # read static_config_file
                 fp = open(staticConfigFile, "rb")
-                info = fp.read(32)
+                info = fp.read(28)
                 (crc, lenth, version, currenttime, nodeNum,
-                 localNodeId) = struct.unpack("=qIIqiI", info)
+                 localNodeId) = struct.unpack("=IIIqiI", info)
                 self.version = version
                 self.installTime = currenttime
                 self.localNodeId = localNodeId
@@ -2283,8 +2284,8 @@ class dbClusterInfo():
         input : file
         output : Object
         """
-        info = fp.read(76)
-        (crc, nodeId, nodeName) = struct.unpack("=qI64s", info)
+        info = fp.read(72)
+        (crc, nodeId, nodeName) = struct.unpack("=II64s", info)
         nodeName = nodeName.decode().strip('\x00')
         dbNode = dbNodeInfo(nodeId, nodeName)
         info = fp.read(68)
@@ -2571,9 +2572,9 @@ class dbClusterInfo():
         try:
             # read cluster info from static config file
             fp = open(staticConfigFile, "rb")
-            info = fp.read(32)
+            info = fp.read(28)
             (crc, lenth, version, currenttime, nodeNum,
-             localNodeId) = struct.unpack("=qIIqiI", info)
+             localNodeId) = struct.unpack("=IIIqiI", info)
             if (version <= 100):
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51637"]
                                 % ("cluster static config version[%s]"
@@ -4589,7 +4590,7 @@ class dbClusterInfo():
             info += struct.pack("I", localNodeId)
 
             crc = binascii.crc32(info)
-            info = struct.pack("q", crc) + info
+            info = struct.pack("I", crc) + info
             fp.write(info)
 
             for dbNode in dbNodes:
@@ -4648,7 +4649,7 @@ class dbClusterInfo():
         info += struct.pack("I", 0)
         crc = binascii.crc32(info)
 
-        return struct.pack("q", crc) + info
+        return struct.pack("I", crc) + info
 
     def __packNodeInfoForLC(self, dbNode):
         """ 
@@ -4671,7 +4672,7 @@ class dbClusterInfo():
         info += struct.pack("I", 0)
         crc = binascii.crc32(info)
 
-        return struct.pack("q", crc) + info
+        return struct.pack("I", crc) + info
 
     def __packEtcdInfo(self, dbNode):
         """  
@@ -6091,7 +6092,7 @@ class dbClusterInfo():
             # node count
             info += struct.pack("I", len(self.dbNodes))
             crc = binascii.crc32(info)
-            info = struct.pack("q", crc) + info
+            info = struct.pack("I", crc) + info
             fp.write(info)
             primaryDnNum = 0
             for dbNode in self.dbNodes:
@@ -6194,7 +6195,7 @@ class dbClusterInfo():
         info += struct.pack("I", 0)
         info += struct.pack("I", 0)
         crc = binascii.crc32(info)
-        return (primaryNum, struct.pack("q", crc) + info)
+        return (primaryNum, struct.pack("I", crc) + info)
 
     def __getClusterSwitchTime(self, dynamicConfigFile):
         """
@@ -6206,9 +6207,9 @@ class dbClusterInfo():
         fp = None
         try:
             fp = open(dynamicConfigFile, "rb")
-            info = fp.read(28)
+            info = fp.read(24)
             (crc, lenth, version, switchTime, nodeNum) = \
-                struct.unpack("=qIIqi", info)
+                struct.unpack("=IIIqi", info)
             fp.close()
         except Exception as e:
             if fp:
@@ -6344,9 +6345,9 @@ class dbClusterInfo():
             dynamicConfigFile = self.__getDynamicConfig(user)
             # read dynamic_config_file
             fp = open(dynamicConfigFile, "rb")
-            info = fp.read(28)
+            info = fp.read(24)
             (crc, lenth, version, currenttime, nodeNum) = \
-                struct.unpack("=qIIqi", info)
+                struct.unpack("=IIIqi", info)
             totalMaterDnNum = 0
             for i in range(nodeNum):
                 offset = (fp.tell() // PAGE_SIZE + 1) * PAGE_SIZE
@@ -6365,8 +6366,8 @@ class dbClusterInfo():
                             dynamicConfigFile + " Error:\n" + str(e))
 
     def __unpackDynamicNodeInfo(self, fp):
-        info = fp.read(76)
-        (crc, nodeId, nodeName) = struct.unpack("=qI64s", info)
+        info = fp.read(72)
+        (crc, nodeId, nodeName) = struct.unpack("=II64s", info)
         nodeName = nodeName.decode().strip('\x00')
         dbNode = dbNodeInfo(nodeId, nodeName)
         info = fp.read(4)

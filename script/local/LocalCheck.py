@@ -22,7 +22,6 @@ import os
 import sys
 import getopt
 import subprocess
-import platform
 import glob
 import xml.etree.cElementTree as ETree
 

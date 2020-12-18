@@ -132,6 +132,7 @@ class Kernel(BaseComponent):
         if (status != 0):
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
                             " Error: \n%s " % output)
+
     def build_cascade(self, buidMode="full", standByBuildTimeout=300):
         """
         """

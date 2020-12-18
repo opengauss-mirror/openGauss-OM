@@ -48,26 +48,31 @@ class BackupImplOLAP(BackupImpl):
         output: NA
         """
         self.context.logger.log("Parsing configuration files.")
+        if self.context.isForce and self.context.nodename != "" \
+                and self.context.action == BackupImpl.ACTION_RESTORE:
+            self.context.initSshTool([self.context.nodename],
+                                     DefaultValue.TIMEOUT_PSSH_BACKUP)
+            self.context.logger.log(
+                "Successfully init restore nodename: %s."
+                % self.context.nodename)
+            return
 
         try:
             self.context.initClusterInfoFromStaticFile(self.context.user)
             nodeNames = self.context.clusterInfo.getClusterNodeNames()
-            if (self.context.nodename == ""):
+            if self.context.nodename == "":
                 self.context.nodename = nodeNames
             else:
                 remoteNode = self.context.clusterInfo.getDbNodeByName(
                     self.context.nodename)
-                if (remoteNode is None):
+                if remoteNode is None:
                     raise Exception(ErrorCode.GAUSS_512["GAUSS_51209"] % (
                         "the node", self.context.nodename))
                 self.context.nodename = [self.context.nodename]
 
-            if (self.context.action == BackupImpl.ACTION_RESTORE):
-                self.context.initSshTool(self.context.nodename,
-                                         DefaultValue.TIMEOUT_PSSH_BACKUP)
-            else:
-                self.context.initSshTool(nodeNames,
-                                         DefaultValue.TIMEOUT_PSSH_BACKUP)
+            self.context.initSshTool(self.context.nodename,
+                                     DefaultValue.TIMEOUT_PSSH_BACKUP)
+
         except Exception as e:
             raise Exception(str(e))
 
@@ -95,6 +100,7 @@ class BackupImplOLAP(BackupImpl):
             cmd += " -p"
         if self.context.isBinary:
             cmd += " -b"
+
         self.context.logger.debug("Remote backup command is %s." % cmd)
 
         try:
@@ -208,7 +214,7 @@ class BackupImplOLAP(BackupImpl):
         """
         self.context.logger.log("Performing remote restoration.")
 
-        cmd = "%s -U %s -l %s --ingore_miss" % (
+        cmd = "%s -U %s -l %s " % (
             OMCommand.getLocalScript("Local_Restore"),
             self.context.user,
             self.context.localLog)
@@ -218,6 +224,8 @@ class BackupImplOLAP(BackupImpl):
             cmd += " -p"
         if self.context.isBinary:
             cmd += " -b"
+        if self.context.isForce:
+            cmd += " -f"
         self.context.logger.debug("Remote restoration command: %s." % cmd)
 
         try:

@@ -219,9 +219,6 @@ class DN_OLAP(Kernel):
             elif len(azNames) == 3 and totalnum in (5, 6, 7):
                 tmpDNDict["synchronous_standby_names"] = \
                     "'ANY 3(%s,%s,%s)'" % (azNames[0], azNames[1], azNames[2])
-            if len(peerInsts) > 4:
-                if "synchronous_standby_names" in tmpDNDict:
-                    del tmpDNDict['synchronous_standby_names']
 
         if (self.clusterType == DefaultValue.CLUSTER_TYPE_SINGLE):
             tmpDNDict["replication_type"] = "2"
@@ -310,9 +307,6 @@ class DN_OLAP(Kernel):
                 tmpDict1 = {}
                 tmpDict1[connInfo] = "'%s'" % connInfo1[i]
                 self.setGucConfig(tmpDict1)
-                if "availablezone" in tmpDict1[connInfo]:
-                    tempazname = tmpDict1[connInfo].split("=")[-1].strip("'")
-            #if "availablezone" in str(connInfo1):
             self.setGucConfig({"available_zone": "'%s'" %
                                                  self.instInfo.azName})
         else:

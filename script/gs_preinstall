@@ -332,6 +332,17 @@ General options:
             except Exception as e:
                 GaussLog.exitWithError(str(e))
 
+    # decompress version.cfg from bz2
+    def decompressVersioncfg(self):
+        package_path = os.path.dirname(os.path.realpath(__file__))
+        toolpath = package_path + "/../"
+        cmd = "cd %s && tar -xpf openGauss-*.tar.bz2 ./version.cfg " % toolpath
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"]
+                                % "version.cfg" + "The cmd is %s. " % cmd +
+                                "The output is %s." % output)
+
     # init global variables
     def initGlobals(self):
         """
@@ -465,6 +476,8 @@ if __name__ == '__main__':
         preinstall = Preinstall()
         # set LD_LIBRARY_PATH
         preinstall.setLibPath()
+        # decompress version.cfg
+        preinstall.decompressVersioncfg()
         # parse cmd lines
         preinstall.parseCommandLine()
         # check parameters

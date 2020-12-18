@@ -81,7 +81,7 @@ gs_check = ["-?", "--help", "-V", "--version", "-e:", "-i:",
 gs_sshexkey = ["-?", "--help", "-V", "--version",
                "-f:", "--skip-hostname-set", "-l:"]
 gs_backup = ["-?", "--help", "-V", "--version", "--backup-dir=",
-             "--parameter",
+             "--parameter", "--force",
              "--binary", "--all", "-l:", "-h:", "-t:", "-X:"]
 gs_collector = ["-?", "--help", "-V", "--version", "--begin-time=",
                 "--end-time=",

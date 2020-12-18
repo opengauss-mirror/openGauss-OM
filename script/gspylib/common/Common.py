@@ -1060,7 +1060,7 @@ class DefaultValue():
                 g_file.removeFile(inspectToolsCffiPath)
                 # copy the correct version
                 newPythonDependCryptoPath = "%s_UCS%d_%s" % (omToolsCffiPath,
-                                                          flagNum,version)
+                                                          flagNum, version)
                 if os.path.exists(newPythonDependCryptoPath):
                     g_file.cpFile(newPythonDependCryptoPath, omToolsCffiPath,
                                   "shell")

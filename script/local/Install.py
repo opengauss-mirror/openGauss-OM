@@ -368,6 +368,27 @@ class Install(LocalBaseOM):
                 self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50217"]
                                     % tarFile + " Error: \n%s" % str(output))
 
+            # mv $GPHOME/script/transfer.py to $GAUSSHOME/bin/
+            dirName = os.path.dirname(os.path.realpath(__file__))
+            transferFile = dirName + "/../../script/transfer.py"
+            if os.path.exists(transferFile):
+                g_file.cpFile(transferFile, self.installPath + "/bin/")
+                g_file.removeFile(transferFile)
+            # cp $GPHOME/script to $GAUSSHOME/bin/
+            g_file.cpFile(dirName + "/../../script",
+                          self.installPath + "/bin/")
+
+            # cp $GAUSSHOME/bin/script/gspylib/etc/sql/pmk to /share/postgresql
+            destPath = self.installPath + "/share/postgresql/"
+            pmkPath = self.installPath + "/bin/script/gspylib/etc/sql/"
+            pmkFile = pmkPath + "pmk_schema.sql"
+            if os.path.exists(pmkFile):
+                g_file.cpFile(pmkFile, destPath)
+
+            pmkSingeInstFile = pmkPath + "pmk_schema_single_inst.sql"
+            if os.path.exists(pmkSingeInstFile):
+                g_file.cpFile(pmkSingeInstFile, destPath)
+
             # change owner for tar file.
             g_file.changeOwner(self.user, self.installPath, True)
         self.logger.log("Successfully decompressed bin file.")

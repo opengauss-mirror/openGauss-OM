@@ -2,7 +2,7 @@
 
 declare binarylib_dir='None'
 declare module_name="openGauss"
-declare version_number='1.0.1'
+declare version_number='1.1.0'
 ROOT_DIR=$(cd $(dirname "${BASH_SOURCE[0]}") && pwd)
 echo "ROOT_DIR : $ROOT_DIR"
 declare ERR_MKGS_FAILED=1
@@ -135,7 +135,7 @@ function version_cfg()
     gitversion=$(git log | grep commit | head -1 | awk '{print $2}' | cut -b 1-8)
     commits=$(git log | grep "See in merge request" | wc -l)
     mrid=$(git log | grep "See in merge request" | head -1 | awk -F! '{print $2}' | grep -o '[0-9]\+')
-    om_version="(openGauss OM 1.0.1 build $gitversion) compiled at `date -d today +\"%Y-%m-%d %H:%M:%S\"` commit $commits last mr $mrid"
+    om_version="(openGauss OM 1.1.0 build $gitversion) compiled at `date -d today +\"%Y-%m-%d %H:%M:%S\"` commit $commits last mr $mrid"
     version_file=${PKG_TMP_DIR}/version.cfg
     touch ${version_file}
     echo "${module_name}-${version_number}">${version_file}

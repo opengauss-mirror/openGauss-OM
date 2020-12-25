@@ -804,31 +804,6 @@ class peerInstanceInfo():
             ret += ",peer2Role=%d" % self.peer2Role
         return ret
 
-
-class dnSyncInfo():
-    def __init__(self):
-        self.senderSentLocation = "0/0"
-        self.senderWriteLocation = "0/0"
-        self.senderFlushLocation = "0/0"
-        self.senderReplayLocation = "0/0"
-        self.receiverReceivedLocation = "0/0"
-        self.receiverWriteLocation = "0/0"
-        self.receiverFlushLocation = "0/0"
-        self.receiverReplayLocation = "0/0"
-        self.syncState = "Unknown"
-        self.peerRole = "Unknown"
-        self.secondSenderSentLocation = ""
-        self.secondSenderWriteLocation = ""
-        self.secondSenderFlushLocation = ""
-        self.secondSenderReplayLocation = ""
-        self.secondReceiverReceivedLocation = ""
-        self.secondReceiverWriteLocation = ""
-        self.secondReceiverFlushLocation = ""
-        self.secondReceiverReplayLocation = ""
-        self.secondSyncState = ""
-        self.secondPeerRole = ""
-
-
 class instanceInfo():
     """
     Instance information
@@ -1446,7 +1421,6 @@ class dbClusterInfo():
         (clusterState, syncInfo) = self.__getDnSenderStatus(sshtool,
                                                             localHostName,
                                                             nodeId)
-        dnTotalNum = self.__getDnInstanceNum()
         outText = \
             "--------------------------------------------------------------" \
             "---------\n\n"
@@ -1457,16 +1431,11 @@ class dbClusterInfo():
                   "----------------------------------\n\n"
         for dbNode in self.dbNodes:
             if dbNode.id == nodeId or nodeId == 0:
-                outText = outText + (
-                        "node                      : %u\n" % dbNode.id)
-                outText = outText + (
-                        "node_name                 : %s\n\n" % dbNode.name)
                 for dnInst in dbNode.datanodes:
                     outText = outText + (
                             "node                      : %u\n" % dbNode.id)
                     outText = outText + (
-                            "instance_id               : %u\n" %
-                            dnInst.instanceId)
+                            "node_name                 : %s\n" % dbNode.name)
                     outText = outText + ("node_ip                   : %s\n" %
                                          dnInst.listenIps[0])
                     outText = outText + (
@@ -1474,128 +1443,64 @@ class dbClusterInfo():
                             dnInst.datadir)
                     outText = outText + "type                      : " \
                                         "Datanode\n"
-                    if dnTotalNum == 1 and dnInst.localRole in \
-                            DN_ROLE_MAP.keys():
-                        outText = outText + "instance_state            : " \
-                                            "Primary\n"
-                    else:
-                        outText = outText + (
-                                "instance_state            : %s\n" %
-                                dnInst.localRole)
                     outText = outText + (
-                            "static_connections        : %s\n" %
-                            dnInst.staticConnections)
+                            "instance_id               : %u\n" %
+                            dnInst.instanceId)
                     outText = outText + (
-                            "HA_state                  : %s\n" %
+                            "instance_role             : %s\n" %
+                            dnInst.localRole)
+                    outText = outText + (
+                            "instance_state            : %s\n" %
                             dnInst.state)
-                    if dnInst.state == "Normal":
-                        outText = outText + "reason                    : " \
-                                            "Normal\n"
-                    else:
-                        outText = outText + "reason                    : " \
-                                            "Unknown\n"
                     if dnInst.localRole == "Primary":
-                        if syncInfo.peerRole == "":
-                            syncInfo.peerRole = "Unknown"
                         outText = outText + (
-                                "standby_state             : %s\n" %
-                                syncInfo.peerRole)
-                        outText = outText + (
-                                "sender_sent_location      : %s\n" %
-                                syncInfo.senderSentLocation)
-                        outText = outText + (
-                                "sender_write_location     : %s\n" %
-                                syncInfo.senderWriteLocation)
-                        outText = outText + (
-                                "sender_flush_location     : %s\n" %
-                                syncInfo.senderFlushLocation)
-                        outText = outText + (
-                                "sender_replay_location    : %s\n" %
-                                syncInfo.senderReplayLocation)
-                        outText = outText + (
-                                "receiver_received_location: %s\n" %
-                                syncInfo.receiverReceivedLocation)
-                        outText = outText + (
-                                "receiver_write_location   : %s\n" %
-                                syncInfo.receiverWriteLocation)
-                        outText = outText + (
-                                "receiver_flush_location   : %s\n" %
-                                syncInfo.receiverFlushLocation)
-                        outText = outText + (
-                                "receiver_replay_location  : %s\n" %
-                                syncInfo.receiverReplayLocation)
-                        if syncInfo.syncState == "":
-                            syncInfo.syncState = "Unknown"
-                        outText = outText + (
-                                "sync_state                : %s\n" %
-                                syncInfo.syncState)
-                        if syncInfo.secondPeerRole == "":
-                            outText = outText + "\n------------------------" \
-                                                "---------------" \
+                                "static_connections        : %s\n\n" %
+                                dnInst.staticConnections)
+                        outText = outText + "------------------------" \
+                                            "---------------" \
+                                            "--------------------------------\n\n"
+                        continue
+                    for i_loop in syncInfo:
+                        if i_loop[11] == '':
+                            i_loop[11] = 'Unknown'
+                        if i_loop[0] == dnInst.listenIps[0]:
+                            outText = outText + (
+                                      "HA_state                  : %s\n" %
+                                      i_loop[1])
+                            outText = outText + (
+                                      "sender_sent_location      : %s\n" %
+                                      i_loop[2])
+                            outText = outText + (
+                                      "sender_write_location     : %s\n" %
+                                      i_loop[3])
+                            outText = outText + (
+                                      "sender_flush_location     : %s\n" %
+                                      i_loop[4])
+                            outText = outText + (
+                                      "sender_replay_location    : %s\n" %
+                                      i_loop[5])
+                            outText = outText + (
+                                      "receiver_received_location: %s\n" %
+                                      i_loop[6])
+                            outText = outText + (
+                                      "receiver_write_location   : %s\n" %
+                                      i_loop[7])
+                            outText = outText + (
+                                      "receiver_flush_location   : %s\n" %
+                                      i_loop[8])
+                            outText = outText + (
+                                      "receiver_replay_location  : %s\n" %
+                                      i_loop[9])
+                            outText = outText + (
+                                      "sync_percent              : %s\n" %
+                                      i_loop[10])
+                            outText = outText + (
+                                      "sync_state                : %s\n\n" %
+                                      i_loop[11])
+                            outText = outText + "------------------------" \
+                                      "---------------" \
                                       "--------------------------------\n\n"
-                            continue
-                        if syncInfo.secondSyncState == "":
-                            syncInfo.secondSyncState = "Unknown"
-                        outText = outText + (
-                                "secondary_state           : %s\n" %
-                                syncInfo.secondPeerRole)
-                        outText = outText + (
-                                "sender_sent_location      : %s\n" %
-                                syncInfo.secondSenderSentLocation)
-                        outText = outText + (
-                                "sender_write_location     : %s\n" %
-                                syncInfo.secondSenderWriteLocation)
-                        outText = outText + (
-                                "sender_flush_location     : %s\n" %
-                                syncInfo.secondSenderFlushLocation)
-                        outText = outText + (
-                                "sender_replay_location    : %s\n" %
-                                syncInfo.secondSenderReplayLocation)
-                        outText = outText + (
-                                "receiver_received_location: %s\n" %
-                                syncInfo.secondReceiverReceivedLocation)
-                        outText = outText + (
-                                "receiver_write_location   : %s\n" %
-                                syncInfo.secondReceiverWriteLocation)
-                        outText = outText + (
-                                "receiver_flush_location   : %s\n" %
-                                syncInfo.secondReceiverFlushLocation)
-                        outText = outText + (
-                                "receiver_replay_location  : %s\n" %
-                                syncInfo.secondReceiverReplayLocation)
-                        outText = outText + (
-                                "sync_state                : %s\n" %
-                                syncInfo.secondSyncState)
-                    else:
-                        outText = outText + (
-                                "sender_sent_location      : %s\n" %
-                                syncInfo.senderSentLocation)
-                        outText = outText + (
-                                "sender_write_location     : %s\n" %
-                                syncInfo.senderWriteLocation)
-                        outText = outText + (
-                                "sender_flush_location     : %s\n" %
-                                syncInfo.senderFlushLocation)
-                        outText = outText + (
-                                "sender_replay_location    : %s\n" %
-                                syncInfo.senderReplayLocation)
-                        outText = outText + (
-                                "receiver_received_location: %s\n" %
-                                syncInfo.receiverReceivedLocation)
-                        outText = outText + (
-                                "receiver_write_location   : %s\n" %
-                                syncInfo.receiverWriteLocation)
-                        outText = outText + (
-                                "receiver_flush_location   : %s\n" %
-                                syncInfo.receiverFlushLocation)
-                        outText = outText + (
-                                "receiver_replay_location  : %s\n" %
-                                syncInfo.receiverReplayLocation)
-                        outText = outText + (
-                            "sync_state                : Async\n")
-                    outText = outText + \
-                              "\n---------------------------------------" \
-                              "--------------------------------\n\n"
+                            break
                 if nodeId != 0:
                     break
             else:
@@ -1895,23 +1800,14 @@ class dbClusterInfo():
         return dnInsNum
 
     def __getDnSenderStatus(self, sshtool, localHostName, nodeId):
-        secondSql = "select sender_sent_location,sender_write_location," \
-                    "sender_flush_location," \
-                    "sender_replay_location,receiver_received_location," \
-                    "receiver_write_location," \
-                    "receiver_flush_location,receiver_replay_location," \
-                    "sync_state,peer_role " \
-                    " from pg_stat_get_wal_senders() where " \
-                    "peer_role='Standby';"
-        thirdSql = "select sender_sent_location,sender_write_location," \
-                   "sender_flush_location," \
-                   "sender_replay_location,receiver_received_location," \
-                   "receiver_write_location," \
-                   "receiver_flush_location,receiver_replay_location," \
-                   "sync_state,peer_role " \
-                   " from pg_stat_get_wal_senders() where " \
-                   "peer_role='Secondary';"
-        syncInfo = dnSyncInfo()
+        sql_get = "select a.client_addr, b.state, b.sender_sent_location," \
+                  "b.sender_write_location, b.sender_flush_location," \
+                  "b.sender_replay_location, b.receiver_received_location," \
+                  "b.receiver_write_location, b.receiver_flush_location," \
+                  "b.receiver_replay_location, b.sync_percent, b.sync_state " \
+                  "from pg_stat_replication a inner join " \
+                  "pg_stat_get_wal_senders() b on a.pid = b.pid;"
+        syncInfo = []
         clusterState = "Normal"
         primaryDbState = "Normal"
         primaryDbNum = 0
@@ -1919,7 +1815,6 @@ class dbClusterInfo():
         for dbNode in self.dbNodes:
             for dnInst in dbNode.datanodes:
                 dnNodeCount += 1
-                minValidLine = 2
                 self.__getDnState(dnInst, dbNode, localHostName, sshtool)
                 if dnInst.localRole == "Primary":
                     primaryDbState = dnInst.state
@@ -1927,83 +1822,28 @@ class dbClusterInfo():
                     output = ""
                     if dbNode.name != localHostName:
                         cmd = "[need_replace_quotes] gsql -m -d postgres -p " \
-                              "%s -c \"%s\"" % \
-                              (dnInst.port, secondSql)
+                              "%s -A -t -c \"%s\"" % \
+                              (dnInst.port, sql_get)
                         (statusMap, output) = sshtool.getSshStatusOutput(cmd, [
                             dbNode.name])
                         if statusMap[dbNode.name] != 'Success' or output.find(
                                 "failed to connect") >= 0:
                             continue
                         else:
-                            output = '\n'.join(output.split('\n')[1:])
+                            output = output.split('\n')[1:-1]
                     else:
-                        cmd = "gsql -m -d postgres -p %s -c \"%s\"" % (
-                            dnInst.port, secondSql)
+                        cmd = "gsql -m -d postgres -p %s -A -t -c \"%s\"" % (
+                            dnInst.port, sql_get)
                         (status, output) = subprocess.getstatusoutput(cmd)
                         if status != 0 or output.find(
                                 "failed to connect") >= 0:
                             continue
-                    lineSplitRes = output.split("\n")
-                    if len(lineSplitRes) <= minValidLine:
-                        continue
-                    columnRes = lineSplitRes[minValidLine].split("|")
-                    if len(columnRes) != 10:
-                        continue
-                    syncInfo.senderSentLocation = columnRes[0].strip()
-                    syncInfo.senderWriteLocation = columnRes[1].strip()
-                    syncInfo.senderFlushLocation = columnRes[2].strip()
-                    syncInfo.senderReplayLocation = columnRes[3].strip()
-                    syncInfo.receiverReceivedLocation = columnRes[4].strip()
-                    syncInfo.receiverWriteLocation = columnRes[5].strip()
-                    syncInfo.receiverFlushLocation = columnRes[6].strip()
-                    syncInfo.receiverReplayLocation = columnRes[7].strip()
-                    syncInfo.syncState = columnRes[8].strip()
-                    syncInfo.peerRole = columnRes[9].strip()
-                    if nodeId == dbNode.id:
-                        output = ""
-                        if dbNode.name != localHostName:
-                            cmd = "[need_replace_quotes] gsql -m -d " \
-                                  "postgres -p %s -c \"%s\"" % (
-                                      dnInst.port, thirdSql)
-                            (statusMap, output) = sshtool.getSshStatusOutput(
-                                cmd, [dbNode.name])
-                            if statusMap[
-                                dbNode.name] != 'Success' or output.find(
-                                "failed to connect") >= 0:
-                                continue
                         else:
-                            cmd = "gsql -m -d postgres -p %s -c \"%s\"" % (
-                                dnInst.port, thirdSql)
-                            (status, output) = subprocess.getstatusoutput(cmd)
-                            if status != 0 or output.find(
-                                    "failed to connect") >= 0:
-                                continue
-
-                        lineSplitRes = output.split("\n")
-                        if len(lineSplitRes) <= minValidLine:
-                            continue
-                        columnRes = lineSplitRes[minValidLine].split("|")
-                        if len(columnRes) != 10:
-                            # maybe no sql query result
-                            continue
-                        syncInfo.secondSenderSentLocation = columnRes[
-                            0].strip()
-                        syncInfo.secondSenderFlushLocation = columnRes[
-                            1].strip()
-                        syncInfo.secondSenderReplayLocation = columnRes[
-                            2].strip()
-                        syncInfo.secondReceiverReceivedLocation = columnRes[
-                            3].strip()
-                        syncInfo.secondReceiverWriteLocation = columnRes[
-                            4].strip()
-                        syncInfo.secondReceiverFlushLocation = columnRes[
-                            5].strip()
-                        syncInfo.receiver_replay_location = columnRes[
-                            6].strip()
-                        syncInfo.secondReceiverReplayLocation = columnRes[
-                            7].strip()
-                        syncInfo.secondSyncState = columnRes[8].strip()
-                        syncInfo.secondPeerRole = columnRes[9].strip()
+                            output = output.split('\n')
+                    if not len(output):
+                        continue
+                    for col_loop in output:
+                        syncInfo.append(col_loop.split('|'))
                 else:
                     if dnInst.localRole != "Standby" and \
                             dnInst.localRole != "Secondary" and \

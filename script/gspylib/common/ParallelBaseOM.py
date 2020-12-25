@@ -886,7 +886,7 @@ class ParallelBaseOM(object):
             self.sshTool.scpFiles(scpFile, caPath, hostList)
         self.logger.debug("Successfully generated grpc CA files.")
 
-    def genCipherAndRandFile(self, hostList=None):
+    def genCipherAndRandFile(self, hostList=None, initPwd=None):
         self.logger.debug("Encrypting cipher and rand files.")
         if hostList is None:
             hostList = []
@@ -894,8 +894,11 @@ class ParallelBaseOM(object):
         binPath = os.path.join(appPath, "bin")
         retry = 0
         while True:
-            sshpwd = getpass.getpass("Please enter password for database:")
-            sshpwd_check = getpass.getpass("Please repeat for database:")
+            if not initPwd:
+                sshpwd = getpass.getpass("Please enter password for database:")
+                sshpwd_check = getpass.getpass("Please repeat for database:")
+            else:
+                sshpwd = sshpwd_check = initPwd
             if sshpwd_check != sshpwd:
                 sshpwd = ""
                 sshpwd_check = ""
@@ -910,6 +913,7 @@ class ParallelBaseOM(object):
                 (status, output) = subprocess.getstatusoutput(cmd)
                 sshpwd = ""
                 sshpwd_check = ""
+                initPwd = ""
                 if status != 0:
                     self.logger.error(
                         ErrorCode.GAUSS_503["GAUSS_50322"] % "database"

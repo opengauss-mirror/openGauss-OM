@@ -347,7 +347,8 @@ class InstallImpl:
             self.configZenithInst()
             self.context.logger.log("encrypt cipher and rand files "
                                     "for database.")
-            self.context.genCipherAndRandFile()
+            initPasswd = self.getPasswdFromInitParam()
+            self.context.genCipherAndRandFile(None, initPasswd)
             self.context.logger.log("begin to create CA cert files")
             self.context.createServerCa()
             if not self.context.localMode:
@@ -359,6 +360,32 @@ class InstallImpl:
         # Cluster installation is completed
         self.context.logger.log("Cluster installation is completed.",
                                 "constant")
+
+    def getPasswdFromInitParam(self):
+        """
+        function: get passwd from init-parameter
+        return: passwd
+        get passwd from --gsinit-parameter. if the passwd has been assigned,
+        the database will install with non-interactive.
+        """ 
+        if len(self.context.dbInitParam) == 0:
+            return None
+        passwd = None
+        pwdIndex = -1
+        for idx,param in enumerate(self.context.dbInitParam):
+            if param.startswith("--pwpasswd="):
+                passwd = param[11:]
+                pwdIndex = idx
+                break
+            elif param.startswith("-w="):
+                passwd = param[3:]
+                pwdIndex = idx
+                break
+        
+        #remove initpasswd from dbInitParam. otherwise it will be printed in log.
+        if pwdIndex > -1:
+            self.context.dbInitParam.pop(pwdIndex)
+        return passwd
 
     def configZenithInst(self):
         """

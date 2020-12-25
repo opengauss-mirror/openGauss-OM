@@ -1802,8 +1802,8 @@ class dbClusterInfo():
                 outText = \
                     "-------------------------------------------------" \
                     "----------------------\n\n" \
-                    "cluster_state   : %s\nredistributing  : No\n\n" % \
-                    clusterState
+                    "cluster_name    : %s\ncluster_state   : %s\nredistributing  : No\n\n" % \
+                    (self.name, clusterState)
                 outText = outText + \
                           "-------------------------------------------" \
                           "----------------------------\n"

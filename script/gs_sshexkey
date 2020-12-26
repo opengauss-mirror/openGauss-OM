@@ -155,9 +155,11 @@ Usage:
 
 General options:
   -f                          Host file containing the IP address of nodes.
+  -h                          Host ip list. Separate multiple nodes with commas(,).
   -l                          Path of log file.
       --skip-hostname-set     Whether to skip hostname setting.
                               (The default value is set.)
+  -W                          Password of nodes.
   -?, --help                  Show help information for this utility,
                               and exit the command line mode.
   -V, --version               Show version information.
@@ -178,10 +180,14 @@ General options:
 
         if ("hostfile" in paraDict.keys()):
             self.hostFile = paraDict.get("hostfile")
+        if ("nodename" in paraDict.keys()):
+            self.hostList = paraDict.get("nodename")
         if ("logFile" in paraDict.keys()):
             self.logFile = paraDict.get("logFile")
         if ("skipHostnameSet" in paraDict.keys()):
             self.skipHostnameSet = paraDict.get("skipHostnameSet")
+        if ("passwords" in paraDict.keys()):
+            self.passwd = paraDict.get("passwords")
 
     def checkParameter(self):
         """
@@ -190,23 +196,24 @@ General options:
         output: NA
         """
         # check required parameters
-        if (self.hostFile == ""):
-            self.usage()
-            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"]
-                                   % 'f' + ".")
-        if (not os.path.exists(self.hostFile)):
-            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50201"]
-                                   % self.hostFile)
-        if (not os.path.isabs(self.hostFile)):
-            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"]
-                                   % self.hostFile)
+        if len(self.hostList) == 0:
+            if (self.hostFile == ""):
+                self.usage()
+                GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"]
+                                    % 'f' + ".")
+            if (not os.path.exists(self.hostFile)):
+                GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50201"]
+                                    % self.hostFile)
+            if (not os.path.isabs(self.hostFile)):
+                GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"]
+                                    % self.hostFile)
 
-        # read host file to hostList
-        self.readHostFile()
+            # read host file to hostList
+            self.readHostFile()
 
-        if (self.hostList == []):
-            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
-                                   % 'f' + " It cannot be empty.")
+            if (self.hostList == []):
+                GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
+                                    % 'f' + " It cannot be empty.")
 
         # check logfile
         if (self.logFile != ""):

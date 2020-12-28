@@ -1436,6 +1436,9 @@ class dbClusterInfo():
                             "node                      : %u\n" % dbNode.id)
                     outText = outText + (
                             "node_name                 : %s\n" % dbNode.name)
+                    outText = outText + (
+                            "instance_id               : %u\n" %
+                            dnInst.instanceId)
                     outText = outText + ("node_ip                   : %s\n" %
                                          dnInst.listenIps[0])
                     outText = outText + (
@@ -1444,18 +1447,19 @@ class dbClusterInfo():
                     outText = outText + "type                      : " \
                                         "Datanode\n"
                     outText = outText + (
-                            "instance_id               : %u\n" %
-                            dnInst.instanceId)
-                    outText = outText + (
-                            "instance_role             : %s\n" %
-                            dnInst.localRole)
-                    outText = outText + (
                             "instance_state            : %s\n" %
                             dnInst.state)
                     if dnInst.localRole == "Primary":
                         outText = outText + (
                                 "static_connections        : %s\n\n" %
                                 dnInst.staticConnections)
+                        outText = outText + (
+                              "HA_state                  : %s\n" %
+                              clusterState)
+                    outText = outText + (
+                              "instance_role             : %s\n" %
+                            dnInst.localRole)
+                    if dnInst.localRole == "Primary":
                         outText = outText + "------------------------" \
                                             "---------------" \
                                             "--------------------------------\n\n"

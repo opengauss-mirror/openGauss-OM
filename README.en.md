@@ -1,36 +1,51 @@
 # openGauss-OM
 
 #### Description
-{**When you're done, you can delete the content in this README and update the file with details for others getting started with your repository**}
+Operation Manager provides management interfaces and tools for opengauss routine O&M and  configuration management.
+Common functions include database installtion, startup, stop, upgrade, backup, status query, and log collection.
 
-#### Software Architecture
-Software architecture description
+#### Compilation
 
+- See the compilation description of the [opengauss third-party-software](https://gitee.com/opengauss/openGauss-server/blob/master/README.en.md#compiling-third-party-software)。                     
+  The final compilation and build result is stored in the binarylibs directory at the same level as openGauss-third_party.                
+  The binarylibs directory will be the value of '-3rd' for build.sh                  
+- ./build.sh -3rd ${BINARYLIBS_PATH}              
+  The generated installation package is stored in the ./package directory:                 
+  openGauss-1.1.0-CentOS-64bit-om.sha256               
+  openGauss-1.1.0-CentOS-64bit-om.tar.gz              
+   
 #### Installation
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+The OM tool strongly depends on opengaussServer. Please see the [opengauss Installation](https://opengauss.org/zh/docs/latest/docs/installation/installation.html)。
 
-#### Instructions
+## Quick Start
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+See the [Quick Start](https://opengauss.org/en/docs/1.0.1/docs/Quickstart/Quickstart.html).
 
-#### Contribution
+## Docs
 
-1.  Fork the repository
-2.  Create Feat_xxx branch
-3.  Commit your code
-4.  Create Pull Request
+For more details about the installation guide, tutorials, and APIs, please see the [User Documentation](https://gitee.com/opengauss/docs).
 
+## Community
 
-#### Gitee Feature
+### Governance
 
-1.  You can use Readme\_XXX.md to support different languages, such as Readme\_en.md, Readme\_zh.md
-2.  Gitee blog [blog.gitee.com](https://blog.gitee.com)
-3.  Explore open source project [https://gitee.com/explore](https://gitee.com/explore)
-4.  The most valuable open source project [GVP](https://gitee.com/gvp)
-5.  The manual of Gitee [https://gitee.com/help](https://gitee.com/help)
-6.  The most popular members  [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
+Check out how openGauss implements open governance [works](https://gitee.com/opengauss/community/blob/master/governance.md).
+
+### Communication
+
+- WeLink- Communication platform for developers.
+- IRC channel at `#opengauss-meeting` (only for meeting minutes logging purpose)
+- Mailing-list: https://opengauss.org/en/community/onlineCommunication.html
+
+## Contribution
+
+Welcome contributions. See our [Contributor](https://opengauss.org/en/contribution.html) for more details.
+
+## Release Notes
+
+For the release notes, see our [RELEASE](https://opengauss.org/en/docs/1.0.1/docs/Releasenotes/Releasenotes.html).
+
+## License
+
+[MulanPSL-2.0](http://license.coscl.org.cn/MulanPSL2/)

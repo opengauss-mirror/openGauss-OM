@@ -43,6 +43,7 @@ import os
 import sys
 import pwd
 import grp
+import copy
 import socket
 
 from gspylib.common.Common import DefaultValue
@@ -212,6 +213,39 @@ General options:
         else:
             self.initClusterInfoFromStaticFile(self.user)
         self.logger.debug("Successfully init global infos")
+
+    def distributeFileToSpecialNode(self, file, destDir, hostList):
+        """
+        distribute file to special node
+        :param file:
+        :param destDir:
+        :param hostList:
+        :return:
+        """
+        if not hostList:
+            hostList = copy.deepcopy(self.clusterNodes)
+        else:
+            hostList = copy.deepcopy(hostList)
+        if DefaultValue.GetHostIpOrName() in hostList:
+            hostList.remove(DefaultValue.GetHostIpOrName())
+
+        self.logger.debug("Start copy file:{0} to hosts:{1}.".format(
+            file, hostList))
+        if not os.path.exists(file):
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % file)
+        self.logger.debug("Distribute the file %s" % file)
+        retry = True
+        count = 0
+        while retry:
+            try:
+                if count > 4:
+                    retry = False
+                self.sshTool.scpFiles(file, destDir, hostList)
+                retry = False
+            except Exception as e:
+                count += 1
+                self.logger.debug("Retry distributing xml command, "
+                                  "the {0} time.".format(count))
 
 
 if __name__ == '__main__':

@@ -109,6 +109,7 @@ from gspylib.common.VersionInfo import VersionInfo
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, \
     algorithms, modes
+import impl.upgrade.UpgradeConst as Const
 
 noPassIPs = []
 g_lock = thread.allocate_lock()
@@ -3674,6 +3675,11 @@ class DefaultValue():
 
         tarLists = "--exclude=script/*.log --exclude=*.log script " \
                    "version.cfg lib"
+        upgrade_sql_file_path = os.path.join(packageDir,
+                                             Const.UPGRADE_SQL_FILE)
+        if os.path.exists(upgrade_sql_file_path):
+            tarLists += " %s %s" % (Const.UPGRADE_SQL_SHA,
+                                    Const.UPGRADE_SQL_FILE)
         if "HOST_IP" in os.environ.keys():
             tarLists += " cluster_default_agent.xml"
         try:
@@ -4162,6 +4168,37 @@ class DefaultValue():
             return True
         else:
             return False
+
+    @staticmethod
+    def getPrimaryNode(userProfile):
+        """
+        :param
+        :return: PrimaryNode
+        """
+        try:
+            primaryFlag = "Primary"
+            count = 0
+            while count < 60:
+                count = 0
+                cmd = "source {0} && gs_om -t status --detail".format(
+                    userProfile)
+                (status, output) = subprocess.getstatusoutput(cmd)
+                if status == 0:
+                    break
+                time.sleep(10)
+                count += 1
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
+                                "Command:%s. Error:\n%s" % (cmd, output))
+            targetString = output.split("Datanode")[1]
+            dnPrimary = [x for x in re.split(r"[|\n]", targetString)
+                         if primaryFlag in x]
+            primaryList = []
+            for dn in dnPrimary:
+                primaryList.append(list(filter(None, dn.split(" ")))[1])
+            return primaryList
+        except Exception as e:
+            raise Exception(str(e))
 
 
 class ClusterCommand():

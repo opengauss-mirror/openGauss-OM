@@ -67,10 +67,16 @@ class Kernel(BaseComponent):
     """
 
     def start(self, time_out=DefaultValue.TIMEOUT_CLUSTER_START,
-              security_mode="off"):
+              security_mode="off", cluster_number=None):
         """
         """
-        cmd = "%s/gs_ctl start -D %s " % (self.binPath, self.instInfo.datadir)
+        if cluster_number:
+            cmd = "%s/gs_ctl start -o '-u %s' -D %s " % (
+                self.binPath, int(float(cluster_number) * 1000),
+                self.instInfo.datadir)
+        else:
+            cmd = "%s/gs_ctl start -D %s " % (
+                self.binPath, self.instInfo.datadir)
         if self.instInfo.instanceType == DefaultValue.MASTER_INSTANCE:
             if len(self.instInfo.peerInstanceInfos) > 0:
                 cmd += "-M primary"

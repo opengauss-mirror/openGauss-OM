@@ -46,6 +46,7 @@ class Start(LocalBaseOM):
         self.logger = None
         self.installPath = ""
         self.security_mode = ""
+        self.cluster_number = None
 
     def usage(self):
         """
@@ -72,7 +73,8 @@ General options:
         """
         try:
             opts, args = getopt.getopt(sys.argv[1:], "U:D:R:l:t:h?",
-                                       ["help", "security-mode="])
+                                       ["help", "security-mode=",
+                                        "cluster_number="])
         except getopt.GetoptError as e:
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"] % str(e))
 
@@ -96,6 +98,8 @@ General options:
                 sys.exit(0)
             elif key == "--security-mode":
                 self.security_mode = value
+            elif key == "--cluster_number":
+                self.cluster_number = value
             else:
                 GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"]
                                        % key)
@@ -134,7 +138,10 @@ General options:
         for dn in self.dnCons:
             if self.dataDir != "" and dn.instInfo.datadir != self.dataDir:
                 continue
-            dn.start(self.time_out, self.security_mode)
+            if self.cluster_number:
+                dn.start(self.time_out, self.security_mode, self.cluster_number)
+            else:
+                dn.start(self.time_out, self.security_mode)
             isDataDirCorrect = True
 
         if not isDataDirCorrect:

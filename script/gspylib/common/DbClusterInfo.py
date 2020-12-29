@@ -1385,9 +1385,9 @@ class dbClusterInfo():
         """
         try:
             with open(staticConfigFile, "rb") as fp:
-                info = fp.read(32)
+                info = fp.read(28)
             (crc, lenth, version, currenttime, nodeNum,
-             localNodeId) = struct.unpack("=qIIqiI", info)
+             localNodeId) = struct.unpack("=IIIqiI", info)
         except Exception as e:
             raise Exception(
                 ErrorCode.GAUSS_512["GAUSS_51236"] + " Error: \n%s." % str(e))
@@ -2062,12 +2062,22 @@ class dbClusterInfo():
             # find the path from right to left
             self.logPath = logPathWithUser[
                            0:(logPathWithUser.rfind(splitMark))]
+            staticConfigFilePath = os.path.split(staticConfigFile)[0]
+            versionFile = os.path.join(
+                staticConfigFilePath, "upgrade_version")
+            version, number, commitid = VersionInfo.get_version_info(
+                versionFile)
             try:
                 # read static_config_file
                 fp = open(staticConfigFile, "rb")
-                info = fp.read(32)
-                (crc, lenth, version, currenttime, nodeNum,
-                 localNodeId) = struct.unpack("=qIIqiI", info)
+                if float(number) <= 92.200:
+                    info = fp.read(32)
+                    (crc, lenth, version, currenttime, nodeNum,
+                     localNodeId) = struct.unpack("=qIIqiI", info)
+                else:
+                    info = fp.read(28)
+                    (crc, lenth, version, currenttime, nodeNum,
+                     localNodeId) = struct.unpack("=IIIqiI", info)
                 self.version = version
                 self.installTime = currenttime
                 self.localNodeId = localNodeId
@@ -2110,7 +2120,7 @@ class dbClusterInfo():
                 for i in range(nodeNum):
                     offset = (fp.tell() // PAGE_SIZE + 1) * PAGE_SIZE
                     fp.seek(offset)
-                    dbNode = self.__unPackNodeInfo(fp, isLCCluster)
+                    dbNode = self.__unPackNodeInfo(fp, number, isLCCluster)
                     self.dbNodes.append(dbNode)
                 fp.close()
             except Exception as e:
@@ -2122,14 +2132,18 @@ class dbClusterInfo():
                 fp.close()
             raise Exception(str(e))
 
-    def __unPackNodeInfo(self, fp, isLCCluster=False):
+    def __unPackNodeInfo(self, fp, number, isLCCluster=False):
         """
         function : unpack a node config info
         input : file
         output : Object
         """
-        info = fp.read(76)
-        (crc, nodeId, nodeName) = struct.unpack("=qI64s", info)
+        if float(number) <= 92.200:
+            info = fp.read(76)
+            (crc, nodeId, nodeName) = struct.unpack("=qI64s", info)
+        else:
+            info = fp.read(72)
+            (crc, nodeId, nodeName) = struct.unpack("=II64s", info)
         nodeName = nodeName.decode().strip('\x00')
         dbNode = dbNodeInfo(nodeId, nodeName)
         info = fp.read(68)
@@ -2414,11 +2428,21 @@ class dbClusterInfo():
         """
         fp = None
         try:
+            staticConfigFilePath = os.path.split(staticConfigFile)[0]
+            versionFile = os.path.join(
+                staticConfigFilePath, "upgrade_version")
+            version, number, commitid = VersionInfo.get_version_info(
+                versionFile)
             # read cluster info from static config file
             fp = open(staticConfigFile, "rb")
-            info = fp.read(32)
-            (crc, lenth, version, currenttime, nodeNum,
-             localNodeId) = struct.unpack("=qIIqiI", info)
+            if float(number) <= 92.200:
+                info = fp.read(32)
+                (crc, lenth, version, currenttime, nodeNum,
+                 localNodeId) = struct.unpack("=qIIqiI", info)
+            else:
+                info = fp.read(28)
+                (crc, lenth, version, currenttime, nodeNum,
+                 localNodeId) = struct.unpack("=IIIqiI", info)
             if (version <= 100):
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51637"]
                                 % ("cluster static config version[%s]"
@@ -2452,7 +2476,7 @@ class dbClusterInfo():
             for i in range(nodeNum):
                 offset = (fp.tell() // PAGE_SIZE + 1) * PAGE_SIZE
                 fp.seek(offset)
-                dbNode = self.__unPackNodeInfo(fp)
+                dbNode = self.__unPackNodeInfo(fp, number)
                 self.dbNodes.append(dbNode)
             fp.close()
         except Exception as e:
@@ -4215,9 +4239,8 @@ class dbClusterInfo():
                         raise Exception(ErrorCode.GAUSS_532["GAUSS_53200"])
 
         if peerNum > 8:
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51230"] % \
-                            ("database node standbys", "be less than 5")
-                            + " Please set it.")
+            raise Exception(ErrorCode.GAUSS_512["GAUSS_51230"] % (
+                "database node standbys", "be less than 9") + " Please set it.")
 
 
 
@@ -4410,13 +4433,21 @@ class dbClusterInfo():
         else:
             return instances
 
-    def saveToStaticConfig(self, filePath, localNodeId, dbNodes=None):
+    def saveToStaticConfig(self, filePath, localNodeId, dbNodes=None,
+                           upgrade=False):
         """ 
         function : Save cluster info into to static config 
         input : String,int
         output : NA
         """
         fp = None
+        number = None
+        if upgrade:
+            staticConfigFilePath = os.path.split(filePath)[0]
+            versionFile = os.path.join(
+                staticConfigFilePath, "upgrade_version")
+            version, number, commitid = VersionInfo.get_version_info(
+                versionFile)
         try:
             if (dbNodes is None):
                 dbNodes = self.dbNodes
@@ -4434,14 +4465,20 @@ class dbClusterInfo():
             info += struct.pack("I", localNodeId)
 
             crc = binascii.crc32(info)
-            info = struct.pack("q", crc) + info
+            if upgrade:
+                if float(number) <= 92.200:
+                    info = struct.pack("q", crc) + info
+                else:
+                    info = struct.pack("I", crc) + info
+            else:
+                info = struct.pack("I", crc) + info
             fp.write(info)
 
             for dbNode in dbNodes:
                 offset = (fp.tell() // PAGE_SIZE + 1) * PAGE_SIZE
                 fp.seek(offset)
 
-                info = self.__packNodeInfo(dbNode)
+                info = self.__packNodeInfo(dbNode, number, upgrade=upgrade)
                 fp.write(info)
             endBytes = PAGE_SIZE - fp.tell() % PAGE_SIZE
             if (endBytes != PAGE_SIZE):
@@ -4457,7 +4494,7 @@ class dbClusterInfo():
                             "static configuration file"
                             + " Error: \n%s" % str(e))
 
-    def __packNodeInfo(self, dbNode):
+    def __packNodeInfo(self, dbNode, number, upgrade=False):
         """ 
         function : Pack the info of node 
         input : []
@@ -4493,7 +4530,13 @@ class dbClusterInfo():
         info += struct.pack("I", 0)
         crc = binascii.crc32(info)
 
-        return struct.pack("q", crc) + info
+        if upgrade:
+            if float(number) <= 92.200:
+                return struct.pack("q", crc) + info
+            else:
+                return struct.pack("I", crc) + info
+        else:
+            return struct.pack("I", crc) + info
 
     def __packNodeInfoForLC(self, dbNode):
         """ 
@@ -4516,7 +4559,7 @@ class dbClusterInfo():
         info += struct.pack("I", 0)
         crc = binascii.crc32(info)
 
-        return struct.pack("q", crc) + info
+        return struct.pack("I", crc) + info
 
     def __packEtcdInfo(self, dbNode):
         """  
@@ -5936,7 +5979,7 @@ class dbClusterInfo():
             # node count
             info += struct.pack("I", len(self.dbNodes))
             crc = binascii.crc32(info)
-            info = struct.pack("q", crc) + info
+            info = struct.pack("I", crc) + info
             fp.write(info)
             primaryDnNum = 0
             for dbNode in self.dbNodes:
@@ -6039,7 +6082,7 @@ class dbClusterInfo():
         info += struct.pack("I", 0)
         info += struct.pack("I", 0)
         crc = binascii.crc32(info)
-        return (primaryNum, struct.pack("q", crc) + info)
+        return (primaryNum, struct.pack("I", crc) + info)
 
     def __getClusterSwitchTime(self, dynamicConfigFile):
         """
@@ -6051,9 +6094,9 @@ class dbClusterInfo():
         fp = None
         try:
             fp = open(dynamicConfigFile, "rb")
-            info = fp.read(28)
+            info = fp.read(24)
             (crc, lenth, version, switchTime, nodeNum) = \
-                struct.unpack("=qIIqi", info)
+                struct.unpack("=IIIqi", info)
             fp.close()
         except Exception as e:
             if fp:
@@ -6189,9 +6232,9 @@ class dbClusterInfo():
             dynamicConfigFile = self.__getDynamicConfig(user)
             # read dynamic_config_file
             fp = open(dynamicConfigFile, "rb")
-            info = fp.read(28)
+            info = fp.read(24)
             (crc, lenth, version, currenttime, nodeNum) = \
-                struct.unpack("=qIIqi", info)
+                struct.unpack("=IIIqi", info)
             totalMaterDnNum = 0
             for i in range(nodeNum):
                 offset = (fp.tell() // PAGE_SIZE + 1) * PAGE_SIZE
@@ -6210,8 +6253,8 @@ class dbClusterInfo():
                             dynamicConfigFile + " Error:\n" + str(e))
 
     def __unpackDynamicNodeInfo(self, fp):
-        info = fp.read(76)
-        (crc, nodeId, nodeName) = struct.unpack("=qI64s", info)
+        info = fp.read(72)
+        (crc, nodeId, nodeName) = struct.unpack("=II64s", info)
         nodeName = nodeName.decode().strip('\x00')
         dbNode = dbNodeInfo(nodeId, nodeName)
         info = fp.read(4)

@@ -36,6 +36,7 @@ from gspylib.os.gsnetwork import g_network
 from gspylib.os.gsservice import g_service
 from gspylib.common.LocalBaseOM import LocalBaseOM
 from gspylib.os.gsfile import g_Platform
+import impl.upgrade.UpgradeConst as Const
 
 ACTION_CLEAN_SYSLOG_CONFIG = 'clean_syslog_config'
 ACTION_CLEAN_TOOL_ENV = 'clean_tool_env'
@@ -361,6 +362,10 @@ class Postuninstall(LocalBaseOM):
         g_file.removeDirectory(path)
         path = "%s/unixodbc" % self.clusterToolPath
         g_file.removeDirectory(path)
+        path = "%s/%s" % (self.clusterToolPath, Const.UPGRADE_SQL_FILE)
+        g_file.removeFile(path)
+        path = "%s/%s" % (self.clusterToolPath, Const.UPGRADE_SQL_SHA)
+        g_file.removeFile(path)
         self.logger.debug(
             "Successfully cleaned the environmental software and variable.")
 

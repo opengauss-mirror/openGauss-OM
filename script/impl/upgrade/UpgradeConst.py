@@ -53,6 +53,18 @@ ACTION_INPLACE_RESTORE = "inplace_restore"
 ACTION_CHECK_GUC = "check_guc"
 ACTION_BACKUP_HOTPATCH = "backup_hotpatch"
 ACTION_ROLLBACK_HOTPATCH = "rollback_hotpatch"
+ACTION_UPGRADE_SQL_FOLDER = "prepare_upgrade_sql_folder"
+ACTION_BACKUP_OLD_CLUSTER_DB_AND_REL = "backup_old_cluster_db_and_rel"
+ACTION_UPDATE_CATALOG = "update_catalog"
+ACTION_BACKUP_OLD_CLUSTER_CATALOG_PHYSICAL_FILES = \
+    "backup_old_cluster_catalog_physical_files"
+ACTION_RESTORE_OLD_CLUSTER_CATALOG_PHYSICAL_FILES = \
+    "restore_old_cluster_catalog_physical_files"
+ACTION_CLEAN_OLD_CLUSTER_CATALOG_PHYSICAL_FILES = \
+    "clean_old_cluster_catalog_physical_files"
+ACTION_REPLACE_PG_PROC_FILES = "replace_pg_proc_files"
+ACTION_CREATE_PG_PROC_MAPPING_FILE = "create_pg_proc_mapping_file"
+ACTION_CREATE_NEW_CSV_FILE = "create_new_csv_file"
 
 OPTION_PRECHECK = "before"
 OPTION_POSTCHECK = "after"
@@ -61,7 +73,7 @@ GREY_UPGRADE_STEP_FILE = "upgrade_step.csv"
 CLUSTER_CMSCONF_FILE = "cluster_cmsconf.json"
 CLUSTER_CNSCONF_FILE = "cluster_cnconf.json"
 READONLY_MODE = "read_only_mode"
-
+TMP_DYNAMIC_DN_INFO = "upgrade_gauss_dn_status.dat"
 #step flag
 BINARY_UPGRADE_NO_NEED_ROLLBACK = -2
 INVALID_UPRADE_STEP = -1
@@ -95,6 +107,11 @@ BACKUP_DIR_LIST = ['global', 'pg_clog', 'pg_xlog', 'pg_multixact',
                    'pg_replslot', 'pg_notify', 'pg_subtrans', 'pg_cbm',
                    'pg_twophase']
 
+
+BACKUP_DIR_LIST_BASE = ['global', 'pg_clog', 'pg_csnlog']
+BACKUP_DIR_LIST_64BIT_XID = ['pg_multixact', 'pg_replslot', 'pg_notify',
+                             'pg_subtrans', 'pg_twophase']
+
 FIRST_GREY_UPGRADE_NUM = 92
 
 UPGRADE_PRECOMMIT_NUM = 0.001
@@ -115,6 +132,7 @@ UPGRADE_SCHEMA = "on_upgrade_69954349032535120"
 RECORD_NODE_STEP = "record_node_step"
 READ_STEP_FROM_FILE_FLAG = "read_step_from_file_flag"
 RECORD_UPGRADE_DIR = "record_app_directory"
+XLOG_BACKUP_INFO = "xlog_backup_info.json"
 OLD = "old"
 NEW = "new"
 # upgrade sql sha file and sql file
@@ -124,3 +142,4 @@ UPGRADE_SQL_FILE = "upgrade_sql.tar.gz"
 COMBIN_NUM = 30
 ON_INPLACE_UPGRADE = "IsInplaceUpgrade"
 MAX_APP_SIZE = 2000
+UPGRADE_VERSION_64bit_xid = 91.208

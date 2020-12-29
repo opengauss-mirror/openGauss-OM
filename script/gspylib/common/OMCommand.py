@@ -230,6 +230,60 @@ class OMCommand():
             raise Exception(str(e))
 
     @staticmethod
+    def doCheckStaus(user, nodeId, cluster_normal_status=None,
+                     expected_redistributing=""):
+        """
+        function: Check cluster status
+        input : user, nodeId, cluster_normal_status, expected_redistributing
+        output: status, output
+        """
+        try:
+            statusFile = "/home/%s/gauss_check_status_%d.dat" % (
+            user, os.getpid())
+            TempfileManagement.removeTempFile(statusFile)
+            cmd = ClusterCommand.getQueryStatusCmd(user, "", statusFile)
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                TempfileManagement.removeTempFile(statusFile)
+                return (status, output)
+
+            clusterStatus = DbClusterStatus()
+            clusterStatus.initFromFile(statusFile)
+            TempfileManagement.removeTempFile(statusFile)
+        except Exception as e:
+            DefaultValue.cleanTmpFile(statusFile)
+            raise Exception(
+                ErrorCode.GAUSS_516["GAUSS_51600"] + "Error: %s." % str(e))
+        status = 0
+        output = ""
+        statusRep = None
+        if nodeId > 0:
+            nodeStatus = clusterStatus.getDbNodeStatusById(nodeId)
+            if nodeStatus is None:
+                raise Exception(ErrorCode.GAUSS_516["GAUSS_51619"] % nodeId)
+
+            status = 0 if nodeStatus.isNodeHealthy() else 1
+            statusRep = nodeStatus.getNodeStatusReport()
+        else:
+            status = 0 if clusterStatus.isAllHealthy(cluster_normal_status) \
+                          and (clusterStatus.redistributing ==
+                                expected_redistributing or
+                                expected_redistributing == "") else 1
+            statusRep = clusterStatus.getClusterStatusReport()
+            output += "cluster_state      : %s\n" % clusterStatus.clusterStatus
+            output += "redistributing     : %s\n" % clusterStatus.redistributing
+            output += "node_count         : %d\n" % statusRep.nodeCount
+        output += "Datanode State\n"
+        output += "    primary        : %d\n" % statusRep.dnPrimary
+        output += "    standby        : %d\n" % statusRep.dnStandby
+        output += "    secondary      : %d\n" % statusRep.dnDummy
+        output += "    building       : %d\n" % statusRep.dnBuild
+        output += "    abnormal       : %d\n" % statusRep.dnAbnormal
+        output += "    down           : %d\n" % statusRep.dnDown
+
+        return (status, output)
+
+    @staticmethod
     def getClusterStatus(user, isExpandScene=False):
         """
         function: get cluster status

@@ -790,7 +790,7 @@ class ParallelBaseOM(object):
 
         return output.strip()
 
-    def killKernalSnapshotThread(self, coorInst):
+    def killKernalSnapshotThread(self, dnInst):
         """
         function: kill snapshot thread in Kernel,
                 avoid dead lock with redistribution)
@@ -801,7 +801,7 @@ class ParallelBaseOM(object):
         killSnapshotSQL = "select * from kill_snapshot();"
 
         (status, output) = ClusterCommand.remoteSQLCommand(
-            killSnapshotSQL, self.user, coorInst.hostname, coorInst.port,
+            killSnapshotSQL, self.user, dnInst.hostname, dnInst.port,
             False, DefaultValue.DEFAULT_DB_NAME)
         if (status != 0):
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %

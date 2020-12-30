@@ -38,6 +38,7 @@ from gspylib.common.VersionInfo import VersionInfo
 # action type
 ACTION_START = "start"
 ACTION_STOP = "stop"
+ACTION_RESTART = "restart"
 ACTION_STATUS = "status"
 ACTION_REBUID = "generateconf"
 ACTION_CERT = "cert"
@@ -124,6 +125,8 @@ Usage:
                    [--security-mode=MODE] [-l LOGFILE]
     gs_om -t stop [-h HOSTNAME] [-D dataDir]  [--time-out=SECS] [-m MODE]
                   [-l LOGFILE]
+    gs_om -t restart [-h HOSTNAME] [-D dataDir] [--time-out=SECS]
+                   [--security-mode=MODE] [-l LOGFILE] [-m MODE]
     gs_om -t status [-h HOSTNAME] [-o OUTPUT] [--detail] [--all] [-l LOGFILE]
     gs_om -t generateconf -X XMLFILE [--distribute] [-l LOGFILE]
     gs_om -t cert [--cert-file=CERTFILE | --rollback] [-L] [-l LOGFILE]
@@ -478,6 +481,8 @@ Install options:
             self.checkStartParameter()
         elif (self.g_opts.action == ACTION_STOP):
             self.checkStopParameter()
+        elif (self.g_opts.action == ACTION_RESTART):
+            pass
         elif (self.g_opts.action == ACTION_STATUS):
             self.checkOutFileParameter()
         elif (self.g_opts.action == ACTION_REBUID):
@@ -714,6 +719,7 @@ def main():
 
         if (manager.g_opts.action not in [ACTION_START,
                                           ACTION_STOP,
+                                          ACTION_RESTART,
                                           ACTION_STATUS,
                                           ACTION_REBUID,
                                           ACTION_CERT,
@@ -733,6 +739,8 @@ def main():
             impl.doStart()
         elif (manager.g_opts.action == ACTION_STOP):
             impl.doStop()
+        elif (manager.g_opts.action == ACTION_RESTART):
+            impl.doStop(), impl.doStart()
         elif (manager.g_opts.action == ACTION_STATUS):
             impl.doStatus()
         elif (manager.g_opts.action == ACTION_REBUID):

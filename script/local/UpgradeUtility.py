@@ -497,7 +497,16 @@ def syncPostgresqlconf(dbInstance):
                            'node_group_mode', 'segment_size',
                            'server_encoding', 'server_version',
                            'server_version_num', 'sql_compatibility',
-                           'wal_block_size', 'wal_segment_size']
+                           'wal_block_size', 'wal_segment_size', 'enable_beta_nestloop_fusion',
+                           'enable_upsert_to_merge', 'force_parallel_mode',
+                           'max_background_workers', 'max_parallel_workers_per_gather',
+                           'min_parallel_table_scan_size', 'pagewriter_threshold',
+                           'parallel_leader_participation', 'parallel_setup_cost',
+                           'parallel_tuple_cost', 'parctl_min_cost', 'tcp_recv_timeout',
+                           'wal_compression', 'enable_parallel_hash', 'enable_parallel_append',
+                           'max_parallel_maintenance_workers', 'min_parallel_index_scan_size',
+                           'sync_config_strategy', 'wal_file_init_num', 'wal_writer_cpu',
+                           'xlog_flush_uplimit', 'xlog_idle_flushes_before_sleep']
         for gucName in internalGucList:
             if gucName in gucParamDict.keys():
                 del gucParamDict[gucName]

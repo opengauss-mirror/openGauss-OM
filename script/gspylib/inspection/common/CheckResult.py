@@ -236,7 +236,8 @@ class CheckResult(object):
         for itemResult in self._items:
             resultDic['name'] = itemResult.name
             resultDic['category'] = itemResult.category
-            resultDic['std'] = itemResult.standard.decode('utf-8', 'ignore')
+            resultDic['std'] = "" if itemResult.standard.strip() == "" \
+                else itemResult.standard.decode('utf-8', 'ignore')
             resultDic['rst'] = itemResult.rst
             resultDic['analysis'] = itemResult.analysis
             resultDic['suggestion'] = itemResult.suggestion

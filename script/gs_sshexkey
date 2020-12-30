@@ -33,6 +33,16 @@ import grp
 import socket
 import getpass
 import shutil
+package_path = os.path.dirname(os.path.realpath(__file__))
+ld_path = package_path + "/gspylib/clib"
+if 'LD_LIBRARY_PATH' not in os.environ:
+    os.environ['LD_LIBRARY_PATH'] = ld_path
+    os.execve(os.path.realpath(__file__), sys.argv, os.environ)
+if not os.environ.get('LD_LIBRARY_PATH').startswith(ld_path):
+    os.environ['LD_LIBRARY_PATH'] = \
+        ld_path + ":" + os.environ['LD_LIBRARY_PATH']
+    os.execve(os.path.realpath(__file__), sys.argv, os.environ)
+
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.threads.parallelTool import parallelTool

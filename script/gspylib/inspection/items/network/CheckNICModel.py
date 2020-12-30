@@ -66,8 +66,8 @@ class CheckNICModel(BaseItem):
                 cmd = "lspci |grep %s" % PCIAddr
                 (status, output) = subprocess.getstatusoutput(cmd)
                 self.result.raw += "%s\n" % (output)
-                if (status == 0 and len(output.split(':')) == 3):
-                    modelInfo = output.split(':')[2].split('(')[0]
+                if status == 0 and len(output.split(':')) >= 3:
+                    modelInfo = ':'.join(output.split(':')[2:]).split('(')[0]
                     self.result.val += "model: %s\n" % (modelInfo.strip())
                 else:
                     self.result.val += "Failed to get NIC %s model" \

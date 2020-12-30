@@ -318,9 +318,9 @@ General options:
         ld_path = package_path + "/gspylib/clib"
         rerun = True
  
-        if not 'LD_LIBRARY_PATH' in os.environ:
+        if 'LD_LIBRARY_PATH' not in os.environ:
             os.environ['LD_LIBRARY_PATH'] = ld_path
-        elif not ld_path in os.environ.get('LD_LIBRARY_PATH'):
+        elif not os.environ.get('LD_LIBRARY_PATH').startswith(ld_path):
             os.environ['LD_LIBRARY_PATH'] = \
                 ld_path + ":" + os.environ['LD_LIBRARY_PATH']
         else:

@@ -980,6 +980,8 @@ class UpgradeImpl:
                     "Successfully exec post upgrade script")
             self.context.logger.debug("Successfully start all "
                                       "instances on the node.", "constant")
+            if self.setClusterReadOnlyMode() != 0:
+                raise Exception(ErrorCode.GAUSS_529["GAUSS_52908"])
             # 14. check the cluster status
             (status, output) = self.doHealthCheck(Const.OPTION_POSTCHECK)
             if status != 0:
@@ -2347,7 +2349,8 @@ class UpgradeImpl:
         :return:
         """
         table_name = 'pg_proc_temp_oids'
-        delete_table_sql = "drop table %s;" % table_name
+        delete_table_sql = "START TRANSACTION;SET IsInplaceUpgrade = on;" \
+                           "drop table %s;commit;" % table_name
         index_name_list = ['pg_proc_oid_index_temp',
                            'pg_proc_proname_args_nsp_index_temp']
         for eachdb in database_list:
@@ -2362,7 +2365,8 @@ class UpgradeImpl:
                         + " Error: \n%s" % str(output))
             for index in index_name_list:
                 if self.check_table_or_index_exist(index, eachdb):
-                    sql = "drop index %s;" % index
+                    sql = "START TRANSACTION;SET IsInplaceUpgrade = on;" \
+                          "drop index %s;commit;" % index
                     (status, output) = ClusterCommand.remoteSQLCommand(
                         sql, self.context.user,
                         self.dnInst.hostname, self.dnInst.port, False,

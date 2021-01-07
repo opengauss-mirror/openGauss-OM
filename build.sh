@@ -3,6 +3,7 @@
 declare binarylib_dir='None'
 declare module_name="openGauss"
 declare version_number='1.1.0'
+declare version_Kernel='92.298'
 ROOT_DIR=$(cd $(dirname "${BASH_SOURCE[0]}") && pwd)
 echo "ROOT_DIR : $ROOT_DIR"
 declare ERR_MKGS_FAILED=1
@@ -76,9 +77,11 @@ declare sha256_name="${package_pre_name}.sha256"
 if [ ${binarylib_dir} != 'None' ] && [ -d ${binarylib_dir} ]; then
     BINARYLIBS_PATH="${binarylib_dir}/dependency/${PLAT_FORM_STR}"
     BUILD_TOOLS_PATH="${binarylib_dir}/buildtools/${PLAT_FORM_STR}"
+    BINARYLIBS_PATH_INSTALL_TOOLS="${binarylib_dir}/dependency/install_tools_${PLAT_FORM_STR}"
 else
     BINARYLIBS_PATH="${ROOT_DIR}/binarylibs/dependency/${PLAT_FORM_STR}"
     BUILD_TOOLS_PATH="${ROOT_DIR}/binarylibs/buildtools/${PLAT_FORM_STR}"
+    BINARYLIBS_PATH_INSTALL_TOOLS="${ROOT_DIR}/dependency/install_tools_${PLAT_FORM_STR}"	
 fi
 
 log()
@@ -118,7 +121,6 @@ function copy_script_file()
     find $PKG_TMP_DIR/script/ -type f -print0 | xargs -0 -n 10 -r dos2unix > /dev/null 2>&1 &&
     find $PKG_TMP_DIR/script/gspylib/inspection/ -name d2utmp* -print0 | xargs -0 rm -rf &&
     cp -rf $ROOT_DIR/script/gspylib/inspection/lib/checknetspeed/speed_test* $PKG_TMP_DIR/script/gspylib/inspection/lib/checknetspeed/ &&
-    cp -rf $ROOT_DIR/script/gspylib/inspection/lib/*.png $PKG_TMP_DIR/script/gspylib/inspection/lib/ &&
     if [ $? -ne 0 ]; then
         die "cp -r $ROOT_DIR/script $PKG_TMP_DIR failed "
     fi
@@ -139,7 +141,7 @@ function version_cfg()
     version_file=${PKG_TMP_DIR}/version.cfg
     touch ${version_file}
     echo "${module_name}-${version_number}">${version_file}
-    echo "92.072" >>${version_file}
+    echo "${version_Kernel}" >>${version_file}
     echo "${gitversion}" >>${version_file}
 
     if [ -f ${PKG_TMP_DIR}/script/gspylib/common/VersionInfo.py ] ; then
@@ -159,7 +161,7 @@ function clib_copy()
 {
     rm -rf $PKG_TMP_DIR/script/gspylib/clib
     mkdir -p $PKG_TMP_DIR/script/gspylib/clib
-    cp $BUILD_TOOLS_PATH/gcc8.2/gcc/lib64/libstdc++.so.6 $PKG_TMP_DIR/script/gspylib/clib
+    cp $BUILD_TOOLS_PATH/gcc7.3/gcc/lib64/libstdc++.so.6 $PKG_TMP_DIR/script/gspylib/clib
     cp $BINARYLIBS_PATH/openssl/comm/lib/libssl.so.1.1 $PKG_TMP_DIR/script/gspylib/clib
     cp $BINARYLIBS_PATH/openssl/comm/lib/libcrypto.so.1.1 $PKG_TMP_DIR/script/gspylib/clib
     #cp $BUILD_DIR/bin/encrypt $BUILD_DIR/script/gspylib/clib
@@ -182,40 +184,40 @@ function lib_copy()
     mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/netifaces/ &&
     mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/paramiko/ &&
 
-    cp -rf ${BINARYLIBS_PATH}/install_tools/asn1crypto/       ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH}/install_tools/bcrypt/           ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH}/install_tools/cffi/             ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH}/install_tools/cryptography/     ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH}/install_tools/idna/             ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH}/install_tools/nacl/             ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH}/install_tools/pyasn1/           ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH}/install_tools/pycparser/        ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH}/install_tools/OpenSSL/          ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH}/install_tools/ipaddress.py      ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH}/install_tools/six.py            ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH}/install_tools/_cffi_backend.py  ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH}/install_tools/_cffi_backend.so* ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH}/install_tools/psutil/           ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH}/install_tools/netifaces/        ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH}/install_tools/paramiko/         ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/asn1crypto/       ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/bcrypt/           ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/cffi/             ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/cryptography/     ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/idna/             ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/nacl/             ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/pyasn1/           ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/pycparser/        ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/OpenSSL/          ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/ipaddress.py      ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/six.py            ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/_cffi_backend.py  ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/_cffi_backend.so* ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psutil/           ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/netifaces/        ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/paramiko/         ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
 
     mkdir -p ${PKG_TMP_DIR}/lib
-    cp -rf ${BINARYLIBS_PATH}/install_tools/asn1crypto           ${PKG_TMP_DIR}/lib
-    cp -rf ${BINARYLIBS_PATH}/install_tools/bcrypt               ${PKG_TMP_DIR}/lib
-    cp -rf ${BINARYLIBS_PATH}/install_tools/cffi                 ${PKG_TMP_DIR}/lib
-    cp -rf ${BINARYLIBS_PATH}/install_tools/cryptography         ${PKG_TMP_DIR}/lib
-    cp -rf ${BINARYLIBS_PATH}/install_tools/idna                 ${PKG_TMP_DIR}/lib
-    cp -rf ${BINARYLIBS_PATH}/install_tools/nacl                 ${PKG_TMP_DIR}/lib
-    cp -rf ${BINARYLIBS_PATH}/install_tools/pyasn1               ${PKG_TMP_DIR}/lib
-    cp -rf ${BINARYLIBS_PATH}/install_tools/pycparser            ${PKG_TMP_DIR}/lib
-    cp -rf ${BINARYLIBS_PATH}/install_tools/OpenSSL              ${PKG_TMP_DIR}/lib
-    cp -rf ${BINARYLIBS_PATH}/install_tools/ipaddress.py         ${PKG_TMP_DIR}/lib
-    cp -rf ${BINARYLIBS_PATH}/install_tools/six.py               ${PKG_TMP_DIR}/lib
-    cp -rf ${BINARYLIBS_PATH}/install_tools/_cffi_backend.py     ${PKG_TMP_DIR}/lib
-    cp -rf ${BINARYLIBS_PATH}/install_tools/_cffi_backend.so*    ${PKG_TMP_DIR}/lib
-    cp -rf ${BINARYLIBS_PATH}/install_tools/paramiko             ${PKG_TMP_DIR}/lib
-    cp -rf ${BINARYLIBS_PATH}/install_tools/psutil               ${PKG_TMP_DIR}/lib
-    cp -rf ${BINARYLIBS_PATH}/install_tools/netifaces            ${PKG_TMP_DIR}/lib
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/asn1crypto           ${PKG_TMP_DIR}/lib
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/bcrypt               ${PKG_TMP_DIR}/lib
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/cffi                 ${PKG_TMP_DIR}/lib
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/cryptography         ${PKG_TMP_DIR}/lib
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/idna                 ${PKG_TMP_DIR}/lib
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/nacl                 ${PKG_TMP_DIR}/lib
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/pyasn1               ${PKG_TMP_DIR}/lib
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/pycparser            ${PKG_TMP_DIR}/lib
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/OpenSSL              ${PKG_TMP_DIR}/lib
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/ipaddress.py         ${PKG_TMP_DIR}/lib
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/six.py               ${PKG_TMP_DIR}/lib
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/_cffi_backend.py     ${PKG_TMP_DIR}/lib
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/_cffi_backend.so*    ${PKG_TMP_DIR}/lib
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/paramiko             ${PKG_TMP_DIR}/lib
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psutil               ${PKG_TMP_DIR}/lib
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/netifaces            ${PKG_TMP_DIR}/lib
 }
 
 function main()

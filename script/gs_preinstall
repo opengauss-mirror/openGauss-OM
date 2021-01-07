@@ -72,7 +72,7 @@ Usage:
     gs_preinstall -U USER -G GROUP -X XMLFILE
       [-L]  [--skip-os-set] [--env-var="ENVVAR" [...]]
       [--sep-env-file=MPPRCFILE] [--skip-hostname-set] [-l LOGFILE]
-      [--non-interactive] [-M MOUNTDIR]
+      [--non-interactive]
 
 General options:
     -U                                 Cluster user.

@@ -10,7 +10,7 @@
 	    <PARAM KEY='work_mem' VALUE='64MB' />
 	    <!-- Do not set max_process_memory in dummy datanodes -->
 	    <PARAM KEY='max_process_memory' VALUE='PHYSIC_MEMORY*0.665/(N+MAX_MASTER_DATANUM_IN_ONENODE)' />
-	    <PARAM KEY='shared_buffers' VALUE='1GB' />
+	    <PARAM KEY='shared_buffers' VALUE='PHYSIC_MEMORY*0.38/(N+MAX_MASTER_DATANUM_IN_ONENODE)' />
 		
 		<PARAM KEY='audit_enabled' VALUE='on' />
 		<PARAM KEY='wal_keep_segments' VALUE='16' />

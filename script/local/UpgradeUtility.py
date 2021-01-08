@@ -1720,6 +1720,31 @@ def restoreConfig():
         raise Exception(str(e))
 
 
+def restoreDynamicConfigFile():
+    """
+    function: restore dynamic config file
+    output: None
+    :return:
+    """
+    bakPath = g_opts.upgrade_bak_path
+    newClusterAppPath = g_opts.newClusterAppPath
+    oldClusterAppPath = g_opts.oldClusterAppPath
+    # cp new dynamic config file to new app path
+    newDynamicConfigFile = "%s/bin/cluster_dynamic_config" % oldClusterAppPath
+    g_file.removeFile("%s/bin/cluster_dynamic_config" % newClusterAppPath)
+    cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        newDynamicConfigFile, newDynamicConfigFile, newClusterAppPath)
+    g_logger.debug("Restore command: %s" % cmd)
+    DefaultValue.execCommandLocally(cmd)
+    # cp old dynamic config file to old app path
+    dynamic_config = "%s/cluster_dynamic_config" % bakPath
+    g_file.removeFile(newDynamicConfigFile)
+    cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        dynamic_config, dynamic_config, oldClusterAppPath)
+    g_logger.debug("Restore command: %s" % cmd)
+    DefaultValue.execCommandLocally(cmd)
+
+
 def inplaceBackup():
     """
     function: backup config
@@ -2299,7 +2324,7 @@ def updateCatalog():
             if len(dbNode.datanodes) == 0:
                 continue
             dnInst = dbNode.datanodes[0]
-            primaryDnNode = DefaultValue.getPrimaryNode(g_opts.userProfile)
+            primaryDnNode, _ = DefaultValue.getPrimaryNode(g_opts.userProfile)
             if dnInst.hostname not in primaryDnNode:
                 continue
             break
@@ -3037,7 +3062,7 @@ def createPgprocPathMappingFile():
         if len(dbNode.datanodes) == 0:
             continue
         dnInst = dbNode.datanodes[0]
-        primaryDnNode = DefaultValue.getPrimaryNode(g_opts.userProfile)
+        primaryDnNode, _ = DefaultValue.getPrimaryNode(g_opts.userProfile)
         if dnInst.hostname not in primaryDnNode:
             continue
         break
@@ -3112,7 +3137,7 @@ def createNewCsvFile():
         if len(dbNode.datanodes) == 0:
             continue
         dnInst = dbNode.datanodes[0]
-        primaryDnNode = DefaultValue.getPrimaryNode(g_opts.userProfile)
+        primaryDnNode, _ = DefaultValue.getPrimaryNode(g_opts.userProfile)
         if dnInst.hostname not in primaryDnNode:
             continue
         break
@@ -3249,7 +3274,8 @@ def main():
             const.ACTION_REPLACE_PG_PROC_FILES: replacePgprocFile,
             const.ACTION_CREATE_PG_PROC_MAPPING_FILE:
                 createPgprocPathMappingFile,
-            const.ACTION_CREATE_NEW_CSV_FILE: createNewCsvFile}
+            const.ACTION_CREATE_NEW_CSV_FILE: createNewCsvFile,
+            const.ACTION_RESTORE_DYNAMIC_CONFIG_FILE: restoreDynamicConfigFile}
         func = funcs[g_opts.action]
         func()
     except Exception as e:

@@ -952,7 +952,18 @@ class UpgradeImpl:
             if self.unSetClusterReadOnlyMode() != 0:
                 raise Exception("NOTICE: "
                                 + ErrorCode.GAUSS_529["GAUSS_52907"])
+            # flush new app dynamic configuration
+            dynamicConfigFile = "%s/bin/cluster_dynamic_config" % \
+                                self.context.newClusterAppPath
+            if os.path.exists(dynamicConfigFile) \
+                    and self.isLargeInplaceUpgrade:
+                self.refresh_dynamic_config_file()
+                self.context.logger.debug(
+                    "Successfully refresh dynamic config file")
             self.stopCluster()
+            if os.path.exists(dynamicConfigFile) \
+                    and self.isLargeInplaceUpgrade:
+                self.restore_dynamic_config_file()
             # 12. modify GUC parameter unix_socket_directory
             self.modifySocketDir()
             # 13. start new cluster
@@ -1064,6 +1075,42 @@ class UpgradeImpl:
 
             self.context.logger.log("Commit binary upgrade succeeded.")
             self.exitWithRetCode(Const.ACTION_INPLACE_UPGRADE, True)
+
+    def refresh_dynamic_config_file(self):
+        """
+        refresh dynamic config file
+        :return:
+        """
+        cmd = "source %s ;gs_om -t refreshconf" % self.context.userProfile
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
+                            "Command:%s. Error:\n%s" % (cmd, output))
+
+    def restore_dynamic_config_file(self):
+        """
+        restore dynamic config file
+        :return:
+        """
+        cmd = "%s -t %s -U %s -V %d --upgrade_bak_path=%s " \
+              "--old_cluster_app_path=%s --new_cluster_app_path=%s " \
+              "-l %s" % (
+                  OMCommand.getLocalScript("Local_Upgrade_Utility"),
+                  Const.ACTION_RESTORE_DYNAMIC_CONFIG_FILE,
+                  self.context.user,
+                  int(float(self.context.oldClusterNumber) * 1000),
+                  self.context.upgradeBackupPath,
+                  self.context.oldClusterAppPath,
+                  self.context.newClusterAppPath,
+                  self.context.localLog)
+
+        self.context.logger.debug("Command for restoring "
+                                  "config files: %s" % cmd)
+        DefaultValue.execCommandWithMode(cmd,
+                                         "restore config files",
+                                         self.context.sshTool,
+                                         self.context.isSingle,
+                                         self.context.mpprcFile)
 
     def cleanCsvFile(self):
         """
@@ -2829,12 +2876,15 @@ class UpgradeImpl:
                 "Get one DN. CheckNormal is %s" % checkNormal)
             dnInst = None
             clusterNodes = self.context.oldClusterInfo.dbNodes
+            primaryDnNode, output = DefaultValue.getPrimaryNode(
+                self.context.userProfile)
+            self.context.logger.debug(
+                "Cluster status information is %s;The primaryDnNode is %s" % (
+                    output, primaryDnNode))
             for dbNode in clusterNodes:
                 if len(dbNode.datanodes) == 0:
                     continue
                 dnInst = dbNode.datanodes[0]
-                primaryDnNode = DefaultValue.getPrimaryNode(
-                    self.context.userProfile)
                 if dnInst.hostname not in primaryDnNode:
                     continue
                 break
@@ -2857,8 +2907,6 @@ class UpgradeImpl:
                         if len(dbNode.datanodes) == 0:
                             continue
                         dn = dbNode.datanodes[0]
-                        primaryDnNode = DefaultValue.getPrimaryNode(
-                            self.context.userProfile)
                         if dn.hostname not in primaryDnNode:
                             continue
                         dbInst = clusterStatus.getInstanceStatusById(

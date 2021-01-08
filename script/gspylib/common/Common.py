@@ -4196,7 +4196,7 @@ class DefaultValue():
             primaryList = []
             for dn in dnPrimary:
                 primaryList.append(list(filter(None, dn.split(" ")))[1])
-            return primaryList
+            return primaryList, output
         except Exception as e:
             raise Exception(str(e))
 

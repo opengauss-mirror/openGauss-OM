@@ -65,6 +65,7 @@ ACTION_CLEAN_OLD_CLUSTER_CATALOG_PHYSICAL_FILES = \
 ACTION_REPLACE_PG_PROC_FILES = "replace_pg_proc_files"
 ACTION_CREATE_PG_PROC_MAPPING_FILE = "create_pg_proc_mapping_file"
 ACTION_CREATE_NEW_CSV_FILE = "create_new_csv_file"
+ACTION_RESTORE_DYNAMIC_CONFIG_FILE = "restore_dynamic_config_file"
 
 OPTION_PRECHECK = "before"
 OPTION_POSTCHECK = "after"

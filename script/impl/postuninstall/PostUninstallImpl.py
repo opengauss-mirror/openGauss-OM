@@ -32,6 +32,7 @@ from gspylib.common.ErrorCode import ErrorCode
 from gspylib.os.gsfile import g_file
 from gspylib.os.gsfile import g_Platform
 from gspylib.common.VersionInfo import VersionInfo
+import impl.upgrade.UpgradeConst as Const
 
 sys.path.append(sys.path[0] + "/../../../lib/")
 DefaultValue.doConfigForParamiko()
@@ -414,6 +415,10 @@ class PostUninstallImpl:
             g_file.removeDirectory(path)
             path = "%s/sctp_patch" % (self.clusterToolPath)
             g_file.removeDirectory(path)
+            path = "%s/%s" % (Const.UPGRADE_SQL_FILE, self.clusterToolPath)
+            g_file.removeFile(path)
+            path = "%s/%s" % (Const.UPGRADE_SQL_SHA, self.clusterToolPath)
+            g_file.removeFile(path)
             self.logger.debug(
                 "Deleting environmental software of local nodes.")
 

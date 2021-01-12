@@ -106,7 +106,7 @@ function fn_get_openGauss_tar()
         then
             url="https://opengauss.obs.cn-south-1.myhuaweicloud.com/1.1.0/${system_arch}/openGauss-1.1.0-${system_name}-64bit-all.tar.gz"
             echo "Downloading openGauss tar from official website at ${install_tar}"
-            wget $url --timeout=30 --tries=3 && tar -zxvf openGauss-1.1.0-${system_name}-64bit-all.tar.gz
+            wget $url --timeout=30 --tries=3 && tar -zxf openGauss-1.1.0-${system_name}-64bit-all.tar.gz
             if [ $? -ne 0 ]
             then
                 echo "wget error. The $install_tar need openGauss-1.1.0-${system_name}-64bit-om.tar.gz"

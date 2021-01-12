@@ -1295,7 +1295,8 @@ Common options:
             cmd = "su - root -c 'source %s;echo $GAUSS_ENV' 2>/dev/null" \
                   % self.mpprcFile
         else:
-            cmd = "su - %s -c 'echo $GAUSS_ENV' 2>/dev/null" % self.user
+            cmd = "su - %s -c 'source ~/.bashrc;echo $GAUSS_ENV' 2>/dev/null" \
+                  % self.user
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             self.logger.debug(

@@ -22,17 +22,22 @@ import json
 import re
 import csv
 import traceback
+import copy
 
 from datetime import datetime, timedelta
-from gspylib.common.Common import DefaultValue, ClusterCommand
+from gspylib.common.Common import DefaultValue, ClusterCommand, \
+    ClusterInstanceConfig
 from gspylib.common.DbClusterInfo import instanceInfo, \
     dbNodeInfo, dbClusterInfo, compareObject
 from gspylib.common.OMCommand import OMCommand
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.threads.SshTool import SshTool
 from gspylib.common.VersionInfo import VersionInfo
+from gspylib.common.DbClusterStatus import DbClusterStatus
 from gspylib.os.gsplatform import g_Platform
 from gspylib.os.gsfile import g_file
+from gspylib.os.gsOSlib import g_OSlib
+from gspylib.inspection.common import SharedFuncs
 from impl.upgrade.UpgradeConst import GreyUpgradeStep
 import impl.upgrade.UpgradeConst as Const
 
@@ -60,9 +65,12 @@ class UpgradeImpl:
         """
         function: constructor
         """
+        self.dnInst = None
         self.context = upgrade
         self.newCommitId = ""
         self.oldCommitId = ""
+        self.isLargeInplaceUpgrade = False
+        self.__upgrade_across_64bit_xid = False
 
     def exitWithRetCode(self, action, succeed=True, msg=""):
         """
@@ -398,9 +406,8 @@ class UpgradeImpl:
                 elif ((float(newClusterNumber) - int(float(newClusterNumber)))
                       > (float(oldClusterNumber) -
                          int(float(oldClusterNumber)))):
-                    raise Exception(ErrorCode.GAUSS_529["GAUSS_52904"]
-                                    + "This cluster version is "
-                                      "not supported upgrade.")
+                    upgradeAction = Const.ACTION_INPLACE_UPGRADE
+                    self.isLargeInplaceUpgrade = True
                 else:
                     raise Exception(ErrorCode.GAUSS_516["GAUSS_51629"]
                                     % newClusterNumber)
@@ -576,7 +583,7 @@ class UpgradeImpl:
         input : NA
         output: NA
         """
-        self.context.logger.log("Stopping the cluster.", "addStep")
+        self.context.logger.debug("Stopping the cluster.", "addStep")
         # Stop cluster applications
         cmd = "%s -U %s -R %s -t %s" % (
             OMCommand.getLocalScript("Local_StopInstance"),
@@ -587,7 +594,7 @@ class UpgradeImpl:
             cmd, "Stop cluster", self.context.sshTool,
             self.context.isSingle or self.context.localMode,
             self.context.mpprcFile)
-        self.context.logger.log("Successfully stopped cluster.")
+        self.context.logger.debug("Successfully stopped cluster.")
 
     def startCluster(self):
         """
@@ -595,10 +602,19 @@ class UpgradeImpl:
         input : NA
         output: NA
         """
-        cmd = "%s -U %s -R %s -t %s" % (
-            OMCommand.getLocalScript("Local_StartInstance"),
-            self.context.user, self.context.clusterInfo.appPath,
-            Const.UPGRADE_TIMEOUT_CLUSTER_START)
+        versionFile = os.path.join(
+            self.context.oldClusterAppPath, "bin/upgrade_version")
+        if os.path.exists(versionFile):
+            _, number, _ = VersionInfo.get_version_info(versionFile)
+            cmd = "%s -U %s -R %s -t %s --cluster_number=%s" % (
+                OMCommand.getLocalScript("Local_StartInstance"),
+                self.context.user, self.context.clusterInfo.appPath,
+                Const.UPGRADE_TIMEOUT_CLUSTER_START, number)
+        else:
+            cmd = "%s -U %s -R %s -t %s" % (
+                OMCommand.getLocalScript("Local_StartInstance"),
+                self.context.user, self.context.clusterInfo.appPath,
+                Const.UPGRADE_TIMEOUT_CLUSTER_START)
         DefaultValue.execCommandWithMode(
             cmd, "Start cluster", self.context.sshTool,
             self.context.isSingle or self.context.localMode,
@@ -666,6 +682,10 @@ class UpgradeImpl:
             if (not self.context.isSingle):
                 self.context.sshTool.scpFiles(inplace_upgrade_flag_file,
                                               self.context.upgradeBackupPath)
+            if float(self.context.oldClusterNumber) <= float(
+                    Const.UPGRADE_VERSION_64bit_xid) < \
+                    float(self.context.newClusterNumber):
+                self.__upgrade_across_64bit_xid = True
 
             self.context.logger.debug("Successfully created inplace"
                                       " upgrade flag file.")
@@ -732,8 +752,8 @@ class UpgradeImpl:
         output : NA
         """
         self.context.logger.debug("Set upgrade_mode guc parameter.")
-        cmd = "gs_guc %s -Z coordinator -Z datanode -N all " \
-              "-I all -c 'upgrade_mode=%d'" % (setType, mode)
+        cmd = "gs_guc %s -N all -I all -c 'upgrade_mode=%d'" % (
+            setType, mode)
         self.context.logger.debug("Command for setting database"
                                   " node parameter: %s." % cmd)
         (status, output) = subprocess.getstatusoutput(cmd)
@@ -818,6 +838,18 @@ class UpgradeImpl:
             return True
         return False
 
+    def reloadVacuumDeferCleanupAge(self):
+        """
+        function: reload the guc paramter vacuum_defer_cleanup_age value on
+        inplace upgrade or grey large upgrade
+        input : NA
+        """
+        (status, output) = self.setGUCValue("vacuum_defer_cleanup_age",
+                                            "100000", "reload")
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_500["GAUSS_50007"] % "GUC" +
+                            " Error: \n%s" % str(output))
+
     def doInplaceBinaryUpgrade(self):
         """
         function: do binary upgrade, which essentially replace the binary files
@@ -849,6 +881,12 @@ class UpgradeImpl:
                                      % "cluster" + output)
             # 4.record the old and new app dir in file
             self.recordDirFile()
+            if self.isLargeInplaceUpgrade:
+                self.recordLogicalClusterName()
+            # 6. reload vacuum_defer_cleanup_age to new value
+            if self.isLargeInplaceUpgrade:
+                if self.__upgrade_across_64bit_xid:
+                    self.reloadVacuumDeferCleanupAge()
 
             if self.setClusterReadOnlyMode() != 0:
                 raise Exception(ErrorCode.GAUSS_529["GAUSS_52908"])
@@ -861,6 +899,12 @@ class UpgradeImpl:
             #    to ensure the transaction atomicity,
             #    it will be used with checkUpgrade().
             self.backupNodeVersion()
+            # For inplace upgrade, we have to perform additional checks
+            # and then backup catalog files.
+            if self.isLargeInplaceUpgrade:
+                self.prepareUpgradeSqlFolder()
+                self.HASyncReplayCheck()
+                self.backupOldClusterDBAndRelInfo()
             # 8. stop old cluster
             self.recordNodeStepInplace(Const.ACTION_INPLACE_UPGRADE,
                                        Const.BINARY_UPGRADE_STEP_STOP_NODE)
@@ -903,6 +947,23 @@ class UpgradeImpl:
             #    At the same time, sync newly added guc for instances
             self.restoreClusterConfig()
             self.syncNewGUC()
+            # unset cluster readonly
+            self.startCluster()
+            if self.unSetClusterReadOnlyMode() != 0:
+                raise Exception("NOTICE: "
+                                + ErrorCode.GAUSS_529["GAUSS_52907"])
+            # flush new app dynamic configuration
+            dynamicConfigFile = "%s/bin/cluster_dynamic_config" % \
+                                self.context.newClusterAppPath
+            if os.path.exists(dynamicConfigFile) \
+                    and self.isLargeInplaceUpgrade:
+                self.refresh_dynamic_config_file()
+                self.context.logger.debug(
+                    "Successfully refresh dynamic config file")
+            self.stopCluster()
+            if os.path.exists(dynamicConfigFile) \
+                    and self.isLargeInplaceUpgrade:
+                self.restore_dynamic_config_file()
             # 12. modify GUC parameter unix_socket_directory
             self.modifySocketDir()
             # 13. start new cluster
@@ -913,14 +974,25 @@ class UpgradeImpl:
 
             # update catalog
             # start cluster in normal mode
+            if self.isLargeInplaceUpgrade:
+                self.touchRollbackCatalogFlag()
+                self.updateCatalog()
             self.CopyCerts()
             self.context.createGrpcCa()
             self.context.logger.debug("Successfully createGrpcCa.")
-            self.switchBin(Const.NEW)
 
+            self.switchBin(Const.NEW)
             self.startCluster()
+            if self.isLargeInplaceUpgrade:
+                self.modifyPgProcIndex()
+                self.context.logger.debug("Start to exec post upgrade script")
+                self.doUpgradeCatalog(postUpgrade=True)
+                self.context.logger.debug(
+                    "Successfully exec post upgrade script")
             self.context.logger.debug("Successfully start all "
                                       "instances on the node.", "constant")
+            if self.setClusterReadOnlyMode() != 0:
+                raise Exception(ErrorCode.GAUSS_529["GAUSS_52908"])
             # 14. check the cluster status
             (status, output) = self.doHealthCheck(Const.OPTION_POSTCHECK)
             if status != 0:
@@ -964,16 +1036,28 @@ class UpgradeImpl:
         # and cleanup list file for re-entry
         cleanUpSuccess = True
 
+        # drop table and index after large upgrade
+        if self.isLargeInplaceUpgrade:
+            if self.check_upgrade_mode():
+                self.drop_table_or_index()
         # 1.unset read-only
+        if self.isLargeInplaceUpgrade:
+            self.setUpgradeMode(0)
         if self.unSetClusterReadOnlyMode() != 0:
             self.context.logger.log("NOTICE: "
                                     + ErrorCode.GAUSS_529["GAUSS_52907"])
             cleanUpSuccess = False
-
+        if self.isLargeInplaceUpgrade:
+            self.cleanCsvFile()
         # 2. drop old PMK schema
         # we sleep 10 seconds first because DB might be updating
         # ha status after unsetting read-only
         time.sleep(10)
+        # 3. clean backup catalog physical files if doing inplace upgrade
+        if self.cleanBackupedCatalogPhysicalFiles() != 0:
+            self.context.logger.debug(
+                "Failed to clean backup files in directory %s. "
+                % self.context.upgradeBackupPath)
 
         if not cleanUpSuccess:
             self.context.logger.log("NOTICE: Cleanup is incomplete during"
@@ -985,9 +1069,1036 @@ class UpgradeImpl:
             # and uninstall inplace upgrade support functions
             self.cleanInstallPath(Const.OLD)
             self.cleanBinaryUpgradeBakFiles()
+            if self.isLargeInplaceUpgrade:
+                self.stopCluster()
+                self.startCluster()
 
             self.context.logger.log("Commit binary upgrade succeeded.")
             self.exitWithRetCode(Const.ACTION_INPLACE_UPGRADE, True)
+
+    def refresh_dynamic_config_file(self):
+        """
+        refresh dynamic config file
+        :return:
+        """
+        cmd = "source %s ;gs_om -t refreshconf" % self.context.userProfile
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
+                            "Command:%s. Error:\n%s" % (cmd, output))
+
+    def restore_dynamic_config_file(self):
+        """
+        restore dynamic config file
+        :return:
+        """
+        cmd = "%s -t %s -U %s -V %d --upgrade_bak_path=%s " \
+              "--old_cluster_app_path=%s --new_cluster_app_path=%s " \
+              "-l %s" % (
+                  OMCommand.getLocalScript("Local_Upgrade_Utility"),
+                  Const.ACTION_RESTORE_DYNAMIC_CONFIG_FILE,
+                  self.context.user,
+                  int(float(self.context.oldClusterNumber) * 1000),
+                  self.context.upgradeBackupPath,
+                  self.context.oldClusterAppPath,
+                  self.context.newClusterAppPath,
+                  self.context.localLog)
+
+        self.context.logger.debug("Command for restoring "
+                                  "config files: %s" % cmd)
+        DefaultValue.execCommandWithMode(cmd,
+                                         "restore config files",
+                                         self.context.sshTool,
+                                         self.context.isSingle,
+                                         self.context.mpprcFile)
+
+    def cleanCsvFile(self):
+        """
+        clean csv file
+        :return:
+        """
+        clusterNodes = self.context.clusterInfo.dbNodes
+        for dbNode in clusterNodes:
+            if len(dbNode.datanodes) == 0:
+                continue
+            dnInst = dbNode.datanodes[0]
+            dndir = dnInst.datadir
+            pg_proc_csv_path = \
+                '%s/pg_copydir/tbl_pg_proc_oids.csv' % dndir
+            new_pg_proc_csv_path = \
+                '%s/pg_copydir/new_tbl_pg_proc_oids.csv' % dndir
+            if os.path.exists(pg_proc_csv_path):
+                g_file.removeFile(pg_proc_csv_path)
+            if os.path.exists(new_pg_proc_csv_path):
+                g_file.removeFile(new_pg_proc_csv_path)
+
+    def check_upgrade_mode(self):
+        """
+        check upgrade_mode value
+        :return:
+        """
+        cmd = "source %s ; gs_guc check -N all -I all -c 'upgrade_mode'" % \
+              self.context.userProfile
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_500[
+                                "GAUSS_50010"] % 'upgrade_mode' +
+                            "Error: \n%s" % str(output))
+        if output.find("upgrade_mode=0") >= 0:
+            return False
+        else:
+            return True
+
+    def cleanBackupedCatalogPhysicalFiles(self, isRollBack=False):
+        """
+        function : clean backuped catalog physical files
+        input : isRollBack, default is False
+        output: return 0, if the operation is done successfully.
+                return 1, if the operation failed.
+        """
+        try:
+            if self.isLargeInplaceUpgrade:
+                self.context.logger.log("Clean up backup catalog files.")
+                # send cmd to all node and exec
+                cmd = "%s -t %s -U %s --upgrade_bak_path=%s -l %s" % \
+                      (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+                       Const.ACTION_CLEAN_OLD_CLUSTER_CATALOG_PHYSICAL_FILES,
+                       self.context.user,
+                       self.context.upgradeBackupPath,
+                       self.context.localLog)
+                if isRollBack:
+                    cmd += " --rollback --oldcluster_num='%s'" % \
+                           self.context.oldClusterNumber
+                self.context.logger.debug(
+                    "Command for cleaning up physical catalog files: %s." % cmd)
+                DefaultValue.execCommandWithMode(
+                    cmd,
+                    "clean backuped physical files of catalog objects",
+                    self.context.sshTool,
+                    self.context.isSingle,
+                    self.context.userProfile)
+                self.context.logger.debug(
+                    "Successfully cleaned up backup catalog files.")
+            return 0
+        except Exception as e:
+            if isRollBack:
+                raise Exception(
+                    "Fail to clean up backup catalog files: %s" % str(e))
+            else:
+                self.context.logger.debug(
+                    "Fail to clean up backup catalog files. " +
+                    "Please re-commit upgrade once again or clean up manually.")
+                return 1
+
+    def recordLogicalClusterName(self):
+        """
+        function: record the logical node group name in bakpath,
+        so that we can restore specfic name in bakpath,
+        used in restoreCgroup, and refresh the CgroupConfigure
+        input : NA
+        output: NA
+        """
+        lcgroupfile = "%s/oldclusterinfo.json" % self.context.tmpDir
+        try:
+            self.context.logger.debug(
+                "Write and send logical cluster info file.")
+            # check whether file is exists
+            if os.path.isfile(lcgroupfile):
+                return 0
+            # check whether it is lc cluster
+            sql = """SELECT true AS group_kind
+                     FROM pg_class c, pg_namespace n, pg_attribute attr
+                     WHERE c.relname = 'pgxc_group' AND n.nspname = 'pg_catalog'
+                      AND attr.attname = 'group_kind' AND c.relnamespace = 
+                      n.oid AND attr.attrelid = c.oid; """
+            self.context.logger.debug(
+                "Check if the cluster type is a logical cluster.")
+            (status, output) = ClusterCommand.remoteSQLCommand(
+                sql,
+                self.context.user,
+                self.dnInst.hostname,
+                self.dnInst.port,
+                False,
+                DefaultValue.DEFAULT_DB_NAME,
+                IsInplaceUpgrade=True)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_513[
+                                    "GAUSS_51300"] % sql + " Error: \n%s" % str(
+                    output))
+            if not output or output.strip() != 't':
+                self.context.logger.debug(
+                    "The old cluster is not logical cluster.")
+                return 0
+            self.context.logger.debug("The old cluster is logical cluster.")
+            # get lc group name lists
+            sql = "SELECT group_name FROM pgxc_group WHERE group_kind = 'v';"
+            self.context.logger.debug(
+                "Getting the list of logical cluster names.")
+            (status, output) = ClusterCommand.remoteSQLCommand(
+                sql,
+                self.context.user,
+                self.dnInst.hostname,
+                self.dnInst.port,
+                False,
+                DefaultValue.DEFAULT_DB_NAME,
+                IsInplaceUpgrade=True)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_513[
+                                    "GAUSS_51300"] % sql + " Error: \n%s" % str(
+                    output))
+            lcgroupnames = output.split("\n")
+            self.context.logger.debug(
+                "The list of logical cluster names: %s." % lcgroupnames)
+            # create the file
+            g_file.createFile(lcgroupfile)
+            g_file.changeOwner(self.context.user, lcgroupfile)
+            g_file.changeMode(DefaultValue.KEY_FILE_MODE, lcgroupfile)
+            # write result to file
+            with open(lcgroupfile, "w") as fp_json:
+                json.dump({"lcgroupnamelist": lcgroupnames}, fp_json)
+            # send file to remote nodes
+            self.context.sshTool.scpFiles(lcgroupfile, self.context.tmpDir)
+            self.context.logger.debug(
+                "Successfully to write and send logical cluster info file.")
+            return 0
+        except Exception as e:
+            cmd = "(if [ -f '%s' ]; then rm -f '%s'; fi)" % (
+                lcgroupfile, lcgroupfile)
+            DefaultValue.execCommandWithMode(cmd,
+                                             "clean lcgroup name list file",
+                                             self.context.sshTool,
+                                             self.context.isSingle,
+                                             self.context.userProfile)
+            raise Exception(str(e))
+
+    def prepareUpgradeSqlFolder(self):
+        """
+        function: verify upgrade_sql.tar.gz and extract it to binary backup
+        path, because all node need set_guc, so
+        we will decompress on all nodes
+        input : NA
+        output: NA
+        """
+        self.context.logger.debug("Preparing upgrade sql folder.")
+        if self.context.action == Const.ACTION_INPLACE_UPGRADE:
+            hostName = DefaultValue.GetHostIpOrName()
+            hosts = [hostName]
+        else:
+            hosts = self.context.clusterNodes
+        cmd = "%s -t %s -U %s --upgrade_bak_path=%s -X %s -l %s" % \
+              (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+               Const.ACTION_UPGRADE_SQL_FOLDER,
+               self.context.user,
+               self.context.upgradeBackupPath,
+               self.context.xmlFile,
+               self.context.localLog)
+        DefaultValue.execCommandWithMode(cmd,
+                                         "prepare upgrade_sql",
+                                         self.context.sshTool,
+                                         self.context.isSingle,
+                                         self.context.userProfile,
+                                         hosts)
+
+    def HASyncReplayCheck(self):
+        """
+        function: Wait and check if all standbys have replayed upto flushed
+                  xlog positions of primaries.We record primary xlog flush
+                  position at start of the check and wait until standby replay
+                  upto that point.
+                  Attention: If autovacuum is turned on, primary xlog flush
+                  position may increase during the check.We do not check such
+                   newly added xlog because they will not change catalog
+                   physical file position.
+        Input: NA
+        output : NA
+        """
+        self.context.logger.debug("Start to wait and check if all the standby"
+                                  " instances have replayed all xlogs.")
+        self.doReplay()
+        self.context.logger.debug("Successfully performed the replay check "
+                                  "of the standby instance.")
+
+    def doReplay(self):
+        refreshTimeout = 180
+        waitTimeout = 300
+        RefreshTime = datetime.now() + timedelta(seconds=refreshTimeout)
+        EndTime = datetime.now() + timedelta(seconds=waitTimeout)
+        # wait and check sync status between primary and standby
+
+        NeedReplay = True
+        PosList = []
+        while NeedReplay:
+            sql = "SELECT sender_flush_location,receiver_replay_location " \
+                  "from pg_catalog.pg_stat_get_wal_senders() " \
+                  "where peer_role != 'Secondary';"
+            (status, output) = ClusterCommand.remoteSQLCommand(
+                sql,
+                self.context.user,
+                self.dnInst.hostname,
+                self.dnInst.port,
+                False,
+                DefaultValue.DEFAULT_DB_NAME,
+                IsInplaceUpgrade=True)
+            if status != 0:
+                self.context.logger.debug(
+                    "Primary and Standby may be not in sync.")
+                self.context.logger.debug(
+                    "Sync status: %s. Output: %s" % (str(status), output))
+            elif output != "":
+                self.context.logger.debug(
+                    "Sync status: %s. Output: %s" % (str(status), output))
+                tmpPosList = self.getXlogPosition(output)
+                if len(PosList) == 0:
+                    PosList = copy.deepcopy(tmpPosList)
+                    self.context.logger.debug(
+                        "Primary and Standby may be not in sync.")
+                else:
+                    NeedReplay = False
+                    for eachRec in PosList:
+                        for eachTmpRec in tmpPosList:
+                            if self.needReplay(eachRec, eachTmpRec):
+                                NeedReplay = True
+                                self.context.logger.debug(
+                                    "Primary and Standby may be not in sync.")
+                                break
+                        if NeedReplay:
+                            break
+            else:
+                NeedReplay = False
+
+            # Standby replay postion may keep falling behind primary
+            #  flush position if it is at the end of one xlog page and the
+            # free space is less than xlog record header size.
+            # We do a checkpoint to avoid such situation.
+            if datetime.now() > RefreshTime and NeedReplay:
+                self.context.logger.debug(
+                    "Execute CHECKPOINT to refresh xlog position.")
+                refreshsql = "set statement_timeout=300000;CHECKPOINT;"
+                (status, output) = ClusterCommand.remoteSQLCommand(
+                    refreshsql,
+                    self.context.user,
+                    self.dnInst.hostname,
+                    self.dnInst.port,
+                    False,
+                    DefaultValue.DEFAULT_DB_NAME,
+                    IsInplaceUpgrade=True)
+                if status != 0:
+                    raise Exception(
+                        ErrorCode.GAUSS_513["GAUSS_51300"] % refreshsql +
+                        "Error: \n%s" % str(output))
+
+            if datetime.now() > EndTime and NeedReplay:
+                self.context.logger.log("WARNING: " + ErrorCode.GAUSS_513[
+                    "GAUSS_51300"] % sql + " Timeout while waiting for "
+                                           "standby replay.")
+                return
+            time.sleep(5)
+
+    def getXlogPosition(self, output):
+        """
+        get xlog position from output
+        """
+        tmpPosList = []
+        resList = output.split('\n')
+        for eachLine in resList:
+            tmpRec = {}
+            (flushPos, replayPos) = eachLine.split('|')
+            (flushPosId, flushPosOff) = (flushPos.strip()).split('/')
+            (replayPosId, replayPosOff) = (replayPos.strip()).split('/')
+            tmpRec['nodeName'] = self.getHAShardingName()
+            tmpRec['flushPosId'] = flushPosId.strip()
+            tmpRec['flushPosOff'] = flushPosOff.strip()
+            tmpRec['replayPosId'] = replayPosId.strip()
+            tmpRec['replayPosOff'] = replayPosOff.strip()
+            tmpPosList.append(tmpRec)
+        return tmpPosList
+
+    def getHAShardingName(self):
+        """
+        in centralized cluster, used to get the only one sharding name
+        """
+        peerInsts = self.context.clusterInfo.getPeerInstance(self.dnInst)
+        (instance_name, _, _) = ClusterInstanceConfig.\
+            getInstanceInfoForSinglePrimaryMultiStandbyCluster(
+                self.dnInst, peerInsts)
+        return instance_name
+
+    def needReplay(self, eachRec, eachTmpRec):
+        """
+        judeg if need replay by xlog position
+        """
+        if eachRec['nodeName'] == eachTmpRec['nodeName'] \
+                and (int(eachRec['flushPosId'], 16) > int(
+            eachTmpRec['replayPosId'], 16) or (
+                int(eachRec['flushPosId'], 16) == int(
+            eachTmpRec['replayPosId'], 16) and int(
+            eachRec['flushPosOff'], 16) > int(eachTmpRec['replayPosOff'], 16))):
+            return True
+        else:
+            return False
+
+    def backupOldClusterDBAndRelInfo(self):
+
+        """
+        function: backup old cluster db and rel info
+                  send cmd to that node
+        input : NA
+        output: NA
+        """
+        tmpFile = os.path.join(DefaultValue.getTmpDirFromEnv(
+            self.context.user), Const.TMP_DYNAMIC_DN_INFO)
+        try:
+            self.context.logger.debug("Start to backup old cluster database"
+                                      " and relation information.")
+            # prepare backup path
+            backup_path = os.path.join(
+                self.context.upgradeBackupPath, "oldClusterDBAndRel")
+            cmd = "rm -rf '%s' && mkdir '%s' -m '%s' " % \
+                  (backup_path, backup_path, DefaultValue.KEY_DIRECTORY_MODE)
+            hostList = copy.deepcopy(self.context.clusterNodes)
+            self.context.sshTool.executeCommand(cmd, "", hostList=hostList)
+            # prepare dynamic cluster info file in every node
+            self.generateDynamicInfoFile(tmpFile)
+            # get dn primary hosts
+            dnPrimaryNodes = self.getPrimaryDnListFromDynamicFile()
+            execHosts = list(set(dnPrimaryNodes))
+
+            # send cmd to all node and exec
+            cmd = "%s -t %s -U %s --upgrade_bak_path=%s -l %s" % \
+                  (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+                   Const.ACTION_BACKUP_OLD_CLUSTER_DB_AND_REL,
+                   self.context.user,
+                   self.context.upgradeBackupPath,
+                   self.context.localLog)
+            self.context.logger.debug(
+                "Command for backing up old cluster database and "
+                "relation information: %s." % cmd)
+            self.context.sshTool.executeCommand(cmd, "", hostList=execHosts)
+            self.context.logger.debug("Backing up information of all nodes.")
+            self.context.logger.debug("Successfully backed up old cluster "
+                                      "database and relation information")
+        except Exception as e:
+            raise Exception(str(e))
+        finally:
+            if os.path.exists(tmpFile):
+                deleteCmd = "(if [ -f '%s' ]; then rm -f '%s'; fi) " % \
+                            (tmpFile, tmpFile)
+                hostList = copy.deepcopy(self.context.clusterNodes)
+                self.context.sshTool.executeCommand(
+                    deleteCmd, "", hostList=hostList)
+
+    def generateDynamicInfoFile(self, tmpFile):
+        """
+        generate dynamic info file and send to every node
+        :return:
+        """
+        self.context.logger.debug(
+            "Start to generate dynamic info file and send to every node.")
+        try:
+            cmd = ClusterCommand.getQueryStatusCmd(
+                self.context.user, outFile=tmpFile)
+            SharedFuncs.runShellCmd(cmd, self.context.user,
+                                    self.context.userProfile)
+            if not os.path.exists(tmpFile):
+                raise Exception("Can not genetate dynamic info file")
+            self.context.distributeFileToSpecialNode(tmpFile,
+                                                     os.path.dirname(tmpFile),
+                                                     self.context.clusterNodes)
+            self.context.logger.debug(
+                "Success to generate dynamic info file and send to every node.")
+        except Exception as er:
+            raise Exception("Failed to generate dynamic info file in "
+                            "these nodes: {0}, error: {1}".format(
+                self.context.clusterNodes, str(er)))
+
+    def getPrimaryDnListFromDynamicFile(self):
+        """
+        get primary dn list from dynamic file
+        :return: primary dn list
+        """
+        try:
+            self.context.logger.debug(
+                "Start to get primary dn list from dynamic file.")
+            tmpFile = os.path.join(DefaultValue.getTmpDirFromEnv(
+                self.context.user), Const.TMP_DYNAMIC_DN_INFO)
+            if not os.path.exists(tmpFile):
+                raise Exception(ErrorCode.GAUSS_529["GAUSS_50201"] % tmpFile)
+            dynamicClusterStatus = DbClusterStatus()
+            dynamicClusterStatus.initFromFile(tmpFile)
+            cnAndPrimaryDnNodes = []
+            # Find the master DN instance
+            for dbNode in dynamicClusterStatus.dbNodes:
+                for instance in dbNode.datanodes:
+                    if instance.status == 'Primary':
+                        for staticDBNode in self.context.clusterInfo.dbNodes:
+                            if staticDBNode.id == instance.nodeId:
+                                cnAndPrimaryDnNodes.append(staticDBNode.name)
+            result = list(set(cnAndPrimaryDnNodes))
+            self.context.logger.debug("Success to get primary dn list from "
+                                      "dynamic file: {0}.".format(result))
+            return result
+        except Exception as er:
+            raise Exception("Failed to get primary dn list from dynamic file. "
+                            "Error:{0}".format(str(er)))
+
+
+    def touchRollbackCatalogFlag(self):
+        """
+        before update system catalog, touch a flag file.
+        """
+        # touch init flag file
+        # during rollback, if init flag file has not been touched,
+        # we do not need to do catalog rollback.
+        cmd = "touch '%s/touch_init_flag'" % self.context.upgradeBackupPath
+        DefaultValue.execCommandWithMode(cmd,
+                                         "create init flag file",
+                                         self.context.sshTool,
+                                         self.context.isSingle,
+                                         self.context.userProfile)
+
+    def updateCatalog(self):
+        """
+        function: update catalog to new version
+                  steps:
+                  1.prepare update sql file and check sql file
+                  2.do update catalog
+        Input: NA
+        output : NA
+        """
+        try:
+            self.prepareSql("upgrade-post")
+            self.prepareSql("upgrade")
+            self.prepareSql("rollback-post")
+            self.prepareSql("rollback")
+            self.doUpgradeCatalog()
+        except Exception as e:
+            raise Exception(
+                "Failed to execute update sql file. Error: %s" % str(e))
+
+    def doUpgradeCatalog(self, postUpgrade=False):
+        """
+        function: update catalog to new version
+                  1.set upgrade_from param
+                  2.start cluster
+                  3.touch init files and do pre-upgrade staffs
+                  4.connect database and update catalog one by one
+                  5.stop cluster
+                  6.unset upgrade_from param
+                  7.start cluster
+        Input: oldClusterNumber
+        output : NA
+        """
+        try:
+            if self.context.action == Const.ACTION_INPLACE_UPGRADE:
+                if not postUpgrade:
+                    self.startCluster()
+                    self.setUpgradeMode(1)
+                    self.touchInitFile()
+            elif not postUpgrade:
+                # the guc parameter upgrade_from need to restart
+                # cmagent to take effect
+                self.setUpgradeMode(2)
+                # kill snapshot thread in kernel
+                self.context.killKernalSnapshotThread(self.dnInst)
+            # if we use --force to forceRollback last time,
+            # it may has remaining last catalog
+            if postUpgrade:
+                self.execRollbackUpgradedCatalog(scriptType="rollback-post")
+                self.execRollbackUpgradedCatalog(scriptType="upgrade-post")
+            else:
+                self.execRollbackUpgradedCatalog(scriptType="rollback")
+                self.execRollbackUpgradedCatalog(scriptType="upgrade")
+                self.pgxcNodeUpdateLocalhost("upgrade")
+
+            if self.context.action == \
+                    Const.ACTION_INPLACE_UPGRADE and not postUpgrade:
+                self.updatePgproc()
+        except Exception as e:
+            raise Exception("update catalog failed.ERROR: %s" % str(e))
+
+    def updatePgproc(self):
+        """
+        function: update pg_proc during large upgrade
+        :return:
+        """
+        self.context.logger.debug(
+            "Start to update pg_proc in inplace large upgrade ")
+        # generate new csv file
+        execHosts = [self.dnInst.hostname]
+        # send cmd to all node and exec
+        cmd = "%s -t %s -U %s -R '%s' -l %s" % (
+            OMCommand.getLocalScript("Local_Upgrade_Utility"),
+            Const.ACTION_CREATE_NEW_CSV_FILE,
+            self.context.user,
+            self.context.tmpDir,
+            self.context.localLog)
+        self.context.logger.debug(
+            "Command for create new csv file: %s." % cmd)
+        self.context.sshTool.executeCommand(cmd, "", hostList=execHosts)
+        self.context.logger.debug(
+            "Successfully created new csv file.")
+        # select all databases
+        database_list = self.getDatabaseList()
+        # create pg_proc_temp_oids
+        new_pg_proc_csv_path = '%s/pg_copydir/new_tbl_pg_proc_oids.csv' % \
+                               self.dnInst.datadir
+        self.createPgprocTempOids(new_pg_proc_csv_path, database_list)
+        # create pg_proc_temp_oids index
+        self.createPgprocTempOidsIndex(database_list)
+        # make checkpoint
+        self.replyXlog(database_list)
+        # create pg_proc_mapping.txt to save the mapping between pg_proc
+        #  file path and pg_proc_temp_oids file path
+        cmd = "%s -t %s -U %s -R '%s' -l %s" % (
+            OMCommand.getLocalScript("Local_Upgrade_Utility"),
+            Const.ACTION_CREATE_PG_PROC_MAPPING_FILE,
+            self.context.user,
+            self.context.tmpDir,
+            self.context.localLog)
+        DefaultValue.execCommandWithMode(
+            cmd,
+            "create file to save mapping between pg_proc file path and "
+            "pg_proc_temp_oids file path",
+            self.context.sshTool,
+            self.context.isSingle,
+            self.context.userProfile)
+        self.context.logger.debug(
+            "Successfully created file to save mapping between pg_proc file "
+            "path and pg_proc_temp_oids file path.")
+        # stop cluster
+        self.stopCluster()
+        # replace pg_proc data file by pg_proc_temp data file
+        # send cmd to all node and exec
+        cmd = "%s -t %s -U %s -R '%s' -l %s" % (
+            OMCommand.getLocalScript("Local_Upgrade_Utility"),
+            Const.ACTION_REPLACE_PG_PROC_FILES,
+            self.context.user,
+            self.context.tmpDir,
+            self.context.localLog)
+        DefaultValue.execCommandWithMode(
+            cmd,
+            "replace pg_proc data file by pg_proc_temp data files",
+            self.context.sshTool,
+            self.context.isSingle,
+            self.context.userProfile)
+        self.context.logger.debug(
+            "Successfully replaced pg_proc data files.")
+
+    def copy_and_modify_tableinfo_to_csv(self, old_csv_path, new_csv_path):
+        """
+        1. copy pg_proc info to csv file
+        2. modify csv file
+        3. create new table and get info by csv file
+        :return:
+        """
+        sql =\
+            """copy pg_proc( proname, pronamespace, proowner, prolang, 
+            procost, prorows, provariadic, protransform, prosecdef, 
+            proleakproof, proisstrict, proretset, provolatile, pronargs, 
+            pronargdefaults, prorettype, proargtypes, proallargtypes, 
+            proargmodes, proargnames, proargdefaults, prosrc, probin, 
+            proconfig, proacl, prodefaultargpos, fencedmode, proshippable, 
+            propackage,prokind) WITH OIDS to '%s' delimiter ',' 
+            csv header;""" % old_csv_path
+        (status, output) = ClusterCommand.remoteSQLCommand(
+            sql, self.context.user,
+            self.dnInst.hostname, self.dnInst.port, False,
+            DefaultValue.DEFAULT_DB_NAME, IsInplaceUpgrade=True)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
+                            " Error: \n%s" % str(output))
+        pg_proc_csv_reader = csv.reader(open(old_csv_path, 'r'))
+        pg_proc_csv_data = list(pg_proc_csv_reader)
+        header = pg_proc_csv_data[0]
+        header.insert(header.index('protransform') + 1, 'proisagg')
+        header.insert(header.index('protransform') + 2, 'proiswindow')
+        new_pg_proc_csv_data = []
+        new_pg_proc_csv_data.append(header)
+        pg_proc_data_info = pg_proc_csv_data[1:]
+        for i in range(2):
+            for info in pg_proc_data_info:
+                info.insert(header.index('protransform') + 2, 'True')
+        for info in pg_proc_data_info:
+            new_pg_proc_csv_data.append(info)
+        f = open(new_csv_path, 'w')
+        new_pg_proc_csv_writer = csv.writer(f)
+        for info in new_pg_proc_csv_data:
+            new_pg_proc_csv_writer.writerow(info)
+        f.close()
+
+    def createPgprocTempOids(self, new_pg_proc_csv_path, database_list):
+        """
+        create pg_proc_temp_oids
+        :return:
+        """
+        sql = \
+            """START TRANSACTION; SET IsInplaceUpgrade = on; 
+            CREATE TABLE pg_proc_temp_oids (proname name NOT NULL, 
+            pronamespace oid NOT NULL, proowner oid NOT NULL, prolang oid 
+            NOT NULL, procost real NOT NULL, prorows real NOT NULL, 
+            provariadic oid NOT NULL, protransform regproc NOT NULL, 
+            proisagg boolean NOT NULL, proiswindow boolean NOT NULL, 
+            prosecdef boolean NOT NULL, proleakproof boolean NOT NULL, 
+            proisstrict boolean NOT NULL, proretset boolean NOT NULL, 
+            provolatile "char" NOT NULL, pronargs smallint NOT NULL, 
+            pronargdefaults smallint NOT NULL, prorettype oid NOT NULL, 
+            proargtypes oidvector NOT NULL, proallargtypes oid[], 
+            proargmodes "char"[], proargnames text[], proargdefaults 
+            pg_node_tree, prosrc text, probin text, proconfig text[], 
+            proacl aclitem[], prodefaultargpos int2vector,fencedmode boolean, 
+            proshippable boolean, propackage boolean, prokind "char" NOT 
+            NULL) with oids;"""
+        sql += "copy pg_proc_temp_oids  WITH OIDS from '%s' with " \
+               "delimiter ',' csv header FORCE NOT NULL proargtypes;" % \
+               new_pg_proc_csv_path
+        sql += "COMMIT;"
+        # update proisagg and proiswindow message sql
+        sql += \
+            "update pg_proc_temp_oids set proisagg = CASE WHEN prokind = 'a' " \
+            "THEN True ELSE False END, proiswindow = CASE WHEN prokind = 'w' " \
+            "THEN True ELSE False END;"
+        self.context.logger.debug("pg_proc_temp_oids sql is %s" % sql)
+        # creat table
+        for eachdb in database_list:
+            (status, output) = ClusterCommand.remoteSQLCommand(
+                sql, self.context.user,
+                self.dnInst.hostname, self.dnInst.port, False,
+                eachdb, IsInplaceUpgrade=True)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
+                                " Error: \n%s" % str(output))
+
+    def createPgprocTempOidsIndex(self, database_list):
+        """
+        create index pg_proc_oid_index_temp and
+        pg_proc_proname_args_nsp_index_temp
+        :return:
+        """
+        sql = "CREATE UNIQUE INDEX pg_proc_oid_index_temp ON " \
+              "pg_proc_temp_oids USING btree (oid) TABLESPACE pg_default;"
+        sql += "CREATE UNIQUE INDEX pg_proc_proname_args_nsp_index_temp ON" \
+               " pg_proc_temp_oids USING btree (proname, proargtypes," \
+               " pronamespace) TABLESPACE pg_default;"
+        # creat index
+        for eachdb in database_list:
+            (status, output) = ClusterCommand.remoteSQLCommand(
+                sql, self.context.user,
+                self.dnInst.hostname, self.dnInst.port, False,
+                eachdb, IsInplaceUpgrade=True)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
+                                " Error: \n%s" % str(output))
+
+    def getDatabaseList(self):
+        """
+        check database list in cluster
+        :return:
+        """
+        self.context.logger.debug("Get database list in cluster.")
+        sql = "select datname from pg_database;"
+        (status, output) = ClusterCommand.remoteSQLCommand(
+            sql, self.context.user,
+            self.dnInst.hostname, self.dnInst.port, False,
+            DefaultValue.DEFAULT_DB_NAME, IsInplaceUpgrade=True)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
+                            " Error: \n%s" % str(output))
+        if "" == output:
+            raise Exception("No database objects were found in the cluster!")
+        reslines = (output.strip()).split('\n')
+        if (len(reslines) < 3
+                or "template1" not in reslines
+                or "template0" not in reslines
+                or "postgres" not in reslines):
+            raise Exception("The database list is invalid:%s." % str(reslines))
+        self.context.logger.debug("Database list in cluster is %s." % reslines)
+        return reslines
+
+    def replyXlog(self, database_list):
+        """
+        make checkpoint
+        :return:
+        """
+        sql = 'CHECKPOINT;'
+        for eachdb in database_list:
+            (status, output) = ClusterCommand.remoteSQLCommand(
+                sql, self.context.user,
+                self.dnInst.hostname, self.dnInst.port, False,
+                eachdb, IsInplaceUpgrade=True)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
+                                " Error: \n%s" % str(output))
+
+    def execRollbackUpgradedCatalog(self, scriptType="rollback"):
+        """
+        function : connect database and rollback/upgrade catalog one by one
+                   1.find a node that has dn instance
+                   2.scp sql files to that node
+                   3.send cmd to that node and exec
+        input : NA
+        output: NA
+        """
+        self.context.logger.debug("Start to {0} catalog.".format(scriptType))
+        try:
+            dnNodeName = self.dnInst.hostname
+            if dnNodeName == "":
+                raise Exception(ErrorCode.GAUSS_526["GAUSS_52602"])
+            self.context.logger.debug("dn nodes is {0}".format(dnNodeName))
+            # scp sql files to that node
+            maindb_sql = "%s/%s_catalog_maindb_tmp.sql" \
+                         % (self.context.upgradeBackupPath, scriptType)
+            otherdb_sql = "%s/%s_catalog_otherdb_tmp.sql" \
+                          % (self.context.upgradeBackupPath, scriptType)
+            if "upgrade" == scriptType:
+                check_upgrade_sql = \
+                    "%s/check_upgrade_tmp.sql" % self.context.upgradeBackupPath
+                if not os.path.isfile(check_upgrade_sql):
+                    raise Exception(
+                        ErrorCode.GAUSS_502["GAUSS_50210"] % check_upgrade_sql)
+                self.context.logger.debug("Scp {0} file to nodes {1}".format(
+                    check_upgrade_sql, dnNodeName))
+                g_OSlib.scpFile(dnNodeName, check_upgrade_sql,
+                                self.context.upgradeBackupPath)
+            if not os.path.isfile(maindb_sql):
+                raise Exception(ErrorCode.GAUSS_502["GAUSS_50210"] % maindb_sql)
+            if not os.path.isfile(otherdb_sql):
+                raise Exception(
+                    ErrorCode.GAUSS_502["GAUSS_50210"] % otherdb_sql)
+            g_OSlib.scpFile(dnNodeName, maindb_sql,
+                            self.context.upgradeBackupPath)
+            g_OSlib.scpFile(dnNodeName, otherdb_sql,
+                            self.context.upgradeBackupPath)
+            self.context.logger.debug(
+                "Scp {0} file and {1} file to nodes {2}".format(
+                    maindb_sql, otherdb_sql, dnNodeName))
+            # send cmd to that node and exec
+            cmd = "%s -t %s -U %s --upgrade_bak_path=%s --script_type=%s -l " \
+                  "%s" % (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+                   Const.ACTION_UPDATE_CATALOG,
+                   self.context.user,
+                   self.context.upgradeBackupPath,
+                   scriptType,
+                   self.context.localLog)
+            self.context.logger.debug(
+                "Command for executing {0} catalog.".format(scriptType))
+            DefaultValue.execCommandWithMode(cmd,
+                                             "{0} catalog".format(scriptType),
+                                             self.context.sshTool,
+                                             self.context.isSingle,
+                                             self.context.userProfile,
+                                             [dnNodeName])
+            self.context.logger.debug(
+                "Successfully {0} catalog.".format(scriptType))
+        except Exception as e:
+            self.context.logger.log("Failed to {0} catalog.".format(scriptType))
+            if not self.context.forceRollback:
+                raise Exception(str(e))
+
+    def pgxcNodeUpdateLocalhost(self, mode):
+        """
+        This function is used to modify the localhost of the system table
+        which pgxc_node
+        :param mode:
+        :return:
+        """
+        try:
+            if int(float(self.context.newClusterNumber) * 1000) < 92069 or \
+                    int(float(self.context.oldClusterNumber) * 1000) >= 92069:
+                return
+            if mode == "upgrade":
+                self.context.logger.debug("Update localhost in pgxc_node.")
+            else:
+                self.context.logger.debug("Rollback localhost in pgxc_node.")
+            for dbNode in self.context.clusterInfo.dbNodes:
+                for dn in dbNode.datanodes:
+                    sql = "START TRANSACTION;"
+                    sql += "SET %s = on;" % Const.ON_INPLACE_UPGRADE
+                    if mode == "upgrade":
+                        sql += "UPDATE PGXC_NODE SET node_host = '%s', " \
+                               "node_host1 = '%s' WHERE node_host = " \
+                               "'localhost'; " % (dn.listenIps[0],
+                                                  dn.listenIps[0])
+                    else:
+                        sql += "UPDATE PGXC_NODE SET node_host = " \
+                               "'localhost', node_host1 = 'localhost' WHERE" \
+                               " node_type = 'C' and node_host = '%s';" %\
+                               (dn.listenIps[0])
+                    sql += "COMMIT;"
+                    self.context.logger.debug("Current sql %s." % sql)
+                    (status, output) = ClusterCommand.remoteSQLCommand(
+                        sql, self.context.user, dn.hostname, dn.port,
+                        False, DefaultValue.DEFAULT_DB_NAME,
+                        IsInplaceUpgrade=True)
+                    if status != 0:
+                        if self.context.forceRollback:
+                            self.context.logger.debug("In forceRollback, "
+                                                      "roll back pgxc_node. "
+                                                      "%s " % str(output))
+                        else:
+                            raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"]
+                                            % sql + " Error: \n%s" %
+                                            str(output))
+            if mode == "upgrade":
+                self.context.logger.debug(
+                    "Success update localhost in pgxc_node.")
+            else:
+                self.context.logger.debug(
+                    "Success rollback localhost in pgxc_node.")
+        except Exception as e:
+            raise Exception(str(e))
+
+    def touchInitFile(self):
+        """
+        function: touch upgrade init file for every primary/standby and
+                  do pre-upgrade staffs
+        input : NA
+        output: NA
+        """
+        try:
+            if self.isLargeInplaceUpgrade:
+                self.context.logger.debug("Start to create upgrade init file.")
+                # send cmd to all node and exec
+                cmd = "%s -t %s -U %s --upgrade_bak_path=%s -l %s" % \
+                      (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+                       Const.ACTION_TOUCH_INIT_FILE,
+                       self.context.user,
+                       self.context.upgradeBackupPath,
+                       self.context.localLog)
+                DefaultValue.execCommandWithMode(cmd,
+                                                 "create upgrade init file",
+                                                 self.context.sshTool,
+                                                 self.context.isSingle,
+                                                 self.context.userProfile)
+                self.context.logger.debug(
+                    "Successfully created upgrade init file.")
+        except Exception as e:
+            raise Exception(str(e))
+
+    def prepareSql(self, mode="rollback"):
+        """
+        function : prepare 4 files: rollback_catalog_maindb_tmp.sql,
+                   rollback_catalog_otherdb_tmp.sql and upgrade file
+                  2.for each result file: filter all files and merge
+                  into the *_tmp.sql file
+
+        :param rollback: can be rollback or upgrade
+        """
+        try:
+            self.prepareSqlForDb(mode)
+            self.prepareSqlForDb(mode, "otherdb")
+            if mode == "upgrade":
+                self.prepareCheckSql()
+        except Exception as e:
+            raise Exception("Failed to prepare %s sql file failed. ERROR: %s"
+                            % (mode, str(e)))
+
+    def prepareSqlForDb(self, mode, dbType="maindb"):
+        self.context.logger.debug(
+            "Start to prepare {0} sql files for {1}.".format(mode, dbType))
+        header = self.getSqlHeader()
+        if "upgrade" in mode:
+            listName = "upgrade"
+        else:
+            listName = "rollback"
+        fileNameList = self.getFileNameList("{0}_catalog_{1}".format(
+            listName, dbType), mode)
+        if "rollback" in mode:
+            fileNameList.sort(reverse=True)
+        else:
+            fileNameList.sort()
+        fileName = "{0}_catalog_{1}_tmp.sql".format(mode, dbType)
+        self.context.logger.debug("The real file list for %s: %s" % (
+            dbType, fileNameList))
+        self.togetherFile(header, "{0}_catalog_{1}".format(listName, dbType),
+                          fileNameList, fileName)
+        self.context.logger.debug("Successfully prepared sql files for %s."
+                                  % dbType)
+
+    def prepareCheckSql(self):
+        header = ["START TRANSACTION;"]
+        fileNameList = self.getFileNameList("check_upgrade")
+        fileNameList.sort()
+        self.context.logger.debug("The real file list for checking upgrade: "
+                                  "%s" % fileNameList)
+        self.togetherFile(header, "check_upgrade", fileNameList,
+                          "check_upgrade_tmp.sql")
+
+    def togetherFile(self, header, filePathName, fileNameList, executeFileName):
+        writeFile = ""
+        try:
+            filePath = "%s/upgrade_sql/%s" % (self.context.upgradeBackupPath,
+                                              filePathName)
+            self.context.logger.debug("Preparing [%s]." % filePath)
+            writeFile = "%s/%s" % (self.context.upgradeBackupPath,
+                                   executeFileName)
+            g_file.createFile(writeFile)
+            g_file.writeFile(writeFile, header, 'w')
+
+            with open(writeFile, 'a') as sqlFile:
+                for each_file in fileNameList:
+                    each_file_with_path = "%s/%s" % (filePath, each_file)
+                    self.context.logger.debug("Handling file: %s" %
+                                              each_file_with_path)
+                    with open(each_file_with_path, 'r') as fp:
+                        for line in fp:
+                            sqlFile.write(line)
+                    sqlFile.write(os.linesep)
+            g_file.writeFile(writeFile, ["COMMIT;"], 'a')
+            self.context.logger.debug(
+                "Success to together {0} file".format(writeFile))
+            if not os.path.isfile(writeFile):
+                raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % writeFile)
+        except Exception as e:
+            raise Exception("Failed to write {0} sql file. ERROR: {1}".format(
+                writeFile, str(e)))
+
+    def modifyPgProcIndex(self):
+        """
+        1. 执行重建pg_proc index 的sql
+        2. make checkpoint
+        3. stop cluster
+        4. start cluster
+        :return:
+        """
+        self.context.logger.debug("Begin to modify pg_proc index.")
+        time.sleep(3)
+        database_list = self.getDatabaseList()
+        # 执行重建pg_proc index 的sql
+        sql = """START TRANSACTION;SET IsInplaceUpgrade = on;
+        drop index pg_proc_oid_index;SET LOCAL 
+        inplace_upgrade_next_system_object_oids=IUO_CATALOG,false,
+        true,0,0,0,2690;CREATE UNIQUE INDEX pg_proc_oid_index ON pg_proc 
+        USING btree (oid);SET LOCAL 
+        inplace_upgrade_next_system_object_oids=IUO_CATALOG,false,
+        true,0,0,0,0;commit;CHECKPOINT;"""
+        for eachdb in database_list:
+            (status, output) = ClusterCommand.remoteSQLCommand(
+                sql, self.context.user,
+                self.dnInst.hostname, self.dnInst.port, False,
+                eachdb, IsInplaceUpgrade=True)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
+                                " Error: \n%s" % str(output))
+        sql = """START TRANSACTION;SET IsInplaceUpgrade = on;
+        drop index pg_proc_proname_args_nsp_index;SET LOCAL 
+        inplace_upgrade_next_system_object_oids=IUO_CATALOG,false,
+        true,0,0,0,2691;create UNIQUE INDEX pg_proc_proname_args_nsp_index 
+        ON pg_proc USING btree (proname, proargtypes, pronamespace);SET 
+        LOCAL inplace_upgrade_next_system_object_oids=IUO_CATALOG,false,
+        true,0,0,0,0;commit;CHECKPOINT;"""
+        for eachdb in database_list:
+            (status, output) = ClusterCommand.remoteSQLCommand(
+                sql, self.context.user,
+                self.dnInst.hostname, self.dnInst.port, False,
+                eachdb, IsInplaceUpgrade=True)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
+                                " Error: \n%s" % str(output))
+        # stop cluster
+        self.stopCluster()
+        # start cluster
+        self.startCluster()
+        self.context.logger.debug("Successfully modified pg_proc index.")
 
     def setNewVersionGuc(self):
         """
@@ -1174,6 +2285,7 @@ class UpgradeImpl:
 
         try:
             self.checkStaticConfig()
+            self.startCluster()
             # Mark that we leave pre commit status,
             # so that if we fail at the first few steps,
             # we won't be allowed to commit upgrade any more.
@@ -1183,9 +2295,22 @@ class UpgradeImpl:
                     Const.BINARY_UPGRADE_STEP_START_NODE)
 
             if step >= Const.BINARY_UPGRADE_STEP_START_NODE:
+                # drop table and index after large upgrade
+                if self.isLargeInplaceUpgrade:
+                    if self.check_upgrade_mode():
+                        self.drop_table_or_index()
                 self.restoreClusterConfig(True)
                 self.switchBin(Const.OLD)
-                self.stopCluster()
+                if self.isLargeInplaceUpgrade:
+                    touchInitFlagFile = os.path.join(
+                        self.context.upgradeBackupPath, "touch_init_flag")
+                    if os.path.exists(touchInitFlagFile):
+                        self.rollbackCatalog()
+                        self.cleanCsvFile()
+                    else:
+                        self.setUpgradeMode(0)
+                else:
+                    self.stopCluster()
                 self.recordNodeStepInplace(
                     Const.ACTION_INPLACE_UPGRADE,
                     Const.BINARY_UPGRADE_STEP_UPGRADE_APP)
@@ -1198,6 +2323,7 @@ class UpgradeImpl:
                     Const.BINARY_UPGRADE_STEP_BACKUP_VERSION)
 
             if step >= Const.BINARY_UPGRADE_STEP_BACKUP_VERSION:
+                self.cleanBackupedCatalogPhysicalFiles(True)
                 self.recordNodeStepInplace(
                     Const.ACTION_INPLACE_UPGRADE,
                     Const.BINARY_UPGRADE_STEP_STOP_NODE)
@@ -1222,6 +2348,193 @@ class UpgradeImpl:
         self.context.logger.log("Rollback succeeded.")
         return True
 
+    def check_table_or_index_exist(self, name, eachdb):
+        """
+        check a table exist
+        :return:
+        """
+        sql = "select count(*) from pg_class where relname = '%s';" % name
+        (status, output) = ClusterCommand.remoteSQLCommand(
+            sql, self.context.user,
+            self.dnInst.hostname, self.dnInst.port, False,
+            eachdb, IsInplaceUpgrade=True)
+        if status != 0 or ClusterCommand.findErrorInSql(output):
+            raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
+                            " Error: \n%s" % str(output))
+        if output == '0':
+            self.context.logger.debug("Table does not exist.")
+            return False
+        self.context.logger.debug("Table exists.")
+        return True
+
+    def drop_table_or_index(self):
+        """
+        drop a table
+        :return:
+        """
+        self.context.logger.debug("Start to drop table or index")
+        database_list = self.getDatabaseList()
+        # drop table and index
+        maindb = "postgres"
+        otherdbs = database_list
+        otherdbs.remove("postgres")
+        # check table exist in postgres
+        table_name = 'pg_proc_temp_oids'
+        if self.check_table_or_index_exist(table_name, maindb):
+            self.drop_one_database_table_or_index([maindb])
+        else:
+            return
+        # drop other database table and index
+        self.drop_one_database_table_or_index(otherdbs)
+        self.context.logger.debug(
+            "Successfully droped table or index.")
+
+    def drop_one_database_table_or_index(self,
+                                         database_list):
+        """
+        drop a table in one database
+        :return:
+        """
+        table_name = 'pg_proc_temp_oids'
+        delete_table_sql = "START TRANSACTION;SET IsInplaceUpgrade = on;" \
+                           "drop table %s;commit;" % table_name
+        index_name_list = ['pg_proc_oid_index_temp',
+                           'pg_proc_proname_args_nsp_index_temp']
+        for eachdb in database_list:
+            if self.check_table_or_index_exist(table_name, eachdb):
+                (status, output) = ClusterCommand.remoteSQLCommand(
+                    delete_table_sql, self.context.user,
+                    self.dnInst.hostname, self.dnInst.port, False,
+                    eachdb, IsInplaceUpgrade=True)
+                if status != 0:
+                    raise Exception(
+                        ErrorCode.GAUSS_513["GAUSS_51300"] % delete_table_sql
+                        + " Error: \n%s" % str(output))
+            for index in index_name_list:
+                if self.check_table_or_index_exist(index, eachdb):
+                    sql = "START TRANSACTION;SET IsInplaceUpgrade = on;" \
+                          "drop index %s;commit;" % index
+                    (status, output) = ClusterCommand.remoteSQLCommand(
+                        sql, self.context.user,
+                        self.dnInst.hostname, self.dnInst.port, False,
+                        eachdb, IsInplaceUpgrade=True)
+                    if status != 0:
+                        raise Exception(
+                            ErrorCode.GAUSS_513[
+                                "GAUSS_51300"] % sql + " Error: \n%s" % str(
+                                output))
+
+    def rollbackCatalog(self):
+        """
+        function: rollback catalog change
+                  steps:
+                  1.prepare update sql file and check sql file
+                  2.do rollback catalog
+        input : NA
+        output: NA
+        """
+        try:
+            if self.context.action == Const.ACTION_INPLACE_UPGRADE and int(
+                    float(self.context.oldClusterNumber) * 1000) <= 93000:
+                raise Exception("For this old version %s, we only support "
+                                "physical rollback." % str(
+                    self.context.oldClusterNumber))
+            self.context.logger.log("Rollbacking catalog.")
+            self.prepareUpgradeSqlFolder()
+            self.prepareSql()
+            self.doRollbackCatalog()
+            self.context.logger.log("Successfully Rollbacked catalog.")
+        except Exception as e:
+            if self.context.action == Const.ACTION_INPLACE_UPGRADE:
+                self.context.logger.debug(
+                    "Failed to perform rollback operation by rolling "
+                    "back SQL files:\n%s" % str(e))
+                try:
+                    self.context.logger.debug("Try to recover again using "
+                                              "catalog physical files")
+                    self.doPhysicalRollbackCatalog()
+                except Exception as e:
+                    raise Exception(
+                        "Failed to rollback catalog. ERROR: %s" % str(e))
+            else:
+                raise Exception(
+                    "Failed to rollback catalog. ERROR: %s" % str(e))
+
+
+    def doRollbackCatalog(self):
+        """
+        function : rollback catalog change
+                   steps:
+                   stop cluster
+                   set upgrade_from param
+                   start cluster
+                   connect database and rollback catalog changes one by one
+                   stop cluster
+                   unset upgrade_from param
+        input : NA
+        output: NA
+        """
+        if self.context.action == Const.ACTION_INPLACE_UPGRADE:
+            self.startCluster()
+            self.setUpgradeMode(1)
+        else:
+            self.setUpgradeMode(2)
+        self.execRollbackUpgradedCatalog(scriptType="rollback")
+        self.pgxcNodeUpdateLocalhost("rollback")
+        if self.context.action == Const.ACTION_INPLACE_UPGRADE:
+            self.stopCluster()
+        self.setUpgradeMode(0)
+
+    def doPhysicalRollbackCatalog(self):
+        """
+        function : rollback catalog by restore physical files
+                   stop cluster
+                   unset upgrade_from param
+                   restore physical files
+        input : NA
+        output: NA
+        """
+        try:
+            self.startCluster()
+            self.setUpgradeMode(0)
+            self.stopCluster()
+            self.execPhysicalRollbackUpgradedCatalog()
+        except Exception as e:
+            raise Exception(str(e))
+
+    def execPhysicalRollbackUpgradedCatalog(self):
+        """
+        function : rollback catalog by restore physical files
+                   send cmd to all node
+        input : NA
+        output: NA
+        """
+        try:
+            if self.isLargeInplaceUpgrade:
+                self.context.logger.debug(
+                    "Start to restore physical catalog files.")
+                # send cmd to all node and exec
+                cmd = "%s -t %s -U %s --upgrade_bak_path=%s " \
+                      "--oldcluster_num='%s' -l %s" % \
+                      (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+                       Const.ACTION_RESTORE_OLD_CLUSTER_CATALOG_PHYSICAL_FILES,
+                       self.context.user,
+                       self.context.upgradeBackupPath,
+                       self.context.oldClusterNumber,
+                       self.context.localLog)
+                self.context.logger.debug(
+                    "Command for restoring physical catalog files: %s." % cmd)
+                DefaultValue.execCommandWithMode(
+                    cmd,
+                    "restore physical files of catalog objects",
+                    self.context.sshTool,
+                    self.context.isSingle,
+                    self.context.userProfile)
+                self.context.logger.debug(
+                    "Successfully restored physical catalog files.")
+        except Exception as e:
+            raise Exception(str(e))
+
     def getSqlHeader(self):
         """
         function: get sql header
@@ -1235,7 +2548,7 @@ class UpgradeImpl:
         header.append("SET local log_min_messages = NOTICE;")
         return header
 
-    def getFileNameList(self, filePathName):
+    def getFileNameList(self, filePathName, scriptType="_"):
         """
         function: get file name list
         input  : filePathName
@@ -1252,10 +2565,9 @@ class UpgradeImpl:
                 continue
             prefix = each_sql_file.split('.')[0]
             resList = prefix.split('_')
-            if len(resList) != 5:
+            if len(resList) != 5 or scriptType not in resList:
                 continue
             file_num = "%s.%s" % (resList[3], resList[4])
-
             if self.floatMoreThan(float(file_num),
                                   self.context.oldClusterNumber) and \
                     self.floatGreaterOrEqualTo(self.context.newClusterNumber,
@@ -1442,6 +2754,7 @@ class UpgradeImpl:
                 # newClusterNumber, the oldClusterInfo is same with new
                 try:
                     self.context.oldClusterInfo = self.context.clusterInfo
+                    self.getOneDNInst(True)
                     if os.path.isfile(commonDbClusterInfoModule) and \
                             os.path.isfile(commonStaticConfigFile):
                         # import old module
@@ -1540,6 +2853,9 @@ class UpgradeImpl:
                 # we will get the self.context.newClusterAppPath in
                 # choseStrategy
                 self.context.clusterInfo.initFromXml(self.context.xmlFile)
+                if self.context.is_inplace_upgrade or \
+                        self.context.action == Const.ACTION_AUTO_ROLLBACK:
+                    self.getOneDNInst()
                 self.context.logger.debug("Successfully init cluster config.")
             else:
                 raise Exception(ErrorCode.GAUSS_500["GAUSS_50004"] % 't' +
@@ -1547,6 +2863,75 @@ class UpgradeImpl:
         except Exception as e:
             self.context.logger.debug(traceback.format_exc())
             self.exitWithRetCode(self.context.action, False, str(e))
+
+    def getOneDNInst(self, checkNormal=False):
+        """
+        function: find a dn instance by dbNodes,
+                  which we can execute SQL commands
+        input : NA
+        output: DN instance
+        """
+        try:
+            self.context.logger.debug(
+                "Get one DN. CheckNormal is %s" % checkNormal)
+            dnInst = None
+            clusterNodes = self.context.oldClusterInfo.dbNodes
+            primaryDnNode, output = DefaultValue.getPrimaryNode(
+                self.context.userProfile)
+            self.context.logger.debug(
+                "Cluster status information is %s;The primaryDnNode is %s" % (
+                    output, primaryDnNode))
+            for dbNode in clusterNodes:
+                if len(dbNode.datanodes) == 0:
+                    continue
+                dnInst = dbNode.datanodes[0]
+                if dnInst.hostname not in primaryDnNode:
+                    continue
+                break
+
+            if checkNormal:
+                (checkStatus, checkResult) = OMCommand.doCheckStaus(
+                    self.context.user, 0)
+                if checkStatus == 0:
+                    self.context.logger.debug("The cluster status is normal,"
+                                              " no need to check dn status.")
+                else:
+                    clusterStatus = \
+                        OMCommand.getClusterStatus(self.context.user)
+                    if clusterStatus is None:
+                        raise Exception(ErrorCode.GAUSS_516["GAUSS_51600"])
+                    clusterInfo = dbClusterInfo()
+                    clusterInfo.initFromXml(self.context.xmlFile)
+                    clusterInfo.dbNodes.extend(clusterNodes)
+                    for dbNode in clusterInfo.dbNodes:
+                        if len(dbNode.datanodes) == 0:
+                            continue
+                        dn = dbNode.datanodes[0]
+                        if dn.hostname not in primaryDnNode:
+                            continue
+                        dbInst = clusterStatus.getInstanceStatusById(
+                            dn.instanceId)
+                        if dbInst is None:
+                            continue
+                        if dbInst.status == "Normal":
+                            self.context.logger.debug(
+                                "DN from %s is healthy." % dn.hostname)
+                            dnInst = dn
+                            break
+                        self.context.logger.debug(
+                            "DN from %s is unhealthy." % dn.hostname)
+
+            # check if contain DN on nodes
+            if not dnInst or dnInst == []:
+                raise Exception(ErrorCode.GAUSS_526["GAUSS_52602"])
+            else:
+                self.context.logger.debug("Successfully get one DN from %s."
+                                          % dnInst.hostname)
+                self.dnInst = dnInst
+
+        except Exception as e:
+            self.context.logger.log("Failed to get one DN. Error: %s" % str(e))
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51624"])
 
     def verifyClusterConfigInfo(self, clusterInfo, oldClusterInfo,
                                 ignoreFlag="upgradectl"):
@@ -1838,11 +3223,65 @@ class UpgradeImpl:
             self.backupHotpatch()
             # backup version file.
             self.backup_version_file()
+
+            if not self.isLargeInplaceUpgrade:
+                return
+            # backup catalog data files if needed
+            self.backupCatalogFiles()
+
+            # backup DS libs and gds file
+            cmd = "%s -t %s -U %s --upgrade_bak_path=%s -l %s" % \
+                  (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+                   Const.ACTION_INPLACE_BACKUP,
+                   self.context.user,
+                   self.context.upgradeBackupPath,
+                   self.context.localLog)
+            self.context.logger.debug(
+                "Command for backing up gds file: %s" % cmd)
+            DefaultValue.execCommandWithMode(cmd,
+                                             "backup DS libs and gds file",
+                                             self.context.sshTool,
+                                             self.context.isSingle,
+                                             self.context.userProfile)
         except Exception as e:
             raise Exception(str(e))
 
         self.context.logger.log("Successfully backed up cluster "
                                 "configuration.", "constant")
+
+    def backupCatalogFiles(self):
+        """
+        function: backup  physical files of catalg objects
+                  1.check if is inplace upgrade
+                  2.get database list
+                  3.get catalog objects list
+                  4.backup physical files for each database
+                  5.backup global folder
+        input : NA
+        output: NA
+        """
+        try:
+            # send cmd to all node and exec
+            cmd = "%s -t %s -U %s --upgrade_bak_path=%s " \
+                  "--oldcluster_num='%s' -l %s" % \
+                  (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+                   Const.ACTION_BACKUP_OLD_CLUSTER_CATALOG_PHYSICAL_FILES,
+                   self.context.user,
+                   self.context.upgradeBackupPath,
+                   self.context.oldClusterNumber,
+                   self.context.localLog)
+            self.context.logger.debug("Command for backing up physical files "
+                                      "of catalg objects: %s" % cmd)
+            DefaultValue.execCommandWithMode(
+                cmd,
+                "backup  physical files of catalg objects",
+                self.context.sshTool,
+                self.context.isSingle,
+                self.context.userProfile)
+            self.context.logger.debug("Successfully backed up catalog "
+                                      "physical files for old cluster.")
+        except Exception as e:
+            raise Exception(str(e))
 
     def syncNewGUC(self):
         """
@@ -2010,14 +3449,16 @@ class UpgradeImpl:
             else:
                 # restore static configuration
                 cmd = "%s -t %s -U %s -V %d --upgrade_bak_path=%s " \
-                      "--new_cluster_app_path=%s -l %s" % \
-                      (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                       Const.ACTION_RESTORE_CONFIG,
-                       self.context.user,
-                       int(float(self.context.oldClusterNumber) * 1000),
-                       self.context.upgradeBackupPath,
-                       self.context.newClusterAppPath,
-                       self.context.localLog)
+                      "--old_cluster_app_path=%s --new_cluster_app_path=%s " \
+                      "-l %s" % (
+                    OMCommand.getLocalScript("Local_Upgrade_Utility"),
+                    Const.ACTION_RESTORE_CONFIG,
+                    self.context.user,
+                    int(float(self.context.oldClusterNumber) * 1000),
+                    self.context.upgradeBackupPath,
+                    self.context.oldClusterAppPath,
+                    self.context.newClusterAppPath,
+                    self.context.localLog)
 
                 self.context.logger.debug("Command for restoring "
                                           "config files: %s" % cmd)
@@ -2026,6 +3467,22 @@ class UpgradeImpl:
                                                  self.context.sshTool,
                                                  self.context.isSingle,
                                                  self.context.mpprcFile)
+                if self.isLargeInplaceUpgrade:
+                    # backup DS libs and gds file
+                    cmd = "%s -t %s -U %s --upgrade_bak_path=%s -l %s" % \
+                          (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+                           Const.ACTION_INPLACE_BACKUP,
+                           self.context.user,
+                           self.context.upgradeBackupPath,
+                           self.context.localLog)
+                    self.context.logger.debug(
+                        "Command for restoreing DS libs and gds file: %s" % cmd)
+                    DefaultValue.execCommandWithMode(
+                        cmd,
+                        "restore DS libs and gds file",
+                        self.context.sshTool,
+                        self.context.isSingle,
+                        self.context.userProfile)
                 # change the owner of application
                 cmd = "chown -R %s:%s '%s'" % \
                       (self.context.user, self.context.group,
@@ -2222,9 +3679,12 @@ class UpgradeImpl:
                    (self.context.tmpDir, Const.CLUSTER_CNSCONF_FILE,
                     self.context.tmpDir, Const.CLUSTER_CNSCONF_FILE)
             cmd += "(rm -f '%s'/gauss_crontab_file_*) &&" % self.context.tmpDir
-            cmd += "(if [ -d '%s' ]; then rm -rf '%s'; fi) " % \
-                  (self.context.upgradeBackupPath,
-                   self.context.upgradeBackupPath)
+            cmd += "(if [ -d '%s' ]; then rm -rf '%s'; fi) &&" % \
+                   (self.context.upgradeBackupPath,
+                    self.context.upgradeBackupPath)
+            cmd += "(if [ -f '%s/pg_proc_mapping.txt' ]; then rm -f" \
+                   " '%s/pg_proc_mapping.txt'; fi)" % \
+                   (self.context.tmpDir, self.context.tmpDir)
             self.context.logger.debug("Command for clean "
                                       "backup files: %s" % cmd)
             DefaultValue.execCommandWithMode(cmd,

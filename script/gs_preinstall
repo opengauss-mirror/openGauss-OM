@@ -71,7 +71,7 @@ Usage:
     gs_preinstall -V | --version
     gs_preinstall -U USER -G GROUP -X XMLFILE
       [-L]  [--skip-os-set] [--env-var="ENVVAR" [...]]
-      [--sep-env-file=MPPRCFILE] [--skip-hostname-set] [-l LOGFILE]
+      [--sep-env-file=ENVFILE] [--skip-hostname-set] [-l LOGFILE]
       [--non-interactive]
 
 General options:
@@ -83,7 +83,7 @@ General options:
         --skip-os-set                  Whether to skip OS parameter setting.
                                        (The default value is set.)
         --env-var="ENVVAR"             OS user environment variables.
-        --sep-env-file=MPPRCFILE       Path of the MPP environment file.
+        --sep-env-file=ENVFILE       Path of the MPP environment file.
         --skip-hostname-set            Whether to skip hostname setting.
                                        (The default value is set.)
     -l                                 Path of log file.

@@ -224,7 +224,11 @@ General options:
             if (self.hostList == []):
                 GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
                                     % 'f' + " It cannot be empty.")
-
+        else:
+            for temp_host in self.hostList:
+                if not DefaultValue.isIpValid(temp_host):
+                    GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"]
+                                       % temp_host)
         # check logfile
         if (self.logFile != ""):
             if (not os.path.isabs(self.logFile)):

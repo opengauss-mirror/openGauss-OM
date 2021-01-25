@@ -34,8 +34,8 @@ class CheckDiskConfig(BaseItem):
             diskInfo = disk.split()
             DiskInfoDict[diskInfo[0]] = disk
         keys = DiskInfoDict.keys()
-        sorted(keys)
-        for diskName in keys:
+        sortedKeys = sorted(keys)
+        for diskName in sortedKeys:
             ResultStr += "%s\n" % DiskInfoDict[diskName]
         self.result.val = ResultStr
         self.result.rst = ResultStatus.OK

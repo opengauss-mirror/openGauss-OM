@@ -39,7 +39,7 @@ class CheckEtcHosts(BaseItem):
             if (not eachLine.startswith('#') and '::' not in eachLine):
                 mappingInfo = " ".join(eachLine.split())
                 IpList.append(mappingInfo)
-        sorted(IpList)
+        IpList.sort()
         self.result.raw = "\n".join(IpList)
 
         # Check localhost Mapping

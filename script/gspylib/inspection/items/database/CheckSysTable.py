@@ -122,7 +122,7 @@ class CheckSysTable(BaseItem):
         for result in results:
             if (result):
                 outputList.append(result)
-        sorted(outputList)
+        outputList.sort()
         return outputList
 
     def doCheck(self):

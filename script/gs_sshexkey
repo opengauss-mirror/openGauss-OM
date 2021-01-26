@@ -549,7 +549,7 @@ General options:
         """
         writeResult = []
         result = {}
-        tmpHostIpName = "./tmp_hostsiphostname_%d" % os.getpid()
+        tmpHostIpName = "./tmp_hostsiphostname_%d_%s" % (os.getpid(), ip)
         username = pwd.getpwuid(os.getuid()).pw_name
         global ipHostInfo
         try:
@@ -586,8 +586,9 @@ General options:
                         hostname = info.split(" ")[0]
                         if hostname not in ipHosts:
                             tmpIpHostInfo += info + "\n"
-                    ipHostInfo = tmpIpHostInfo
-                cmd = "echo '%s' >> /etc/hosts" % (ipHostInfo)
+                    cmd = "echo '%s' >> /etc/hosts" % tmpIpHostInfo        
+                else:
+                    cmd = "echo '%s' >> /etc/hosts" % ipHostInfo
                 channel = ssh.open_session()
                 channel.exec_command(cmd)
                 errInfo = channel.recv_stderr(9999).decode().strip()

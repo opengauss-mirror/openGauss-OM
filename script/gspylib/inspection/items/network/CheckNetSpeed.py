@@ -20,13 +20,11 @@ import subprocess
 import _thread as thread
 import time
 import psutil
-import platform
 import multiprocessing
 from multiprocessing.pool import ThreadPool
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsOSlib import g_OSlib
 from gspylib.os.gsnetwork import g_network
 from gspylib.common.ErrorCode import ErrorCode
 
@@ -185,31 +183,18 @@ class CheckNetSpeed(BaseItem):
     def doClean(self):
         currentUser = pwd.getpwuid(os.getuid())[0]
         while True:
-            g_OSlib.killallProcess(currentUser, 'speed_test', '9')
-            ProcList = g_OSlib.getProcPidList('speed_test')
-            if (len(ProcList) == 0):
+            cmd = "ps -ef|grep speed_test|grep %s|grep -v grep|" \
+                  "awk '{print $2}'|xargs kill -9" % currentUser
+            (status, _) = subprocess.getstatusoutput(cmd)
+            if (status == 0):
                 break
             time.sleep(1)
         return
-
-    def getTestFile(self):
-        machine = platform.machine()
-        testSpeedFile = "%s/lib/checknetspeed/speed_test" \
-                        % self.context.basePath
-        if machine == "x86_64":
-            cmd = "cp -p %s_x86 %s" % (testSpeedFile, testSpeedFile)
-        # debian: deepin    Maipo: NOE Kylin
-        elif machine == "aarch64":
-            cmd = "cp -p %s_arm %s" % (testSpeedFile, testSpeedFile)
-        else:
-            raise Exception(ErrorCode.GAUSS_530["GAUSS_53017"] % machine)
-        SharedFuncs.runShellCmd(cmd)
 
     def doCheck(self):
         global errorMsg
         global serviceIP
         global MaxDelayFailFlag
-        self.getTestFile()
         serviceIP = SharedFuncs.getIpByHostName(self.host)
         for network in g_network.getAllNetworkInfo():
             if (network.ipAddress == serviceIP):

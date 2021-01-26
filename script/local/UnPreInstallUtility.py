@@ -117,7 +117,8 @@ class Postuninstall(LocalBaseOM):
 
         elif self.action != ACTION_CLEAN_DEPENDENCY:
             try:
-                self.clusterToolPath = DefaultValue.getClusterToolPath()
+                self.clusterToolPath = DefaultValue.getClusterToolPath(
+                    self.user)
             except Exception as e:
                 self.logger.logExit(
                     ErrorCode.GAUSS_502["GAUSS_50219"] %

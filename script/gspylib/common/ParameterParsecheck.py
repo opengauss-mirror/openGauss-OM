@@ -79,7 +79,7 @@ gs_check = ["-?", "--help", "-V", "--version", "-e:", "-i:",
             "--ShrinkNodes=", "--nodegroup-name=",
             "--skip-root-items", "--set"]
 gs_sshexkey = ["-?", "--help", "-V", "--version",
-               "-f:", "--skip-hostname-set", "-l:", "-h:", "-W:"]
+               "-f:", "--skip-hostname-set", "-l:", "-h:", "-W:", "--no-deduplicate"]
 gs_backup = ["-?", "--help", "-V", "--version", "--backup-dir=",
              "--parameter", "--force",
              "--binary", "--all", "-l:", "-h:", "-t:", "-X:"]
@@ -348,6 +348,7 @@ class Parameter():
                            "--non-interactive": "preMode",
                            "--skip-os-set": "skipOSSet",
                            "--skip-hostname-set": "skipHostnameSet",
+                           "--no-deduplicate": "noDeduplicate",
                            "--reset": "reset",
                            "--parameter": "isParameter",
                            "--binary": "isBinary",

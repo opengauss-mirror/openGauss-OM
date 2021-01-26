@@ -118,7 +118,6 @@ class InstallImplOLAP(InstallImpl):
         """
         self.context.cleanNodeConfig()
         self.checkNodeConfig()
-        self.distributeEncryptFiles()
 
     def checkNodeConfig(self):
         """
@@ -175,22 +174,6 @@ class InstallImplOLAP(InstallImpl):
                                          self.context.isSingle)
         self.context.logger.debug("Successfully checked node's installation.",
                                   "constant")
-
-    def distributeEncryptFiles(self):
-        """
-        function: distribute encrypt files
-        input: NA
-        output: NA
-        """
-        # distribute encrypt files to remote host
-        # get local hostname
-        localHostName = DefaultValue.GetHostIpOrName()
-        # get all node names
-        hostList = self.context.clusterInfo.getClusterNodeNames()
-        # remove the local hostname from hostList
-        hostList.remove(localHostName)
-        DefaultValue.distributeEncryptFiles(self.context.clusterInfo.appPath,
-                                            hostList)
 
     def initNodeInstance(self):
         """

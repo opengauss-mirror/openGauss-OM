@@ -72,6 +72,8 @@ ACTION_CHECK_ENVFILE = "check_envfile"
 ACTION_CHECK_DIR_OWNER = "check_dir_owner"
 # check os software
 ACTION_CHECK_OS_SOFTWARE = "check_os_software"
+# change tool env
+ACTION_CHANGE_TOOL_ENV = "change_tool_env"
 #############################################################################
 # Global variables
 #   self.context.logger: globle logger
@@ -898,6 +900,30 @@ class PreinstallImpl:
 
         self.context.logger.log(
             "Successfully installed the tools in the cluster.", "constant")
+
+    def changeToolEnv(self):
+        """
+        function:
+          change software tool env path
+        input:NA
+        output:NA
+        """
+        try:
+            # Change software tool env path
+            cmd = "%s -t %s -u %s -l %s -X '%s' -Q %s" % (
+                OMCommand.getLocalScript("Local_PreInstall"),
+                ACTION_CHANGE_TOOL_ENV,
+                self.context.user,
+                self.context.localLog,
+                self.context.xmlFile,
+                self.context.clusterToolPath)
+            if self.context.mpprcFile == "":
+                DefaultValue.execCommandWithMode(
+                    cmd,
+                    "change software tool env path",
+                    self.context.sshTool)
+        except Exception as e:
+            raise Exception(str(e))
 
     def checkMappingForHostName(self):
         """
@@ -1856,6 +1882,8 @@ class PreinstallImpl:
         self.checkMappingForHostName()
         # exchage user key for common user
         self.createTrustForCommonUser()
+        # change tool env path
+        self.changeToolEnv()
         # delete tmp file
         self.deleteStepTmpFile()
         # the end of functions which do not use in in local mode

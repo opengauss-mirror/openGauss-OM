@@ -79,7 +79,7 @@ class PostUninstallImpl:
         try:
             self.logger.log("Check log file path.", "addStep")
             # get tool path
-            clusterPath.append(DefaultValue.getClusterToolPath())
+            clusterPath.append(DefaultValue.getClusterToolPath(self.user))
 
             # get tmp path
             tmpDir = DefaultValue.getTmpDir(self.user, self.xmlFile)
@@ -109,6 +109,8 @@ class PostUninstallImpl:
         """
         self.logger.debug("Do clean Environment.", "addStep")
         try:
+            # set GPHOME env
+            self.setOrCleanGphomeEnv()
             # check uninstall
             self.checkUnPreInstall()
             # clean app/log/data/temp dirs
@@ -126,6 +128,18 @@ class PostUninstallImpl:
         except Exception as e:
             self.logger.logExit(str(e))
         self.logger.debug("Do clean Environment succeeded.", "constant")
+
+    def setOrCleanGphomeEnv(self, setGphomeenv=True):
+        osProfile = "/etc/profile"
+        if setGphomeenv:
+            GphomePath = DefaultValue.getPreClusterToolPath(self.user,
+                                                            self.xmlFile)
+            # set GPHOME
+            g_file.writeFile(osProfile, ["export GPHOME=%s" % GphomePath])
+        else:
+            g_file.deleteLine(osProfile, "^\\s*export\\s*GPHOME=.*$")
+            self.logger.debug(
+                "Deleting crash GPHOME in user environment variables.")
 
     def checkUnPreInstall(self):
         """
@@ -221,7 +235,7 @@ class PostUninstallImpl:
                                          self.mpprcFile)
 
         # clean upgrade temp backup path
-        cmd = "rm -rf '%s'" % DefaultValue.getBackupDir("upgrade")
+        cmd = "rm -rf '%s'" % DefaultValue.getBackupDir(self.user, "upgrade")
         self.logger.debug(
             "Command for deleting the upgrade temp backup path: %s" % cmd)
         DefaultValue.execCommandWithMode(cmd,
@@ -360,7 +374,7 @@ class PostUninstallImpl:
             cmd = "rm -rf '%s/%s'; rm -rf /tmp/gauss_*;" % (
                 self.clusterInfo.logPath, self.user)
             cmd += "rm -rf '%s/Python-2.7.9'" \
-                   % DefaultValue.getClusterToolPath()
+                   % DefaultValue.getClusterToolPath(self.user)
             self.logger.debug(
                 "Command for deleting logs of other nodes: %s" % cmd)
             DefaultValue.execCommandWithMode(cmd,
@@ -388,7 +402,7 @@ class PostUninstallImpl:
             "Deleting software packages "
             "and environmental variables of the local node.")
         try:
-            self.clusterToolPath = DefaultValue.getClusterToolPath()
+            self.clusterToolPath = DefaultValue.getClusterToolPath(self.user)
 
             # clean local node environment software
             path = "%s/%s" % (self.clusterToolPath, PSSHDIR)
@@ -424,35 +438,15 @@ class PostUninstallImpl:
 
             # clean local node environment variable
             cmd = "(if [ -s '%s' ]; then " % PROFILE_FILE
-            cmd += "sed -i -e '/^export GPHOME=%s$/d' %s " % (
-                self.clusterToolPath.replace('/', '\/'), PROFILE_FILE)
-            cmd += \
-                "-e '/^export PATH=\$GPHOME\/pssh-2.3.1\/bin:" \
-                "\$GPHOME\/script:\$PATH$/d' %s " % PROFILE_FILE
-            cmd += \
-                "-e '/^export PATH=\$GPHOME\/script\/gspylib\/pssh\/bin:" \
-                "\$GPHOME\/script:\$PATH$/d' %s " % PROFILE_FILE
-            cmd += \
-                "-e '/^export LD_LIBRARY_PATH=\$GPHOME\/script" \
-                "\/gspylib\/clib:\$LD_LIBRARY_PATH$/d' %s " % PROFILE_FILE
-            cmd += \
-                "-e '/^export LD_LIBRARY_PATH=\$GPHOME\/lib:" \
-                "\$LD_LIBRARY_PATH$/d' %s " % PROFILE_FILE
-            cmd += \
-                "-e '/^export PATH=\/root\/gauss_om\/%s\/script:" \
-                "\$PATH$/d' %s " % (self.user, PROFILE_FILE)
-            cmd += \
-                "-e '/^export PYTHONPATH=\$GPHOME\/lib$/d' %s; fi) " \
-                % PROFILE_FILE
+            cmd += "sed -i -e '/^export PATH=\/root\/gauss_om\/%s\/script:" \
+                   "\$PATH$/d' %s; fi)" % (self.user, PROFILE_FILE)
             self.logger.debug(
                 "Command for deleting environment variable: %s" % cmd)
             (status, output) = subprocess.getstatusoutput(cmd)
             if (status != 0):
-                self.logger.logExit(
-                    ErrorCode.GAUSS_502["GAUSS_50207"]
-                    % "environment variables of the local node"
-                    + " Error: \n%s" % output)
-
+                self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50207"] %
+                                    "environment variables of the local node"
+                                    + " Error: \n%s" % output)
             # check if user profile exist
             userProfile = ""
             if (self.mpprcFile is not None and self.mpprcFile != ""):
@@ -780,6 +774,7 @@ class PostUninstallImpl:
             self.cleanLocalLog()
             self.cleanMpprcFile()
             self.cleanScript()
+            self.setOrCleanGphomeEnv(setGphomeenv=False)
             self.logger.log("Successfully cleaned environment.")
         except Exception as e:
             self.logger.logExit(str(e))

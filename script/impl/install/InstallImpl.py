@@ -415,12 +415,6 @@ class InstallImpl:
         """
         pass
 
-    def distributeEncryptFiles(self):
-        """
-        function: distribute encrypt files
-        """
-        pass
-
     # for ap
     def prepareConfigCluster(self):
         """

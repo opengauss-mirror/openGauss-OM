@@ -23,6 +23,7 @@ import os
 import sys
 import platform
 import math
+import pwd
 
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
@@ -576,7 +577,8 @@ class CheckInstall(LocalBaseOM):
                     raise Exception(
                         ErrorCode.GAUSS_502["GAUSS_50201"] % userProfile)
             else:
-                userProfile = "/etc/profile"
+                userpath = pwd.getpwnam(self.user).pw_dir
+                userProfile = os.path.join(userpath, ".bashrc")
             reEnvList = g_file.readFile(userProfile)
             checkList = [
                 "export PATH=$GPHOME/script/gspylib/pssh/bin:$GPHOME/script"

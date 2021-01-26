@@ -724,8 +724,8 @@ def setLocalReservedPort():
                         portList.append(etcd.haPort)
         if 20050 not in portList:
             portList.append(20050)
-        sorted(portList)
-        for port in portList:
+        sortedPortList = sorted(portList)
+        for port in sortedPortList:
             localPortList = []
             nport = port
             while nport <= port + 7:

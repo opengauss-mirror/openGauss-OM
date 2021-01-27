@@ -61,6 +61,8 @@ class Expansion(ParallelBaseOM):
         self.newHostList = []
         self.clusterInfoDict = {}
         self.backIpNameMap = {}
+        self.newHostCasRoleMap = {}
+        self.hostAzNameMap = {}
         self.packagepath = os.path.realpath(
                     os.path.join(os.path.realpath(__file__), "../../"))
 
@@ -147,12 +149,6 @@ General options:
         clusterDict = clusterInfo.getClusterDirectorys()
         backIpList = clusterInfo.getClusterBackIps()
         nodeNameList = clusterInfo.getClusterNodeNames()
-
-        # only support single az now.
-        azNames = clusterInfo.getazNames()
-        self.azName = "AZ1"
-        if len(azNames) > 0:
-            self.azName = azNames[0]
         
         self.localIp = backIpList[0]
         self.nodeNameList = nodeNameList
@@ -206,8 +202,17 @@ General options:
             hostName = clusterInfo.getHostNameByNodeId(id)
             clusterInfoDict[hostName]["instanceType"] = insType
         self.clusterInfoDict = clusterInfoDict
+
+        # get cascadeRole of newHost
+        for nodeid in self.newHostList:
+            for dbnode in clusterInfo.dbNodes:
+                if nodeid == dbnode.backIps[0]:
+                    self.newHostCasRoleMap[nodeid] = dbnode.cascadeRole
         
-	
+        # 获取host对应的azname
+        for dbnode in clusterInfo.dbNodes:
+            self.hostAzNameMap[dbnode.backIps[0]] = dbnode.azName
+        
     def initLogs(self):
         """
         init log file

@@ -88,14 +88,27 @@ class Kernel(BaseComponent):
             cmd += " -t %s" % time_out
         if security_mode == "on":
             cmd += " -o \'--securitymode\'"
+        configFile = "%s/postgresql.conf" % self.instInfo.datadir
+        output = g_file.readFile(configFile, "logging_collector")
+        value = None
+        for line in output:
+            line = line.split('#')[0].strip()
+            if line.find('logging_collector') >= 0 and line.find('=') > 0:
+                value = line.split('=')[1].strip()
+                break
+        if value == "off":
+            cmd += " >/dev/null 2>&1"
         self.logger.debug("start cmd = %s" % cmd)
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0 or re.search("start failed", output):
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51607"] % "instance"
                             + " Error: Please check the gs_ctl log for "
                               "failure details." + "\n" + output)
-        if re.search("another server might be running", output):
-            self.logger.log(output)
+        if value == "off":
+            output = "[BACKEND] WARNING: The parameter logging_collector is " \
+                     "set to off. The log will not be recorded to file. " \
+                     "Please check any error manually."
+        self.logger.log(output)
 
     def stop(self, stopMode="", time_out=300):
         """

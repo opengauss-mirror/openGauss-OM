@@ -1085,7 +1085,7 @@ class dbNodeInfo():
         elif (instRole == INSTANCE_ROLE_DATANODE):
             dbInst.port = self.__assignNewInstancePort(self.datanodes,
                                                        instRole, instanceType)
-            dbInst.haPort = dbInst.port + 1
+            dbInst.haPort = dbInst.port + 7
             dbInst.ssdDir = ssddir
             dbInst.syncNum = syncNum
             self.datanodes.append(dbInst)
@@ -3441,6 +3441,7 @@ class dbClusterInfo():
         input : []
         output : NA
         """
+        # port range from +1 to +7, here define haPort = dataportBase+7
         for dbNode in self.dbNodes:
             i = 0
             for dbInst in dbNode.datanodes:
@@ -3448,11 +3449,11 @@ class dbClusterInfo():
                     dbInst.port = dbNode.masterBasePorts[
                                       INSTANCE_ROLE_DATANODE] + i * \
                                   PORT_STEP_SIZE
-                    dbInst.haPort = dbInst.port + 1
+                    dbInst.haPort = dbInst.port + 7
                     peerInsts = self.__getPeerInstance(dbInst)
                     for j in range(len(peerInsts)):
                         peerInsts[j].port = dbInst.port
-                        peerInsts[j].haPort = peerInsts[j].port + 1
+                        peerInsts[j].haPort = peerInsts[j].port + 7
                     i += 1
             # flush CMSERVER instance port
             i = 0

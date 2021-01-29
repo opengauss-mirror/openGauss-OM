@@ -1133,10 +1133,11 @@ class ErrorCode():
                        " at the primary node. \n ",
         "GAUSS_35805": "[GAUSS-35805] Input %s. Operation aborted. ",
         "GAUSS_35806": "[GAUSS-35806] Current status of cluster is %s .\n"
-                       "It doesn't meet the requirement.! ",
+                       "It doesn't meet the requirement! ",
         "GAUSS_35807": "[GAUSS-35807] The host %s which still exist in the "
                        "cluster can't be connected.\n"
-                       "It doesn't meet the requirement! ",
+                       "It doesn't meet the requirement!\nPlease add it to the "
+                       "list of hosts to be dropped if it is a target host.",
         "GAUSS_35808": "[GAUSS-35808] The %s is running switchover/failover!\n"
                        "The dropnode operation can only be executed when there is"
                        " no such operation!",

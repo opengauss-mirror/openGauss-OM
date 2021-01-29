@@ -48,7 +48,7 @@ class UninstallImpl:
         clusterPath = []
         try:
             # get tool path
-            clusterPath.append(DefaultValue.getClusterToolPath())
+            clusterPath.append(DefaultValue.getClusterToolPath(self.user))
             # get tmp path
             tmpDir = DefaultValue.getTmpDirFromEnv()
             clusterPath.append(tmpDir)
@@ -179,7 +179,7 @@ class UninstallImpl:
                                          self.mpprcFile)
 
         # clean upgrade temp backup path
-        upgrade_bak_dir = DefaultValue.getBackupDir("upgrade")
+        upgrade_bak_dir = DefaultValue.getBackupDir(self.user, "upgrade")
         cmd = g_file.SHELL_CMD_DICT["cleanDir"] % (
             upgrade_bak_dir, upgrade_bak_dir, upgrade_bak_dir)
         DefaultValue.execCommandWithMode(cmd,

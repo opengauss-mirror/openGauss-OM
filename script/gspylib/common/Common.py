@@ -1259,7 +1259,7 @@ class DefaultValue():
                 raise Exception(ErrorCode.GAUSS_503["GAUSS_50307"])
 
     @staticmethod
-    def getClusterToolPath():
+    def getClusterToolPath(user):
         """
         function : Get the value of cluster's tool path.
                    The value can't be None or null
@@ -1269,7 +1269,8 @@ class DefaultValue():
         mpprcFile = DefaultValue.getEnv(DefaultValue.MPPRC_FILE_ENV)
         echoEnvCmd = "echo $%s" % DefaultValue.TOOL_PATH_ENV
         if not mpprcFile:
-            mpprcFile = "/etc/profile"
+            userpath = pwd.getpwnam(user).pw_dir
+            mpprcFile = os.path.join(userpath, ".bashrc")
         cmd = g_Platform.getExecuteCmdWithUserProfile("", mpprcFile,
                                                       echoEnvCmd)
         (status, output) = subprocess.getstatusoutput(cmd)
@@ -1390,13 +1391,13 @@ class DefaultValue():
         return os.path.realpath(path)
 
     @staticmethod
-    def getBackupDir(subDir=""):
+    def getBackupDir(user, subDir=""):
         """
         function : Get the cluster's default backup directory for upgrade
         input : String
         output : String
         """
-        bakDir = "%s/backup" % DefaultValue.getClusterToolPath()
+        bakDir = "%s/backup" % DefaultValue.getClusterToolPath(user)
         if (subDir != ""):
             bakDir = os.path.join(bakDir, subDir)
 
@@ -2110,46 +2111,6 @@ class DefaultValue():
             fp.close()
         if (os.path.exists(path)):
             os.remove(path)
-
-    @staticmethod
-    def distributeEncryptFiles(appPath, hostList):
-        """
-        function : distribute encrypted files of server.key.cipher
-        and server.key.rand to remote host
-        input : String,[]
-        output : NA
-        """
-        # init encrypt file
-        binPath = "%s/bin" % appPath
-        encryptFile1 = "%s/server.key.cipher" % binPath
-        encryptFile2 = "%s/server.key.rand" % binPath
-        if (not os.path.exists(encryptFile1) or not os.path.exists(
-                encryptFile2)):
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] %
-                            "encrypt files" + " Please check it.")
-        # get user and group
-        (user, group) = g_OSlib.getPathOwner(appPath)
-        if (user == "" or group == ""):
-            raise Exception(ErrorCode.GAUSS_503["GAUSS_50308"] + ".")
-
-        # copy encrypt file to host
-        for host in hostList:
-            targetPath = "'%s'/" % binPath
-            g_OSlib.scpFile(host, encryptFile1, targetPath)
-            g_OSlib.scpFile(host, encryptFile2, targetPath)
-
-            chownCmd1 = g_Platform.getChownCmd(user, group, encryptFile1)
-            chownCmd2 = g_Platform.getChownCmd(user, group, encryptFile2)
-            chmodCmd1 = g_Platform.getChmodCmd(str(DefaultValue.KEY_FILE_MODE),
-                                               encryptFile1)
-            chmodCmd2 = g_Platform.getChmodCmd(str(DefaultValue.KEY_FILE_MODE),
-                                               encryptFile2)
-            executeCmd = "%s && %s && %s && %s" % (chownCmd1,
-                                                   chownCmd2,
-                                                   chmodCmd1,
-                                                   chmodCmd2)
-            cmd = g_OSlib.getSshCommand(host, executeCmd)
-            DefaultValue.execCommandLocally(cmd)
 
     @staticmethod
     def distributeDatasourceFiles(sshTool, appPath, hostList):

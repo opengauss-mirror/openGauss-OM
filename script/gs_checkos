@@ -384,7 +384,7 @@ def checkParameter():
     checkConfigFile()
     if (len(g_opts.hostnameList) == 0):
         g_opts.hostnameList = [DefaultValue.GetHostIpOrName()]
-    sorted(g_opts.hostnameList)
+    g_opts.hostnameList.sort()
     checkHostnameList()
     ##########################################
     # set logfile

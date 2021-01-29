@@ -4246,14 +4246,16 @@ class UpgradeImpl:
                 "clean other tool package files.", "addStep")
         try:
             commonPart = DefaultValue.get_package_back_name().rsplit("_", 1)[0]
-            gphomePath = os.listdir(DefaultValue.getClusterToolPath())
+            gphomePath = \
+                os.listdir(DefaultValue.getClusterToolPath(self.context.user))
             commitId = self.newCommitId
             if action == Const.ACTION_AUTO_ROLLBACK:
                 commitId = self.oldCommitId
             for filePath in gphomePath:
                 if commonPart in filePath and commitId not in filePath:
                     toDeleteFilePath = os.path.join(
-                        DefaultValue.getClusterToolPath(), filePath)
+                        DefaultValue.getClusterToolPath(self.context.user),
+                        filePath)
                     deleteCmd = "(if [ -f '%s' ]; then rm -rf '%s'; fi) " % \
                                   (toDeleteFilePath, toDeleteFilePath)
                     DefaultValue.execCommandWithMode(
@@ -4281,11 +4283,11 @@ class UpgradeImpl:
         """
         try:
             cmd = "(if [ ! -d '%s' ]; then mkdir -p '%s'; fi)" % \
-                  (DefaultValue.getClusterToolPath(),
-                   DefaultValue.getClusterToolPath())
+                  (DefaultValue.getClusterToolPath(self.context.user),
+                   DefaultValue.getClusterToolPath(self.context.user))
             cmd += " && (chmod %d -R %s)" % \
                    (DefaultValue.KEY_DIRECTORY_MODE,
-                    DefaultValue.getClusterToolPath())
+                    DefaultValue.getClusterToolPath(self.context.user))
             self.context.logger.debug(
                 "Command for creating directory: %s" % cmd)
             DefaultValue.execCommandWithMode(cmd,
@@ -4295,8 +4297,8 @@ class UpgradeImpl:
                                              self.context.mpprcFile)
             oldPackName = "%s-Package-bak_%s.tar.gz" % \
                           (VersionInfo.PRODUCT_NAME_PACKAGE, self.oldCommitId)
-            packFilePath = "%s/%s" % (DefaultValue.getClusterToolPath(),
-                                      oldPackName)
+            packFilePath = "%s/%s" % (DefaultValue.getClusterToolPath(
+                self.context.user), oldPackName)
             copyNode = ""
             cmd = "if [ -f '%s' ]; then echo 'GetFile'; " \
                   "else echo 'NoThisFile'; fi" % packFilePath
@@ -4319,7 +4321,8 @@ class UpgradeImpl:
                         if 'NoThisFile' in outputMap[node]:
                             cmd = g_Platform.getRemoteCopyCmd(
                                 packFilePath,
-                                DefaultValue.getClusterToolPath(),
+                                DefaultValue.getClusterToolPath(
+                                    self.context.user),
                                 str(copyNode), False, 'directory', node)
                             self.context.logger.debug(
                                 "Command for copying directory: %s" % cmd)

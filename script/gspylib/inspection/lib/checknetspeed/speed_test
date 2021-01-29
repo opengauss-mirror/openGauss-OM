@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+#############################################################################
+# Copyright (c) 2020 Huawei Technologies Co.,Ltd.
+#
+# openGauss is licensed under Mulan PSL v2.
+# You can use this software according to the terms
+# and conditions of the Mulan PSL v2.
+# You may obtain a copy of Mulan PSL v2 at:
+#
+#          http://license.coscl.org.cn/MulanPSL2
+#
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS,
+# WITHOUT WARRANTIES OF ANY KIND,
+# EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+# MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+# See the Mulan PSL v2 for more details.
+# ----------------------------------------------------------------------------
+import socket
+import time
+import sys
+
+listen_ip = "localhost"
+listen_port = 31111
+run_mode = 0  # 0:connect, 1:send, 2:recv
+
+def send_main():
+    global listen_ip
+    global listen_port
+    buf = "this is a test !" * 512 # buf  8192  block
+    sockets = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sockets.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+    print(listen_ip+":"+listen_port)
+    while(sockets.connect_ex((listen_ip, int(listen_port))) != 0):
+        print("connect failed:%m\n")
+        time.sleep(1)
+    print("connect succeed, dest[%s:%d], mode[%s]\n", listen_ip, listen_port, "tcp")
+    print("send satrt, dest[%s:%d], mode[%s]\n", listen_ip, listen_port, "tcp")
+    i = 0
+    while True:
+        i = i + 1
+        n = sockets.send(buf.encode())
+        if n == 0:
+            print("send failed:%m\n")
+            break
+        print("%d send:%s, len=%d\n", i, buf, n)
+
+
+def recv_main():
+    global listen_ip
+    global listen_port
+    sockets = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sockets.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
+    sockets.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+    sockets.bind((listen_ip, int(listen_port)))
+    sockets.listen(128)
+    while True:
+        client, addr = sockets.accept()
+        print('client:', client)
+        print('addr:', addr)
+        while True:
+            data = client.recv(8192)
+            print(data.decode())
+            if not data:
+                client.close()
+                break
+
+def connect_main():
+    sockets = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sockets.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+    if sockets.connect_ex((listen_ip, int(listen_port))) != 0:
+        print("Failed to connect %s:%d on %s mode:%m.\n",
+              listen_ip, listen_port, "tcp")
+    else:
+        print("Succeed to connect %s:%d on %s mode.\n",
+              listen_ip, listen_port, "tcp")
+
+def invalid_argument():
+    print("usage: ./speed_test recv/send/connect recv_ip "
+          "recv_port [sctp] [msg_len] [debug]\n")
+    print("example: ./speed_test recv 127.0.0.1 10001\n")
+    exit(1)
+
+if __name__ == '__main__':
+    if len(sys.argv) < 5:
+       invalid_argument()
+    if sys.argv[1] == "send":
+        run_mode = 1
+    elif sys.argv[1] == "recv":
+        run_mode = 2
+    listen_ip = sys.argv[2]
+    listen_port = sys.argv[3]
+    if run_mode == 1:
+        send_main()
+    elif run_mode == 2:
+        recv_main()
+    else:
+        connect_main()

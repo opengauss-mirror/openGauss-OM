@@ -8,7 +8,7 @@
 
 - 参考opengauss的[三方库说明](https://gitee.com/opengauss/openGauss-server#%E7%BC%96%E8%AF%91%E7%AC%AC%E4%B8%89%E6%96%B9%E8%BD%AF%E4%BB%B6)，准备好编译完的三方库，     
   目录名记为 ${BINARYLIBS_PATH} 。      
-  提供编译好的三方库二进制可以直接下载使用： [openGauss-third_party_binarylibs-om.tar.gz](https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/binarylibs/openGauss-third_party_binarylibs-om.tar.gz) 
+  提供编译好的三方库二进制可以直接下载使用： [openGauss-third_party_binarylibs.tar.gz](https://opengauss.obs.cn-south-1.myhuaweicloud.com/1.1.0/openGauss-third_party_binarylibs.tar.gz)
 - ./build.sh -3rd ${BINARYLIBS_PATH}       
   命令执行成功后，生成的包在package目录下：      
   openGauss-1.1.0-CentOS-64bit-om.sha256      

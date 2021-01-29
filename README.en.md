@@ -9,7 +9,7 @@ Common functions include database installtion, startup, stop, upgrade, backup, s
 - See the compilation description of the [opengauss third-party-software](https://gitee.com/opengauss/openGauss-server/blob/master/README.en.md#compiling-third-party-software)。                     
   The final compilation and build result is stored in the binarylibs directory at the same level as openGauss-third_party.                
   The binarylibs directory will be the value of '-3rd' for build.sh     
-  You can obtain the binarylibs we have compiled. [openGauss-third_party_binarylibs-om.tar.gz](https://opengauss.obs.cn-south-1.myhuaweicloud.com/latest/binarylibs/openGauss-third_party_binarylibs-om.tar.gz)
+  You can obtain the binarylibs we have compiled. [openGauss-third_party_binarylibs.tar.gz](https://opengauss.obs.cn-south-1.myhuaweicloud.com/1.1.0/openGauss-third_party_binarylibs.tar.gz)
 
 - ./build.sh -3rd ${BINARYLIBS_PATH}              
   The generated installation package is stored in the ./package directory:                 

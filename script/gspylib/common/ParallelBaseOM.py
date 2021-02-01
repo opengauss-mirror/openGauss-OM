@@ -840,9 +840,11 @@ class ParallelBaseOM(object):
                 g_file.removeFile(certFile)
             DefaultValue.cleanServerCaDir(caPath)
             raise Exception(str(e))
-        for certFile in DefaultValue.SERVER_CERT_LIST:
-            scpFile = os.path.join(caPath, "%s" % certFile)
-            self.sshTool.scpFiles(scpFile, caPath, hostList)
+        if not self.isSingle:
+            # localhost no need scp files
+            for certFile in DefaultValue.SERVER_CERT_LIST:
+                scpFile = os.path.join(caPath, "%s" % certFile)
+                self.sshTool.scpFiles(scpFile, caPath, hostList)
         self.logger.debug("Successfully generated server CA files.")
 
     def createGrpcCa(self, hostList=None):
@@ -931,9 +933,11 @@ class ParallelBaseOM(object):
         if len(hostList) == 0:
             for dbNode in self.clusterInfo.dbNodes:
                 hostList.append(dbNode.name)
-        for certFile in DefaultValue.BIN_CERT_LIST:
-            scpFile = os.path.join(binPath, "%s" % certFile)
-            self.sshTool.scpFiles(scpFile, binPath, hostList)
+        if not self.isSingle:
+            # localhost no need scp files
+            for certFile in DefaultValue.BIN_CERT_LIST:
+                scpFile = os.path.join(binPath, "%s" % certFile)
+                self.sshTool.scpFiles(scpFile, binPath, hostList)
         self.logger.debug("Successfully encrypted cipher and rand files.")
 
 

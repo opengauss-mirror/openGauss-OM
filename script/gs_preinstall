@@ -355,6 +355,9 @@ General options:
 
         # get the clusterToolPath
         self.clusterToolPath = self.getPreClusterToolPath(self.xmlFile)
+        temp_nodes = self.getOneClusterConfigItem("nodeNames",self.xmlFile)
+        if len(temp_nodes.split(',')) < 2:
+            self.isSingle = True
         os.environ[DefaultValue.TOOL_PATH_ENV] = self.clusterToolPath
 
         self.logger.log("Parsing the configuration file.", "addStep")

@@ -26,6 +26,7 @@ import time
 
 sys.path.append(sys.path[0] + "/../../../")
 from gspylib.common.ErrorCode import ErrorCode
+from gspylib.common.GaussLog import GaussLog
 from gspylib.component.BaseComponent import BaseComponent
 from gspylib.os.gsfile import g_file
 from gspylib.common.Common import DefaultValue
@@ -127,6 +128,8 @@ class Kernel(BaseComponent):
         if status != 0:
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51610"] %
                             "instance" + " Error: \n%s." % output)
+        if output.find("No such process"):
+            GaussLog.exitWithError(output)
 
     def isPidFileExist(self):
         pidFile = "%s/postmaster.pid" % self.instInfo.datadir

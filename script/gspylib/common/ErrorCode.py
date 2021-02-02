@@ -853,8 +853,8 @@ class ErrorCode():
                        "upgraded to new version, no need to upgrade again.",
         'GAUSS_52911': "[GAUSS-52911] : Last unsuccessfully upgrade nodes "
                        "%s are not same with current upgrade nodes.",
-        'GAUSS_52912': "[GAUSS-52912] : Some nodes were upgraded but "
-                       "were unsuccessfully, cannot use --continue.",
+        'GAUSS_52912': "[GAUSS-52912] : All nodes have been upgraded, so "
+                       "cannot use --continue.",
         'GAUSS_52913': "[GAUSS-52913] : All nodes have been upgraded. "
                        "No need to use --continue.",
         'GAUSS_52914': "[GAUSS-52914] : The record commitid is not same "

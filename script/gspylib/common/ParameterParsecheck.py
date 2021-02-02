@@ -127,7 +127,7 @@ gs_upgradectl_chose_strategy = ["-t:", "-?", "--help", "-V", "--version",
                                 "-l:"]
 # auto-upgrade parameter lists
 gs_upgradectl_auto_upgrade = ["-t:", "-?", "--help", "-V", "--version", "-l:",
-                              "-X:"]
+                              "-X:", "--grey", "-h:", "-g:", "--continue"]
 # auto-rollback parameter lists
 gs_upgradectl_auto_rollback = ["-t:", "-?", "--help", "-V", "--version",
                                "-l:", "-X:", "--force"]
@@ -370,6 +370,7 @@ class Parameter():
                            "--inplace": "inplace",
                            "--continue": "continue",
                            "--force": "force",
+                           "--grey": "grey",
                            "--agent-mode": "agentMode",
                            "--krb-server": "krb-server",
                            "--krb-client": "krb-client",

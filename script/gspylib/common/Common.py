@@ -179,7 +179,7 @@ class DefaultValue():
     TIMEOUT_CLUSTER_SWITCHRESET = 300
     
     ##
-    TIMEOUT_PSSH_COMMON = 300
+    TIMEOUT_PSSH_COMMON = 80
     ###########################
     # pssh redis timeout value
     TIMEOUT_PSSH_REDIS = 604800

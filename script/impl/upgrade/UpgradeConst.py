@@ -66,6 +66,13 @@ ACTION_REPLACE_PG_PROC_FILES = "replace_pg_proc_files"
 ACTION_CREATE_PG_PROC_MAPPING_FILE = "create_pg_proc_mapping_file"
 ACTION_CREATE_NEW_CSV_FILE = "create_new_csv_file"
 ACTION_RESTORE_DYNAMIC_CONFIG_FILE = "restore_dynamic_config_file"
+ACTION_GREY_SYNC_GUC = "grey_sync_guc"
+ACTION_GREY_UPGRADE_CONFIG_SYNC = "grey_upgrade_config_sync"
+ACTION_SWITCH_DN = "switch_dn"
+ACTION_GET_LSN_INFO = "get_lsn_info"
+ACTION_GREY_RESTORE_CONFIG = "grey_restore_config"
+ACTION_GREY_RESTORE_GUC = "grey_restore_guc"
+ACTION_CLEAN_CONF_BAK_OLD = "clean_conf_bak_old"
 
 OPTION_PRECHECK = "before"
 OPTION_POSTCHECK = "after"
@@ -75,6 +82,10 @@ CLUSTER_CMSCONF_FILE = "cluster_cmsconf.json"
 CLUSTER_CNSCONF_FILE = "cluster_cnconf.json"
 READONLY_MODE = "read_only_mode"
 TMP_DYNAMIC_DN_INFO = "upgrade_gauss_dn_status.dat"
+GET_LSN_SQL_FILE = "get_lsn_sql"
+INPLACE_UPGRADE_FLAG_FILE = "inplace_upgrade_flag"
+POSTGRESQL_CONF_BAK_OLD = "postgresql.conf.bak.old"
+
 #step flag
 BINARY_UPGRADE_NO_NEED_ROLLBACK = -2
 INVALID_UPRADE_STEP = -1
@@ -99,9 +110,10 @@ class GreyUpgradeStep:
      STEP_UPDATE_CATALOG,
      STEP_SWITCH_NEW_BIN,
      STEP_UPGRADE_PROCESS,
+     STEP_UPDATE_POST_CATALOG,
      STEP_PRE_COMMIT,
      STEP_BEGIN_COMMIT
-     ) = range(0, 6)
+     ) = range(0, 7)
 
 
 BACKUP_DIR_LIST = ['global', 'pg_clog', 'pg_xlog', 'pg_multixact',

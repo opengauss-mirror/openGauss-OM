@@ -128,7 +128,7 @@ class Kernel(BaseComponent):
         if status != 0:
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51610"] %
                             "instance" + " Error: \n%s." % output)
-        if output.find("No such process"):
+        if output.find("No such process") > 0:
             GaussLog.exitWithError(output)
 
     def isPidFileExist(self):

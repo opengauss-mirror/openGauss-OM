@@ -47,7 +47,7 @@ class SshTool():
         self.hostNames = hostNames
         self.__logFile = logFile
         self.__pid = os.getpid()
-        self.__timeout = timeout + 30
+        self.__timeout = timeout + 10
         self._finalizer = weakref.finalize(self, self.clenSshResultFiles)
 
         currentTime = str(datetime.datetime.now()).replace(" ", "_").replace(

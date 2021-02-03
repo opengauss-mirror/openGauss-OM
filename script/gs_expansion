@@ -209,7 +209,18 @@ General options:
                 if nodeid == dbnode.backIps[0]:
                     self.newHostCasRoleMap[nodeid] = dbnode.cascadeRole
         
-        # 获取host对应的azname
+        # check trust between the primary and other hosts
+        sshTool = SshTool(nodeNameList)
+        retmap, output = sshTool.getSshStatusOutput("pwd")
+        for nodeName in nodeNameList:
+            if retmap[nodeName] != DefaultValue.SUCCESS:
+                GaussLog.exitWithError("SSH could not connect to %s." % nodeName)
+            try:
+                sshTool.clenSshResultFiles()
+            except Exception as e:
+                self.logger.debug(str(e))
+
+        # get azName of host
         for dbnode in clusterInfo.dbNodes:
             self.hostAzNameMap[dbnode.backIps[0]] = dbnode.azName
         

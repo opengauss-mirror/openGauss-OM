@@ -170,7 +170,6 @@ General options:
   -l                          Path of log file.
       --skip-hostname-set     Whether to skip hostname setting.
                               (The default value is set.)
-  -W                          Password of nodes.
   -?, --help                  Show help information for this utility,
                               and exit the command line mode.
   -V, --version               Show version information.
@@ -197,8 +196,6 @@ General options:
             self.logFile = paraDict.get("logFile")
         if ("skipHostnameSet" in paraDict.keys()):
             self.skipHostnameSet = paraDict.get("skipHostnameSet")
-        if ("passwords" in paraDict.keys()):
-            self.passwd = paraDict.get("passwords")
         if ("noDeduplicate" in paraDict.keys()):
             self.nodeduplicate = paraDict.get("noDeduplicate")	    
 

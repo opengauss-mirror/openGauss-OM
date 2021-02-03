@@ -210,7 +210,7 @@ General options:
                     self.newHostCasRoleMap[nodeid] = dbnode.cascadeRole
         
         # check trust between the primary and other hosts
-        sshTool = SshTool(nodeNameList)
+        sshTool = SshTool(nodeNameList, timeout = 0)
         retmap, output = sshTool.getSshStatusOutput("pwd")
         for nodeName in nodeNameList:
             if retmap[nodeName] != DefaultValue.SUCCESS:

@@ -46,13 +46,13 @@ DefaultValue.doConfigForParamiko()
 import paramiko
 
 
-#mode
+#boot/build mode
 MODE_PRIMARY = "primary"
 MODE_STANDBY = "standby"
 MODE_NORMAL = "normal"
 MODE_CASCADE = "cascade_standby"
 
-# instance role
+# instance local_role
 ROLE_NORMAL = "normal"
 ROLE_PRIMARY = "primary"
 ROLE_STANDBY = "standby"
@@ -457,11 +457,19 @@ class ExpansionImpl():
     
     def generateGRPCCert(self):
         """
-        generate GRPC cert for all nodes
+        generate GRPC cert
         """
+        primaryHost = self.getPrimaryHostName()
+        dataNode = self.context.clusterInfoDict[primaryHost]["dataNode"]
+        insType, dbStat = self.commonGsCtl.queryInstanceStatus(primaryHost,
+            dataNode,self.envFile)
+        needGRPCHosts = self.context.newHostList
+        if insType != MODE_PRIMARY:
+            primaryHostIp = self.context.clusterInfoDict[primaryHost]["backIp"]
+            needGRPCHosts.append(primaryHostIp)
         self.logger.debug("\nStart to generate GRPC cert.")
-        self.context.initSshTool(self.context.nodeNameList)
-        self.context.createGrpcCa(self.context.nodeNameList)
+        self.context.initSshTool(needGRPCHosts)
+        self.context.createGrpcCa(needGRPCHosts)
         self.logger.debug("\nEnd to generate GRPC cert.")
 
     def addStandbyIpInPrimaryConf(self):
@@ -566,7 +574,7 @@ class ExpansionImpl():
                 GaussLog.exitWithError("The server mode of primary host" \
                     "is not primary!")
             if dbStat != STAT_NORMAL:
-                GaussLog.exitWithError("The primary is not Normal"!)
+                GaussLog.exitWithError("The primary is not Normal!")
             
             self.commonGsCtl.buildInstance(hostName, dataNode, MODE_STANDBY, 
                 self.envFile)

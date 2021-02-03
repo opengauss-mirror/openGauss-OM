@@ -53,7 +53,7 @@ MODE_NORMAL = "normal"
 MODE_CASCADE = "cascade_standby"
 
 # instance role
-ROLE_NORMAL = "noramal"
+ROLE_NORMAL = "normal"
 ROLE_PRIMARY = "primary"
 ROLE_STANDBY = "standby"
 ROLE_CASCADE = "cascade standby"

@@ -1449,6 +1449,9 @@ class dbClusterInfo():
                     outText = outText + (
                             "instance_state            : %s\n" %
                             dnInst.state)
+                    outText = outText + (
+                            "az_name                   : %s\n" %
+                            dnInst.azName)
                     if dnInst.localRole == "Primary":
                         outText = outText + (
                                 "static_connections        : %s\n\n" %

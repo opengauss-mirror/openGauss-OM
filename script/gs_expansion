@@ -203,11 +203,12 @@ General options:
             clusterInfoDict[hostName]["instanceType"] = insType
         self.clusterInfoDict = clusterInfoDict
 
-        # get cascadeRole of newHost
-        for nodeid in self.newHostList:
-            for dbnode in clusterInfo.dbNodes:
-                if nodeid == dbnode.backIps[0]:
-                    self.newHostCasRoleMap[nodeid] = dbnode.cascadeRole
+        for dbnode in clusterInfo.dbNodes:
+            # get azName of all hosts
+            self.hostAzNameMap[dbnode.backIps[0]] = dbnode.azName
+            # get cascadeRole of newHosts
+            if dbnode.backIps[0] in self.newHostList:
+                self.newHostCasRoleMap[dbnode.backIps[0]] = dbnode.cascadeRole
         
         # check trust between the primary and other hosts
         sshTool = SshTool(nodeNameList, timeout = 0)
@@ -219,10 +220,6 @@ General options:
                 sshTool.clenSshResultFiles()
             except Exception as e:
                 self.logger.debug(str(e))
-
-        # get azName of host
-        for dbnode in clusterInfo.dbNodes:
-            self.hostAzNameMap[dbnode.backIps[0]] = dbnode.azName
         
     def initLogs(self):
         """

@@ -623,6 +623,7 @@ class ExpansionImpl():
                 if hostAzNameMap[existingStandby] != hostAzNameMap[host]:
                     continue
                 hasStandbyWithSameAZ = True
+                break
             if not hasStandbyWithSameAZ:
                 self.logger.log("There is no Normal standby in %s" % \
                     hostAzNameMap[host])

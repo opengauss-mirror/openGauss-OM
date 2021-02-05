@@ -3979,7 +3979,7 @@ class DefaultValue():
                 else:
                     gucDict[guc] = "2047GB"
                 continue
-            elif (guc == "shared_buffers"):
+            elif guc == "shared_buffers":
                 if (int(dynamicParaList[0]) < 256):
                     ratioNum = 1
                 elif (int(dynamicParaList[0]) < 512):
@@ -3997,7 +3997,7 @@ class DefaultValue():
                     raise Exception(ErrorCode.GAUSS_516["GAUSS_51632"] %
                                     "calculate: %s" % gucDict[guc])
                 gucDict[guc] = int(gucDict[guc] * 1024)
-                if (gucDict[guc] >= 1024):
+                if gucDict[guc] >= 1024:
                     gucDict[guc] = "1GB"
                 else:
                     gucDict[guc] = str(gucDict[guc]) + "MB"

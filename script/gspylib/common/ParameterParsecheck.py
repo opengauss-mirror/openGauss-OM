@@ -104,7 +104,7 @@ gs_om_start = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-I:",
                "--security-mode="]
 gs_om_stop = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-I:", "-m:",
               "--az=", "-l:", "--mode=", "--nodeId=", "--time-out=", "-D:"]
-gs_om_restart=  ["-t:", "-?", "--help", "-V", "--version", "-h:", "-I:",
+gs_om_restart = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-I:",
                "--time-out=", "--az=", "-l:", "--nodeId=", "-D:",
                "--security-mode="]
 gs_om_view = ["-t:", "-?", "--help", "-V", "--version", "-o:", "-l:"]
@@ -170,7 +170,7 @@ ParameterDict = {"preinstall": gs_preinstall,
 special_list = ["gs_om", "backup", "upgradectl"]
 
 # The -t parameter list
-action_om = ["start", "stop", "status", "restart","generateconf", "kerberos",
+action_om = ["start", "stop", "status", "restart", "generateconf", "kerberos",
              "cert", "view", "query", "refreshconf"]
 action_upgradectl = ["chose-strategy", "auto-upgrade", "auto-rollback",
                      "commit-upgrade"]

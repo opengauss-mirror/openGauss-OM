@@ -367,12 +367,12 @@ class InstallImpl:
         return: passwd
         get passwd from --gsinit-parameter. if the passwd has been assigned,
         the database will install with non-interactive.
-        """ 
+        """
         if len(self.context.dbInitParam) == 0:
             return None
         passwd = None
         pwdIndex = -1
-        for idx,param in enumerate(self.context.dbInitParam):
+        for idx, param in enumerate(self.context.dbInitParam):
             if param.startswith("--pwpasswd="):
                 passwd = param[11:]
                 pwdIndex = idx
@@ -381,8 +381,9 @@ class InstallImpl:
                 passwd = param[3:]
                 pwdIndex = idx
                 break
-        
-        #remove initpasswd from dbInitParam. otherwise it will be printed in log.
+
+        # remove initpasswd from dbInitParam.
+        # otherwise it will be printed in log.
         if pwdIndex > -1:
             self.context.dbInitParam.pop(pwdIndex)
         return passwd

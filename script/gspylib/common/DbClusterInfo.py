@@ -1419,8 +1419,7 @@ class dbClusterInfo():
         """
         i = 0
         (clusterState, syncInfo) = self.__getDnSenderStatus(sshtool,
-                                                            localHostName,
-                                                            nodeId)
+                                                            localHostName)
         outText = \
             "--------------------------------------------------------------" \
             "---------\n\n"
@@ -1811,7 +1810,7 @@ class dbClusterInfo():
             dnInsNum += len(dbNode.datanodes)
         return dnInsNum
 
-    def __getDnSenderStatus(self, sshtool, localHostName, nodeId):
+    def __getDnSenderStatus(self, sshtool, localHostName):
         sql_get = "select a.client_addr, b.state, b.sender_sent_location," \
                   "b.sender_write_location, b.sender_flush_location," \
                   "b.sender_replay_location, b.receiver_received_location," \

@@ -79,7 +79,7 @@ gs_check = ["-?", "--help", "-V", "--version", "-e:", "-i:",
             "--ShrinkNodes=", "--nodegroup-name=",
             "--skip-root-items", "--set"]
 gs_sshexkey = ["-?", "--help", "-V", "--version",
-               "-f:", "--skip-hostname-set", "-l:"]
+               "-f:", "--skip-hostname-set", "-l:", "-h:", "-W:", "--no-deduplicate"]
 gs_backup = ["-?", "--help", "-V", "--version", "--backup-dir=",
              "--parameter", "--force",
              "--binary", "--all", "-l:", "-h:", "-t:", "-X:"]
@@ -104,7 +104,7 @@ gs_om_start = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-I:",
                "--security-mode="]
 gs_om_stop = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-I:", "-m:",
               "--az=", "-l:", "--mode=", "--nodeId=", "--time-out=", "-D:"]
-gs_om_restart=  ["-t:", "-?", "--help", "-V", "--version", "-h:", "-I:",
+gs_om_restart = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-I:",
                "--time-out=", "--az=", "-l:", "--nodeId=", "-D:",
                "--security-mode="]
 gs_om_view = ["-t:", "-?", "--help", "-V", "--version", "-o:", "-l:"]
@@ -130,7 +130,7 @@ gs_upgradectl_chose_strategy = ["-t:", "-?", "--help", "-V", "--version",
                                 "-l:"]
 # auto-upgrade parameter lists
 gs_upgradectl_auto_upgrade = ["-t:", "-?", "--help", "-V", "--version", "-l:",
-                              "-X:"]
+                              "-X:", "--grey", "-h:", "-g:", "--continue"]
 # auto-rollback parameter lists
 gs_upgradectl_auto_rollback = ["-t:", "-?", "--help", "-V", "--version",
                                "-l:", "-X:", "--force"]
@@ -170,7 +170,7 @@ ParameterDict = {"preinstall": gs_preinstall,
 special_list = ["gs_om", "backup", "upgradectl"]
 
 # The -t parameter list
-action_om = ["start", "stop", "status", "restart","generateconf", "kerberos",
+action_om = ["start", "stop", "status", "restart", "generateconf", "kerberos",
              "cert", "view", "query", "refreshconf"]
 action_upgradectl = ["chose-strategy", "auto-upgrade", "auto-rollback",
                      "commit-upgrade"]
@@ -348,6 +348,7 @@ class Parameter():
                            "--non-interactive": "preMode",
                            "--skip-os-set": "skipOSSet",
                            "--skip-hostname-set": "skipHostnameSet",
+                           "--no-deduplicate": "noDeduplicate",
                            "--reset": "reset",
                            "--parameter": "isParameter",
                            "--binary": "isBinary",
@@ -374,6 +375,7 @@ class Parameter():
                            "--inplace": "inplace",
                            "--continue": "continue",
                            "--force": "force",
+                           "--grey": "grey",
                            "--agent-mode": "agentMode",
                            "--krb-server": "krb-server",
                            "--krb-client": "krb-client",

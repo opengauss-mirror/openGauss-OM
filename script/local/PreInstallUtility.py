@@ -65,6 +65,7 @@ ACTION_CHECK_DISK_SPACE = "check_disk_space"
 ACTION_SET_WHITELIST = "set_white_list"
 ACTION_CHECK_OS_SOFTWARE = "check_os_software"
 ACTION_FIX_SERVER_PACKAGE_OWNER = "fix_server_package_owner"
+ACTION_CHANGE_TOOL_ENV = "change_tool_env"
 
 g_nodeInfo = None
 envConfig = {}
@@ -261,7 +262,8 @@ Common options:
                           ACTION_CHECK_ENVFILE, ACTION_CHECK_OS_SOFTWARE, \
                           ACTION_SET_ARM_OPTIMIZATION,
                           ACTION_CHECK_DISK_SPACE, ACTION_SET_WHITELIST,
-                          ACTION_FIX_SERVER_PACKAGE_OWNER]
+                          ACTION_FIX_SERVER_PACKAGE_OWNER,
+                          ACTION_CHANGE_TOOL_ENV]
         if self.action == "":
             GaussLog.exitWithError(
                 ErrorCode.GAUSS_500["GAUSS_50001"] % 't' + ".")
@@ -1295,7 +1297,8 @@ Common options:
             cmd = "su - root -c 'source %s;echo $GAUSS_ENV' 2>/dev/null" \
                   % self.mpprcFile
         else:
-            cmd = "su - %s -c 'echo $GAUSS_ENV' 2>/dev/null" % self.user
+            cmd = "su - %s -c 'source ~/.bashrc;echo $GAUSS_ENV' 2>/dev/null" \
+                  % self.user
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             self.logger.debug(
@@ -2707,7 +2710,7 @@ Common options:
         DefaultValue.execCommandLocally(cmd)
         root_scripts = ["gs_postuninstall", "gs_preinstall",
                         "gs_checkos"]
-        common_scripts = ["gs_sshexkey", "killall"]
+        common_scripts = ["gs_sshexkey", "killall", "gs_checkperf"]
         # the script files are not stored in the env path
         not_in_env_scripts = ["gs_expansion"]
         root_save_files = root_scripts + common_scripts
@@ -2809,6 +2812,67 @@ Common options:
         self.fix_owner_and_permission()
         self.separate_root_scripts()
 
+    def changeToolEnv(self):
+        """
+        function: change software tool env path
+        :return:
+        """
+        osProfile = "/etc/profile"
+        self.clean_tool_env(osProfile)
+        userpath = pwd.getpwnam(self.user).pw_dir
+        userProfile = os.path.join(userpath, ".bashrc")
+        if not os.path.exists(userProfile):
+            self.logger.logExit(ErrorCode.GAUSS_502[
+                                    "GAUSS_50201"] % 'user profile'
+                                + " Please create %s." % userProfile)
+        self.clean_tool_env(userProfile)
+        # set GPHOME
+        g_file.writeFile(userProfile,
+                         ["export GPHOME=%s" % self.clusterToolPath])
+        # set PATH
+        g_file.writeFile(userProfile, [
+            "export PATH=$GPHOME/script/gspylib/pssh/bin:"
+            "$GPHOME/script:$PATH"])
+        # set LD_LIBRARY_PATH
+        g_file.writeFile(userProfile, [
+            "export LD_LIBRARY_PATH="
+            "$GPHOME/script/gspylib/clib:$LD_LIBRARY_PATH"])
+        g_file.writeFile(userProfile, [
+            "export LD_LIBRARY_PATH=$GPHOME/lib:$LD_LIBRARY_PATH"])
+        # set PYTHONPATH
+        g_file.writeFile(userProfile, ["export PYTHONPATH=$GPHOME/lib"])
+
+    def clean_tool_env(self, userProfile):
+        # clean GPHOME
+        g_file.deleteLine(userProfile, "^\\s*export\\s*GPHOME=.*$")
+        self.logger.debug(
+            "Deleting crash GPHOME in user environment variables.")
+
+        # clean LD_LIBRARY_PATH
+        g_file.deleteLine(userProfile,
+                          "^\\s*export\\s*LD_LIBRARY_PATH=\\$GPHOME\\/script"
+                          "\\/gspylib\\/clib:\\$LD_LIBRARY_PATH$")
+        g_file.deleteLine(userProfile,
+                          "^\\s*export\\s*LD_LIBRARY_PATH=\\$GPHOME\\/lib:"
+                          "\\$LD_LIBRARY_PATH$")
+        self.logger.debug(
+            "Deleting crash LD_LIBRARY_PATH in user environment variables.")
+
+        # clean PATH
+        g_file.deleteLine(userProfile,
+                          "^\\s*export\\s*PATH=\\$GPHOME\\/pssh-2.3.1\\/bin:"
+                          "\\$GPHOME\\/script:\\$PATH$")
+        g_file.deleteLine(userProfile,
+                          "^\\s*export\\s*PATH=\\$GPHOME\\/script\\/gspylib\\"
+                          "/pssh\\/bin:\\$GPHOME\\/script:\\$PATH$")
+        self.logger.debug("Deleting crash PATH in user environment variables.")
+
+        # clean PYTHONPATH
+        g_file.deleteLine(userProfile,
+                          "^\\s*export\\s*PYTHONPATH=\\$GPHOME\\/lib")
+        self.logger.debug(
+            "Deleting crash PYTHONPATH in user environment variables.")
+
     def run(self):
         """
         function: run method
@@ -2895,6 +2959,8 @@ Common options:
                 self.checkOSSoftware()
             elif self.action == ACTION_FIX_SERVER_PACKAGE_OWNER:
                 self.fix_server_pkg_permission()
+            elif self.action == ACTION_CHANGE_TOOL_ENV:
+                self.changeToolEnv()
             else:
                 self.logger.logExit(ErrorCode.GAUSS_500["GAUSS_50000"]
                                     % self.action)

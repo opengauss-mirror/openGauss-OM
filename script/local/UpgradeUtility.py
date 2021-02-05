@@ -27,12 +27,14 @@ import subprocess
 import pwd
 import re
 import time
+import timeit
 import traceback
 import json
 import platform
 import shutil
 import copy
 import csv
+import fcntl
 from multiprocessing.dummy import Pool as ThreadPool
 
 sys.path.append(sys.path[0] + "/../")
@@ -103,6 +105,7 @@ class CmdOptions():
         self.scriptType = ""
         self.rollback = False
         self.forceRollback = False
+        self.rolling = False
         self.oldClusterAppPath = ""
         self.newClusterAppPath = ""
         self.gucStr = ""
@@ -173,7 +176,9 @@ def initGlobals():
 
     if g_opts.action in [const.ACTION_RESTORE_CONFIG,
                          const.ACTION_SWITCH_BIN,
-                         const.ACTION_CLEAN_INSTALL_PATH]:
+                         const.ACTION_GREY_UPGRADE_CONFIG_SYNC,
+                         const.ACTION_CLEAN_INSTALL_PATH,
+                         const.ACTION_GREY_RESTORE_CONFIG]:
         g_logger.debug(
             "No need to init cluster information under action %s."
             % g_opts.action)
@@ -275,6 +280,7 @@ Common options:
   --rollback                       is rollback
   --guc_string                     check the guc string has been successfully
   --oldcluster_num                 old cluster number
+  --rolling                        is rolling upgrade or rollback
    wrote in the configure file, format is guc:value,
    can only check upgrade_from, upgrade_mode
     """
@@ -292,7 +298,8 @@ def parseCommandLine():
                                    ["help", "upgrade_bak_path=",
                                     "script_type=", "old_cluster_app_path=",
                                     "new_cluster_app_path=", "rollback",
-                                    "force", "guc_string=", "oldcluster_num="])
+                                    "force", "guc_string=", "oldcluster_num=",
+                                    "rolling"])
     except Exception as e:
         usage()
         GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"] % str(e))
@@ -327,6 +334,8 @@ def parseCommandLine():
             g_opts.newClusterAppPath = os.path.normpath(value)
         elif key == "--rollback":
             g_opts.rollback = True
+        elif key == "--rolling":
+            g_opts.rolling = True
         elif key == "--force":
             g_opts.forceRollback = True
         elif key == "--guc_string":
@@ -353,7 +362,10 @@ def checkParameter():
 
     # check the value of "-t"
     if g_opts.action in [const.ACTION_SWITCH_PROCESS,
-                         const.ACTION_COPY_CERTS] and \
+                         const.ACTION_COPY_CERTS,
+                         const.ACTION_GREY_UPGRADE_CONFIG_SYNC,
+                         const.ACTION_SWITCH_DN,
+                         const.ACTION_GREY_RESTORE_CONFIG] and \
             (not g_opts.newClusterAppPath or not g_opts.oldClusterAppPath):
         GaussLog.exitWithError(
             ErrorCode.GAUSS_500["GAUSS_50001"]
@@ -367,10 +379,15 @@ def checkParameter():
             [const.ACTION_SWITCH_BIN,
              const.ACTION_CLEAN_INSTALL_PATH] and not g_opts.appPath:
         GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % "R")
-    elif g_opts.action in [const.ACTION_UPGRADE_SQL_FOLDER] and not \
-            g_opts.upgrade_bak_path:
+    elif g_opts.action in [
+        const.ACTION_GREY_SYNC_GUC, const.ACTION_UPGRADE_SQL_FOLDER] and\
+            not g_opts.upgrade_bak_path:
         GaussLog.exitWithError(
             ErrorCode.GAUSS_500["GAUSS_50001"] % "-upgrade_bak_path")
+    elif g_opts.action in [const.ACTION_GREY_RESTORE_GUC] and\
+            not g_opts.oldClusterAppPath:
+        raise Exception(
+            ErrorCode.GAUSS_500["GAUSS_50001"] % "-old_cluster_app_path")
     # Check the incoming parameter -U
     if g_opts.user == "":
         g_opts.user = pwd.getpwuid(os.getuid()).pw_name
@@ -1720,6 +1737,31 @@ def restoreConfig():
         raise Exception(str(e))
 
 
+def restoreDynamicConfigFile():
+    """
+    function: restore dynamic config file
+    output: None
+    :return:
+    """
+    bakPath = g_opts.upgrade_bak_path
+    newClusterAppPath = g_opts.newClusterAppPath
+    oldClusterAppPath = g_opts.oldClusterAppPath
+    # cp new dynamic config file to new app path
+    newDynamicConfigFile = "%s/bin/cluster_dynamic_config" % oldClusterAppPath
+    g_file.removeFile("%s/bin/cluster_dynamic_config" % newClusterAppPath)
+    cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        newDynamicConfigFile, newDynamicConfigFile, newClusterAppPath)
+    g_logger.debug("Restore command: %s" % cmd)
+    DefaultValue.execCommandLocally(cmd)
+    # cp old dynamic config file to old app path
+    dynamic_config = "%s/cluster_dynamic_config" % bakPath
+    g_file.removeFile(newDynamicConfigFile)
+    cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        dynamic_config, dynamic_config, oldClusterAppPath)
+    g_logger.debug("Restore command: %s" % cmd)
+    DefaultValue.execCommandLocally(cmd)
+
+
 def inplaceBackup():
     """
     function: backup config
@@ -1898,6 +1940,10 @@ def readDeleteGuc():
     """
     deleteGucFile = os.path.join(g_opts.upgrade_bak_path,
                                  "upgrade_sql/set_guc/delete_guc")
+    # Create tmp dir for delete_guc
+    delete_guc_tmp = "%s/upgrade_sql/set_guc" % g_opts.upgrade_bak_path
+    g_file.createDirectory(delete_guc_tmp)
+    g_file.createFileInSafeMode(deleteGucFile)
     if not os.path.isfile(deleteGucFile):
         raise Exception(ErrorCode.GAUSS_502["GAUSS_50210"] % deleteGucFile)
     g_logger.debug("Get the delete GUC from file %s." % deleteGucFile)
@@ -2299,7 +2345,7 @@ def updateCatalog():
             if len(dbNode.datanodes) == 0:
                 continue
             dnInst = dbNode.datanodes[0]
-            primaryDnNode = DefaultValue.getPrimaryNode(g_opts.userProfile)
+            primaryDnNode, _ = DefaultValue.getPrimaryNode(g_opts.userProfile)
             if dnInst.hostname not in primaryDnNode:
                 continue
             break
@@ -3037,7 +3083,7 @@ def createPgprocPathMappingFile():
         if len(dbNode.datanodes) == 0:
             continue
         dnInst = dbNode.datanodes[0]
-        primaryDnNode = DefaultValue.getPrimaryNode(g_opts.userProfile)
+        primaryDnNode, _ = DefaultValue.getPrimaryNode(g_opts.userProfile)
         if dnInst.hostname not in primaryDnNode:
             continue
         break
@@ -3112,7 +3158,7 @@ def createNewCsvFile():
         if len(dbNode.datanodes) == 0:
             continue
         dnInst = dbNode.datanodes[0]
-        primaryDnNode = DefaultValue.getPrimaryNode(g_opts.userProfile)
+        primaryDnNode, _ = DefaultValue.getPrimaryNode(g_opts.userProfile)
         if dnInst.hostname not in primaryDnNode:
             continue
         break
@@ -3175,6 +3221,720 @@ def createNewCsvFile():
                             "\nOutput:%s" % output)
 
 
+def greySyncGuc():
+    # delete old guc from configure file
+    global g_deleteGucDict
+    g_deleteGucDict = readDeleteGuc()
+    allInstances = g_dbNode.datanodes
+    pool = ThreadPool(DefaultValue.getCpuSet())
+    pool.map(greySyncInstanceGuc, allInstances)
+    pool.close()
+    pool.join()
+
+
+def greySyncInstanceGuc(dbInstance):
+    """
+    from .conf file delete the old deleted GUC, need to have all
+    the .conf.bak.old, because new version may set new GUC
+    in config file, under rollback, we need to restore.
+    """
+    if dbInstance.instanceRole == DefaultValue.INSTANCE_ROLE_COODINATOR:
+        oldConfig = "%s/postgresql.conf" % dbInstance.datadir
+        instanceName = "coordinator"
+    elif dbInstance.instanceRole == DefaultValue.INSTANCE_ROLE_DATANODE:
+        oldConfig = "%s/postgresql.conf" % dbInstance.datadir
+        instanceName = "datanode"
+    elif dbInstance.instanceRole == DefaultValue.INSTANCE_ROLE_CMSERVER:
+        oldConfig = "%s/cm_server.conf" % dbInstance.datadir
+        instanceName = "cmserver"
+    elif dbInstance.instanceRole == DefaultValue.INSTANCE_ROLE_CMAGENT:
+        oldConfig = "%s/cm_agent.conf" % dbInstance.datadir
+        instanceName = "cmagent"
+    elif dbInstance.instanceRole == DefaultValue.INSTANCE_ROLE_GTM:
+        oldConfig = "%s/gtm.conf" % dbInstance.datadir
+        instanceName = "gtm"
+    else:
+        raise Exception(ErrorCode.GAUSS_512["GAUSS_51204"] % (
+            "specified", dbInstance.instanceRole))
+    if not os.path.exists(oldConfig):
+        raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % oldConfig)
+    oldFileBak = oldConfig + ".bak.old"
+    oldTempFileBak = oldFileBak + ".temp"
+    # if reenter the upgrade process, we may have synced
+    if os.path.exists(oldFileBak):
+        g_logger.log("File %s exists, No need to backup old configure again."
+                     % oldFileBak)
+        return
+    # if the bak.old.temp file exists while bak.old not exists, it may have
+    #  try to deleted, but not finished,
+    # so cannot copy again, this oldConfig file may have deleted the old GUC
+    if not os.path.exists(oldTempFileBak):
+        g_file.cpFile(oldConfig, oldTempFileBak)
+    # if do not have delete line, no need to deal with old .conf
+    if instanceName in g_deleteGucDict.keys():
+        gucNames = g_deleteGucDict[instanceName]
+    else:
+        # the rename must be the last, which is the finish flag
+        g_file.rename(oldTempFileBak, oldFileBak)
+        g_logger.debug("No need to sync %s guc with %s." % (
+            instanceName, oldConfig))
+        return
+    g_logger.debug("Sync %s guc with %s." % (instanceName, oldConfig))
+    bakFile = oldConfig + ".bak.upgrade"
+    pattern = re.compile("^\\s*.*=.*$")
+    lineno = -1
+    deleteLineNoList = []
+    f = None
+    try:
+        if dbInstance.instanceRole in [DefaultValue.INSTANCE_ROLE_COODINATOR,
+                                       DefaultValue.INSTANCE_ROLE_GTM,
+                                       DefaultValue.INSTANCE_ROLE_DATANODE]:
+            lockFile = oldConfig + '.lock'
+            if not os.path.exists(lockFile):
+                raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % lockFile)
+            f = open(lockFile, 'r+')
+            fcntl.lockf(f.fileno(), fcntl.LOCK_EX)
+            g_logger.debug("Successfully locked file %s." % lockFile)
+        with open(oldConfig, 'r') as oldFile:
+            resList = oldFile.readlines()
+            for line in resList:
+                lineno += 1
+                # skip blank line
+                line = line.strip()
+                if not line:
+                    continue
+                # search valid line
+                result = pattern.match(line)
+                if result is None:
+                    continue
+                nameInFile = line.split('=')[0].strip()
+                if nameInFile.startswith('#'):
+                    name = nameInFile.lstrip('#')
+                    if name in gucNames:
+                        deleteLineNoList.append(lineno)
+                else:
+                    if nameInFile in gucNames:
+                        deleteLineNoList.append(lineno)
+
+            if deleteLineNoList:
+                g_logger.debug("Deleting line number: %s." % deleteLineNoList)
+                g_file.createFile(bakFile, True, DefaultValue.KEY_FILE_MODE)
+                deleteContent = []
+                for lineno in deleteLineNoList:
+                    deleteContent.append(resList[lineno])
+                    resList[lineno] = ''
+                with open(bakFile, 'w') as bak:
+                    bak.writelines(resList)
+                g_file.rename(bakFile, oldConfig)
+                g_logger.debug("Deleting guc content: %s" % deleteContent)
+        # the rename must be the last, which is the finish flag
+        g_file.rename(oldTempFileBak, oldFileBak)
+        if f:
+            f.close()
+    except Exception as e:
+        if f:
+            f.close()
+        if bakFile:
+            g_file.removeFile(bakFile)
+        raise Exception(str(e))
+    g_logger.debug("Successfully dealt with %s." % oldConfig)
+
+
+def greyUpgradeSyncConfig():
+    """
+    """
+    # check if we have switched to new version, if we have switched to
+    # new version, no need to sync configure
+    srcDir = g_opts.oldClusterAppPath
+    destDir = g_opts.newClusterAppPath
+    if os.path.samefile(g_gausshome, destDir):
+        g_logger.debug("Current version is the new version, "
+                       "no need to sync old configure to new install path.")
+        return
+    # synchronize static and dynamic configuration files
+    static_config = "%s/bin/cluster_static_config" % srcDir
+    cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        static_config, static_config, destDir)
+    dynamic_config = "%s/bin/cluster_dynamic_config" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        dynamic_config, dynamic_config, destDir)
+    # sync obsserver.key.cipher/obsserver.key.rand and
+    #  server.key.cipher/server.key.rand and
+    # datasource.key.cipher/datasource.key.rand
+    OBS_cipher_key_bak_file = "%s/bin/obsserver.key.cipher" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        OBS_cipher_key_bak_file, OBS_cipher_key_bak_file, destDir)
+    OBS_rand_key_bak_file = "%s/bin/obsserver.key.rand" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        OBS_rand_key_bak_file, OBS_rand_key_bak_file, destDir)
+    trans_encrypt_cipher_key_bak_file = "%s/bin/trans_encrypt.key.cipher" %\
+                                        srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        trans_encrypt_cipher_key_bak_file,
+        trans_encrypt_cipher_key_bak_file, destDir)
+    trans_encrypt_rand_key_bak_file = "%s/bin/trans_encrypt.key.rand" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        trans_encrypt_rand_key_bak_file, trans_encrypt_rand_key_bak_file,
+        destDir)
+    trans_encrypt_cipher_ak_sk_key_bak_file = "%s/bin/trans_encrypt_ak_sk.key"\
+                                              % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        trans_encrypt_cipher_ak_sk_key_bak_file,
+        trans_encrypt_cipher_ak_sk_key_bak_file, destDir)
+    roach_cipher_key_bak_file = "%s/bin/roach.key.cipher" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        roach_cipher_key_bak_file, roach_cipher_key_bak_file, destDir)
+    roach_rand_key_bak_file = "%s/bin/roach.key.rand" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        roach_rand_key_bak_file, roach_rand_key_bak_file, destDir)
+    roach_cipher_ak_sk_key_bak_file = "%s/bin/roach_ak_sk.key" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        roach_cipher_ak_sk_key_bak_file, roach_cipher_ak_sk_key_bak_file,
+        destDir)
+    server_cipher_key_bak_file = "%s/bin/server.key.cipher" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        server_cipher_key_bak_file, server_cipher_key_bak_file, destDir)
+    server_rand_key_bak_file = "%s/bin/server.key.rand" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        server_rand_key_bak_file, server_rand_key_bak_file, destDir)
+    datasource_cipher = "%s/bin/datasource.key.cipher" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        datasource_cipher, datasource_cipher, destDir)
+    datasource_rand = "%s/bin/datasource.key.rand" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        datasource_rand, datasource_rand, destDir)
+    tde_key_cipher = "%s/bin/gs_tde_keys.cipher" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        tde_key_cipher, tde_key_cipher, destDir)
+    g_logger.debug("Grey upgrade sync command: %s" % cmd)
+    DefaultValue.execCommandLocally(cmd)
+
+    # sync ca.key,etcdca.crt, client.key and client.crt
+    CA_key_file = "%s/share/sslcert/etcd/ca.key" % srcDir
+    cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/share/sslcert/etcd/';fi)" % (
+        CA_key_file, CA_key_file, destDir)
+    CA_cert_file = "%s/share/sslcert/etcd/etcdca.crt" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/share/sslcert/etcd/';" \
+           "fi)" % (CA_cert_file, CA_cert_file, destDir)
+    client_key_file = "%s/share/sslcert/etcd/client.key" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/share/sslcert/etcd/';" \
+           "fi)" % (
+        client_key_file, client_key_file, destDir)
+    # copy cm_agent.lock file
+    cm_agent_lock_file = "%s/bin/cm_agent.lock" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        cm_agent_lock_file, cm_agent_lock_file, destDir)
+    client_cert_file = "%s/share/sslcert/etcd/client.crt" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/share/sslcert/etcd/';" \
+           "fi)" % (client_cert_file, client_cert_file, destDir)
+    if int(g_opts.oldVersion) >= 92019:
+        client_key_cipher_file = \
+            "%s/share/sslcert/etcd/client.key.cipher" % srcDir
+        cmd += " && (if [ -f '%s' ];then cp -f -p '%s' " \
+               "'%s/share/sslcert/etcd/';fi)" % (
+            client_key_cipher_file, client_key_cipher_file, destDir)
+        client_key_rand_file = "%s/share/sslcert/etcd/client.key.rand" % srcDir
+        cmd += " && (if [ -f '%s' ];then cp -f -p '%s' " \
+               "'%s/share/sslcert/etcd/';fi)" % (
+            client_key_rand_file, client_key_rand_file, destDir)
+        etcd_key_cipher_file = "%s/share/sslcert/etcd/etcd.key.cipher" % srcDir
+        cmd += " && (if [ -f '%s' ];then cp -f -p '%s' " \
+               "'%s/share/sslcert/etcd/';fi)" % (
+            etcd_key_cipher_file, etcd_key_cipher_file, destDir)
+        etcd_key_rand_file = "%s/share/sslcert/etcd/etcd.key.rand" % srcDir
+        cmd += " && (if [ -f '%s' ];then cp -f -p '%s' " \
+               "'%s/share/sslcert/etcd/';fi)" % (
+            etcd_key_rand_file, etcd_key_rand_file, destDir)
+    g_logger.debug("Grey upgrade sync command: %s" % cmd)
+    DefaultValue.execCommandLocally(cmd)
+
+    # sync gsql certs
+    gsqlOldpath = "%s/share/sslcert/gsql/" % srcDir
+    gsqlNewDir = "%s/share/sslcert/" % destDir
+    cmd = "(if [ -d '%s' ];then cp -r '%s' '%s';fi)" % (
+        gsqlOldpath, gsqlOldpath, gsqlNewDir)
+    g_logger.debug("Inplace restore command: %s" % cmd)
+    DefaultValue.execCommandLocally(cmd)
+    # sync gds certs
+    gdsOldpath = "%s/share/sslcert/gds/" % srcDir
+    gdsNewDir = "%s/share/sslcert/" % destDir
+    cmd = "(if [ -d '%s' ];then cp -r '%s' '%s';fi)" % (
+        gdsOldpath, gdsOldpath, gdsNewDir)
+    g_logger.debug("Inplace restore command: %s" % cmd)
+    DefaultValue.execCommandLocally(cmd)
+    # sync grpc certs
+    grpcOldpath = "%s/share/sslcert/grpc/" % srcDir
+    grpcNewDir = "%s/share/sslcert/" % destDir
+    cmd = "(if [ -d '%s' ];then cp -r '%s' '%s';fi)" % (
+    grpcOldpath, grpcOldpath, grpcNewDir)
+    g_logger.debug("Inplace restore command: %s" % cmd)
+    DefaultValue.execCommandLocally(cmd)
+
+    # sync java UDF
+    javadir = "%s/lib/postgresql/java" % srcDir
+    desPath = "%s/lib/postgresql/" % destDir
+    cmd = "(if [ -d '%s' ];then mv '%s/java/pljava.jar' " \
+          "'%s'&&cp -r '%s' '%s'&&mv '%s/pljava.jar' '%s/java/';fi)" % \
+          (javadir, desPath, desPath, javadir, desPath, desPath, desPath)
+    g_logger.debug("Grey upgrade sync command: %s" % cmd)
+    DefaultValue.execCommandLocally(cmd)
+
+    # sync postGIS
+    cmdPostGis = ""
+    for sofile in g_opts.postgisSOFileList.keys():
+        desPath = os.path.join(destDir, g_opts.postgisSOFileList[sofile])
+        srcFile = "'%s'/%s" % (srcDir, sofile)
+        cmdPostGis += " && (if [ -f %s ];then cp -f -p %s '%s';fi)" % (
+            srcFile, srcFile, desPath)
+    # skip " &&"
+    cmd = cmdPostGis[3:]
+    g_logger.debug("Grey upgrade sync command: %s" % cmd)
+    DefaultValue.execCommandLocally(cmd)
+    # sync library file
+
+    # sync libsimsearch etc files
+    searchConfigFile = "%s/etc/searchletConfig.yaml" % srcDir
+    cmd = "(if [ -f '%s' ];then cp -f -p '%s' " \
+          "'%s/etc/searchletConfig.yaml';fi)" % (
+        searchConfigFile, searchConfigFile, destDir)
+    searchIniFile = "%s/etc/searchServer.ini" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' " \
+           "'%s/etc/searchServer.ini';fi)" % (
+        searchIniFile, searchIniFile, destDir)
+    # sync libsimsearch libs files
+    cmd += "&& (if [ -d '%s/lib/libsimsearch' ];" \
+           "then cp -r '%s/lib/libsimsearch' '%s/lib/';fi)" % (
+        srcDir, srcDir, destDir)
+    # sync initialized configuration parameters files
+    cmd += " && (if [-f '%s/bin/initdb_param'];" \
+           "then cp -f -p '%s/bin/initdb_param' '%s/bin/';fi)" % (
+        srcDir, srcDir, destDir)
+    DefaultValue.execCommandLocally(cmd)
+
+    # sync kerberos conf files
+    krbConfigFile = "%s/kerberos" % srcDir
+    cmd = "(if [ -d '%s' ];then cp -r '%s' '%s/';fi)" % (
+        krbConfigFile, krbConfigFile, destDir)
+    cmd += "&& (if [ -d '%s/var/krb5kdc' ];then mkdir %s/var;" \
+           " cp -r '%s/var/krb5kdc' '%s/var/';fi)" % (
+        srcDir, destDir, srcDir, destDir)
+    g_logger.debug("Grey upgrade sync command: %s" % cmd)
+    DefaultValue.execCommandLocally(cmd)
+
+    # the pg_plugin should be the last to sync, because user may
+    # create C function, it may increase file under upgrade,
+    # after switch new bin, we will restore the file mode to original mode,
+    #  it can write the C function
+    g_file.changeMode(DefaultValue.SPE_FILE_MODE,
+                      '%s/lib/postgresql/pg_plugin' % srcDir, True)
+    cmd = "(cp -r '%s/lib/postgresql/pg_plugin' '%s/lib/postgresql')" % (
+        srcDir, destDir)
+    g_logger.debug("Grey upgrade sync command: %s" % cmd)
+    DefaultValue.execCommandLocally(cmd)
+
+
+def switchDnNodeProcess():
+    """
+    function: switch node process which CN or DN exits
+    :return:
+    """
+    if g_opts.rolling:
+        # for rolling upgrade, gaussdb fenced udf will be
+        # switched after cm_agent has been switched
+        start_time = timeit.default_timer()
+        switchFencedUDFProcess()
+        elapsed = timeit.default_timer() - start_time
+        g_logger.log(
+            "Time to switch gaussdb fenced udf: %s" % getTimeFormat(elapsed))
+
+    start_time = timeit.default_timer()
+    switchDn()
+    elapsed = timeit.default_timer() - start_time
+    g_logger.log("Time to switch DN: %s" % getTimeFormat(elapsed))
+
+
+def switchFencedUDFProcess():
+    """
+    function: Kill gaussdb fenced UDF master process.
+    """
+    if not isNeedSwitch("gaussdb fenced UDF master process"):
+        g_logger.log("No need to kill gaussdb fenced UDF master process.")
+        return
+
+    g_logger.log("Killing gaussdb fenced UDF master process.")
+    killCmd = DefaultValue.killInstProcessCmd(
+        "gaussdb fenced UDF master process")
+    g_logger.log(
+        "Command to kill gaussdb fenced UDF master process: %s" % killCmd)
+    (status, _) = DefaultValue.retryGetstatusoutput(killCmd, 3, 5)
+    if status == 0:
+        g_logger.log("Successfully killed gaussdb fenced UDF master process.")
+    else:
+        raise Exception("Failed to kill gaussdb fenced UDF master process.")
+
+
+def isNeedSwitch(process, dataDir=""):
+    """
+    get the pid from ps ux command, and then get the realpth of this pid from
+    /proc/$pid/exe, under upgrade, if we can find the new path, then we do not
+     need to kill process, otherwise we should kill process
+    :param process: can be "datanode"
+    :return:True means need switch
+    """
+    if not g_opts.rollback:
+        path = g_opts.oldClusterAppPath
+    else:
+        path = g_opts.newClusterAppPath
+    if process == "datanode":
+        process = "gaussdb"
+    path = os.path.join(path, 'bin', process)
+    path = os.path.normpath(path)
+    if dataDir:
+        cmd = r"pidList=`ps ux | grep '\<%s\>' | grep '%s' | grep '%s'| " \
+              r"grep -v 'grep' | awk '{print $2}' | xargs `; " \
+              r"for pid in $pidList; do dir=`readlink -f /proc/$pid/exe | " \
+              r"xargs `; if [ `echo $dir | grep %s` ];then echo 'True'; " \
+              r"else echo 'False'; fi; done"
+        cmd = cmd % (process, g_gausshome, dataDir, path)
+    else:
+        cmd = r"pidList=`ps ux | grep '\<%s\>' | grep '%s' | grep -v 'grep'" \
+              r" | awk '{print $2}' | xargs `; " \
+              r"for pid in $pidList; do dir=`readlink -f /proc/$pid/exe | " \
+              r"xargs `; if [ `echo $dir | grep %s` ];then echo 'True'; " \
+              r"else echo 'False'; fi; done"
+        cmd = cmd % (process, g_gausshome, path)
+    g_logger.log("Command for finding if need switch: %s" % cmd)
+    (status, output) = DefaultValue.retryGetstatusoutput(cmd, 2, 5)
+    if status != 0:
+        raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % str(cmd) +
+                        " Error: \n%s" % str(output))
+    if output.find('False') >= 0:
+        g_logger.log("No need to switch.")
+        return False
+    g_logger.log("Need to switch.")
+    return True
+
+
+def switchDn():
+    """
+    function: switch DN after checkpoint
+    """
+    g_logger.log("Killing DN processes.")
+    needKillDn = isKillDn()
+    cmd = "(ps ux | grep '\-D' |  grep '%s' | grep -v grep | " \
+          "awk '{print $2}' | xargs -r kill -9 )"
+    killCmd = ""
+    if needKillDn:
+        killCmd += " && " + cmd % g_gausshome
+    if killCmd:
+        killCmd = killCmd.strip()
+        if killCmd.startswith("&&"):
+            killCmd = killCmd[2:]
+        g_logger.log("Command to kill other process: %s" % killCmd)
+        (status, output) = DefaultValue.retryGetstatusoutput(killCmd, 3, 5)
+        if status == 0:
+            g_logger.log("Successfully killed DN processes.")
+        else:
+            raise Exception("Failed to kill DN processes.")
+    else:
+        g_logger.log("No need to kill DN.")
+
+
+def isKillDn():
+    # if does not have cn and dn, no need to
+    if not g_dbNode.datanodes:
+        return False
+    needKillDn = False
+    try:
+        cmd = "gaussdb -V"
+        (status, output) = DefaultValue.retryGetstatusoutput(cmd, 2, 5)
+        if status != 0 and output != "":
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
+                            "\nError: " + str(output))
+        pattern = re.compile(r'[(](.*?)[)]')
+        versionInBrackets = re.findall(pattern, output)
+        curCommitid = versionInBrackets[0].split(" ")[-1]
+        # get the dn and cn name
+        dnInst = None
+        clusterNodes = g_clusterInfo.dbNodes
+        for dbNode in clusterNodes:
+            if len(dbNode.datanodes) == 0:
+                continue
+            dnInst = dbNode.datanodes[0]
+            primaryDnNode, _ = DefaultValue.getPrimaryNode(g_opts.userProfile)
+            if dnInst.hostname not in primaryDnNode:
+                continue
+            break
+        localHost = DefaultValue.GetHostIpOrName()
+        if int(g_opts.oldVersion) >= 92069:
+            sql = "select node_name, node_type from pg_catalog.pgxc_node " \
+                  "where node_host = '%s';" % localHost
+        else:
+            if g_dbNode.name != dnInst.hostname:
+                sql = "select node_name, node_type from pg_catalog.pgxc_node " \
+                      "where node_host = '%s';" % localHost
+            else:
+                sql = "select node_name, node_type from pg_catalog.pgxc_node" \
+                      " where node_host = 'localhost';"
+        g_logger.debug("Sql to query node name: %s" % sql)
+        (status, output) = ClusterCommand.remoteSQLCommand(
+            sql, g_opts.user,
+            dnInst.hostname, dnInst.port, False,
+            DefaultValue.DEFAULT_DB_NAME, IsInplaceUpgrade=True)
+        if status != 0 or ClusterCommand.findErrorInSql(output):
+            raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
+                            " Error: \n%s" % str(output))
+        resList = output.split('\n')
+        dnNames = []
+        for record in resList:
+            record = record.split('|')
+            nodeName = record[0].strip()
+            dnNames.append(nodeName)
+        g_logger.debug("isKillDn dnName:{0} "
+                       "commitid:{1}".format(dnNames, curCommitid))
+        # execute on the dn and cn to get the exists process version
+        needKillDn = checkExistsVersion(dnNames, dnInst, curCommitid)
+        return needKillDn
+    except Exception as e:
+        g_logger.debug("Cannot query the exists dn process "
+                       "version form select version(). Error: \n%s" % str(e))
+        for dbInstance in g_dbNode.datanodes:
+            dataDir = os.path.normpath(dbInstance.datadir)
+            if isNeedSwitch("datanode", dataDir):
+                needKillDn = True
+                break
+        g_logger.log("needKillDn: %s" % (needKillDn))
+        return needKillDn
+
+
+def getLsnInfo():
+    """
+    get lsn info
+    :return:
+    """
+    g_logger.log("Get lsn info.")
+    try:
+        InstanceList = []
+        dnInst = None
+        # find all instances need to do backup
+        clusterNodes = g_clusterInfo.dbNodes
+        for dbNode in clusterNodes:
+            if len(dbNode.datanodes) == 0:
+                continue
+            dnInst = dbNode.datanodes[0]
+            primaryDnIntance, _ = DefaultValue.getPrimaryNode(
+                g_opts.userProfile)
+            if dnInst.hostname not in primaryDnIntance:
+                continue
+            break
+        if dnInst:
+            InstanceList.append(dnInst)
+        if InstanceList:
+            getLsnSqlPath = os.path.join(
+                g_opts.upgrade_bak_path, const.GET_LSN_SQL_FILE)
+            if not os.path.exists(getLsnSqlPath):
+                g_file.createFileInSafeMode(getLsnSqlPath)
+                lsnSql = "select pg_current_xlog_location(), " \
+                         "pg_xlogfile_name(pg_current_xlog_location()), " \
+                         "pg_xlogfile_name_offset(pg_current_xlog_location());"
+                with os.fdopen(
+                        os.open(getLsnSqlPath, os.O_WRONLY, 0o755), 'w') as fp:
+                    fp.writelines(lsnSql)
+
+        # do backup parallelly
+        if len(InstanceList) != 0:
+            pool = ThreadPool(len(InstanceList))
+            pool.map(getLsnInfoImpl, InstanceList)
+            pool.close()
+            pool.join()
+        else:
+            g_logger.debug("No master instance found on this node, "
+                           "nothing need to do.")
+            return
+
+        g_logger.log("Successfully get lsn info.")
+    except Exception as e:
+        raise Exception(str(e))
+
+
+def getLsnInfoImpl(instanceList):
+    """
+    Run the SQL file of the LSN to obtain the current LSN information.
+    """
+    getLsnSqlPath = os.path.join(
+        g_opts.upgrade_bak_path, const.GET_LSN_SQL_FILE)
+    execSQLFile("postgres", getLsnSqlPath, instanceList.port)
+
+
+def greyRestoreConfig():
+    oldDir = g_opts.oldClusterAppPath
+    newDir = g_opts.newClusterAppPath
+    if not os.path.exists(oldDir):
+        if g_opts.forceRollback:
+            g_logger.log(
+                ErrorCode.GAUSS_502["GAUSS_50201"] % oldDir +
+                " Under force rollback mode, no need to sync config.")
+            return
+        else:
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % oldDir)
+
+    # if sync the pg_plugin, and change the mode,
+    # but not switch to new bin, we need to restore the mode
+    oldPluginDir = "%s/lib/postgresql/pg_plugin" % g_opts.oldClusterAppPath
+    if os.path.exists(oldPluginDir):
+        g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE, oldPluginDir, True)
+
+    if not os.path.exists(newDir):
+        g_logger.log(ErrorCode.GAUSS_502["GAUSS_50201"] % newDir +
+                     " No need to sync.")
+        return
+    if os.path.samefile(g_opts.oldClusterAppPath, g_gausshome):
+        g_logger.log("Current version is old version, nothing need to do.")
+        return
+    static_config = "%s/bin/cluster_static_config" % newDir
+    cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        static_config, static_config, oldDir)
+    dynamic_config = "%s/bin/cluster_dynamic_config" % newDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        dynamic_config, dynamic_config, oldDir)
+    DefaultValue.execCommandLocally(cmd)
+
+    mergePlugin()
+
+
+def mergePlugin():
+    """
+    under rollback, use the new dir as base, if the version is old version,
+    no need to sync
+    :return: NA
+    """
+    g_logger.log("Sync pg_plugin.")
+    oldDir = "%s/lib/postgresql/pg_plugin" % g_opts.oldClusterAppPath
+    newDir = "%s/lib/postgresql/pg_plugin" % g_opts.newClusterAppPath
+    if not os.path.exists(newDir):
+        g_logger.log(ErrorCode.GAUSS_502["GAUSS_50201"] % newDir +
+                     " No need to sync pg_plugin.")
+        return
+    g_file.changeMode(DefaultValue.SPE_FILE_MODE, newDir, True)
+    oldLines = os.listdir(oldDir)
+    newLines = os.listdir(newDir)
+    newAdd = [i for i in newLines if i not in oldLines]
+    newDelete = [i for i in oldLines if i not in newLines]
+    cmd = ""
+    for add in newAdd:
+        newFile = "%s/%s" % (newDir, add)
+        cmd += "(if [ -f '%s' ];then cp -f -p '%s' '%s';fi) && " % (
+            newFile, newFile, oldDir)
+    for delete in newDelete:
+        deleteFile = "%s/%s" % (oldDir, delete)
+        cmd += "(if [ -f '%s' ];then rm '%s';fi) && " % (
+            deleteFile, deleteFile)
+    if cmd != "":
+        cmd = cmd[:-3]
+        g_logger.debug("Command to sync plugin: %s" % cmd)
+        DefaultValue.execCommandLocally(cmd)
+    else:
+        g_logger.log("No need to sync pg_plugin.")
+
+
+def greyRestoreGuc():
+    # delete old guc from configure file
+    oldDir = g_opts.oldClusterAppPath
+    if not os.path.exists(oldDir):
+        # the node is disable after rollback
+        if g_opts.forceRollback:
+            g_logger.log(ErrorCode.GAUSS_502["GAUSS_50201"] % oldDir +
+                         " Under force rollback mode.")
+        else:
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % oldDir)
+    # if the upgrade process interrupt when record delete guc,
+    # but not switch to new version and the record is not reliable if user
+    # set the GUC during the failure upgrade status, so we need to check if the
+    # configure file have had this record, if user has set,
+    # cannot sync this guc again
+    allInstances = g_dbNode.datanodes
+    pool = ThreadPool(DefaultValue.getCpuSet())
+    pool.map(greyRestoreInstanceGuc, allInstances)
+    pool.close()
+    pool.join()
+
+
+def greyRestoreInstanceGuc(dbInstance):
+    if dbInstance.instanceRole == DefaultValue.INSTANCE_ROLE_DATANODE:
+        oldConfig = "%s/postgresql.conf" % dbInstance.datadir
+    else:
+        raise Exception(ErrorCode.GAUSS_512["GAUSS_51204"] % (
+            "specified", dbInstance.instanceRole))
+    # record the guc without delete guc
+    bakFile = oldConfig + ".bak.upgrade"
+    g_file.removeFile(bakFile)
+    oldBakFile = oldConfig + ".bak.old"
+    oldTempFileBak = oldBakFile + ".temp"
+    g_file.removeFile(oldTempFileBak)
+    if not os.path.exists(oldConfig):
+        if g_opts.forceRollback:
+            g_logger.warn(ErrorCode.GAUSS_502["GAUSS_50201"] % oldConfig)
+        else:
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % oldConfig)
+
+    if not os.path.exists(oldBakFile):
+        g_logger.debug(ErrorCode.GAUSS_502["GAUSS_50201"] % oldBakFile +
+                       " No need to restore guc.")
+        return
+    f = None
+    try:
+        if dbInstance.instanceRole in [DefaultValue.INSTANCE_ROLE_COODINATOR,
+                                       DefaultValue.INSTANCE_ROLE_GTM,
+                                       DefaultValue.INSTANCE_ROLE_DATANODE]:
+            lockFile = oldConfig + '.lock'
+            if not os.path.exists(lockFile):
+                if not g_opts.forceRollback:
+                    raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] %
+                                    lockFile)
+                else:
+                    g_logger.warn(ErrorCode.GAUSS_502["GAUSS_50201"] %
+                                  lockFile + " Without lock to restore guc.")
+            else:
+                f = open(lockFile, 'r+')
+                fcntl.lockf(f.fileno(), fcntl.LOCK_EX)
+        # if user has set in the configure file, cannot sync, use the user set
+        g_file.rename(oldBakFile, oldConfig)
+        if f:
+            f.close()
+    except Exception as e:
+        if f:
+            f.close()
+        raise Exception(str(e))
+    g_logger.debug("Successfully restore guc to %s." % oldConfig)
+
+
+def cleanConfBakOld():
+    """
+    clean conf.bak.old files
+    """
+    allInstances = g_dbNode.datanodes
+    pool = ThreadPool(DefaultValue.getCpuSet())
+    pool.map(cleanOneInstanceConfBakOld, allInstances)
+    pool.close()
+    pool.join()
+
+
+def cleanOneInstanceConfBakOld(dbInstance):
+    """
+    clean conf.bak.old files in one instance
+    """
+    if dbInstance.instanceRole == DefaultValue.INSTANCE_ROLE_DATANODE:
+        oldConfig = "%s/%s" % (
+            dbInstance.datadir, const.POSTGRESQL_CONF_BAK_OLD)
+    if not os.path.exists(oldConfig):
+        g_logger.debug(
+            "WARNING: " + ErrorCode.GAUSS_502["GAUSS_50201"] % oldConfig)
+    else:
+        cmd = "(if [ -f '%s' ]; then rm -f '%s'; fi)" % (oldConfig, oldConfig)
+        DefaultValue.execCommandLocally(cmd)
+        g_logger.debug("Successfully cleaned up %s." % oldConfig)
+
+
 def checkAction():
     """
     function: check action
@@ -3203,7 +3963,14 @@ def checkAction():
              const.ACTION_CLEAN_OLD_CLUSTER_CATALOG_PHYSICAL_FILES,
              const.ACTION_REPLACE_PG_PROC_FILES,
              const.ACTION_CREATE_PG_PROC_MAPPING_FILE,
-             const.ACTION_CREATE_NEW_CSV_FILE]:
+             const.ACTION_CREATE_NEW_CSV_FILE,
+             const.ACTION_GREY_SYNC_GUC,
+             const.ACTION_GREY_UPGRADE_CONFIG_SYNC,
+             const.ACTION_SWITCH_DN,
+             const.ACTION_GET_LSN_INFO,
+             const.ACTION_GREY_RESTORE_CONFIG,
+             const.ACTION_GREY_RESTORE_GUC,
+             const.ACTION_CLEAN_CONF_BAK_OLD]:
         GaussLog.exitWithError(
             ErrorCode.GAUSS_500["GAUSS_50004"] % 't'
             + " Value: %s" % g_opts.action)
@@ -3249,7 +4016,15 @@ def main():
             const.ACTION_REPLACE_PG_PROC_FILES: replacePgprocFile,
             const.ACTION_CREATE_PG_PROC_MAPPING_FILE:
                 createPgprocPathMappingFile,
-            const.ACTION_CREATE_NEW_CSV_FILE: createNewCsvFile}
+            const.ACTION_CREATE_NEW_CSV_FILE: createNewCsvFile,
+            const.ACTION_RESTORE_DYNAMIC_CONFIG_FILE: restoreDynamicConfigFile,
+            const.ACTION_GREY_SYNC_GUC: greySyncGuc,
+            const.ACTION_GREY_UPGRADE_CONFIG_SYNC: greyUpgradeSyncConfig,
+            const.ACTION_SWITCH_DN: switchDnNodeProcess,
+            const.ACTION_GET_LSN_INFO: getLsnInfo,
+            const.ACTION_GREY_RESTORE_CONFIG: greyRestoreConfig,
+            const.ACTION_GREY_RESTORE_GUC: greyRestoreGuc,
+            const.ACTION_CLEAN_CONF_BAK_OLD: cleanConfBakOld}
         func = funcs[g_opts.action]
         func()
     except Exception as e:

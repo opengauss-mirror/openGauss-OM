@@ -108,8 +108,8 @@ class diskInfo():
                     mountDisk[i_mountpoint] = [i_device, i_mountpoint]
 
             mountList = mountDisk.keys()
-            sorted(mountList, reverse=True)
-            for mount in mountList:
+            sortedMountList = sorted(mountList, reverse=True)
+            for mount in sortedMountList:
                 i_mountpoint = mountDisk[mount][1]
                 if (i_mountpoint == '/'):
                     i_mount_dirlst = ['']

@@ -805,12 +805,20 @@ def getIpByHostName(host):
     output : NA
     """
     ipList = g_file.readFile("/etc/hosts", host)
+
     pattern = re.compile(
         r'^[1-9 \t].*%s[ \t]*#Gauss.* IP Hosts Mapping' % host)
     for ipInfo in ipList:
         match = pattern.match(ipInfo.strip())
         if (match):
             return match.group().split(' ')[0].strip()
+    #If no ip address is found, the first ip address
+    # that is not commented out is returned
+    for ip_info in ipList:
+        ip_info = ip_info.replace("\t", " ").strip()
+        if not ip_info.startswith("#"):
+            return ip_info.split(' ')[0]
+
     # get local host by os function
     # Replace host with the IP address.
     hostIp = host

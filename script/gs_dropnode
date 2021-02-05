@@ -26,7 +26,16 @@ import subprocess
 import sys
 import pwd
 import grp
-
+package_path = os.path.dirname(os.path.realpath(__file__))
+ld_path = package_path + "/gspylib/clib"
+if 'LD_LIBRARY_PATH' not in os.environ:
+    os.environ['LD_LIBRARY_PATH'] = ld_path
+    os.execve(os.path.realpath(__file__), sys.argv, os.environ)
+if not os.environ.get('LD_LIBRARY_PATH').startswith(ld_path):
+    os.environ['LD_LIBRARY_PATH'] = \
+        ld_path + ":" + os.environ['LD_LIBRARY_PATH']
+    os.execve(os.path.realpath(__file__), sys.argv, os.environ)
+    
 sys.path.append(sys.path[0])
 from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.DbClusterStatus import DbClusterStatus
@@ -232,24 +241,22 @@ General options:
         tmpFile = os.path.join(tmpDir, "gauss_cluster_status.dat_" + \
                                str(datetime.datetime.now().strftime(
                                    '%Y%m%d%H%M%S')) + "_" + str(os.getpid()))
-        cmd = ClusterCommand.getQueryStatusCmd(self.user, "", tmpFile, False)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            self.logger.debug("The cmd is %s " % cmd)
-            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % \
-                            cmd + "Error: \n%s" % output)
+        if not len(self.failureHosts):
+            cmd = ClusterCommand.getQueryStatusCmd(self.user, "", tmpFile, False)
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                self.logger.debug("The cmd is %s " % cmd)
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % \
+                                cmd + "Error: \n%s" % output)
+            clusterStatus = DbClusterStatus()
+            clusterStatus.initFromFile(tmpFile)
+            clsStatus = clusterStatus.clusterStatusDetail
+            if clsStatus in ["Unknown", "Unavailable"]:
+                GaussLog.exitWithError(
+                    ErrorCode.GAUSS_358["GAUSS_35806"] % clsStatus)
 
-        # Initialize cluster status information for the temporary file
-        clusterStatus = DbClusterStatus()
-        clusterStatus.initFromFile(tmpFile)
-
-        clsStatus = clusterStatus.clusterStatusDetail
         statusDelHost = "The target node to be dropped is %s \n" % str(
             self.hostMapForDel.keys())[9:]
-        if clsStatus in ["Unknown", "Unavailable"]:
-            GaussLog.exitWithError(
-                ErrorCode.GAUSS_358["GAUSS_35806"] % clsStatus)
-
         for dndir_loop in \
             self.hostMapForExist[DefaultValue.GetHostIpOrName()]['datadir']:
                 cmd = "gs_ctl query -D %s|grep '\<local_role\>'| " \
@@ -282,7 +289,7 @@ General options:
         else continue
         """
         command = "echo 1"
-        sshTool = SshTool(hostnames, None, 30)
+        sshTool = SshTool(hostnames, None, -20)
         resultMap, outputCollect = sshTool.getSshStatusOutput(command,
                                                               hostnames, env)
         self.logger.debug(outputCollect)

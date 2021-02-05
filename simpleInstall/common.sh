@@ -35,11 +35,4 @@ function fn_selinux()
     return 0
 }
 
-function fn_swapoff()
-{
-    # 关闭交换内存
-    swapoff -a
-    return 0
-}
-
 COMMON_SH="common.sh"

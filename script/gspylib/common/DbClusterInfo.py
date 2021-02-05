@@ -1419,8 +1419,7 @@ class dbClusterInfo():
         """
         i = 0
         (clusterState, syncInfo) = self.__getDnSenderStatus(sshtool,
-                                                            localHostName,
-                                                            nodeId)
+                                                            localHostName)
         outText = \
             "--------------------------------------------------------------" \
             "---------\n\n"
@@ -1449,6 +1448,9 @@ class dbClusterInfo():
                     outText = outText + (
                             "instance_state            : %s\n" %
                             dnInst.state)
+                    outText = outText + (
+                            "az_name                   : %s\n" %
+                            dnInst.azName)
                     if dnInst.localRole == "Primary":
                         outText = outText + (
                                 "static_connections        : %s\n\n" %
@@ -1808,7 +1810,7 @@ class dbClusterInfo():
             dnInsNum += len(dbNode.datanodes)
         return dnInsNum
 
-    def __getDnSenderStatus(self, sshtool, localHostName, nodeId):
+    def __getDnSenderStatus(self, sshtool, localHostName):
         sql_get = "select a.client_addr, b.state, b.sender_sent_location," \
                   "b.sender_write_location, b.sender_flush_location," \
                   "b.sender_replay_location, b.receiver_received_location," \
@@ -3441,7 +3443,7 @@ class dbClusterInfo():
         input : []
         output : NA
         """
-        # port range from +1 to +7, here define haPort = dataportBase+6
+        # port range from +1 to +7, here define haPort = dataportBase + 6
         for dbNode in self.dbNodes:
             i = 0
             for dbInst in dbNode.datanodes:
@@ -6272,15 +6274,25 @@ class dbClusterInfo():
                 logPathWithUser[0:(logPathWithUser.rfind(splitMark))]
             dynamicConfigFile = self.__getDynamicConfig(user)
             # read dynamic_config_file
+            dynamicConfigFilePath = os.path.split(dynamicConfigFile)[0]
+            versionFile = os.path.join(
+                dynamicConfigFilePath, "upgrade_version")
+            version, number, commitid = VersionInfo.get_version_info(
+                versionFile)
             fp = open(dynamicConfigFile, "rb")
-            info = fp.read(24)
-            (crc, lenth, version, currenttime, nodeNum) = \
-                struct.unpack("=IIIqi", info)
+            if float(number) <= 92.200:
+                info = fp.read(28)
+                (crc, lenth, version, currenttime, nodeNum) = \
+                    struct.unpack("=qIIqi", info)
+            else:
+                info = fp.read(24)
+                (crc, lenth, version, currenttime, nodeNum) = \
+                    struct.unpack("=IIIqi", info)
             totalMaterDnNum = 0
             for i in range(nodeNum):
                 offset = (fp.tell() // PAGE_SIZE + 1) * PAGE_SIZE
                 fp.seek(offset)
-                (dbNode, materDnNum) = self.__unpackDynamicNodeInfo(fp)
+                (dbNode, materDnNum) = self.__unpackDynamicNodeInfo(fp, number)
                 totalMaterDnNum += materDnNum
                 self.dbNodes.append(dbNode)
             if totalMaterDnNum != 1:
@@ -6293,9 +6305,13 @@ class dbClusterInfo():
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] %
                             dynamicConfigFile + " Error:\n" + str(e))
 
-    def __unpackDynamicNodeInfo(self, fp):
-        info = fp.read(72)
-        (crc, nodeId, nodeName) = struct.unpack("=II64s", info)
+    def __unpackDynamicNodeInfo(self, fp, number):
+        if float(number) <= 92.200:
+            info = fp.read(76)
+            (crc, nodeId, nodeName) = struct.unpack("=qI64s", info)
+        else:
+            info = fp.read(72)
+            (crc, nodeId, nodeName) = struct.unpack("=II64s", info)
         nodeName = nodeName.decode().strip('\x00')
         dbNode = dbNodeInfo(nodeId, nodeName)
         info = fp.read(4)

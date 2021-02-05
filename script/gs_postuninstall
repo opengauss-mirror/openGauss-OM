@@ -79,7 +79,7 @@ Usage:
     gs_postuninstall -? |--help
     gs_postuninstall -V |--version
     gs_postuninstall -U USER -X XMLFILE [-L] [--delete-user] [--delete-group]
-                                        [-l LOGFILE] [--clean-gphome]
+                                        [-l LOGFILE]
 
 General options:
     -U                              Cluster user.
@@ -87,8 +87,6 @@ General options:
     -L                              Only clean up local nodes.
         --delete-user               Delete the OS user.
         --delete-group              Delete the group of the OS user.
-        --clean-gphome              Only execute the gphome directory
-                                    cleanup task.
     -l                              Path of log file.  
     -?, --help                      Show help information for this utility,
                                     and exit the command line mode.

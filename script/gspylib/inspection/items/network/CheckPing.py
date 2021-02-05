@@ -41,11 +41,11 @@ class CheckPing(BaseItem):
             allIP += dbInstance.haIps
             allIP += dbInstance.listenIps
 
-        sorted(allIP)
-        for i in range(len(allIP) - 2, -1, -1):
-            if allIP.count(allIP[i]) > 1:
-                del allIP[i]
-        noPassIPs = g_network.checkIpAddressList(allIP)
+        sortedAllIP = sorted(allIP)
+        for i in range(len(sortedAllIP) - 2, -1, -1):
+            if sortedAllIP.count(sortedAllIP[i]) > 1:
+                del sortedAllIP[i]
+        noPassIPs = g_network.checkIpAddressList(sortedAllIP)
         if noPassIPs == []:
             self.result.rst = ResultStatus.OK
             self.result.raw = "All IP can pinged."

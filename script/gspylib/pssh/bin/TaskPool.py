@@ -303,6 +303,7 @@ class TaskPool(object):
         while self.tasks or self.running_tasks:
             self.__get_writing_task()
             self.__start_limit_task()
+            time.sleep(0.05)
 
         # Waiting for writing files complete.
         for writer in self.writers:

@@ -85,7 +85,9 @@ class ExpansionImpl():
         if envFile:
             self.envFile = envFile
         else:
-            self.envFile = "/etc/profile"
+            userpath = pwd.getpwnam(self.user).pw_dir
+            mpprcFile = os.path.join(userpath, ".bashrc")
+            self.envFile = mpprcFile
 
         currentTime = str(datetime.datetime.now()).replace(" ", "_").replace(
             ".", "_")
@@ -336,7 +338,9 @@ class ExpansionImpl():
         envfile = self.envFile
         tempXmlFile = "%s/clusterconfig.xml" % self.tempFileDir
 
-        if envfile == "/etc/profile":
+        userpath = pwd.getpwnam(self.user).pw_dir
+        mpprcFile = os.path.join(userpath, ".bashrc")
+        if envfile == mpprcFile:
             preinstallCmd = "{softpath}/script/gs_preinstall -U {user} -G {group} \
             -X {xmlfile} --non-interactive 2>&1\
                     ".format(softpath=self.context.packagepath,user=self.user,
@@ -607,6 +611,12 @@ retry for %s times" % start_retry_num)
         if not os.path.exists(static_config_dir):
             os.makedirs(static_config_dir)
         
+        # valid if dynamic config file exists.
+        dynamic_file = "%s/bin/cluster_dynamic_config" % appPath
+        dynamic_file_exist = False
+        if os.path.exists(dynamic_file):
+            dynamic_file_exist = True
+        
         for dbNode in self.context.clusterInfo.dbNodes:
             hostName = dbNode.name
             staticConfigPath = "%s/script/static_config_files/cluster_static_config_%s" % \
@@ -618,6 +628,11 @@ retry for %s times" % start_retry_num)
             hostSsh = SshTool([hostName])
             targetFile = "%s/bin/cluster_static_config" % appPath
             hostSsh.scpFiles(srcFile, targetFile, [hostName], self.envFile)
+            # if dynamic config file exists, freshconfig it.
+            if dynamic_file_exist:
+                refresh_cmd = "gs_om -t refreshconf"
+                hostSsh.getSshStatusOutput(refresh_cmd, [hostName], self.envFile)
+
             self.cleanSshToolFile(hostSsh)
 
         self.logger.debug("End to generate and send cluster static file.\n")

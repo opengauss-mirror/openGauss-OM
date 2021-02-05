@@ -253,8 +253,8 @@ def checkSysctlParameter(kernelParameter, isSet):
                 expected_max = float(kernelParameter[key].split()[0]) * 1.1
                 if (int(output.split()[0]) > expected_max
                         or int(output.split()[0]) < expected_min):
-                    resultList.append(1)
-                    g_logger.log("        Abnormal reason: variable '%s'"
+                    resultList.append(2)
+                    g_logger.log("        Warning reason: variable '%s'"
                                  " RealValue '%s' ExpectedValue '%s'."
                                  % (key, output, kernelParameter[key]))
                     setParameterList[key] = kernelParameter[key]
@@ -724,8 +724,8 @@ def setLocalReservedPort():
                         portList.append(etcd.haPort)
         if 20050 not in portList:
             portList.append(20050)
-        sorted(portList)
-        for port in portList:
+        sortedPortList = sorted(portList)
+        for port in sortedPortList:
             localPortList = []
             nport = port
             while nport <= port + 7:

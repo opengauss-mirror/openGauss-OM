@@ -197,7 +197,7 @@ General options:
         if ("skipHostnameSet" in paraDict.keys()):
             self.skipHostnameSet = paraDict.get("skipHostnameSet")
         if ("noDeduplicate" in paraDict.keys()):
-            self.nodeduplicate = paraDict.get("noDeduplicate")	    
+            self.nodeduplicate = paraDict.get("noDeduplicate")
 
     def checkParameter(self):
         """
@@ -512,9 +512,13 @@ General options:
                     g_file.removeFile(tmpHostIpName)
                 raise Exception(str(e))
             if not self.nodeduplicate:
+                ipCompare = []
+                for line in output.split("\n"):
+                    if line:
+                        ipCompare.append(line.replace("\t", " ").strip().split(' ')[0])
                 tmpResult = {}
                 for s_key in list(result.keys()):
-                    if s_key not in output:
+                    if s_key not in ipCompare:
                         tmpResult[s_key] = result[s_key]
                 for (key, value) in tmpResult.items():
                     hostIPInfo += '%s  %s  %s\n' % (key, value, HOSTS_MAPPING_FLAG)
@@ -581,13 +585,17 @@ General options:
         else:
             if (not ipHosts1):
                 if not self.nodeduplicate:
+                    ipCompare = []
+                    for line in ipHosts.split("\n"):
+                        if line:
+                            ipCompare.append(line.replace("\t", " ").strip().split(' ')[0])
                     tmpIpHostInfo = ""
                     ipArray = ipHostInfo.split("\n")
                     for info in ipArray:
-                        hostname = info.split(" ")[0]
-                        if hostname not in ipHosts:
+                        hostname = info.split(' ')[0]
+                        if hostname not in ipCompare:
                             tmpIpHostInfo += info + "\n"
-                    cmd = "echo '%s' >> /etc/hosts" % tmpIpHostInfo        
+                    cmd = "echo '%s' >> /etc/hosts" % tmpIpHostInfo
                 else:
                     cmd = "echo '%s' >> /etc/hosts" % ipHostInfo
                 channel = ssh.open_session()
@@ -692,8 +700,12 @@ General options:
                         if (not ipHosts1):
                             ipHostInfo = ""
                             if not self.nodeduplicate:
+                                ipCompare = []
+                                for line in ipHosts.split("\n"):
+                                    if line:
+                                        ipCompare.append(line.replace("\t", " ").strip().split(' ')[0])
                                 for (key1, value1) in result.items():
-                                    if key1 not in ipHosts:
+                                    if key1 not in ipCompare:
                                         ipHostInfo += '%s  %s  %s\n' % (
                                             key1, value1, HOSTS_MAPPING_FLAG)
                             else:

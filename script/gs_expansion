@@ -21,6 +21,7 @@
 
 import os
 import sys
+import subprocess
 package_path = os.path.dirname(os.path.realpath(__file__))
 ld_path = package_path + "/gspylib/clib"
 if 'LD_LIBRARY_PATH' not in os.environ:
@@ -214,12 +215,18 @@ General options:
         sshTool = SshTool(nodeNameList, timeout = 0)
         retmap, output = sshTool.getSshStatusOutput("pwd")
         for nodeName in nodeNameList:
+            # check root's trust
             if retmap[nodeName] != DefaultValue.SUCCESS:
-                GaussLog.exitWithError("SSH could not connect to %s." % nodeName)
+                GaussLog.exitWithError("SSH could not connect to %s by root." % nodeName)
             try:
                 sshTool.clenSshResultFiles()
             except Exception as e:
                 self.logger.debug(str(e))
+            # check individual user's trust
+            checkUserTrustCmd = "su - %s -c 'ssh %s \"pwd\"'" % (self.user, nodeName)
+            (status, output) = subprocess.getstatusoutput(checkUserTrustCmd)
+            if status != 0:
+                GaussLog.exitWithError("SSH could not connect to %s by individual user." % nodeName)
         
     def initLogs(self):
         """

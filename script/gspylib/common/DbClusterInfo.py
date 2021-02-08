@@ -1962,9 +1962,7 @@ class dbClusterInfo():
             with open(fileName, "a") as fp:
                 fp.write(content)
                 fp.flush()
-
-        else:
-            sys.stdout.write(content)
+        sys.stdout.write(content)
 
     def __checkOsUser(self, user):
         """

@@ -1861,7 +1861,6 @@ class dbClusterInfo():
                              "receiver_received_location, receiver_write_location," \
                              "receiver_flush_location, receiver_replay_location," \
                              "sync_percent, channel from pg_stat_get_wal_receiver();"
-                    cascadeOutput = ""
                     if dbNode.name != localHostName:
                         cmd = "[need_replace_quotes] gsql -m -d postgres -p " \
                               "%s -A -t -c \"%s\"" % \
@@ -1872,7 +1871,7 @@ class dbClusterInfo():
                                 "failed to connect") >= 0:
                             continue
                         else:
-                            output = cascadeOutput.split('\n')[1:-1]
+                            cascadeOutput = cascadeOutput.split('\n')[1:-1]
                     else:
                         cmd = "gsql -m -d postgres -p %s -A -t -c \"%s\"" % (
                             dnInst.port, subsql)
@@ -1962,9 +1961,7 @@ class dbClusterInfo():
             with open(fileName, "a") as fp:
                 fp.write(content)
                 fp.flush()
-
-        else:
-            sys.stdout.write(content)
+        sys.stdout.write(content)
 
     def __checkOsUser(self, user):
         """

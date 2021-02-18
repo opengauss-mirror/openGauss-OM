@@ -133,7 +133,7 @@ class Kernel(BaseComponent):
                    print \"/proc/\"$1\"/cwd\"}' curuid=`id -u`| xargs ls -l | awk '{if ($NF==\"%s\") print $(NF-2)}' \
                    | awk -F/ '{print $3 }'" % (self.instInfo.datadir)
             (status,rightpid) = subprocess.getstatusoutput(cmd)
-            if rightpid:
+            if rightpid or status != 0:
                 GaussLog.exitWithError(output)
 
     def isPidFileExist(self):

@@ -853,8 +853,8 @@ class ErrorCode():
                        "upgraded to new version, no need to upgrade again.",
         'GAUSS_52911': "[GAUSS-52911] : Last unsuccessfully upgrade nodes "
                        "%s are not same with current upgrade nodes.",
-        'GAUSS_52912': "[GAUSS-52912] : Some nodes were upgraded but "
-                       "were unsuccessfully, cannot use --continue.",
+        'GAUSS_52912': "[GAUSS-52912] : All nodes have been upgraded, so "
+                       "cannot use --continue.",
         'GAUSS_52913': "[GAUSS-52913] : All nodes have been upgraded. "
                        "No need to use --continue.",
         'GAUSS_52914': "[GAUSS-52914] : The record commitid is not same "
@@ -1133,10 +1133,11 @@ class ErrorCode():
                        " at the primary node. \n ",
         "GAUSS_35805": "[GAUSS-35805] Input %s. Operation aborted. ",
         "GAUSS_35806": "[GAUSS-35806] Current status of cluster is %s .\n"
-                       "It doesn't meet the requirement.! ",
+                       "It doesn't meet the requirement! ",
         "GAUSS_35807": "[GAUSS-35807] The host %s which still exist in the "
                        "cluster can't be connected.\n"
-                       "It doesn't meet the requirement! ",
+                       "It doesn't meet the requirement!\nPlease add it to the "
+                       "list of hosts to be dropped if it is a target host.",
         "GAUSS_35808": "[GAUSS-35808] The %s is running switchover/failover!\n"
                        "The dropnode operation can only be executed when there is"
                        " no such operation!",

@@ -230,6 +230,9 @@ class OmImplOLAP(OmImpl):
                     ErrorCode.GAUSS_536["GAUSS_53600"] % (cmd, output))
         if re.search("another server might be running", output):
             self.logger.log(output)
+        if re.search("] WARNING:", output):
+            tmp = '\n'.join(re.findall(".*] WARNING:.*", output))
+            self.logger.log(output[0:output.find(":")] + '\n' + tmp)
         if startType == "cluster":
             starttime = time.time()
             cluster_state = ""

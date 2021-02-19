@@ -188,14 +188,6 @@ function fn_post_check()
     else
         echo "Set selinux success."
     fi
-    fn_swapoff
-    if [ $? -ne 0 ]
-    then
-        echo "Swapoff failed."
-        return 1
-    else
-        echo "Swapoff success."
-    fi
     return 0
 }
 

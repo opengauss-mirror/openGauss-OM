@@ -21,6 +21,7 @@
 
 import os
 import sys
+import subprocess
 package_path = os.path.dirname(os.path.realpath(__file__))
 ld_path = package_path + "/gspylib/clib"
 if 'LD_LIBRARY_PATH' not in os.environ:
@@ -61,6 +62,8 @@ class Expansion(ParallelBaseOM):
         self.newHostList = []
         self.clusterInfoDict = {}
         self.backIpNameMap = {}
+        self.newHostCasRoleMap = {}
+        self.hostAzNameMap = {}
         self.packagepath = os.path.realpath(
                     os.path.join(os.path.realpath(__file__), "../../"))
 
@@ -147,12 +150,6 @@ General options:
         clusterDict = clusterInfo.getClusterDirectorys()
         backIpList = clusterInfo.getClusterBackIps()
         nodeNameList = clusterInfo.getClusterNodeNames()
-
-        # only support single az now.
-        azNames = clusterInfo.getazNames()
-        self.azName = "AZ1"
-        if len(azNames) > 0:
-            self.azName = azNames[0]
         
         self.localIp = backIpList[0]
         self.nodeNameList = nodeNameList
@@ -206,8 +203,31 @@ General options:
             hostName = clusterInfo.getHostNameByNodeId(id)
             clusterInfoDict[hostName]["instanceType"] = insType
         self.clusterInfoDict = clusterInfoDict
+
+        for dbnode in clusterInfo.dbNodes:
+            # get azName of all hosts
+            self.hostAzNameMap[dbnode.backIps[0]] = dbnode.azName
+            # get cascadeRole of newHosts
+            if dbnode.backIps[0] in self.newHostList:
+                self.newHostCasRoleMap[dbnode.backIps[0]] = dbnode.cascadeRole
         
-	
+        # check trust between the primary and other hosts
+        sshTool = SshTool(nodeNameList, timeout = 0)
+        retmap, output = sshTool.getSshStatusOutput("pwd")
+        for nodeName in nodeNameList:
+            # check root's trust
+            if retmap[nodeName] != DefaultValue.SUCCESS:
+                GaussLog.exitWithError("SSH could not connect to %s by root." % nodeName)
+            try:
+                sshTool.clenSshResultFiles()
+            except Exception as e:
+                self.logger.debug(str(e))
+            # check individual user's trust
+            checkUserTrustCmd = "su - %s -c 'ssh %s \"pwd\"'" % (self.user, nodeName)
+            (status, output) = subprocess.getstatusoutput(checkUserTrustCmd)
+            if status != 0:
+                GaussLog.exitWithError("SSH could not connect to %s by individual user." % nodeName)
+        
     def initLogs(self):
         """
         init log file

@@ -1085,7 +1085,7 @@ class dbNodeInfo():
         elif (instRole == INSTANCE_ROLE_DATANODE):
             dbInst.port = self.__assignNewInstancePort(self.datanodes,
                                                        instRole, instanceType)
-            dbInst.haPort = dbInst.port + 1
+            dbInst.haPort = dbInst.port + 6
             dbInst.ssdDir = ssddir
             dbInst.syncNum = syncNum
             self.datanodes.append(dbInst)
@@ -1419,8 +1419,7 @@ class dbClusterInfo():
         """
         i = 0
         (clusterState, syncInfo) = self.__getDnSenderStatus(sshtool,
-                                                            localHostName,
-                                                            nodeId)
+                                                            localHostName)
         outText = \
             "--------------------------------------------------------------" \
             "---------\n\n"
@@ -1449,6 +1448,9 @@ class dbClusterInfo():
                     outText = outText + (
                             "instance_state            : %s\n" %
                             dnInst.state)
+                    outText = outText + (
+                            "az_name                   : %s\n" %
+                            dnInst.azName)
                     if dnInst.localRole == "Primary":
                         outText = outText + (
                                 "static_connections        : %s\n\n" %
@@ -1499,8 +1501,13 @@ class dbClusterInfo():
                                       "sync_percent              : %s\n" %
                                       i_loop[10])
                             outText = outText + (
-                                      "sync_state                : %s\n\n" %
+                                      "sync_state                : %s\n" %
                                       i_loop[11])
+                            if dnInst.localRole == "Cascade Standby":
+                                outText = outText + (
+                                      "upstream_nodeIp           : %s\n" %
+                                      i_loop[12])
+                            outText = outText + ("\n")
                             outText = outText + "------------------------" \
                                       "---------------" \
                                       "--------------------------------\n\n"
@@ -1803,7 +1810,7 @@ class dbClusterInfo():
             dnInsNum += len(dbNode.datanodes)
         return dnInsNum
 
-    def __getDnSenderStatus(self, sshtool, localHostName, nodeId):
+    def __getDnSenderStatus(self, sshtool, localHostName):
         sql_get = "select a.client_addr, b.state, b.sender_sent_location," \
                   "b.sender_write_location, b.sender_flush_location," \
                   "b.sender_replay_location, b.receiver_received_location," \
@@ -1848,10 +1855,45 @@ class dbClusterInfo():
                         continue
                     for col_loop in output:
                         syncInfo.append(col_loop.split('|'))
+                elif dnInst.localRole == "Cascade Standby":
+                    subsql = "select state, sender_sent_location, sender_write_location," \
+                             "sender_flush_location, sender_replay_location," \
+                             "receiver_received_location, receiver_write_location," \
+                             "receiver_flush_location, receiver_replay_location," \
+                             "sync_percent, channel from pg_stat_get_wal_receiver();"
+                    cascadeOutput = ""
+                    if dbNode.name != localHostName:
+                        cmd = "[need_replace_quotes] gsql -m -d postgres -p " \
+                              "%s -A -t -c \"%s\"" % \
+                              (dnInst.port, subsql)
+                        (statusMap, cascadeOutput) = sshtool.getSshStatusOutput(cmd, [
+                            dbNode.name])
+                        if statusMap[dbNode.name] != 'Success' or cascadeOutput.find(
+                                "failed to connect") >= 0:
+                            continue
+                        else:
+                            output = cascadeOutput.split('\n')[1:-1]
+                    else:
+                        cmd = "gsql -m -d postgres -p %s -A -t -c \"%s\"" % (
+                            dnInst.port, subsql)
+                        (status, cascadeOutput) = subprocess.getstatusoutput(cmd)
+                        if status != 0 or cascadeOutput.find(
+                                "failed to connect") >= 0:
+                            continue
+                        else:
+                            cascadeOutput = cascadeOutput.split('\n')
+                    if not len(cascadeOutput):
+                        continue
+                    for col_loop in cascadeOutput:
+                        col_loop = col_loop.split('|')
+                        cascadeIps = col_loop[-1].split('<--')
+                        col_loop.insert(0, cascadeIps[0].split(':')[0])
+                        col_loop.insert(11, "Async")
+                        col_loop[-1] = cascadeIps[-1]
+                        syncInfo.append(col_loop)
                 else:
                     if dnInst.localRole != "Standby" and \
-                            dnInst.localRole != "Secondary" and \
-                            dnInst.localRole != "Cascade Standby":
+                            dnInst.localRole != "Secondary":
                         clusterState = "Degraded"
                     if dnInst.state != "Normal":
                         clusterState = "Degraded"
@@ -1920,9 +1962,7 @@ class dbClusterInfo():
             with open(fileName, "a") as fp:
                 fp.write(content)
                 fp.flush()
-
-        else:
-            sys.stdout.write(content)
+        sys.stdout.write(content)
 
     def __checkOsUser(self, user):
         """
@@ -3401,6 +3441,7 @@ class dbClusterInfo():
         input : []
         output : NA
         """
+        # port range from +1 to +7, here define haPort = dataportBase + 6
         for dbNode in self.dbNodes:
             i = 0
             for dbInst in dbNode.datanodes:
@@ -3408,11 +3449,11 @@ class dbClusterInfo():
                     dbInst.port = dbNode.masterBasePorts[
                                       INSTANCE_ROLE_DATANODE] + i * \
                                   PORT_STEP_SIZE
-                    dbInst.haPort = dbInst.port + 1
+                    dbInst.haPort = dbInst.port + 6
                     peerInsts = self.__getPeerInstance(dbInst)
                     for j in range(len(peerInsts)):
                         peerInsts[j].port = dbInst.port
-                        peerInsts[j].haPort = peerInsts[j].port + 1
+                        peerInsts[j].haPort = peerInsts[j].port + 6
                     i += 1
             # flush CMSERVER instance port
             i = 0

@@ -775,7 +775,7 @@ def checkMemoryUsage():
     g_logger.debug("Checking swap memory value.")
     performCheckorSetOS(ACTION_CHECK_SWAP_MEMORY_CONFIGURE, "SwapMemory",
                         "The value about swap memory is correct.", "A5",
-                        "Abnormal")
+                        "Warning")
     g_logger.debug("Successfully checked swap memory value.")
 
 

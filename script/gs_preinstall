@@ -336,7 +336,8 @@ General options:
     def decompressVersioncfg(self):
         package_path = os.path.dirname(os.path.realpath(__file__))
         toolpath = package_path + "/../"
-        cmd = "cd %s && tar -xpf openGauss-*.tar.bz2 ./version.cfg " % toolpath
+        cmd = "cd " + toolpath + \
+              " && tar -xpf `head -1 version.cfg`*.tar.bz2 ./version.cfg"
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"]
@@ -355,6 +356,9 @@ General options:
 
         # get the clusterToolPath
         self.clusterToolPath = self.getPreClusterToolPath(self.xmlFile)
+        temp_nodes = self.getOneClusterConfigItem("nodeNames", self.xmlFile)
+        if len(temp_nodes.split(',')) < 2:
+            self.isSingle = True
         os.environ[DefaultValue.TOOL_PATH_ENV] = self.clusterToolPath
 
         self.logger.log("Parsing the configuration file.", "addStep")

@@ -179,7 +179,7 @@ class DefaultValue():
     TIMEOUT_CLUSTER_SWITCHRESET = 300
     
     ##
-    TIMEOUT_PSSH_COMMON = 300
+    TIMEOUT_PSSH_COMMON = 80
     ###########################
     # pssh redis timeout value
     TIMEOUT_PSSH_REDIS = 604800
@@ -3979,6 +3979,28 @@ class DefaultValue():
                 else:
                     gucDict[guc] = "2047GB"
                 continue
+            elif guc == "shared_buffers":
+                if (int(dynamicParaList[0]) < 256):
+                    ratioNum = 1
+                elif (int(dynamicParaList[0]) < 512):
+                    ratioNum = 2
+                else:
+                    ratioNum = 3
+                gucDict[guc] = gucDict[guc].replace(
+                    "PHYSIC_MEMORY", dynamicParaList[1])
+                gucDict[guc] = gucDict[guc].replace(
+                    "MAX_MASTER_DATANUM_IN_ONENODE", dynamicParaList[2])
+                gucDict[guc] = gucDict[guc].replace("N", str(ratioNum))
+                try:
+                    gucDict[guc] = eval(gucDict[guc])
+                except Exception as e:
+                    raise Exception(ErrorCode.GAUSS_516["GAUSS_51632"] %
+                                    "calculate: %s" % gucDict[guc])
+                gucDict[guc] = int(gucDict[guc] * 1024)
+                if gucDict[guc] >= 1024:
+                    gucDict[guc] = "1GB"
+                else:
+                    gucDict[guc] = str(gucDict[guc]) + "MB"
         return gucDict
 
     @staticmethod

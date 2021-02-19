@@ -195,15 +195,16 @@ class CheckNetSpeed(BaseItem):
         global errorMsg
         global serviceIP
         global MaxDelayFailFlag
+        network_card_num = ""
         serviceIP = SharedFuncs.getIpByHostName(self.host)
         for network in g_network.getAllNetworkInfo():
             if (network.ipAddress == serviceIP):
-                networkCardNum = network.NICNum
+                network_card_num = network.NICNum
                 break
-        if (not networkCardNum):
+        if (not network_card_num):
             raise Exception(ErrorCode.GAUSS_506["GAUSS_50619"])
 
-        ethName = networkCardNum
+        ethName = network_card_num
         ipList = self.makeIpList()
 
         index = ipList.index(serviceIP)

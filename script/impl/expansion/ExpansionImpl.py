@@ -31,6 +31,7 @@ import time
 import grp
 import socket
 import stat
+import copy
 from multiprocessing import Process, Value
 
 sys.path.append(sys.path[0] + "/../../../../")
@@ -463,7 +464,7 @@ class ExpansionImpl():
         dataNode = self.context.clusterInfoDict[primaryHost]["dataNode"]
         insType, dbStat = self.commonGsCtl.queryInstanceStatus(primaryHost,
             dataNode,self.envFile)
-        needGRPCHosts = self.context.newHostList
+        needGRPCHosts = copy.copy(self.context.newHostList)
         if insType != MODE_PRIMARY:
             primaryHostIp = self.context.clusterInfoDict[primaryHost]["backIp"]
             needGRPCHosts.append(primaryHostIp)

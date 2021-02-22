@@ -1243,7 +1243,7 @@ class UpgradeImpl:
             self.waitClusterNormalDegrade()
         except Exception as e:
             # can't promise normal status in force upgrade or forceRollback
-            if self.context.forceRollback or self.context.forceUpgrade:
+            if self.context.forceRollback:
                 self.context.logger.log("WARNING: Failed to wait "
                                         "cluster normal or degrade.")
             else:
@@ -3135,8 +3135,7 @@ class UpgradeImpl:
             retry_times = 0
             while True:
                 (status, output) = self.execSqlCommandInPrimaryDN(sql)
-                if (status != 0 or ClusterCommand.findErrorInSql(output))\
-                        and not self.context.forceUpgrade:
+                if status != 0 or ClusterCommand.findErrorInSql(output):
                     if retry_times < 12:
                         self.context.logger.debug(
                             "ERROR: Failed to DROP SCHEMA pmk for the %d time."
@@ -3153,17 +3152,13 @@ class UpgradeImpl:
             self.context.logger.debug("Succcessfully deleted schema PMK.")
             return 0
         except Exception as e:
-            if self.context.forceUpgrade:
-                self.context.logger.debug("WARNING: failed to drop PMK Schema")
-                return 0
-            else:
-                self.context.logger.log(
-                    "NOTICE: Failed to execute SQL command on CN instance, "
-                    + "please re-commit upgrade once again or " +
-                    "re-execute SQL command 'DROP SCHEMA "
-                    "IF EXISTS pmk CASCADE' manually.")
-                self.context.logger.debug(str(e))
-                return 1
+            self.context.logger.log(
+                "NOTICE: Failed to execute SQL command on CN instance, "
+                + "please re-commit upgrade once again or " +
+                "re-execute SQL command 'DROP SCHEMA "
+                "IF EXISTS pmk CASCADE' manually.")
+            self.context.logger.debug(str(e))
+            return 1
 
     def cleanConfBakOld(self):
         """
@@ -3510,7 +3505,7 @@ class UpgradeImpl:
             self.context.logger.debug("Successfully drop schema %s cascade." %
                                       Const.UPGRADE_SCHEMA)
         except Exception as e:
-            if self.context.forceRollback or self.context.forceUpgrade:
+            if self.context.forceRollback:
                 self.context.logger.log(
                     "Failed to drop schema. Please drop manually "
                     "with this command: \n     %s" % sql)

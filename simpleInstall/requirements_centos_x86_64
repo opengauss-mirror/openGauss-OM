@@ -1,0 +1,14 @@
+libaio-devel
+flex
+bison
+ncurses-devel
+glibc-devel
+patch
+readline-devel
+bzip2
+firewalld
+crontabs
+net-tools
+openssh-server
+openssh-clients
+which

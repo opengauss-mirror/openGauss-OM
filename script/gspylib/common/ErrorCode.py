@@ -546,7 +546,7 @@ class ErrorCode():
         'GAUSS_51621': "[GAUSS-51621] : HA IP is empty.",
         'GAUSS_51622': "[GAUSS-51622] : There is no %s on %s node.",
         'GAUSS_51623': "[GAUSS-51623] : Failed to obtain version.",
-        'GAUSS_51624': "[GAUSS-51624] : Failed to get CN connections.",
+        'GAUSS_51624': "[GAUSS-51624] : Failed to get DN connections.",
         'GAUSS_51625': "[GAUSS-51625] : Cluster is running.",
         'GAUSS_51626': "[GAUSS-51626] : Failed to rollback.",
         'GAUSS_51627': "[GAUSS-51627] : Configuration failed.",

@@ -1884,13 +1884,12 @@ class dbClusterInfo():
                             cascadeOutput = cascadeOutput.split('\n')
                     if not len(cascadeOutput):
                         continue
-                    for col_loop in cascadeOutput:
-                        col_loop = col_loop.split('|')
-                        cascadeIps = col_loop[-1].split('<--')
-                        col_loop.insert(0, cascadeIps[0].split(':')[0])
-                        col_loop.insert(11, "Async")
-                        col_loop[-1] = cascadeIps[-1]
-                        syncInfo.append(col_loop)
+                    col_loop = col_loop.split('|')
+                    cascadeIps = col_loop[-1].split('<--')
+                    col_loop.insert(0, cascadeIps[0].split(':')[0])
+                    col_loop.insert(11, "Async")
+                    col_loop[-1] = cascadeIps[-1]
+                    syncInfo.append(col_loop)
                 else:
                     if dnInst.localRole != "Standby" and \
                             dnInst.localRole != "Secondary":

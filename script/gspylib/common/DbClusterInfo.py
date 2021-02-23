@@ -1861,7 +1861,6 @@ class dbClusterInfo():
                              "receiver_received_location, receiver_write_location," \
                              "receiver_flush_location, receiver_replay_location," \
                              "sync_percent, channel from pg_stat_get_wal_receiver();"
-                    cascadeOutput = ""
                     if dbNode.name != localHostName:
                         cmd = "[need_replace_quotes] gsql -m -d postgres -p " \
                               "%s -A -t -c \"%s\"" % \
@@ -1872,7 +1871,7 @@ class dbClusterInfo():
                                 "failed to connect") >= 0:
                             continue
                         else:
-                            output = cascadeOutput.split('\n')[1:-1]
+                            cascadeOutput = cascadeOutput.split('\n')[1:-1]
                     else:
                         cmd = "gsql -m -d postgres -p %s -A -t -c \"%s\"" % (
                             dnInst.port, subsql)
@@ -1884,12 +1883,13 @@ class dbClusterInfo():
                             cascadeOutput = cascadeOutput.split('\n')
                     if not len(cascadeOutput):
                         continue
-                    col_loop = col_loop.split('|')
-                    cascadeIps = col_loop[-1].split('<--')
-                    col_loop.insert(0, cascadeIps[0].split(':')[0])
-                    col_loop.insert(11, "Async")
-                    col_loop[-1] = cascadeIps[-1]
-                    syncInfo.append(col_loop)
+                    for col_loop in cascadeOutput:
+                        col_loop = col_loop.split('|')
+                        cascadeIps = col_loop[-1].split('<--')
+                        col_loop.insert(0, cascadeIps[0].split(':')[0])
+                        col_loop.insert(11, "Async")
+                        col_loop[-1] = cascadeIps[-1]
+                        syncInfo.append(col_loop)
                 else:
                     if dnInst.localRole != "Standby" and \
                             dnInst.localRole != "Secondary":

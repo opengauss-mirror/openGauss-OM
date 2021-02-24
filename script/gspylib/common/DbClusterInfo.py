@@ -1453,7 +1453,7 @@ class dbClusterInfo():
                             dnInst.azName)
                     if dnInst.localRole == "Primary":
                         outText = outText + (
-                                "static_connections        : %s\n\n" %
+                                "static_connections        : %s\n" %
                                 dnInst.staticConnections)
                         outText = outText + (
                               "HA_state                  : %s\n" %
@@ -1462,14 +1462,14 @@ class dbClusterInfo():
                               "instance_role             : %s\n" %
                             dnInst.localRole)
                     if dnInst.localRole == "Primary":
-                        outText = outText + "------------------------" \
+                        outText = outText + "\n------------------------" \
                                             "---------------" \
                                             "--------------------------------\n\n"
                         continue
                     for i_loop in syncInfo:
-                        if i_loop[11] == '':
-                            i_loop[11] = 'Unknown'
                         if i_loop[0] == dnInst.listenIps[0]:
+                            if i_loop[11] == '':
+                                i_loop[11] = 'Unknown'
                             outText = outText + (
                                       "HA_state                  : %s\n" %
                                       i_loop[1])
@@ -1507,11 +1507,10 @@ class dbClusterInfo():
                                 outText = outText + (
                                       "upstream_nodeIp           : %s\n" %
                                       i_loop[12])
-                            outText = outText + ("\n")
-                            outText = outText + "------------------------" \
-                                      "---------------" \
-                                      "--------------------------------\n\n"
                             break
+                    outText = outText + "\n------------------------" \
+                                        "---------------" \
+                                    "--------------------------------\n\n"
                 if nodeId != 0:
                     break
             else:

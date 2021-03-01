@@ -172,6 +172,18 @@ function fn_post_check()
     else
         echo "Check input success."
     fi
+    fn_precheck
+    if [ $? -ne 0 ]
+    then
+        echo "Precheck failed.you can check preCheck.log for more details."
+        fn_precheck_result
+        if [ $? -ne 0 ]
+        then
+            return 1
+        fi
+    else
+        echo "Precheck success."
+    fi
     fn_check_firewall $host_port
     if [ $? -ne 0 ]
     then
@@ -189,6 +201,24 @@ function fn_post_check()
         echo "Set selinux success."
     fi
     return 0
+}
+function fn_precheck_result()
+{
+    input=$1
+    if [ "$input"X = X ]
+    then
+        read -p "Are you sure you want to continue?(yes/no)" input
+    fi
+    if [ "$input"X == "yes"X ]
+    then
+        return 0
+    elif [ "$input"X == "no"X ]
+    then
+        return 1
+    else
+        read -p "Please type 'yes' or 'no': " input
+        fn_precheck_result $input
+    fi
 }
 
 function fn_check_input()
@@ -370,7 +400,9 @@ function main()
         return 1
     elif [ $returnFlag -eq 1 ]
     then
-        echo "Load demoDB failed, you can check load.log for more details"
+        echo "Load demoDB failed, you can check load.log for more details."
+    else
+        echo "Input no, operation skip."
     fi
     return 0
 }

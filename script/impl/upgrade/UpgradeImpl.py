@@ -1407,44 +1407,8 @@ class UpgradeImpl:
         # when number and node names is empty
         self.context.logger.debug("Choose the nodes to be upgraded.")
         self.setClusterDetailInfo()
-
-        if len(self.context.nodeNames) != 0 :
-            self.context.logger.log(
-                "Upgrade nodes %s." % self.context.nodeNames)
-            greyNodeNames = self.getUpgradedNodeNames()
-            checkH_nodes = \
-                [val for val in greyNodeNames if val in self.context.nodeNames]
-            if len(checkH_nodes) > 0:
-                raise Exception("The nodes %s have been upgraded" %
-                                checkH_nodes)
-        # confirm the nodesNum in checkParameter, 1 or specified by -g
-        elif self.context.upgrade_remain:
-            greyNodeNames = self.getUpgradedNodeNames()
-            otherNodeNames = [
-                i for i in self.context.clusterNodes if i not in greyNodeNames]
-            self.context.nodeNames = otherNodeNames
-            self.context.logger.debug(
-                "Upgrade remain nodes %s." % self.context.nodeNames)
-        # specify the node num, try to find matched combination
-        else:
-            nodeTotalNum = len(self.context.clusterNodes)
-            if len(self.context.clusterNodes) == 1:
-                self.context.nodeNames.append(
-                    self.context.clusterInfo.dbNodes[0].name)
-                self.context.logger.log(
-                    "Upgrade one node '%s'." % self.context.nodeNames[0])
-            # SinglePrimaryMultiStandbyCluster / MasterStandbyCluster with
-            #  more than 1 node
-            elif self.context.nodesNum == nodeTotalNum:
-                self.context.nodeNames = self.context.clusterNodes
-                self.context.logger.log("Upgrade all nodes.")
-            elif self.context.nodesNum > nodeTotalNum:
-                raise Exception(ErrorCode.GAUSS_529["GAUSS_52906"])
-            else:
-                self.context.nodeNames = self.findOneMatchedCombin(
-                    self.context.clusterNodes)
-                self.context.logger.log(
-                    "Upgrade nodes %s." % self.context.nodeNames)
+        self.context.nodeNames = self.context.clusterNodes
+        self.context.logger.log("Upgrade all nodes.")
 
     def getUpgradedNodeNames(self, step=GreyUpgradeStep.STEP_INIT_STATUS):
         """

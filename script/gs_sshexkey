@@ -162,7 +162,7 @@ Usage:
   gs_sshexkey -? | --help
   gs_sshexkey -V | --version
   gs_sshexkey -f HOSTFILE [-l LOGFILE] [--skip-hostname-set]
-                          
+  gs_sshexkey -h IPLIST [-l LOGFILE] [--skip-hostname-set]
 
 General options:
   -f                          Host file containing the IP address of nodes.

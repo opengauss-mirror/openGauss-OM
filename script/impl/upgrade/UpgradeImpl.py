@@ -1659,6 +1659,21 @@ class UpgradeImpl:
             # Normal and the database could be connected
             #    if not, exit.
             self.startCluster()
+
+            # uninstall kerberos if has already installed
+            pghost_path = DefaultValue.getEnvironmentParameterValue(
+                'PGHOST', self.context.user)
+            kerberosflagfile = "%s/kerberos_upgrade_flag" % pghost_path
+            if os.path.exists(kerberosflagfile):
+                self.stopCluster()
+                self.context.logger.log("Starting uninstall Kerberos.",
+                                        "addStep")
+                cmd = "source %s && " % self.context.userProfile
+                cmd += "%s -m uninstall -U %s" % (OMCommand.getLocalScript(
+                    "Local_Kerberos"), self.context.user)
+                self.context.sshTool.executeCommand(cmd, "")
+                self.context.logger.log("Successfully uninstall Kerberos.")
+                self.startCluster()
             if self.unSetClusterReadOnlyMode() != 0:
                 raise Exception("NOTICE: "
                                 + ErrorCode.GAUSS_529["GAUSS_52907"])
@@ -1866,8 +1881,42 @@ class UpgradeImpl:
                 self.stopCluster()
                 self.startCluster()
 
+            # install Kerberos
+            self.install_kerberos()
             self.context.logger.log("Commit binary upgrade succeeded.")
             self.exitWithRetCode(Const.ACTION_INPLACE_UPGRADE, True)
+
+    def install_kerberos(self):
+        """
+        install kerberos after upgrade
+        :return:NA
+        """
+        pghost_path = DefaultValue.getEnvironmentParameterValue(
+            'PGHOST', self.context.user)
+        kerberosflagfile = "%s/kerberos_upgrade_flag" % pghost_path
+        if os.path.exists(kerberosflagfile):
+            # install kerberos
+            cmd = "source %s &&" % self.context.userProfile
+            cmd += "gs_om -t stop && "
+            cmd += "%s -m install -U %s --krb-server" % (
+                OMCommand.getLocalScript("Local_Kerberos"),
+                self.context.user)
+            (status, output) = DefaultValue.retryGetstatusoutput(cmd, 3, 5)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
+                                "Command:%s. Error:\n%s" % (cmd, output))
+            cmd = "source %s && " % self.context.userProfile
+            cmd += "%s -m install -U %s --krb-client " % (
+            OMCommand.getLocalScript("Local_Kerberos"), self.context.user)
+            self.context.sshTool.executeCommand(
+                cmd, "", hostList=self.context.clusterNodes)
+            self.context.logger.log("Successfully install Kerberos.")
+            cmd = "source %s && gs_om -t start" % self.context.userProfile
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status != 0 and not self.context.ignoreInstance:
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
+                                "Command:%s. Error:\n%s" % (cmd, output))
+            os.remove(kerberosflagfile)
 
     def refresh_dynamic_config_file(self):
         """
@@ -3572,6 +3621,8 @@ class UpgradeImpl:
                                     ErrorCode.GAUSS_529["GAUSS_52907"])
                 self.cleanBinaryUpgradeBakFiles(True)
                 self.cleanInstallPath(Const.NEW)
+                # install kerberos
+                self.install_kerberos()
         except Exception as e:
             self.context.logger.error(str(e))
             self.context.logger.log("Rollback failed.")
@@ -4097,6 +4148,30 @@ class UpgradeImpl:
             else:
                 raise Exception(ErrorCode.GAUSS_500["GAUSS_50004"] % 't' +
                                 " Value: %s" % self.context.action)
+
+            # judgment has installed kerberos before action_inplace_upgrade
+            self.context.logger.debug(
+                "judgment has installed kerberos before action_inplace_upgrade")
+            xmlfile = os.path.join(os.path.dirname(self.context.userProfile),
+                                   DefaultValue.FI_KRB_XML)
+            if os.path.exists(xmlfile) and \
+                    self.context.action == Const.ACTION_AUTO_UPGRADE \
+                    and self.context.is_grey_upgrade:
+                raise Exception(ErrorCode.GAUSS_502["GAUSS_50200"] % "kerberos")
+            if os.path.exists(xmlfile) and self.context.is_inplace_upgrade:
+                pghost_path = DefaultValue.getEnvironmentParameterValue(
+                    'PGHOST', self.context.user)
+                destfile = "%s/krb5.conf" % os.path.dirname(
+                    self.context.userProfile)
+                kerberosflagfile = "%s/kerberos_upgrade_flag" % pghost_path
+                cmd = "cp -rf %s %s " % (destfile, kerberosflagfile)
+                (status, output) = DefaultValue.retryGetstatusoutput(cmd, 3, 5)
+                if status != 0:
+                    raise Exception(
+                        ErrorCode.GAUSS_502["GAUSS_50206"] % kerberosflagfile
+                        + " Error: \n%s" % output)
+                self.context.logger.debug(
+                    "Successful back up kerberos config file.")
         except Exception as e:
             self.context.logger.debug(traceback.format_exc())
             self.exitWithRetCode(self.context.action, False, str(e))

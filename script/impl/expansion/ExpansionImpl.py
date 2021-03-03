@@ -31,7 +31,6 @@ import time
 import grp
 import socket
 import stat
-import copy
 from multiprocessing import Process, Value
 
 sys.path.append(sys.path[0] + "/../../../../")
@@ -88,6 +87,8 @@ class ExpansionImpl():
         self.group = self.context.group
         self.existingHosts = []
         self.expansionSuccess = {}
+        for newHost in self.context.newHostList:
+            self.expansionSuccess[newHost] = False
         self.logger = self.context.logger
 
         envFile = DefaultValue.getEnv("MPPDB_ENV_SEPARATE_PATH")
@@ -109,7 +110,7 @@ class ExpansionImpl():
         """
         create software dir and send it on each nodes
         """
-        self.logger.debug("Start to send soft to each standby nodes.\n")
+        self.logger.log("Start to send soft to each standby nodes.")
         hostNames = self.context.newHostList
         hostList = hostNames
 
@@ -133,7 +134,7 @@ class ExpansionImpl():
             group=self.group,srcFile=path2ChangeMode)
         sshTool.executeCommand(changeModCmd, "", DefaultValue.SUCCESS,
                        hostList)
-        self.logger.debug("End to send soft to each standby nodes.\n")
+        self.logger.debug("End to send soft to each standby nodes.")
         self.cleanSshToolFile(sshTool)
 
     def generateAndSendXmlFile(self):
@@ -158,7 +159,7 @@ class ExpansionImpl():
                 fo.write( xmlContent )
                 fo.close()
             # send single deploy xml file to each standby node
-            sshTool = SshTool(host)
+            sshTool = SshTool([host])
             retmap, output = sshTool.getSshStatusOutput("mkdir -p %s" % 
             self.tempFileDir , [host], self.envFile)
             retmap, output = sshTool.getSshStatusOutput("chown %s:%s %s" % 
@@ -174,6 +175,7 @@ class ExpansionImpl():
         """
         nodeName = self.context.backIpNameMap[backIp]
         nodeInfo = self.context.clusterInfoDict[nodeName]
+        clusterName = self.context.clusterInfo.name
 
         backIp = nodeInfo["backIp"]
         sshIp = nodeInfo["sshIp"]
@@ -189,12 +191,13 @@ class ExpansionImpl():
         if tmpMppdbPath:
             mppdbconfig = '<PARAM name="tmpMppdbPath" value="%s" />' % tmpMppdbPath
         azName = self.context.hostAzNameMap[backIp]
+        azPriority = nodeInfo["azPriority"]
 
         xmlConfig = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <ROOT>
     <CLUSTER>
-        <PARAM name="clusterName" value="dbCluster" />
+        <PARAM name="clusterName" value="{clusterName}" />
         <PARAM name="nodeNames" value="{nodeName}" />
         <PARAM name="backIp1s" value="{backIp}"/>
         <PARAM name="gaussdbAppPath" value="{appPath}" />
@@ -205,10 +208,10 @@ class ExpansionImpl():
         <PARAM name="clusterType" value="single-inst"/>
     </CLUSTER>
     <DEVICELIST>
-        <DEVICE sn="1000001">
+        <DEVICE sn="{nodeName}">
             <PARAM name="name" value="{nodeName}"/>
             <PARAM name="azName" value="{azName}"/>
-            <PARAM name="azPriority" value="1"/>
+            <PARAM name="azPriority" value="{azPriority}"/>
             <PARAM name="backIp1" value="{backIp}"/>
             <PARAM name="sshIp1" value="{sshIp}"/>
             <!--dbnode-->
@@ -218,10 +221,10 @@ class ExpansionImpl():
         </DEVICE>
     </DEVICELIST>
 </ROOT>
-        """.format(nodeName=nodeName,backIp=backIp,appPath=appPath,
-        logPath=logPath,toolPath=toolPath,corePath=corePath,
-        sshIp=sshIp,port=port,dataNode=dataNode,azName=azName,
-        mappdbConfig=mppdbconfig)
+        """.format(clusterName = clusterName, nodeName=nodeName, backIp=backIp,
+        appPath=appPath, logPath=logPath, toolPath=toolPath, corePath=corePath,
+        sshIp=sshIp, port=port, dataNode=dataNode, azName=azName,
+        azPriority = azPriority, mappdbConfig=mppdbconfig)
         return xmlConfig
 
     def changeUser(self):
@@ -255,29 +258,59 @@ class ExpansionImpl():
             self.logger.log("Authentication failed.")
             self.initSshConnect(host, user)
 
+    def hasNormalStandbyInAZOfCascade(self, cascadeIp, existingStandbys):
+        # check whether there are normal standbies in hostAzNameMap[cascadeIp] azZone
+        hasStandbyWithSameAZ = False
+        cascadeName = self.context.backIpNameMap[cascadeIp]
+        hostAzNameMap = self.context.hostAzNameMap
+        for existingStandby in existingStandbys:
+            existingStandbyName = self.context.backIpNameMap[existingStandby]
+            existingStandbyDataNode = \
+                self.context.clusterInfoDict[existingStandbyName]["dataNode"]
+            insType, dbStat = self.commonGsCtl.queryInstanceStatus( 
+                existingStandby, existingStandbyDataNode, self.envFile)
+            if dbStat != STAT_NORMAL:
+                continue
+            if hostAzNameMap[existingStandby] != hostAzNameMap[existingStandby]:
+                continue
+            hasStandbyWithSameAZ = True
+            if hasStandbyWithSameAZ:
+                break
+        return hasStandbyWithSameAZ
+
     def installDatabaseOnHosts(self):
         """
         install database on each standby node
         """
-        hostList = self.context.newHostList
         envfile = self.envFile
+        standbyHosts = self.context.newHostList
+        hostAzNameMap = self.context.hostAzNameMap
         tempXmlFile = "%s/clusterconfig.xml" % self.tempFileDir
-        installCmd = "source {envfile} ; gs_install -X {xmlfile} \
-            2>&1".format(envfile=envfile,xmlfile=tempXmlFile)
-
-        statusArr = []
-
-        for newHost in hostList:
-
-            self.logger.log("\ninstalling database on node %s:" % newHost)
-            self.logger.debug(installCmd)
-
+        installCmd = "source {envfile} ; gs_install -X {xmlfile} "\
+            "2>&1".format(envfile=envfile,xmlfile=tempXmlFile)
+        self.logger.debug(installCmd)
+        primaryHostName = self.getPrimaryHostName()
+        primaryHost = self.context.clusterInfoDict[primaryHostName]["backIp"]
+        existingStandbys = list(set(self.existingHosts) - (set([primaryHost])))
+        failedInstallHosts = []
+        notInstalledCascadeHosts = []
+        for newHost in standbyHosts:
+            self.logger.log("Installing database on node %s:" % newHost)
+            if not self.expansionSuccess[newHost]:
+                continue
             hostName = self.context.backIpNameMap[newHost]
             sshIp = self.context.clusterInfoDict[hostName]["sshIp"]
+            if self.context.newHostCasRoleMap[newHost] == "on":
+                # check whether there are normal standbies in hostAzNameMap[host] azZone
+                hasStandbyWithSameAZ = self.hasNormalStandbyInAZOfCascade(newHost,
+                    existingStandbys)
+                if not hasStandbyWithSameAZ:
+                    notInstalledCascadeHosts.append(newHost)
+                    self.expansionSuccess[newHost] = False
+                    continue
             self.initSshConnect(sshIp, self.user)
-
             stdin, stdout, stderr = self.sshClient.exec_command(installCmd, 
-            get_pty=True)
+                get_pty=True)
             channel = stdout.channel
             echannel = stderr.channel
 
@@ -317,32 +350,29 @@ class ExpansionImpl():
                     not channel.recv_ready(): 
                     channel.close()
                     break
-            
             stdout.close()
             stderr.close()
-            status = channel.recv_exit_status()
-            statusArr.append(status)
-        
-        isBothSuccess = True
-        for status in statusArr:
-            if status != 0:
-                isBothSuccess = False
-                break
-        if isBothSuccess:
-            self.logger.log("\nSuccessfully install database on node %s" %
-             hostList)
-        else:
-            sys.exit(1)
+            if channel.recv_exit_status() != 0:
+                self.expansionSuccess[newHost] = False
+                failedInstallHosts.append(newHost)
+            else:
+                existingStandbys.append(newHost)
+                self.logger.log("%s install success." % newHost)
+        if notInstalledCascadeHosts:
+            self.logger.log("OpenGauss won't be installed on cascade_standby"
+                "%s, because there is no Normal standby in %s" % 
+                (newHost, hostAzNameMap[newHost]))
+        if failedInstallHosts:
+            self.logger.log(ErrorCode.GAUSS_527["GAUSS_52707"] %
+                ", ".join(failedInstallHosts))
+        self.logger.log("Finish to install database on all nodes.")
     
     def preInstallOnHosts(self):
         """
         execute preinstall step
         """
-        self.logger.debug("Start to preinstall database step.\n")
+        self.logger.log("Start to preinstall database step.")
         newBackIps = self.context.newHostList
-        newHostNames = []
-        for host in newBackIps:
-            newHostNames.append(self.context.backIpNameMap[host])
         envfile = self.envFile
         tempXmlFile = "%s/clusterconfig.xml" % self.tempFileDir
 
@@ -358,33 +388,34 @@ class ExpansionImpl():
                     ".format(softpath=self.context.packagepath,user=self.user,
                     group=self.group,xmlfile=tempXmlFile,envfile=envfile)
 
-        sshTool = SshTool(newHostNames)
-        
-        status, output = sshTool.getSshStatusOutput(preinstallCmd , [], envfile)
-        statusValues = status.values()
-        if STATUS_FAIL in statusValues:
-            GaussLog.exitWithError(output)
-        
-        self.logger.debug("End to preinstall database step.\n")
+        sshTool = SshTool(newBackIps)
+        resultMap, output = sshTool.getSshStatusOutput(preinstallCmd, [], envfile)
+        failedPreinstallHosts = []
+        for host in resultMap:
+            if resultMap[host] == DefaultValue.SUCCESS:
+                self.expansionSuccess[host] = True
+                self.logger.log("preinstall %s success" % host)
+            else:
+                failedPreinstallHosts.append(host)
+        if failedPreinstallHosts:
+            self.logger.log("Failed to preinstall on: \n%s" % ", ".join(failedPreinstallHosts))
+        self.logger.log("End to preinstall database step.")
         self.cleanSshToolFile(sshTool)
-
     
     def buildStandbyRelation(self):
         """
         func: after install single database on standby nodes. 
         build the relation with primary and standby nodes.
         step:
-        1. get existing hosts
-        2. set guc config to primary node
-        3. restart standby node with Standby Mode
-        4. set guc config to standby node
-        5. rollback guc config of existing hosts if build failed
-        6. generate cluster static file and send to each node.
+        1. set guc config to primary node
+        2. restart standby node with Standby Mode
+        3. set guc config to standby node
+        4. rollback guc config of existing hosts if build failed
+        5. generate cluster static file and send to each node.
         """
-        self.getExistingHosts()
         self.setPrimaryGUCConfig()
         self.setStandbyGUCConfig()
-        self.addTrustOnExistNodes()
+        self.addTrust()
         self.generateGRPCCert()
         self.buildStandbyHosts()
         self.rollback()
@@ -394,84 +425,94 @@ class ExpansionImpl():
         """
         get the exiting hosts
         """
-        self.logger.debug("Get the existing hosts.\n")
+        self.logger.debug("Get the existing host.")
         primaryHost = self.getPrimaryHostName()
-        result = self.commonGsCtl.queryOmCluster(primaryHost, self.envFile)
-        instances = re.split('(?:\|)|(?:\n)', result)
+        command = ""
+        if DefaultValue.getEnv("MPPDB_ENV_SEPARATE_PATH"):
+            command = "su - %s -c 'source %s;gs_om -t status --detail'" % \
+                (self.user, self.envFile)
+        else:
+            command = "su - %s -c 'source %s;source /home/%s/.bashrc;"\
+                "gs_om -t status --detail'" % (self.user, self.envFile, self.user)
+        sshTool = SshTool([primaryHost])
+        resultMap, outputCollect = sshTool.getSshStatusOutput(command, 
+            [primaryHost], self.envFile)
+        self.logger.debug(outputCollect)
+        instances = re.split('(?:\|)|(?:\n)', outputCollect)
         self.existingHosts = []
+        pattern = re.compile('(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*')
         for inst in instances:
-            pattern = re.compile('(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*')
-            result = pattern.findall(inst)
-            if len(result) != 0:
-                self.existingHosts.append(result[0])
+            existingHosts = pattern.findall(inst)
+            if len(existingHosts) != 0:
+                self.existingHosts.append(existingHosts[0])
 
     def setPrimaryGUCConfig(self):
         """
         """
         self.logger.debug("Start to set primary node GUC config.\n")
         primaryHost = self.getPrimaryHostName()
-
         self.setGUCOnClusterHosts([primaryHost])
-        self.addStandbyIpInPrimaryConf()
-        
         
     def setStandbyGUCConfig(self):
         """
         set the expansion standby node db guc config
         """
         self.logger.debug("Start to set standby node GUC config.\n")
-        primaryHost = self.getPrimaryHostName()
+        primaryHostName = self.getPrimaryHostName()
+        primaryHostIp = self.context.clusterInfoDict[primaryHostName]["backIp"]
         existingStandbyHosts = list(
-            set(self.existingHosts).difference(set([primaryHost])))
+            set(self.existingHosts).difference(set([primaryHostIp])))
         standbyHosts = existingStandbyHosts + self.context.newHostList
         standbyNames = []
         for standbyHost in standbyHosts:
             standbyNames.append(self.context.backIpNameMap[standbyHost])
         self.setGUCOnClusterHosts(standbyNames)
 
-    def addTrustOnExistNodes(self):
+    def addTrust(self):
         """
-        add host trust in pg_hba.conf on existing standby node. 
-        """ 
+        """
         self.logger.debug("Start to set host trust on existing node.")
-        allNodeNames = self.context.nodeNameList
-        newNodeIps = self.context.newHostList
-        newNodeNames = []
-        trustCmd = []
-        for node in newNodeIps:
-            nodeName = self.context.backIpNameMap[node]
-            newNodeNames.append(nodeName)
-            cmd = 'host    all    all    %s/32    trust' % node
-            trustCmd.append(cmd)
-        existNodes = list(set(allNodeNames).difference(set(newNodeNames)))
-        for node in existNodes:
-            dataNode = self.context.clusterInfoDict[node]["dataNode"]
-            cmd = ""
-            for trust in trustCmd:
-                cmd += "source %s; gs_guc set -D %s -h '%s';" % \
-                    (self.envFile, dataNode, trust)
-            sshTool = SshTool([node])
-            resultMap, outputCollect = sshTool.getSshStatusOutput(cmd, 
-            [node], self.envFile)
+        allHosts = self.existingHosts + self.context.newHostList
+        for hostExec in allHosts:
+            hostExecName = self.context.backIpNameMap[hostExec]
+            dataNode = self.context.clusterInfoDict[hostExecName]["dataNode"]
+            cmd = "source %s;gs_guc set -D %s" % (self.envFile, dataNode)
+            if hostExec in self.existingHosts:
+                for hostParam in self.context.newHostList:
+                    cmd += " -h 'host    all    all    %s/32    trust'" % \
+                        hostParam
+            else:
+                for hostParam in allHosts:
+                    if hostExec != hostParam:
+                        cmd += " -h 'host    all    all    %s/32    trust'" % \
+                            hostParam
+            self.logger.debug("[%s] trustCmd:%s" % (hostExec, cmd))
+            sshTool = SshTool([hostExec])
+            resultMap, outputCollect = sshTool.getSshStatusOutput(cmd,
+                [hostExec], self.envFile)
             self.cleanSshToolFile(sshTool)
         self.logger.debug("End to set host trust on existing node.")
-    
+
     def generateGRPCCert(self):
         """
-        generate GRPC cert
+        generate GRPC cert for single node
         """
         primaryHost = self.getPrimaryHostName()
         dataNode = self.context.clusterInfoDict[primaryHost]["dataNode"]
+        needGRPCHosts = []
+        for host in self.expansionSuccess:
+            if self.expansionSuccess[host]:
+                needGRPCHosts.append(host)
         insType, dbStat = self.commonGsCtl.queryInstanceStatus(primaryHost,
             dataNode,self.envFile)
-        needGRPCHosts = copy.copy(self.context.newHostList)
         if insType != MODE_PRIMARY:
             primaryHostIp = self.context.clusterInfoDict[primaryHost]["backIp"]
             needGRPCHosts.append(primaryHostIp)
-        self.logger.debug("\nStart to generate GRPC cert.")
-        self.context.initSshTool(needGRPCHosts)
-        self.context.createGrpcCa(needGRPCHosts)
-        self.logger.debug("\nEnd to generate GRPC cert.")
+        self.logger.debug("Start to generate GRPC cert.")
+        if needGRPCHosts:
+            self.context.initSshTool(needGRPCHosts)
+            self.context.createGrpcCa(needGRPCHosts)
+        self.logger.debug("End to generate GRPC cert.")
 
     def addStandbyIpInPrimaryConf(self):
         """
@@ -480,12 +521,12 @@ class ExpansionImpl():
 
         standbyHosts = self.context.newHostList
         primaryHost = self.getPrimaryHostName()
+        dataNode = self.context.clusterInfoDict[primaryHost]["dataNode"]
         command = ''
         for host in standbyHosts:
             hostName = self.context.backIpNameMap[host]
-            dataNode = self.context.clusterInfoDict[hostName]["dataNode"]
-            command += ("source %s; gs_guc set -D %s -h 'host    all    all    %s/32    " + \
-                "trust';") % (self.envFile, dataNode, host)
+            command += ("source %s; gs_guc set -D %s -h 'host    all    all"
+                "    %s/32    trust';") % (self.envFile, dataNode, host)
         self.logger.debug(command)
         sshTool = SshTool([primaryHost])
         resultMap, outputCollect = sshTool.getSshStatusOutput(command, 
@@ -522,168 +563,118 @@ class ExpansionImpl():
         """
         stop the new standby host`s database and build it as standby mode
         """
-        self.logger.debug("start to build standby node...\n")
+        self.logger.debug("Start to build build new nodes.\n")
         
         standbyHosts = self.context.newHostList
-        primaryHost = self.getPrimaryHostName()
-        existingStandbys = list(set(self.existingHosts).difference(set([primaryHost])))
-
-        for host in standbyHosts:
-            self.expansionSuccess[host] = False
-
-        # build standby firstly
-        for host in standbyHosts:
-            if self.context.newHostCasRoleMap[host] == "on":
-                continue
-            self.logger.log("Start to build standby %s." % host)
-            startSuccess = False
-            hostName = self.context.backIpNameMap[host]
-            dataNode = self.context.clusterInfoDict[hostName]["dataNode"]
-
-            self.checkTmpDir(hostName)
-
-            self.commonGsCtl.stopInstance(hostName, dataNode, self.envFile)
-            self.commonGsCtl.startInstanceWithMode(hostName, dataNode, 
-                MODE_STANDBY, self.envFile)
-            
-            # start standby as standby mode for three times max.
-            start_retry_num = 1
-            while start_retry_num <= 3:
-                insType, dbStat = self.commonGsCtl.queryInstanceStatus(
-                    hostName,dataNode, self.envFile)
-                if insType != ROLE_STANDBY:
-                    self.logger.debug("Start database as Standby mode failed, "\
-                        "retry for %s times" % start_retry_num)
-                    self.commonGsCtl.startInstanceWithMode(hostName, dataNode, 
-                    MODE_STANDBY, self.envFile)
-                    start_retry_num = start_retry_num + 1
-                else:
-                    startSuccess = True
-                    break
-            if startSuccess == False:
-                self.logger.debug("Start database %s as Standby mode failed!" % host)
-                continue
-            
-            buildSuccess = False
-            # build standby node
-            self.addStandbyIpInPrimaryConf()
-            self.reloadPrimaryConf()
-            time.sleep(10)
-            insType, dbStat = self.commonGsCtl.queryInstanceStatus( 
-                primaryHost, dataNode, self.envFile)
-            if insType != ROLE_PRIMARY:
-                GaussLog.exitWithError("The server mode of primary host" \
-                    "is not primary!")
-            if dbStat != STAT_NORMAL:
-                GaussLog.exitWithError("The primary is not Normal!")
-            
-            self.commonGsCtl.buildInstance(hostName, dataNode, MODE_STANDBY, 
-                self.envFile)
-            
-            # if build failed first time. retry for three times.
-            start_retry_num = 1
-            while start_retry_num <= 3:
-                time.sleep(10)
-                insType, dbStat = self.commonGsCtl.queryInstanceStatus( 
-                    hostName, dataNode, self.envFile)
-                if dbStat != STAT_NORMAL:
-                    self.logger.debug("Build standby instance failed, " \
-                        "retry for %s times" % start_retry_num)
-                    self.commonGsCtl.buildInstance(hostName, dataNode, 
-                        MODE_STANDBY, self.envFile)
-                    start_retry_num = start_retry_num + 1
-                else:
-                    buildSuccess = True
-                    self.expansionSuccess[host] = True
-                    existingStandbys.append(host)
-                    break
-            if buildSuccess == False:
-                self.logger.log("Build standby %s failed." % host)
-            else:
-                self.logger.log("Build standby %s success." % host)
-
-
-        # build cascade standby
         hostAzNameMap = self.context.hostAzNameMap
+        primaryHostName = self.getPrimaryHostName()
+        primaryHost = self.context.clusterInfoDict[primaryHostName]["backIp"]
+        existingStandbys = list(set(self.existingHosts).difference(set([primaryHost])))
+        primaryDataNode = self.context.clusterInfoDict[primaryHostName]["dataNode"]
+        self.reloadPrimaryConf()
+        time.sleep(10)
+        insType, dbStat = self.commonGsCtl.queryInstanceStatus( 
+            primaryHost, primaryDataNode, self.envFile)
+        primaryExceptionInfo = ""
+        if insType != ROLE_PRIMARY:
+            primaryExceptionInfo = "The server mode of primary host" \
+                "is not primary."
+        if dbStat != STAT_NORMAL:
+            primaryExceptionInfo = "The primary is not in Normal state."
+        if primaryExceptionInfo != "":
+            for host in standbyHosts:
+                self.expansionSuccess = False
+            self.rollback()
+            GaussLog.exitWithError(primaryExceptionInfo)
+
         for host in standbyHosts:
-            if self.context.newHostCasRoleMap[host] == "off":
+            if not self.expansionSuccess[host]:
                 continue
-            self.logger.log("Start to build cascade standby %s." % host)
-            startSuccess = False
             hostName = self.context.backIpNameMap[host]
             dataNode = self.context.clusterInfoDict[hostName]["dataNode"]
-            # if no Normal standby same with the current cascade_standby, skip
-            hasStandbyWithSameAZ = False
-            for existingStandby in existingStandbys:
-                existingStandbyName = self.context.backIpNameMap[existingStandby]
-                existingStandbyDataNode = self.context.clusterInfoDict[existingStandbyName]["dataNode"]
-                insType, dbStat = self.commonGsCtl.queryInstanceStatus( 
-                    hostName, dataNode, self.envFile)
-                if dbStat != STAT_NORMAL:
+            buildMode = ""
+            hostRole = ""
+            if self.context.newHostCasRoleMap[host] == "on":
+                buildMode = MODE_CASCADE
+                hostRole = ROLE_CASCADE
+                # check whether there are normal standbies in hostAzNameMap[host] azZone
+                hasStandbyWithSameAZ = self.hasNormalStandbyInAZOfCascade(host,
+                    existingStandbys)
+                if not hasStandbyWithSameAZ:
+                    self.logger.log("There is no Normal standby in %s" %
+                        hostAzNameMap[host])
+                    self.expansionSuccess[host] = False
                     continue
-                if hostAzNameMap[existingStandby] != hostAzNameMap[host]:
-                    continue
-                hasStandbyWithSameAZ = True
-                break
-            if not hasStandbyWithSameAZ:
-                self.logger.log("There is no Normal standby in %s" % \
-                    hostAzNameMap[host])
-                continue
-
+            else:
+                buildMode = MODE_STANDBY
+                hostRole = ROLE_STANDBY
+            self.logger.log("Start to build %s %s." % (hostRole, host))
             self.checkTmpDir(hostName)
-
+            # start new host as standby mode
             self.commonGsCtl.stopInstance(hostName, dataNode, self.envFile)
-            self.commonGsCtl.startInstanceWithMode(hostName, dataNode, 
-                MODE_STANDBY, self.envFile)
-            
-            # start cascadeStandby as standby mode for three times max.
-            start_retry_num = 1
-            while start_retry_num <= 3:
-                insType, dbStat = self.commonGsCtl.queryInstanceStatus(hostName,
-                    dataNode, self.envFile)
-                if insType != ROLE_STANDBY:
-                    self.logger.debug("Start database as Standby mode failed, "\
-                        "retry for %s times" % start_retry_num)
-                    self.commonGsCtl.startInstanceWithMode(hostName, dataNode, 
-                        MODE_STANDBY, self.envFile)
-                    start_retry_num = start_retry_num + 1
+            result, output = self.commonGsCtl.startInstanceWithMode(host, 
+                dataNode, MODE_STANDBY, self.envFile)
+            if result[host] != DefaultValue.SUCCESS:
+                if "uncompleted build is detected" not in output:
+                    self.expansionSuccess[host] = False
+                    self.logger.log("Failed to start %s as standby "
+                        "before building." % host)
                 else:
-                    startSuccess = True
-                    break
-            if startSuccess == False:
-                self.logger.log("Start database %s as Standby mode failed!" % host)
-                continue
-
-            # build cascade standby node
-            self.addStandbyIpInPrimaryConf()
-            self.reloadPrimaryConf()
-            self.commonGsCtl.buildInstance(hostName, dataNode, MODE_CASCADE, \
-                self.envFile)
-
-            buildSuccess = False
-            # if build failed first time. retry for three times.
-            start_retry_num = 1
-            while start_retry_num <= 3:
-                time.sleep(10)
+                    self.logger.debug("Uncompleted build is detected on %s." %
+                        host)
+            else:
                 insType, dbStat = self.commonGsCtl.queryInstanceStatus(
                     hostName, dataNode, self.envFile)
-                if dbStat != STAT_NORMAL:
-                    self.logger.debug("Build standby instance failed, "\
-                        "retry for %s times" % start_retry_num)
-                    self.addStandbyIpInPrimaryConf()
-                    self.reloadPrimaryConf()
-                    self.commonGsCtl.buildInstance(hostName, dataNode, \
-                        MODE_CASCADE, self.envFile)
-                    start_retry_num = start_retry_num + 1
-                else:
-                    buildSuccess = True
-                    self.expansionSuccess[host] = True
-                    break
-            if buildSuccess == False:
-                self.logger.log("Build cascade standby %s failed." % host)
-            else:
-                self.logger.log("Build cascade standby %s success." % host)
+                if insType != ROLE_STANDBY:
+                    self.logger.log("Build %s failed." % host)
+                    continue
             
+            # build new host
+            sshTool = SshTool([host])
+            tempShFile = "%s/buildStandby.sh" % self.tempFileDir
+            # create temporary dir to save gs_ctl build command bashfile.
+            mkdirCmd = "mkdir -m a+x -p %s; chown %s:%s %s" % \
+                (self.tempFileDir, self.user, self.group, self.tempFileDir)
+            retmap, output = sshTool.getSshStatusOutput(mkdirCmd, [host], \
+                self.envFile)
+            subprocess.getstatusoutput("touch %s; cat /dev/null > %s" % \
+                (tempShFile, tempShFile))
+            buildCmd = "gs_ctl build -D %s -M %s" % (dataNode, buildMode)
+            gs_ctlBuildCmd = "source %s ;nohup " % self.envFile + buildCmd + " 1>/dev/null 2>/dev/null &"
+            self.logger.debug("[%s] gs_ctlBuildCmd: %s" % (host, gs_ctlBuildCmd))
+            with os.fdopen(os.open("%s" % tempShFile, os.O_WRONLY | os.O_CREAT,
+                    stat.S_IWUSR | stat.S_IRUSR),'w') as fo:
+                fo.write("#bash\n")
+                fo.write(gs_ctlBuildCmd)
+                fo.close()
+            # send gs_ctlBuildCmd bashfile to the standby host and execute it.
+            sshTool.scpFiles(tempShFile, tempShFile, [host], self.envFile)
+            resultMap, outputCollect = sshTool.getSshStatusOutput("sh %s" % \
+                tempShFile, [host], self.envFile)
+            if resultMap[host] != DefaultValue.SUCCESS:
+                self.rollback()
+                self.logger.log("Failed to send gs_ctlBuildCmd bashfile "
+                    "to %s." % host)
+                GaussLog.exitWithError(outputCollect)
+            # check whether build process has finished
+            checkProcessExistCmd = "ps x"
+            while True:
+                resultMap, outputCollect = sshTool.getSshStatusOutput(
+                    checkProcessExistCmd, [host])
+                if buildCmd not in outputCollect:
+                    break
+                else:
+                    time.sleep(10)
+            # check build result after build process finished
+            insType, dbStat = self.commonGsCtl.queryInstanceStatus( 
+                hostName, dataNode, self.envFile)
+            if insType == hostRole and dbStat == STAT_NORMAL:
+                if self.context.newHostCasRoleMap[host] == "off":
+                    existingStandbys.append(host)
+                self.logger.log("Build %s %s success." % (hostRole, host))
+            else:
+                self.expansionSuccess[host] = False
+                self.logger.log("Build %s %s failed." % (hostRole, host))
 
     def checkTmpDir(self, hostName):
         """
@@ -705,7 +696,7 @@ class ExpansionImpl():
         """
         generate static_config_files and send to all hosts
         """
-        self.logger.log("Start to generate and send cluster static file.\n")
+        self.logger.log("Start to generate and send cluster static file.")
 
         primaryHost = self.getPrimaryHostName()
         result = self.commonGsCtl.queryOmCluster(primaryHost, self.envFile)
@@ -727,7 +718,7 @@ class ExpansionImpl():
         static_config_dir = "%s/script/static_config_files" % toolPath
         if not os.path.exists(static_config_dir):
             os.makedirs(static_config_dir)
-        
+
         # valid if dynamic config file exists.
         dynamic_file = "%s/bin/cluster_dynamic_config" % appPath
         dynamic_file_exist = False
@@ -749,17 +740,15 @@ class ExpansionImpl():
             if dynamic_file_exist:
                 refresh_cmd = "gs_om -t refreshconf"
                 hostSsh.getSshStatusOutput(refresh_cmd, [hostName], self.envFile)
-
             self.cleanSshToolFile(hostSsh)
-
-        self.logger.debug("End to generate and send cluster static file.\n")
+        self.logger.log("End to generate and send cluster static file.")
         
         self.logger.log("Expansion results:")
         for newHost in self.context.newHostList:
             if self.expansionSuccess[newHost]:
-                self.logger.log("%s:\tSuccess" % nodeIp)
+                self.logger.log("%s:\tSuccess" % newHost)
             else:
-                self.logger.log("%s:\tFailed" % nodeIp)
+                self.logger.log("%s:\tFailed" % newHost)
 
     def setGUCOnClusterHosts(self, hostNames=[]):
         """
@@ -785,11 +774,9 @@ class ExpansionImpl():
 gs_guc set -D {dn} -c "available_zone='{azName}'"
                 """.format(dn = dataNode, azName = hostAzNameMap[backIp])
             command = "source %s ; " % self.envFile + gucDict[host]
-            
-            self.logger.debug(command)
+            self.logger.debug("[%s] gucCommand:%s" % (host, command))
 
             sshTool = SshTool([host])
-
             # create temporary dir to save guc command bashfile.
             mkdirCmd = "mkdir -m a+x -p %s; chown %s:%s %s" % \
                 (self.tempFileDir,self.user,self.group,self.tempFileDir)
@@ -797,7 +784,7 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
                 self.envFile)
 
             subprocess.getstatusoutput("touch %s; cat /dev/null > %s" % \
-                (tempShFile, tempShFile))
+                    (tempShFile, tempShFile))
             with os.fdopen(os.open("%s" % tempShFile, os.O_WRONLY | os.O_CREAT,
                     stat.S_IWUSR | stat.S_IRUSR),'w') as fo:
                 fo.write("#bash\n")
@@ -864,65 +851,57 @@ remoteservice={remoteservice}'"
     def checkLocalModeOnStandbyHosts(self):
         """
         expansion the installed standby node. check standby database.
-        1. if the database is normal
-        2. if the databases version are same before existing and new 
+        1. if the database is installed correctly
+        2. if the databases version are same before existing and new
         """
         standbyHosts = self.context.newHostList
         envfile = self.envFile
-        
-        self.logger.log("Checking the database with locale mode.")
+        for host in standbyHosts:
+            self.expansionSuccess[host] = True
+        self.logger.log("Checking if the database is installed correctly with local mode.")
+        getversioncmd = "source %s;gaussdb --version" % envfile
+        primaryHostName = self.getPrimaryHostName()
+        sshPrimary = SshTool([primaryHostName])
+        resultMap, outputCollect = sshPrimary.getSshStatusOutput(
+            getversioncmd, [], envfile)
+        if resultMap[primaryHostName] != DefaultValue.SUCCESS:
+            GaussLog.exitWithError("Fail to check the version of primary.")
+        ipPattern = re.compile("\[.*\] (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):")
+        versionPattern = re.compile("gaussdb \((.*)\) .*")
+        primaryVersion = versionPattern.findall(outputCollect)[0]
+        notInstalledHosts = []
+        wrongVersionHosts = []
         for host in standbyHosts:
             hostName = self.context.backIpNameMap[host]
             dataNode = self.context.clusterInfoDict[hostName]["dataNode"]
-            insType, dbStat = self.commonGsCtl.queryInstanceStatus(hostName, 
-            dataNode, self.envFile)
-            if insType not in (ROLE_PRIMARY, ROLE_STANDBY, ROLE_NORMAL, ROLE_CASCADE):
-                GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35703"] % 
-                (hostName, self.user, dataNode, dataNode))
-        
-        allHostIp = []
-        allHostIp.append(self.context.localIp)
-        versionDic = {}
-
-        for hostip in standbyHosts:
-            allHostIp.append(hostip)
-        sshTool= SshTool(allHostIp)
-        #get version in the nodes 
-        getversioncmd = "gaussdb --version"
-        resultMap, outputCollect = sshTool.getSshStatusOutput(getversioncmd,
-                                                               [], envfile)
-        self.cleanSshToolFile(sshTool)
-        versionLines = outputCollect.splitlines()
-        for i in range(int(len(versionLines)/2)):
-            ipPattern = re.compile("\[.*\] (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):")
-            ipKey = ipPattern.findall(versionLines[2 * i])[0]
-            versionPattern = re.compile("gaussdb \((.*)\) .*")
-            version = versionPattern.findall(versionLines[2 * i + 1])[0]
-            versionDic[ipKey] = version
-        for hostip in versionDic:
-            if hostip == self.context.localIp:
-               versionCompare = ""
-               versionCompare = versionDic[hostip]
+            sshTool = SshTool([host])
+            resultMap, outputCollect = sshTool.getSshStatusOutput(
+                getversioncmd, [], envfile)
+            if resultMap[host] != DefaultValue.SUCCESS:
+                self.expansionSuccess[host] = False
+                notInstalledHosts.append(host)
             else:
-                if versionDic[hostip] == versionCompare:
-                    continue
-                else:
-                    GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35705"] \
-                       %(hostip, versionDic[hostip]))
-        self.logger.log("Successfully checked the database with locale mode.")
+                version = versionPattern.findall(outputCollect)[0]
+                if version != primaryVersion:
+                    self.expansionSuccess[host] = False
+                    wrongVersionHosts.append(host)
+        if notInstalledHosts:
+            self.logger.log("In local mode, database is not installed "
+                "correctly on these nodes:\n%s" % ", ".join(notInstalledHosts))
+        if wrongVersionHosts:
+            self.logger.log("In local mode, the database version is not same "
+                "with primary on these nodes:\n%s" % ", ".join(wrongVersionHosts))
+        self.logger.log("End to check the database with locale mode.")
 
     def preInstall(self):
         """
         preinstall on new hosts.
         """
-        self.logger.log("Start to preinstall database on the new \
-standby nodes.")
+        self.logger.log("Start to preinstall database on new nodes.")
         self.sendSoftToHosts()
         self.generateAndSendXmlFile()
         self.preInstallOnHosts()
-        self.logger.log("Successfully preinstall database on the new \
-standby nodes.")
-
+        self.logger.log("End to preinstall database on new nodes.")
 
     def clearTmpFile(self):
         """
@@ -967,11 +946,16 @@ standby nodes.")
         self.logger.debug("Start to check cluster status.\n")
 
         curHostName = socket.gethostname()
-        command = "su - %s -c 'source %s;gs_om -t status --detail'" % \
-            (self.user, self.envFile)
+        command = ""
+        if DefaultValue.getEnv("MPPDB_ENV_SEPARATE_PATH"):
+            command = "su - %s -c 'source %s;gs_om -t status --detail'" % \
+                (self.user, self.envFile)
+        else:
+            command = "su - %s -c 'source %s;source /home/%s/.bashrc;"\
+                "gs_om -t status --detail'" % (self.user, self.envFile, self.user)
         sshTool = SshTool([curHostName])
-        resultMap, outputCollect = sshTool.getSshStatusOutput(command, 
-        [curHostName], self.envFile)
+        resultMap, outputCollect = sshTool.getSshStatusOutput(command,
+            [curHostName], self.envFile)
         if outputCollect.find("Primary Normal") == -1:
             GaussLog.exitWithError("Unable to query current cluster status. " + \
                 "Please import environment variables or " +\
@@ -983,35 +967,19 @@ standby nodes.")
         """
         check if the node has been installed in the cluster.
         """
-        self.logger.debug("Start to check if the nodes in standby list\n")
-
-        curHostName = socket.gethostname()
-        command = "su - %s -c 'source %s;gs_om -t status --detail'" % \
-            (self.user, self.envFile)
-        sshTool = SshTool([curHostName])
-        resultMap, outputCollect = sshTool.getSshStatusOutput(command, 
-        [curHostName], self.envFile)
-        self.logger.debug(outputCollect)
-
-        newHosts = self.context.newHostList
-        standbyHosts = []
-        existHosts = []
-        while len(newHosts) > 0:
-            hostIp = newHosts.pop()
-            nodeName = self.context.backIpNameMap[hostIp]
-            nodeInfo = self.context.clusterInfoDict[nodeName]
-            dataNode = nodeInfo["dataNode"]
-            exist_reg = r"(.*)%s[\s]*%s(.*)" % (nodeName, hostIp)
-            if not re.search(exist_reg, outputCollect):
-                standbyHosts.append(hostIp)
-            else:
-                existHosts.append(hostIp)
-        self.context.newHostList = standbyHosts
-        if len(existHosts) > 0:
-            self.logger.log("The nodes [%s] are already in the cluster. Skip expand these nodes." \
-                % ",".join(existHosts))
-        self.cleanSshToolFile(sshTool)
-        if len(standbyHosts) == 0:
+        self.logger.debug("Start to check if the nodes in standby list.")
+        self.getExistingHosts()
+        newHostList = self.context.newHostList
+        existedNewHosts = list(set(self.existingHosts) & set(newHostList))
+        if existedNewHosts:
+            newHostList = list(set(newHostList) - set(self.existingHosts))
+            self.context.newHostList = newHostList
+            self.expansionSuccess = {}
+            for host in newHostList:
+                self.expansionSuccess[host] = False
+            self.logger.log("These nodes [%s] are already in the cluster. "
+                "Skip expand these nodes." % ",".join(existedNewHosts))
+        if len(newHostList) == 0:
             self.logger.log("There is no node can be expanded.")
             sys.exit(0)
 
@@ -1113,15 +1081,13 @@ standby nodes.")
         self.changeUser()
 
         if not self.context.standbyLocalMode:
-            self.logger.log("\nStart to install database on the new \
-standby nodes.")
+            self.logger.log("Start to install database on new nodes.")
             self.installDatabaseOnHosts()
         else:
-            self.logger.log("\nStandby nodes is installed with locale mode.")
             self.checkLocalModeOnStandbyHosts()
 
-        self.logger.log("\nDatabase on standby nodes installed finished.")
-        self.logger.log("\nStart to establish the primary-standby relationship.") 
+        self.logger.log("Database on standby nodes installed finished.")
+        self.logger.log("Start to establish the primary-standby relationship.")
         self.buildStandbyRelation()
         # process success
         pvalue.value = 1
@@ -1132,33 +1098,32 @@ standby nodes.")
         """
         existingHosts = self.existingHosts
         failedHosts = []
-        for host in self.expansionSuccess.keys():
+        for host in self.expansionSuccess:
             if self.expansionSuccess[host]:
                 existingHosts.append(host)
             else:
                 failedHosts.append(host)
         clusterInfoDict = self.context.clusterInfoDict
-        primaryHostName = self.getPrimaryHostName()
         for failedHost in failedHosts:
-            self.logger.debug("start to rollback replconninfo about %s" % failedHost)
+            self.logger.debug("Start to rollback replconninfo about %s" % failedHost)
             for host in existingHosts:
                 hostName = self.context.backIpNameMap[host]
                 dataNode = clusterInfoDict[hostName]["dataNode"]
                 confFile = os.path.join(dataNode, "postgresql.conf")
                 rollbackReplconninfoCmd = "sed -i '/remotehost=%s/s/^/#&/' %s" \
                     % (failedHost, confFile)
-                self.logger.debug(rollbackReplconninfoCmd)
-                sshTool = SshTool(host)
+                self.logger.debug("[%s] rollbackReplconninfoCmd:%s" % (host,
+                    rollbackReplconninfoCmd))
+                sshTool = SshTool([host])
                 (statusMap, output) = sshTool.getSshStatusOutput(rollbackReplconninfoCmd, [host])
-                if hostName == primaryHostName:
-                    pg_hbaFile = os.path.join(dataNode, "pg_hba.conf")
-                    rollbackPg_hbaCmd = "sed -i '/%s/s/^/#&/' %s" \
-                        % (failedHost, pg_hbaFile)
-                    self.logger.debug(rollbackPg_hbaCmd)
-                    (statusMap, output) = sshTool.getSshStatusOutput(rollbackPg_hbaCmd, [host])
+                pg_hbaFile = os.path.join(dataNode, "pg_hba.conf")
+                rollbackPg_hbaCmd = "sed -i '/%s/s/^/#&/' %s" \
+                    % (failedHost, pg_hbaFile)
+                self.logger.debug("[%s] rollbackPg_hbaCmd:%s" % (host,
+                    rollbackPg_hbaCmd))
+                (statusMap, output) = sshTool.getSshStatusOutput(rollbackPg_hbaCmd, [host])
                 reloadGUCCommand = "source %s ; gs_ctl reload -D %s " % \
                     (self.envFile, dataNode)
-                self.logger.debug(reloadGUCCommand)
                 resultMap, outputCollect = sshTool.getSshStatusOutput(
                     reloadGUCCommand, [host], self.envFile)
                 self.logger.debug(outputCollect)
@@ -1233,6 +1198,7 @@ class GsCtlCommon:
         self.logger.debug(host)
         self.logger.debug(outputCollect)
         self.cleanSshToolTmpFile(sshTool)
+        return resultMap, outputCollect
 
     def buildInstance(self, host, datanode, mode, env):
         command = "source %s ; gs_ctl build -D %s -M %s" % (env, datanode, mode)

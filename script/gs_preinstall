@@ -258,19 +258,6 @@ General options:
                                                      "be a directory."
                                    % self.mpprcFile)
 
-        try:
-            # check the user if exist
-            DefaultValue.getUserId(self.user)
-        except Exception as e:
-            mpprcFileTopPath = os.path.dirname(self.mpprcFile)
-            # the mpprc file can not be specified in the /home/user directory
-            userpath = "/home/%s/" % self.user
-            if (mpprcFilePath.startswith(userpath)):
-                GaussLog.exitWithError(
-                    ErrorCode.GAUSS_500["GAUSS_50004"] % '-sep-env-file' + \
-                    " Environment variable separation file can not be "
-                    "created under %s." % mpprcFileTopPath)
-
         DefaultValue.checkMpprcFileChange(self.mpprcFile, "", self.mpprcFile)
         (checkstatus, checkoutput) = DefaultValue.checkEnvFile(self.mpprcFile)
         if (not checkstatus):

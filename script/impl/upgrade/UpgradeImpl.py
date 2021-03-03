@@ -4484,6 +4484,11 @@ class UpgradeImpl:
             self.context.logger.log("Failed to check upgrade environment.",
                                     "constant")
             raise Exception(str(e))
+        if not self.context.forceRollback:
+            if self.context.oldClusterNumber >= \
+                    Const.ENABLE_STREAM_REPLICATION_VERSION:
+                self.check_gucval_is_inval_given(
+                    Const.ENABLE_STREAM_REPLICATION_NAME, Const.VALUE_ON)
         try:
             if self.context.action == Const.ACTION_INPLACE_UPGRADE:
                 self.context.logger.log(
@@ -4499,6 +4504,19 @@ class UpgradeImpl:
 
         self.context.logger.log(
             "Successfully checked upgrade environment.", "constant")
+
+    def check_gucval_is_inval_given(self, guc_name, val_list):
+        """
+        Checks whether a given parameter is a given value list in a
+        given instance list.
+        """
+        self.context.logger.debug("checks whether the parameter:{0} is "
+                                  "the value:{1}.".format(guc_name, val_list))
+        guc_str = "{0}:{1}".format(guc_name, ",".join(val_list))
+        self.checkParam(guc_str)
+        self.context.logger.debug("Success to check the parameter:{0} value "
+                                  "is in the value:{1}.".format(guc_name,
+                                                                val_list))
 
     def checkDifferentVersion(self):
         """

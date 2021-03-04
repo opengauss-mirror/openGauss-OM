@@ -124,7 +124,9 @@ BACKUP_DIR_LIST = ['global', 'pg_clog', 'pg_xlog', 'pg_multixact',
 BACKUP_DIR_LIST_BASE = ['global', 'pg_clog', 'pg_csnlog']
 BACKUP_DIR_LIST_64BIT_XID = ['pg_multixact', 'pg_replslot', 'pg_notify',
                              'pg_subtrans', 'pg_twophase']
-
+VALUE_OFF = ["off", "false", "0", "no"]
+VALUE_ON = ["on", "true", "1", "yes"]
+DN_GUC = ["upgrade_mode", "enable_stream_replication"]
 FIRST_GREY_UPGRADE_NUM = 92
 
 UPGRADE_PRECOMMIT_NUM = 0.001
@@ -156,3 +158,5 @@ COMBIN_NUM = 30
 ON_INPLACE_UPGRADE = "IsInplaceUpgrade"
 MAX_APP_SIZE = 2000
 UPGRADE_VERSION_64bit_xid = 91.208
+ENABLE_STREAM_REPLICATION_VERSION = "92.149"
+ENABLE_STREAM_REPLICATION_NAME = "enable_stream_replication"

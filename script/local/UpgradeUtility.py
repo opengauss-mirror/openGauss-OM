@@ -1813,12 +1813,11 @@ def checkGucValue():
     """
     key = g_opts.gucStr.split(':')[0].strip()
     value = g_opts.gucStr.split(':')[1].strip()
-    if key == "upgrade_from":
-        instances = g_dbNode.cmagents
-        fileName = "cm_agent.conf"
-    elif key == "upgrade_mode":
-        #instances = g_dbNode.coordinators
-        #instances.extend(g_dbNode.datanodes)
+    if value in const.VALUE_OFF:
+        value = const.VALUE_OFF
+    if value in const.VALUE_ON:
+        value = const.VALUE_ON
+    if key in const.DN_GUC:
         instances = g_dbNode.datanodes
         fileName = "postgresql.conf"
     else:
@@ -1849,7 +1848,7 @@ def checkGucValue():
                 realValue = realValue.split('#')[0].strip()
             g_logger.debug("[key:%s]: Realvalue %s, ExpectValue %s" % (
                 key, str(realValue), str(value)))
-            if str(value) != str(realValue):
+            if str(realValue) not in str(value):
                 raise Exception(
                     ErrorCode.GAUSS_521["GAUSS_52102"] % key
                     + " Real value %s, expect value %s"

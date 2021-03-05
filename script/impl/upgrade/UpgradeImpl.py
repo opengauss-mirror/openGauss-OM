@@ -1067,7 +1067,7 @@ class UpgradeImpl:
                 self.upgradeAgain()
             except Exception as e:
                 errmsg = ErrorCode.GAUSS_529["GAUSS_52934"] + \
-                         "You can use -h to upgrade or manually rollback."
+                         "You can use --grey to upgrade or manually rollback."
                 self.context.logger.log(errmsg + str(e))
                 self.exitWithRetCode(self.context.action, False)
         else:
@@ -1076,7 +1076,7 @@ class UpgradeImpl:
 
     def upgradeAgain(self):
         try:
-            self.context.logger.log(
+            self.context.logger.debug(
                 "From this step, you can use -h to upgrade again if failed.")
             # we have guarantee specified nodes have same step,
             # so we only need to get one node step
@@ -1108,8 +1108,9 @@ class UpgradeImpl:
                 self.recordNodeStep(GreyUpgradeStep.STEP_UPDATE_POST_CATALOG)
 
         except Exception as e:
-            self.context.logger.log("Failed to upgrade, can use -h to "
-                                    "upgrade again. Error: %s" % str(e))
+            self.context.logger.log("Failed to upgrade, can use --grey to "
+                                    "upgrade again after rollback. Error: "
+                                    "%s" % str(e))
             self.context.logger.debug(traceback.format_exc())
             self.exitWithRetCode(self.context.action, False, str(e))
         self.context.logger.log(
@@ -4561,12 +4562,32 @@ class UpgradeImpl:
         we can upgrade again
         :return:
         """
+        if self.context.is_grey_upgrade:
+            self.check_option_grey()
         if len(self.context.nodeNames) != 0:
             self.checkOptionH()
         elif self.context.upgrade_remain:
             self.checkOptionContinue()
         else:
             self.checkOptionG()
+
+    def check_option_grey(self):
+        """
+        if user use --grey first, and then can not use --grey
+        :return:
+        """
+        stepFile = os.path.join(
+            self.context.upgradeBackupPath, Const.GREY_UPGRADE_STEP_FILE)
+        if not os.path.isfile(stepFile):
+            self.context.logger.debug(
+                "File %s does not exists. No need to check." %
+                Const.GREY_UPGRADE_STEP_FILE)
+            return
+        grey_node_names = self.getUpgradedNodeNames()
+        if grey_node_names:
+            self.context.logger.log(
+                "All nodes have been upgrade, no need to upgrade again.")
+            self.exitWithRetCode(self.action, True)
 
     def checkOptionH(self):
         self.checkNodeNames()

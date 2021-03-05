@@ -145,7 +145,7 @@ General options:
         if len(self.newHostList) == 0:
             GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35701"] % "-h")
     
-    def __getClusterInfoDict(self):
+    def _getClusterInfoDict(self):
         clusterInfo = ExpansionClusterInfo()
         self.clusterInfo = clusterInfo
         hostNameIpDict = clusterInfo.initFromXml(self.xmlFile)
@@ -207,22 +207,22 @@ General options:
         self.logger.ignoreErr = True
     
     def getExpansionInfo(self):
-        self.__getClusterInfoDict()
-        self.__getBackIpNameMap()
-        self.__getHostAzNameMap()
-        self.__getNewHostCasRoleMap()
-        self.__adjustOrderOfNewHostList()
+        self._getClusterInfoDict()
+        self._getBackIpNameMap()
+        self._getHostAzNameMap()
+        self._getNewHostCasRoleMap()
+        self._adjustOrderOfNewHostList()
 
-    def __adjustOrderOfNewHostList(self):
+    def _adjustOrderOfNewHostList(self):
         """
         Adjust the order of hostlist so that 
         standby comes first and cascade standby comes last
         """
         i, j = 0, len(self.newHostList) - 1
         while i < j:
-            while i < j and self.newHostCasRoleMap[self.newHostList[i]] != "on":
+            while i < j and self.newHostCasRoleMap[self.newHostList[i]] == "off":
                 i += 1
-            while i < j and self.newHostCasRoleMap[self.newHostList[j]] != "off":
+            while i < j and self.newHostCasRoleMap[self.newHostList[j]] == "on":
                 j -= 1
             self.newHostList[i], self.newHostList[j] = \
                 self.newHostList[j], self.newHostList[i]
@@ -239,7 +239,7 @@ General options:
                 GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35702"] % \
                     nodeIp)
 
-    def __getBackIpNameMap(self):
+    def _getBackIpNameMap(self):
         backIpList = self.clusterInfo.getClusterBackIps()
         for backip in backIpList:
             self.backIpNameMap[backip] = \
@@ -298,14 +298,14 @@ General options:
             GaussLog.exitWithError(ErrorCode.GAUSS_511["GAUSS_51100"] %
                 sshExceptionInfo)
 
-    def __getHostAzNameMap(self):
+    def _getHostAzNameMap(self):
         """
         get azName of all hosts
         """
         for dbnode in self.clusterInfo.dbNodes:
             self.hostAzNameMap[dbnode.backIps[0]] = dbnode.azName
     
-    def __getNewHostCasRoleMap(self):
+    def _getNewHostCasRoleMap(self):
         """
         get cascadeRole of newHosts
         """

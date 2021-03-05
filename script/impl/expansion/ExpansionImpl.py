@@ -432,6 +432,8 @@ class ExpansionImpl():
         resultMap, outputCollect = sshTool.getSshStatusOutput(command, 
             [primaryHost], self.envFile)
         self.logger.debug(outputCollect)
+        if resultMap[primaryHost] != DefaultValue.SUCCESS:
+            GaussLog.exitWithError("Unable to query current cluster state.")
         instances = re.split('(?:\|)|(?:\n)', outputCollect)
         self.existingHosts = []
         pattern = re.compile('(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*')
@@ -964,9 +966,11 @@ remoteservice={remoteservice}'"
         self.logger.debug("Start to check if the nodes in standby list.")
         self.getExistingHosts()
         newHostList = self.context.newHostList
-        existedNewHosts = list(set(self.existingHosts) & set(newHostList))
+        existedNewHosts = \
+            [host for host in newHostList if host in self.existingHosts]
         if existedNewHosts:
-            newHostList = list(set(newHostList) - set(self.existingHosts))
+            newHostList = \
+                [host for host in newHostList if host not in existedNewHosts]
             self.context.newHostList = newHostList
             self.expansionSuccess = {}
             for host in newHostList:

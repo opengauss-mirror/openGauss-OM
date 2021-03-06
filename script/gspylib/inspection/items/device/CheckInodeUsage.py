@@ -127,7 +127,7 @@ class CheckInodeUsage(BaseItem):
             self.result.rst = ResultStatus.NG
 
         keys = DiskInfoDict.keys()
-        sorted(keys)
+        sortedKeys = sorted(keys)
         self.result.raw = "diskname inodeUsage"
-        for diskInfo in map(DiskInfoDict.get, keys):
+        for diskInfo in map(DiskInfoDict.get, sortedKeys):
             self.result.raw += "\n%s" % diskInfo

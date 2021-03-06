@@ -377,7 +377,7 @@ class LocalBackup(LocalBaseOM):
             # Only parameter backup
             # send  backup file which is compressed  to the node
             # that is currently performing the backup
-            if backParameter:
+            if backParameter and self.nodeName != g_OSlib.getHostName():
                 g_OSlib.scpFile(self.nodeName, tarName, self.tmpBackupDir)
 
 

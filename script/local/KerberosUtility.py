@@ -578,7 +578,7 @@ class Kerberos():
         gucstr = ""
         for entry in list(parmeterDict.items()):
             if entry[1] == "":
-                gucstr += " -c \"%s\"" % (entry[0])
+                gucstr += " -c \"%s=\'\'\"" % (entry[0])
             else:
                 gucstr += " -c \"%s=%s\"" % (entry[0], entry[1])
         # check the GUC parameter string

@@ -95,7 +95,9 @@ class ExpansionImpl():
         if envFile:
             self.envFile = envFile
         else:
-            self.envFile = "/etc/profile"
+            userpath = pwd.getpwnam(self.user).pw_dir
+            mpprcFile = os.path.join(userpath, ".bashrc")
+            self.envFile = mpprcFile
 
         currentTime = str(datetime.datetime.now()).replace(" ", "_").replace(
             ".", "_")
@@ -366,7 +368,7 @@ class ExpansionImpl():
         self.logger.log("Start to preinstall database step.")
         tempXmlFile = "%s/clusterconfig.xml" % self.tempFileDir
 
-        if self.envFile == "/etc/profile":
+        if not DefaultValue.getEnv("MPPDB_ENV_SEPARATE_PATH"):
             preinstallCmd = "{softPath}/script/gs_preinstall -U {user} -G {group} "\
                 "-X {xmlFile} --non-interactive 2>&1".format(
                 softPath = self.context.packagepath, user = self.user,
@@ -421,8 +423,8 @@ class ExpansionImpl():
             command = "su - %s -c 'source %s;gs_om -t status --detail'" % \
                 (self.user, self.envFile)
         else:
-            command = "su - %s -c 'source %s;source /home/%s/.bashrc;"\
-                "gs_om -t status --detail'" % (self.user, self.envFile, self.user)
+            command = "su - %s -c 'source /etc/profile;source /home/%s/.bashrc;"\
+                "gs_om -t status --detail'" % (self.user, self.user)
         sshTool = SshTool([primaryHost])
         resultMap, outputCollect = sshTool.getSshStatusOutput(command,
             [primaryHost], self.envFile)
@@ -925,8 +927,8 @@ remoteservice={remoteservice}'"
             command = "su - %s -c 'source %s;gs_om -t status --detail'" % \
                 (self.user, self.envFile)
         else:
-            command = "su - %s -c 'source %s;source /home/%s/.bashrc;"\
-                "gs_om -t status --detail'" % (self.user, self.envFile, self.user)
+            command = "su - %s -c 'source /etc/profile;source /home/%s/.bashrc;"\
+                "gs_om -t status --detail'" % (self.user, self.user)
         sshTool = SshTool([curHostName])
         resultMap, outputCollect = sshTool.getSshStatusOutput(command,
             [curHostName], self.envFile)

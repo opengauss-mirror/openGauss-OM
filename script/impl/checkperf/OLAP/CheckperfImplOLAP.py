@@ -1821,7 +1821,10 @@ class CheckperfImplOLAP(CheckperfImpl):
             cmd = "%s -t SSDPerfCheck -U %s -l %s" \
                   % (OMCommand.getLocalScript("LOCAL_PERFORMANCE_CHECK"),
                      self.opts.user, self.opts.localLog)
-            (status, output) = self.sshTool.getSshStatusOutput(cmd)
+            gp_path = os.path.join(
+                DefaultValue.ROOT_SCRIPTS_PATH, self.opts.user)
+            (status, output) = self.sshTool.getSshStatusOutput(cmd,
+                                                               gp_path=gp_path)
             outputMap = self.sshTool.parseSshOutput(self.sshTool.hostNames)
             for node in status.keys():
                 if (status[node] == DefaultValue.SUCCESS):

@@ -168,10 +168,10 @@ class CheckSpaceUsage(BaseItem):
             self.result.rst = ResultStatus.NG
 
         keys = DiskInfoDict.keys()
-        sorted(keys)
-        MaxDisk = list(map(DiskInfoDict.get, keys))[-1]
-        MinDisk = list(map(DiskInfoDict.get, keys))[0]
+        sortedKeys = sorted(keys)
+        MaxDisk = list(map(DiskInfoDict.get, sortedKeys))[-1]
+        MinDisk = list(map(DiskInfoDict.get, sortedKeys))[0]
         self.result.val += "\nDisk     Filesystem spaceUsage\nMax " \
                            "free %s\nMin free %s" % (MaxDisk, MinDisk)
-        for diskInfo in list(map(DiskInfoDict.get, keys)):
+        for diskInfo in list(map(DiskInfoDict.get, sortedKeys)):
             self.result.raw += "\n%s" % diskInfo

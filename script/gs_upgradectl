@@ -44,7 +44,6 @@ import sys
 import pwd
 import grp
 import copy
-import socket
 
 from gspylib.common.Common import DefaultValue
 from gspylib.common.GaussLog import GaussLog
@@ -72,16 +71,20 @@ class Upgrade(ParallelBaseOM):
         self.newClusterAppPath = ""
         self.oldClusterAppPath = ""
         self.clusterNodes = []
+        self.nodesNum = -1
+        self.nodeNames = []
         ##static parameter
         self.binTarName = "binary_%s.tar" % DefaultValue.GetHostIpOrName()
         self.rollback = False
         self.is_inplace_upgrade = True
+        self.is_grey_upgrade = False
         self.guc_paras = {}
         self.newClusterVersion = None
         self.newClusterNumber = None
         self.oldclusterVersion = None
         self.oldClusterNumber = None
         self.forceRollback = False
+        self.upgrade_remain = False
 
     def usage(self):
         """
@@ -93,7 +96,7 @@ Usage:
   gs_upgradectl -t chose-strategy [-l LOGFILE]
   gs_upgradectl -t commit-upgrade -X XMLFILE [-l LOGFILE]
 
-  gs_upgradectl -t auto-upgrade -X XMLFILE [-l LOGFILE]
+  gs_upgradectl -t auto-upgrade -X XMLFILE [-l LOGFILE] [--grey]
   gs_upgradectl -t auto-rollback -X XMLFILE [-l LOGFILE] [--force]
 
 General options:
@@ -107,6 +110,8 @@ General options:
                                   later version cluster.
   --force                         Force to rollback when cluster status is
                                   not normal
+  --grey                          Use grey-binary-upgrade
+
         """
 
         print(self.usage.__doc__)
@@ -130,6 +135,11 @@ General options:
         # get logFile information
         if "logFile" in ParaDict.keys():
             self.logFile = ParaDict.get("logFile")
+        if "grey" in ParaDict.keys():
+            self.is_grey_upgrade = True
+            self.is_inplace_upgrade = False
+        if "force" in ParaDict.keys():
+            self.forceRollback = True
 
     def checkUser(self):
         """
@@ -142,10 +152,10 @@ General options:
         # get group information
         self.group = grp.getgrgid(pwd.getpwnam(self.user).pw_gid).gr_name
         # if the user or group is null, exit
-        if (self.user == "" or self.group == ""):
+        if self.user == "" or self.group == "":
             raise Exception(ErrorCode.GAUSS_503["GAUSS_50308"])
         # if the user or group is 'root', exit
-        if (self.user == "root" or self.group == "root"):
+        if self.user == "root" or self.group == "root":
             raise Exception(ErrorCode.GAUSS_501["GAUSS_50105"])
 
         # we must make sure the env 'GAUSSHOME', 'GS_CLUSTER_NAME',
@@ -170,17 +180,16 @@ General options:
         """
         function: Check parameter from command line
         """
-        if (self.action == ""):
+        if self.action == "":
             raise Exception(ErrorCode.GAUSS_500["GAUSS_50001"] % "t" + ".")
         # when we do auto-upgrade, auto-rollback or commit-upgrade,
         # we must incoming '-X' and make sure  the xml file exists.
-        if (self.action != Const.ACTION_CHOSE_STRATEGY):
-            if (self.xmlFile == ""):
+        if self.action != Const.ACTION_CHOSE_STRATEGY:
+            if self.xmlFile == "":
                 raise Exception(ErrorCode.GAUSS_500["GAUSS_50001"] % 'X' + ".")
-            if (not os.path.exists(self.xmlFile)):
+            if not os.path.exists(self.xmlFile):
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] %
                                 self.xmlFile)
-
         # check mpprc file path
         # get mpprcFile by MPPDB_ENV_SEPARATE_PATH. Even if the return value
         # is "" or None, no need to pay attention
@@ -193,10 +202,10 @@ General options:
         self.checkUser()
 
         # check log file
-        if (self.logFile == ""):
+        if self.logFile == "":
             self.logFile = DefaultValue.getOMLogPath(
                 DefaultValue.UPGRADE_LOG_FILE, self.user, "", "")
-        if (not os.path.isabs(self.logFile)):
+        if not os.path.isabs(self.logFile):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50213"] % "log")
 
         self.initLogger(self.action)
@@ -208,10 +217,18 @@ General options:
         self.logger.debug("Init global infos")
 
         # init cluster info
-        if (self.xmlFile):
+        if self.xmlFile:
             self.initClusterInfo()
         else:
             self.initClusterInfoFromStaticFile(self.user)
+        # init clusterNodes
+        for dbNode in self.clusterInfo.dbNodes:
+            self.clusterNodes.append(dbNode.name)
+        if len(self.clusterNodes) == 0:
+            raise Exception(ErrorCode.GAUSS_512["GAUSS_51201"])
+        for nodeName in self.nodeNames:
+            if nodeName not in self.clusterNodes:
+                raise Exception(ErrorCode.GAUSS_516["GAUSS_51619"] % nodeName)
         self.logger.debug("Successfully init global infos")
 
     def distributeFileToSpecialNode(self, file, destDir, hostList):
@@ -263,15 +280,7 @@ if __name__ == '__main__':
 
         # set action flag file
         DefaultValue.setActionFlagFile("gs_upgradectl", upgrade.logger)
-
         upgrade.initGlobalInfos()
-
-        # Check if -h value:nodename in clusterNodes and obtain clusterNodes
-        for dbNode in upgrade.clusterInfo.dbNodes:
-            upgrade.clusterNodes.append(dbNode.name)
-        if len(upgrade.clusterNodes) == 0:
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51201"])
-
         impl = UpgradeImplOLAP(upgrade)
         impl.run()
     except Exception as e:

@@ -24,6 +24,7 @@ from gspylib.common.Common import DefaultValue
 from gspylib.common.OMCommand import OMCommand
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.os.gsfile import g_file
+from gspylib.os.gsOSlib import g_OSlib
 from impl.backup.BackupImpl import BackupImpl
 
 
@@ -104,15 +105,10 @@ class BackupImplOLAP(BackupImpl):
         self.context.logger.debug("Remote backup command is %s." % cmd)
 
         try:
-            if (not os.path.exists(tmp_backupDir)):
+            if not os.path.exists(tmp_backupDir):
                 os.makedirs(tmp_backupDir,
                             DefaultValue.KEY_DIRECTORY_PERMISSION)
-
-            (status, output) = self.context.sshTool.getSshStatusOutput(cmd)
-            for node in status.keys():
-                if (status[node] != DefaultValue.SUCCESS):
-                    raise Exception(output)
-
+            self._runCmd(cmd)
             if self.context.isParameter:
                 self.__distributeBackupFile(tmp_backupDir, "parameter")
             if self.context.isBinary:
@@ -145,37 +141,27 @@ class BackupImplOLAP(BackupImpl):
                     ErrorCode.GAUSS_514["GAUSS_51400"]
                     % cmd + " Error:\n%s" % output)
         else:
-            (status, output) = self.context.sshTool.getSshStatusOutput(
-                cmd, self.context.nodename)
-            for node in status.keys():
-                if (status[node] != DefaultValue.SUCCESS):
-                    raise Exception(output)
+            self._runCmd(cmd)
 
         # prepares the backup directory for the specified node
         cmd = g_file.SHELL_CMD_DICT["createDir"] \
               % (self.context.backupDir, self.context.backupDir,
                  DefaultValue.KEY_DIRECTORY_MODE)
-        (status, output) = self.context.sshTool.getSshStatusOutput(
-            cmd, self.context.nodename)
-        for node in status.keys():
-            if (status[node] != DefaultValue.SUCCESS):
-                raise Exception(output)
-
+        self._runCmd(cmd, self.context.nodename)
         # send backup package to the specified node from the local node
-        if (flag == "parameter"):
-            self.context.sshTool.scpFiles(
-                "%s/%s.tar" % (tmp_backupDir, flag), \
-                self.context.backupDir, self.context.nodename)
+        originalFile = "'%s'/%s.tar" % (tmp_backupDir, flag)
+        if flag == "parameter":
+            if self.context.nodename != [g_OSlib.getHostName()]:
+                self.context.sshTool.scpFiles(
+                    originalFile,
+                    self.context.backupDir, self.context.nodename)
+            else:
+                g_file.cpFile(originalFile, self.context.backupDir)
         else:
-            originalFile = "'%s'/%s.tar" % (tmp_backupDir, flag)
             targetFile = "'%s'/%s.tar" % (self.context.backupDir, flag)
             cmd = g_file.SHELL_CMD_DICT["copyFile"] % (
                 originalFile, targetFile)
-            (status, output) = self.context.sshTool.getSshStatusOutput(
-                cmd, self.context.nodename)
-            for node in status.keys():
-                if (status[node] != DefaultValue.SUCCESS):
-                    raise Exception(output)
+            self._runCmd(cmd)
 
     def __cleanTmpTar(self):
         """
@@ -197,14 +183,7 @@ class BackupImplOLAP(BackupImpl):
             cmd += g_file.SHELL_CMD_DICT["deleteBatchFiles"] % (
                     "%s/binary_" % self.context.backupDir)
 
-        try:
-            (status, output) = self.context.sshTool.getSshStatusOutput(cmd)
-            for node in status.keys():
-                if status[node] != DefaultValue.SUCCESS:
-                    raise Exception(output)
-
-        except Exception as e:
-            raise Exception(str(e))
+        self._runCmd(cmd)
 
     def doRemoteRestore(self):
         """
@@ -229,13 +208,21 @@ class BackupImplOLAP(BackupImpl):
         self.context.logger.debug("Remote restoration command: %s." % cmd)
 
         try:
-            (status, output) = self.context.sshTool.getSshStatusOutput(cmd)
-            for node in status.keys():
-                if status[node] != DefaultValue.SUCCESS:
-                    raise Exception(output)
-
+            self._runCmd(cmd)
             self.__cleanTmpTar()
             self.context.logger.log("Successfully restored cluster files.")
         except Exception as e:
             self.__cleanTmpTar()
             raise Exception(str(e))
+
+    def _runCmd(self, cmd, nodes=None):
+        if self.context.clusterInfo.isSingleNode():
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                raise Exception(output)
+        else:
+            (status, output) = \
+                self.context.sshTool.getSshStatusOutput(cmd, nodes)
+            for node in status.keys():
+                if status[node] != DefaultValue.SUCCESS:
+                    raise Exception(output)

@@ -18,11 +18,13 @@ import os
 import sys
 import subprocess
 import time
+import timeit
 import json
 import re
 import csv
 import traceback
 import copy
+import random
 
 from datetime import datetime, timedelta
 from gspylib.common.Common import DefaultValue, ClusterCommand, \
@@ -71,6 +73,7 @@ class UpgradeImpl:
         self.oldCommitId = ""
         self.isLargeInplaceUpgrade = False
         self.__upgrade_across_64bit_xid = False
+        self.action = upgrade.action
 
     def exitWithRetCode(self, action, succeed=True, msg=""):
         """
@@ -143,12 +146,9 @@ class UpgradeImpl:
         input  : NA
         output : NA
         """
-        self.context.clusterInfo.setCnCount()
         for dbNode in self.context.clusterInfo.dbNodes:
             dbNode.setDnDetailNum()
-            dbNode.cmsNum = len(dbNode.cmservers)
-            dbNode.gtmNum = len(dbNode.gtms)
-        self.context.clusterInfo.setClusterDnCount()
+        #self.context.clusterInfo.setClusterDnCount()
 
     def checkExistsProcess(self, greyNodeNames):
         """
@@ -215,6 +215,7 @@ class UpgradeImpl:
         try:
             self.initGlobalInfos()
             self.removeOmRollbackProgressFile()
+            self.commonCheck()
 
             # 4. get upgrade type
             # After choseStrategy, it will assign action to self.context.action
@@ -229,7 +230,11 @@ class UpgradeImpl:
                 # then try to get rollback strategy.
                 # Set strategyFlag as True to check
                 # upgrade parameter is correct or not
-                self.doInplaceBinaryUpgrade()
+                if self.context.action in [Const.ACTION_LARGE_UPGRADE,
+                                           Const.ACTION_SMALL_UPGRADE]:
+                    self.doGreyBinaryUpgrade()
+                else:
+                    self.doInplaceBinaryUpgrade()
             # After choseStrategy, it will assign action to self.context.action
             elif self.context.action == Const.ACTION_AUTO_ROLLBACK:
                 # because if we rollback with auto rollback,
@@ -237,11 +242,20 @@ class UpgradeImpl:
                 # but if we rollback under upgrade,
                 # we will only rollback specified nodes
                 self.context.action = self.choseStrategy()
-                self.exitWithRetCode(Const.ACTION_AUTO_ROLLBACK,
-                                     self.doInplaceBinaryRollback())
+                self.context.rollback = True
+                if self.context.action == Const.ACTION_INPLACE_UPGRADE:
+                    self.exitWithRetCode(Const.ACTION_AUTO_ROLLBACK,
+                                         self.doInplaceBinaryRollback())
+                else:
+                    self.exitWithRetCode(Const.ACTION_AUTO_ROLLBACK,
+                                         self.doGreyBinaryRollback(
+                                             Const.ACTION_AUTO_ROLLBACK))
             elif self.context.action == Const.ACTION_COMMIT_UPGRADE:
                 self.context.action = self.choseStrategy()
-                self.doInplaceCommitUpgrade()
+                if self.context.action == Const.ACTION_INPLACE_UPGRADE:
+                    self.doInplaceCommitUpgrade()
+                else:
+                    self.doGreyCommitUpgrade()
             else:
                 self.doChoseStrategy()
         except Exception as e:
@@ -257,6 +271,59 @@ class UpgradeImpl:
             else:
                 self.context.logger.error(str(e))
                 self.exitWithRetCode(action, False, str(e))
+
+    def commonCheck(self):
+        """
+        Check in the common process.
+        :return:
+        """
+        self.checkReadOnly()
+        if self.context.is_grey_upgrade:
+            self.checkUpgradeMode()
+
+    def checkReadOnly(self):
+        """
+        check if in read only mode under grey upgrade, grey upgrade commit or
+         grey upgrade rollback if not in read only, then record the value of
+          enable_transaction_read_only and set it to off
+        """
+        try:
+            self.context.logger.debug("Check if in read only mode.")
+            greyUpgradeFlagFile = os.path.join(self.context.upgradeBackupPath,
+                                               Const.GREY_UPGRADE_STEP_FILE)
+            # only used under grey upgrade, grey upgrade commit or grey upgrade
+            #  rollback if under grey upgrade, the flag file
+            # greyUpgradeFlagFile has not been created
+            # so we use is_inplace_upgrade to judge the mode
+            if (self.context.action == Const.ACTION_AUTO_UPGRADE and
+                    not self.context.is_inplace_upgrade or
+                    (os.path.isfile(greyUpgradeFlagFile) and
+                     self.context.action in [Const.ACTION_AUTO_ROLLBACK,
+                                             Const.ACTION_COMMIT_UPGRADE])):
+                if self.unSetClusterReadOnlyMode() != 0:
+                    raise Exception("NOTICE: "
+                                    + ErrorCode.GAUSS_529["GAUSS_52907"])
+        except Exception as e:
+            raise Exception(str(e))
+
+    def checkUpgradeMode(self):
+        """
+        used to check if upgrade_mode is 0 under before upgrade
+        if not, we set it to 0
+        """
+        tempPath = self.context.upgradeBackupPath
+        filePath = os.path.join(tempPath, Const.INPLACE_UPGRADE_STEP_FILE)
+        if self.context.action == Const.ACTION_AUTO_UPGRADE \
+                and not os.path.exists(filePath):
+            try:
+                self.setUpgradeMode(0)
+                self.context.logger.log(
+                    "Successfully set upgrade_mode to 0.")
+            except Exception as e:
+                self.context.logger.log("Failed to set upgrade_mode to 0, "
+                                        "please set it manually, "
+                                        "or rollback first.")
+                raise Exception(str(e))
 
     def checkBakPathNotExists(self):
         """
@@ -367,17 +434,6 @@ class UpgradeImpl:
                 else:
                     raise Exception(str(e))
 
-            if self.context.action == Const.ACTION_AUTO_ROLLBACK or \
-                    self.context.action == Const.ACTION_COMMIT_UPGRADE:
-                inplace_upgrade_flag_file = "%s/inplace_upgrade_flag" \
-                                            % self.context.upgradeBackupPath
-                # we do rollback by the backup directory
-                if os.path.isfile(inplace_upgrade_flag_file):
-                    self.context.logger.debug(
-                        "inplace upgrade flag exists, "
-                        "use inplace rollback or commit.")
-                    self.context.is_inplace_upgrade = True
-
             # if last success commit upgrade_type is grey upgrade,
             # the symbolic link should point to the
             # old app path with old commit id
@@ -387,6 +443,9 @@ class UpgradeImpl:
                 "Successfully obtained version information of new and old "
                 "clusters.\n           The old cluster number:%s, the new "
                 "cluster number:%s." % (oldClusterNumber, newClusterNumber))
+
+            self.canDoRollbackOrCommit()
+
             if oldClusterVersion > newClusterVersion:
                 raise Exception(ErrorCode.GAUSS_529["GAUSS_52902"]
                                 % (oldClusterVersion, newClusterVersion))
@@ -397,7 +456,10 @@ class UpgradeImpl:
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51629"]
                                 % newClusterNumber)
             elif float(newClusterNumber) == float(oldClusterNumber):
-                upgradeAction = Const.ACTION_INPLACE_UPGRADE
+                if self.context.is_inplace_upgrade:
+                    upgradeAction = Const.ACTION_INPLACE_UPGRADE
+                else:
+                    upgradeAction = Const.ACTION_SMALL_UPGRADE
             else:
                 if int(float(newClusterNumber)) > int(float(oldClusterNumber)):
                     raise Exception(ErrorCode.GAUSS_529["GAUSS_52904"]
@@ -406,8 +468,11 @@ class UpgradeImpl:
                 elif ((float(newClusterNumber) - int(float(newClusterNumber)))
                       > (float(oldClusterNumber) -
                          int(float(oldClusterNumber)))):
-                    upgradeAction = Const.ACTION_INPLACE_UPGRADE
-                    self.isLargeInplaceUpgrade = True
+                    if self.context.is_inplace_upgrade:
+                        upgradeAction = Const.ACTION_INPLACE_UPGRADE
+                        self.isLargeInplaceUpgrade = True
+                    else:
+                        upgradeAction = Const.ACTION_LARGE_UPGRADE
                 else:
                     raise Exception(ErrorCode.GAUSS_516["GAUSS_51629"]
                                     % newClusterNumber)
@@ -425,6 +490,41 @@ class UpgradeImpl:
         except Exception as e:
             raise Exception(ErrorCode.GAUSS_529["GAUSS_52900"] % str(e)
                             + " Do nothing this time.")
+
+    def canDoRollbackOrCommit(self):
+        """
+        Check whether rollback or commit is required.
+        :return:
+        """
+        try:
+            if self.context.action == Const.ACTION_AUTO_ROLLBACK or \
+                    self.context.action == Const.ACTION_COMMIT_UPGRADE:
+                inplaceUpgradeFlagFile = os.path.join(
+                    self.context.upgradeBackupPath,
+                    Const.INPLACE_UPGRADE_FLAG_FILE)
+                grayUpgradeFlagFile = os.path.join(
+                    self.context.upgradeBackupPath,
+                    Const.GREY_UPGRADE_STEP_FILE)
+                self.context.is_inplace_upgrade = False
+                # we do rollback by the backup directory
+                if os.path.isfile(inplaceUpgradeFlagFile):
+                    self.context.logger.debug("inplace upgrade flag exists, "
+                                              "use inplace rollback or commit.")
+                    self.context.is_inplace_upgrade = True
+                if os.path.isfile(grayUpgradeFlagFile):
+                    self.context.logger.debug("grey upgrade flag exists, "
+                                              "use grey rollback or commit.")
+                    self.context.isGreyUpgrade = True
+                if not (self.context.is_inplace_upgrade or
+                        self.context.isGreyUpgrade):
+                    if self.context.action == Const.ACTION_AUTO_ROLLBACK \
+                            and not self.checkBakPathNotExists():
+                        self.cleanBinaryUpgradeBakFiles(True)
+                    exitMsg = "No need to {0}".format(self.context.action)
+                    self.exitWithRetCode(self.context.action, True, exitMsg)
+        except Exception as e:
+            raise Exception("Failed to check whether the rollback or commit."
+                            " Error {0}".format(str(e)))
 
     def checkLastUpgrade(self, newCommitId):
         """
@@ -452,9 +552,47 @@ class UpgradeImpl:
                             + "In grey upgrade process, " \
                               "cannot do inplace upgrade!"
                     raise Exception(str(ermsg))
+            else:
+                inplace_upgrade_flag_file =\
+                    "%s/inplace_upgrade_flag" % self.context.upgradeBackupPath
+                if os.path.isfile(inplace_upgrade_flag_file):
+                    ermsg = ErrorCode.GAUSS_502["GAUSS_50200"] % \
+                            inplace_upgrade_flag_file + \
+                            "In inplace upgrade process, " \
+                            "cannot do grey upgrade!"
+                    raise Exception(ermsg)
+                # it may have remaining when last upgrade use
+                #  --force to forceRollback
+                self.checkBakPathAndTable(outputCollect)
+                self.checkNewCommitid(newCommitId)
         elif self.context.action == Const.ACTION_AUTO_ROLLBACK or \
                 self.context.action == Const.ACTION_COMMIT_UPGRADE:
             self.checkNewCommitid(newCommitId)
+
+    def checkBakPathAndTable(self, outputCollect):
+        """
+        if the record step file in all nodes not exists, and the
+        table exists, so this situation means the last upgrade
+        remaining table
+        if the table and step file exists, check if the content is correct
+        :param resultMap:
+        :param outputCollect:
+        :return:
+        """
+        # no need to check and drop schema under force upgrade
+        if not self.existTable(Const.RECORD_NODE_STEP):
+            return
+        output = outputCollect.split('\n')
+        output = output[:-1]
+        findBakPath = False
+        for record in output:
+            # if can find step, means this
+            if record.find('True') >= 0:
+                findBakPath = True
+                break
+        if not findBakPath:
+            self.dropSupportSchema()
+            return
 
     def checkNewCommitid(self, newCommitId):
         """
@@ -700,7 +838,7 @@ class UpgradeImpl:
         """
         self.context.logger.debug("Set upgrade_from guc parameter.")
         workingGrandVersion = int(float(ClusterVersionNumber) * 1000)
-        cmd = "gs_guc set -Z cmagent -N all -I all -c " \
+        cmd = "gs_guc set -N all -I all -c " \
               "'upgrade_from=%s'" % workingGrandVersion
         self.context.logger.debug("Command for setting cmagent"
                                   " parameter: %s." % cmd)
@@ -850,6 +988,660 @@ class UpgradeImpl:
             raise Exception(ErrorCode.GAUSS_500["GAUSS_50007"] % "GUC" +
                             " Error: \n%s" % str(output))
 
+    def doGreyBinaryUpgrade(self):
+        """
+        function: do grey binary upgrade, which essentially replace the binary
+        files, for the new version than 91.255, support this strategy to
+        change binary upgrade(Inplace), use the symbolic links to change the
+        binary file directory instead of installing the new bin in the same
+        directory.choose minority nodes to upgrade first, observe to decide
+        whether upgrade remaining nodes or rollback grey nodes
+        input : NA
+        output: NA
+        """
+        upgradeAgain = False
+        try:
+            # 1. distribute xml configure file to every nodes.
+            self.distributeXml()
+            # 2. check if the app path is ready and sha256 is right and others
+            self.checkUpgrade()
+            # 4. check the cluster pressure
+            self.HASyncReplayCheck()
+            # 5. before do grey binary upgrade, we must make sure the
+            # cluster is Normal and the database could be
+            # connected, if not, exit.
+            (status, output) = self.doHealthCheck(Const.OPTION_PRECHECK)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_516["GAUSS_51601"] %
+                                "cluster" + "Detail: " + output)
+            # 6.chose the node name list that satisfy the condition as
+            # upgrade nodes
+            self.chooseUpgradeNodes()
+            # check if it satisfy upgrade again, if it is the second loop to
+            # upgrade, it can go go upgrade again branch
+            upgradeAgain = self.canUpgradeAgain()
+        except Exception as e:
+            # before this step, the upgrade process do nothing to the cluster,
+            # this time has no remaining
+            self.context.logger.debug(traceback.format_exc())
+            self.context.logger.log(ErrorCode.GAUSS_529["GAUSS_52934"] +
+                                    "Nodes are the old version.\n" +
+                                    "Error: %s." % str(e) +
+                                    " Do nothing this time.")
+            self.exitWithRetCode(self.action, False, str(e))
+
+        if not upgradeAgain:
+            try:
+                if not self.doGreyBinaryRollback():
+                    self.exitWithRetCode(Const.ACTION_AUTO_ROLLBACK, False)
+                self.removeOmRollbackProgressFile()
+                self.context.logger.log(
+                    "The directory %s will be deleted after commit-upgrade, "
+                    "please make sure there is no personal data." %
+                    self.context.oldClusterAppPath)
+                # 7. prepare upgrade function for sync and table
+                # RECORD_NODE_STEP, init the step of all nodes as 0
+                self.prepareGreyUpgrade()
+
+                # 8. install the new bin in the appPath which has been
+                # prepared in the preinstall
+                self.installNewBin()
+                #self.createGrpcCA()
+                #self.prepareServerKey()
+                #self.prepareRoachServerKey()
+                # decompress the catalog upgrade_sql.tar.gz to temp dir,
+                # include upgrade sql file and guc set
+                self.prepareUpgradeSqlFolder()
+
+                self.recordNodeStep(GreyUpgradeStep.STEP_UPDATE_CATALOG)
+                # 9. if we update catalog after switch to the new bin,
+                # the system will raise error cannot find
+                # catalog or column until finish the updateCatalog function
+                # we can not recognize if it really cannot
+                # find the column, or just because the old version. So we
+                # will update the catalog in the old version
+                if self.context.action == Const.ACTION_LARGE_UPGRADE:
+                    self.updateCatalog()
+                self.recordNodeStep(GreyUpgradeStep.STEP_SWITCH_NEW_BIN)
+
+                self.upgradeAgain()
+            except Exception as e:
+                errmsg = ErrorCode.GAUSS_529["GAUSS_52934"] + \
+                         "You can use --grey to upgrade or manually rollback."
+                self.context.logger.log(errmsg + str(e))
+                self.exitWithRetCode(self.context.action, False)
+        else:
+            self.upgradeAgain()
+        self.exitWithRetCode(self.context.action, True)
+
+    def upgradeAgain(self):
+        try:
+            self.context.logger.debug(
+                "From this step, you can use -h to upgrade again if failed.")
+            # we have guarantee specified nodes have same step,
+            # so we only need to get one node step
+            currentStep = self.getOneNodeStep(self.context.nodeNames[0])
+            self.context.logger.debug("Current node step is %d" % currentStep)
+            # first time execute grey upgrade, we will record the step for
+            # all the nodes, if we upgrade remain nodes,
+            # reenter the upgrade process, we will not rollback autonomously,
+            #  just upgrade again
+            if currentStep < GreyUpgradeStep.STEP_UPGRADE_PROCESS:
+                self.backupHotpatch()
+                # 10. sync Cgroup configure and etc.
+                # use the symbolic link to change the bin dir
+                # sync old config to new bin path, the pg_plugin save the
+                # C function .so file(but not end with .so),
+                # so if it create in the old appPath after copy to the
+                # newAppPath but not switch to new bin
+                # the new version may not recognize the C function
+                self.greySyncGuc()
+                self.greyUpgradeSyncOldConfigToNew()
+                # 11. switch the cluster version to new version
+                self.switchBin(Const.NEW)
+                self.setNewVersionGuc()
+                self.recordNodeStep(GreyUpgradeStep.STEP_UPGRADE_PROCESS)
+            if currentStep < GreyUpgradeStep.STEP_UPDATE_POST_CATALOG:
+                # 12. kill the old existing process, will judge whether
+                # each process is the required version
+                self.switchExistsProcess()
+                self.recordNodeStep(GreyUpgradeStep.STEP_UPDATE_POST_CATALOG)
+
+        except Exception as e:
+            self.context.logger.log("Failed to upgrade, can use --grey to "
+                                    "upgrade again after rollback. Error: "
+                                    "%s" % str(e))
+            self.context.logger.debug(traceback.format_exc())
+            self.exitWithRetCode(self.context.action, False, str(e))
+        self.context.logger.log(
+            "The nodes %s have been successfully upgraded to new version. "
+            "Then do health check." % self.context.nodeNames)
+
+        try:
+            # 13. check the cluster status, the cluster status can be degraded
+            (status, output) = self.doHealthCheck(Const.OPTION_POSTCHECK)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_516["GAUSS_51601"] %
+                                "cluster" + output)
+            if self.isNodeSpecifyStep(GreyUpgradeStep.STEP_UPDATE_POST_CATALOG):
+                # 14. exec post upgrade script
+                if self.context.action == Const.ACTION_LARGE_UPGRADE:
+                    self.waitClusterForNormal()
+                    self.prepareSql("rollback-post")
+                    self.execRollbackUpgradedCatalog(scriptType="rollback-post")
+                    self.prepareSql("upgrade-post")
+                    self.execRollbackUpgradedCatalog(scriptType="upgrade-post")
+                    self.getLsnInfo()
+                hosts = copy.deepcopy(self.context.clusterNodes)
+                self.recordNodeStep(
+                    GreyUpgradeStep.STEP_PRE_COMMIT, nodes=hosts)
+                self.printPrecommitBanner()
+        except Exception as e:
+            hintInfo = "Nodes are new version. " \
+                       "Please check the cluster status. ERROR: \n"
+            self.context.logger.log(hintInfo + str(e))
+            self.context.logger.debug(traceback.format_exc())
+            self.exitWithRetCode(self.context.action, False, hintInfo + str(e))
+        self.context.logger.log("Successfully upgrade nodes.")
+        self.exitWithRetCode(self.context.action, True)
+
+    def getOneNodeStep(self, nodeName):
+        """
+        get the node's step
+        """
+        currentStep = self.getOneNodeStepInFile(nodeName)
+        return currentStep
+
+    def getOneNodeStepInFile(self, nodeName):
+        """
+        get the node's step from step file
+        """
+        try:
+            stepFile = os.path.join(self.context.upgradeBackupPath,
+                                    Const.GREY_UPGRADE_STEP_FILE)
+            self.context.logger.debug(
+                "trying to get one node step in file %s" % stepFile)
+            with open(stepFile, 'r') as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    if row['node_host'] == nodeName:
+                        step = int(row['step'])
+                        break
+            self.context.logger.debug("successfully got one node step {0} "
+                                      "in file {1}".format(step, stepFile))
+            return step
+        except Exception as e:
+            exitMsg = "Failed to get node step in step file. ERROR {0}".format(
+                str(e))
+            self.exitWithRetCode(self.action, False, exitMsg)
+
+    def greySyncGuc(self):
+        """
+        delete the old version guc
+        """
+        cmd = "%s -t %s -U %s --upgrade_bak_path=%s -l %s" % \
+              (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+               Const.ACTION_GREY_SYNC_GUC,
+               self.context.user,
+               self.context.upgradeBackupPath,
+               self.context.localLog)
+        self.context.logger.debug("Command for sync GUC in upgrade: %s" % cmd)
+        hostList = copy.deepcopy(self.context.nodeNames)
+        self.context.sshTool.executeCommand(cmd, "", hostList=hostList)
+        self.context.logger.debug("Successfully sync guc.")
+
+    def greyUpgradeSyncOldConfigToNew(self):
+        """
+        function: sync old cluster config to the new cluster install path
+        input : NA
+        output: NA
+        """
+        # restore list:
+        #    etc/gscgroup_xxx.cfg
+        #    lib/postgresql/pg_plugin
+        #    initdb_param
+        #    server.key.cipher
+        #    server.key.rand
+        #    /share/sslsert/ca.key
+        #    /share/sslsert/etcdca.crt
+        self.context.logger.log("Sync cluster configuration.")
+        try:
+            # backup DS libs and gds file
+            cmd = "%s -t %s -U %s -V %d --old_cluster_app_path=%s " \
+                  "--new_cluster_app_path=%s -l %s" % \
+                  (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+                   Const.ACTION_GREY_UPGRADE_CONFIG_SYNC,
+                   self.context.user,
+                   int(float(self.context.oldClusterNumber) * 1000),
+                   self.context.oldClusterAppPath,
+                   self.context.newClusterAppPath,
+                   self.context.localLog)
+            self.context.logger.debug("Command for syncing config files: %s"
+                                      % cmd)
+            hostList = copy.deepcopy(self.context.nodeNames)
+            self.context.sshTool.executeCommand(cmd, "", hostList=hostList)
+
+            # change the owner of application
+            cmd = "chown -R %s:%s '%s'" % \
+                  (self.context.user, self.context.group,
+                   self.context.newClusterAppPath)
+            hostList = copy.deepcopy(self.context.nodeNames)
+            self.context.sshTool.executeCommand(cmd, "", hostList=hostList)
+        except Exception as e:
+            raise Exception(str(e) + " Failed to sync configuration.")
+        self.context.logger.log("Successfully synced cluster configuration.")
+
+    def switchExistsProcess(self, isRollback=False):
+        """
+        switch all the process
+        :param isRollback:
+        :return:
+        """
+        self.context.logger.log("Switching all db processes.", "addStep")
+        self.createCheckpoint()
+        self.switchDn(isRollback)
+        try:
+            self.waitClusterNormalDegrade()
+        except Exception as e:
+            # can't promise normal status in force upgrade or forceRollback
+            if self.context.forceRollback:
+                self.context.logger.log("WARNING: Failed to wait "
+                                        "cluster normal or degrade.")
+            else:
+                raise Exception(str(e))
+        self.context.logger.log("Successfully switch all process version",
+                                "constant")
+
+    def createCheckpoint(self):
+        try:
+            self.context.logger.debug("Create checkpoint before switching.")
+            start_time = timeit.default_timer()
+            # create checkpoint
+            sql = "CHECKPOINT;"
+            for i in range(10):
+                (status, output) = self.execSqlCommandInPrimaryDN(sql)
+                # no need to retry under force upgrade
+                if status == 0:
+                    break
+                self.context.logger.debug("Waring: checkpoint creation fails "
+                                          "for the %s time. Fail message:%s."
+                                          "try again at one second intervals" %
+                                          (str(i), str(output)))
+                time.sleep(1)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
+                                " Error: \n%s" % str(output))
+
+            elapsed = timeit.default_timer() - start_time
+            self.context.logger.debug("Time to create checkpoint: %s" %
+                                      self.getTimeFormat(elapsed))
+        except Exception as e:
+            if self.context.forceRollback:
+                self.context.logger.log(
+                    "WARNING: Failed to create checkpoint, "
+                    "the switch process may use more time.")
+            else:
+                raise Exception(str(e))
+
+    def switchDn(self, isRollback):
+        self.context.logger.debug("Switching DN processes.")
+        start_time = timeit.default_timer()
+        # under upgrade, kill the process from old cluster app path,
+        # rollback: kill from new cluster app path
+        cmd = "%s -t %s -U %s -V %d --old_cluster_app_path=%s " \
+              "--new_cluster_app_path=%s -X '%s' -l %s" % \
+              (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+               Const.ACTION_SWITCH_DN,
+               self.context.user,
+               int(float(self.context.oldClusterNumber) * 1000),
+               self.context.oldClusterAppPath,
+               self.context.newClusterAppPath,
+               self.context.xmlFile,
+               self.context.localLog)
+
+        if isRollback:
+            cmd += " --rollback"
+        if self.context.forceRollback:
+            cmd += " --force"
+        self.context.logger.debug(
+            "Command for switching DN processes: %s" % cmd)
+        hostList = copy.deepcopy(self.context.nodeNames)
+        self.context.sshTool.executeCommand(cmd, "", hostList=hostList)
+        start_cluster_time = timeit.default_timer()
+        self.greyStartCluster()
+        end_cluster_time = timeit.default_timer() - start_cluster_time
+        self.context.logger.debug("Time to start cluster is %s" %
+                                  self.getTimeFormat(end_cluster_time))
+        elapsed = timeit.default_timer() - start_time
+        self.context.logger.debug("Time to switch DN process version: %s"
+                                  % self.getTimeFormat(elapsed))
+
+    def greyStartCluster(self):
+        """
+        start cluster in grey upgrade
+        :return:
+        """
+        cmd = "gs_om -t start"
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
+                            "Command:%s. Error:\n%s" % (cmd, output))
+
+    def isNodeSpecifyStep(self, step, nodes=None):
+        """
+        check if all the specfied nodes is the step
+        """
+        return self.isNodeSpecifyStepInFile(step, nodes)
+
+    def isNodeSpecifyStepInFile(self, step=-1, nodes=None):
+        """
+        step = -1 means we just check if step in all the specfied nodes is the
+        same otherwise, we check if all the specfied nodes is the given step
+        """
+        try:
+            if nodes:
+                self.context.logger.debug(
+                    "check if the nodes %s step is %s" % (nodes, step))
+            else:
+                self.context.logger.debug(
+                    "check if all the nodes step is %s" % step)
+                nodes = copy.deepcopy(self.context.clusterNodes)
+            stepFile = os.path.join(self.context.upgradeBackupPath,
+                                    Const.GREY_UPGRADE_STEP_FILE)
+            if not os.path.isfile(stepFile):
+                self.context.logger.debug(
+                    "no step file, which means nodes %s step is same" % nodes)
+                return True
+
+            with open(stepFile, 'r') as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    if row['node_host'] in nodes:
+                        if step == -1:
+                            step = int(row['step'])
+                        else:
+                            if step == int(row['step']):
+                                continue
+                            else:
+                                self.context.logger.debug(
+                                    "the nodes %s step is not all %s" % (
+                                        nodes, step))
+                                return False
+            self.context.logger.debug(
+                "the nodes %s step is all %s" % (nodes, step))
+            return True
+        except Exception as e:
+            exitMsg = \
+                "Failed to check node step in file. ERROR {0}".format(str(e))
+            self.exitWithRetCode(self.action, False, exitMsg)
+
+    def getLsnInfo(self):
+        """
+            Obtain the maximum LSN of each DN instance.
+        """
+        self.context.logger.debug("Start to get lsn info.")
+        try:
+            # prepare dynamic cluster info file in every node
+            self.getOneDNInst(checkNormal=True)
+            execHosts = [self.dnInst.hostname]
+            cmd = "%s -t %s -U %s --upgrade_bak_path=%s -l %s" % \
+                  (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+                   Const.ACTION_GET_LSN_INFO,
+                   self.context.user,
+                   self.context.upgradeBackupPath,
+                   self.context.localLog)
+            self.context.logger.debug("Command for geting lsn info: %s." % cmd)
+            self.context.sshTool.executeCommand(cmd, "", hostList=execHosts)
+            self.context.logger.debug(
+                "Successfully get lsn info in instanse node.")
+        except Exception as e:
+            if self.context.forceRollback:
+                self.context.logger.debug(
+                    "Failed to get lsn info in force Scenario.")
+                return
+            raise Exception(
+                "Failed to get lsn info in instanse node. "
+                "Error:{0}".format(str(e)))
+
+    def chooseUpgradeNodes(self):
+        # Already set the self.context.nodesNum = 1
+        # when number and node names is empty
+        self.context.logger.debug("Choose the nodes to be upgraded.")
+        self.setClusterDetailInfo()
+        self.context.nodeNames = self.context.clusterNodes
+        self.context.logger.log("Upgrade all nodes.")
+
+    def getUpgradedNodeNames(self, step=GreyUpgradeStep.STEP_INIT_STATUS):
+        """
+        by default, return upgraded nodes
+        otherwise, return the nodes that step is more than given step
+        under force upgrade, we only get step from file
+        """
+        return self.getUpgradedNodeNamesInFile(step)
+
+    def getUpgradedNodeNamesInFile(self, step=GreyUpgradeStep.STEP_INIT_STATUS):
+        """
+        get upgraded nodes from step file
+        by default, return upgraded nodes
+        otherwise, return the nodes that step is more than given step
+        """
+        try:
+            stepFile = os.path.join(self.context.upgradeBackupPath,
+                                    Const.GREY_UPGRADE_STEP_FILE)
+            self.context.logger.debug(
+                "trying to get upgraded nodes from %s" % (stepFile))
+            if not os.path.isfile(stepFile):
+                return []
+            greyNodeNames = []
+            with open(stepFile, 'r') as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    if int(row['step']) > step:
+                        greyNodeNames.append(row['node_host'])
+            self.context.logger.debug("upgraded nodes are {0}".format(
+                greyNodeNames))
+            return greyNodeNames
+        except Exception as e:
+            exitMsg = "Failed to get upgraded nodes from step file. " \
+                      "ERROR {0}".format(str(e))
+            self.exitWithRetCode(self.action, False, exitMsg)
+
+    def existTable(self, relname):
+        """
+        funcation: if the table exist in pg_class
+        input : NA
+        output: NA
+        """
+        try:
+            sql = "select count(*) from pg_catalog.pg_class c, " \
+                  "pg_catalog.pg_namespace n " \
+                  "where n.nspname = '%s' AND relname = '%s' " \
+                  "AND c.relnamespace = n.oid;" % (
+                  Const.UPGRADE_SCHEMA, relname)
+            self.context.logger.debug("Sql to query if has the table: %s" % sql)
+            (status, output) = self.execSqlCommandInPrimaryDN(sql)
+            if status != 0 or ClusterCommand.findErrorInSql(output):
+                raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] %
+                                sql + " Error: \n%s" % str(output))
+            if output == '0':
+                self.context.logger.debug("Table does not exist.")
+                return False
+            self.context.logger.debug("Table exists.")
+            return True
+        except Exception as e:
+            raise Exception(str(e))
+
+    def findOneMatchedCombin(self, clusterNodes):
+        """
+        function: if the node number is less than const.COMBIN_NUM, we will
+        try all possiblity combination to get one
+        matched combination, otherwise, we will use a strategy to find the
+        node with less instance(cms, gtm, etc.)
+        input : check the score or return the first match combination
+        output: one match best node
+        """
+        combinNodes = clusterNodes
+        # combin is node name list
+        randomNodes = random.sample(combinNodes, self.context.nodesNum)
+        self.context.logger.log("Not match the condition, "
+                                "choose nodes %s" % randomNodes)
+        return randomNodes
+
+    def canUpgradeAgain(self):
+        """
+        judge if we should rollback or can upgrade again,
+        if has the nodes whose step is more than switch bin
+        """
+        self.context.logger.debug("Check if we can upgrade again.")
+        greyNodeNames = self.getUpgradedNodeNames(
+            GreyUpgradeStep.STEP_SWITCH_NEW_BIN)
+        if len(greyNodeNames) > 0:
+            self.context.logger.debug(
+                "Has nodes step greater or equal than %d. Can upgrade again."
+                % GreyUpgradeStep.STEP_SWITCH_NEW_BIN)
+            return True
+        self.context.logger.debug(
+            "There is no node step greater or equal than %d. "
+            "Can not do upgrade again." % GreyUpgradeStep.STEP_SWITCH_NEW_BIN)
+        return False
+
+    def prepareGreyUpgrade(self):
+        """
+        function: do pre-upgrade stuffs for primary and standby HA
+        sync check, and create table to record step
+        input : NA
+        output: NA
+        """
+        if self.context.upgrade_remain:
+            self.context.logger.debug("No need to create pre-upgrade stuffs")
+            return
+        self.context.logger.debug("Start to create pre-upgrade stuffs")
+        # under force upgrade, we only prepare the files
+        self.prepareGreyUpgradeFiles()
+        # all stuffs done successfully, return 0
+        self.context.logger.debug("Successfully created pre-upgrade stuffs.")
+
+    def prepareGreyUpgradeFiles(self):
+        # the bakpath is created in checkUpgrade,
+        # but may deleted when rollback, so need to check
+        try:
+            self.context.logger.debug("start to prepare grey upgrade files")
+            self.createBakPath()
+            self.initNodeStepInCsv()
+            self.initUpgradeProcessStatus()
+            self.recordDirFile()
+            self.copyBakVersion()
+            self.context.logger.debug(
+                "successfully prepared grey upgrade files")
+        except Exception as e:
+            self.context.logger.debug("failed to prepare grey upgrade files")
+            raise Exception(str(e))
+
+    def initNodeStepInCsv(self):
+        bakStepFile = os.path.join(self.context.upgradeBackupPath,
+                                   Const.GREY_UPGRADE_STEP_FILE + "_bak")
+        self.context.logger.debug("Create and init the file %s." % bakStepFile)
+        g_file.createFile(bakStepFile, True, DefaultValue.KEY_FILE_MODE)
+        header = ["node_host", "upgrade_action", "step"]
+        g_file.createFileInSafeMode(bakStepFile)
+        writeInfo = []
+        for dbNode in self.context.clusterInfo.dbNodes:
+            writeInfo.append([('%s' % dbNode.name),
+                              ('%s' % self.context.action),
+                              ('%s' % GreyUpgradeStep.STEP_INIT_STATUS)])
+        with open(bakStepFile, "w") as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(header)
+            writer.writerows(writeInfo)
+        finalStepFile = os.path.join(self.context.upgradeBackupPath,
+                                     Const.GREY_UPGRADE_STEP_FILE)
+        g_file.rename(bakStepFile, finalStepFile)
+        # so if we can get the step file, we can get the step information
+        self.context.logger.debug("Rename the file %s to %s." % (
+            bakStepFile, finalStepFile))
+        self.distributeFile(finalStepFile)
+        self.context.logger.debug("Successfully inited the file %s and "
+                                  "send it to each node." % finalStepFile)
+
+    def initUpgradeProcessStatus(self):
+        stepFile = os.path.join(self.context.upgradeBackupPath,
+                                Const.INPLACE_UPGRADE_STEP_FILE)
+        self.context.logger.debug("Create and init the file %s" % stepFile)
+        g_file.removeFile(stepFile, "python")
+        g_file.createFile(stepFile, True, DefaultValue.KEY_FILE_MODE)
+        self.recordNodeStepInplace(self.context.action,
+                                   GreyUpgradeStep.STEP_INIT_STATUS)
+        self.context.logger.debug("Successfully inited the file %s "
+                                  "and send it to each node" % stepFile)
+
+    def recordNodeStep(self, step, nodes=None):
+        """
+        under normal rollback, if not have the binary_upgrade dir,
+        recordNodeStepInplace will create a file named binary_upgrade,
+        so we should raise error, and use the force rollback mode
+        For commit upgrade, we should create the dir to record the cannot
+         rollback flag to avoid node inconsistency
+        :param step: upgrade or rollback step
+        :param nodes: the nodes shoud be the step
+        :return:NA
+        """
+        cmd = "if [ -d '%s' ]; then echo 'True'; else echo 'False'; fi" %\
+              self.context.upgradeBackupPath
+        hostList = copy.deepcopy(self.context.clusterNodes)
+        (resultMap, outputCollect) = self.context.sshTool.getSshStatusOutput(
+            cmd, hostList)
+        self.context.logger.debug(
+            "The result of checking distribute directory is:\n%s" %
+            outputCollect)
+        if outputCollect.find('False') >= 0:
+            if step != GreyUpgradeStep.STEP_BEGIN_COMMIT:
+                raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] %
+                                self.context.upgradeBackupPath)
+            self.createBakPath()
+        self.recordNodeStepInplace(self.context.action, step)
+        # under force upgrade, we only record step to file
+        self.recordNodeStepInCsv(step, nodes)
+        self.context.logger.debug(
+            "Successfully record node step %s." % str(step))
+
+    def recordNodeStepInCsv(self, step, nodes=None):
+        if nodes is None:
+            nodes = []
+        self.context.logger.debug("Record node step %s in file" % str(step))
+        stepFile = os.path.join(self.context.upgradeBackupPath,
+                                Const.GREY_UPGRADE_STEP_FILE)
+        stepTempFile = os.path.join(self.context.upgradeBackupPath,
+                                    "upgrade_step_temp.csv")
+        g_file.createFileInSafeMode(stepTempFile)
+        with open(stepFile, 'r') as csvfile, \
+                open(stepTempFile, 'w') as tempfile:
+            header = ["node_host", "upgrade_action", "step"]
+            reader = csv.DictReader(csvfile)
+            writer = csv.writer(tempfile)
+            writer.writerow(header)
+            writeInfo = []
+            if not nodes:
+                nodes = self.context.nodeNames
+            if nodes:
+                for row in reader:
+                    if row['node_host'] in nodes:
+                        writeInfo.append([row['node_host'], row[
+                            'upgrade_action'], str(step)])
+                    else:
+                        writeInfo.append([row['node_host'], row[
+                            'upgrade_action'], row['step']])
+            else:
+                for row in reader:
+                    writeInfo.append([row['node_host'],
+                                      row['upgrade_action'], str(step)])
+            writer.writerows(writeInfo)
+
+        g_file.removeFile(stepFile)
+        g_file.rename(stepTempFile, stepFile)
+        g_file.changeMode(DefaultValue.KEY_FILE_MODE, stepFile)
+        # distribute the node step file to each node
+        self.distributeFile(stepFile)
+
     def doInplaceBinaryUpgrade(self):
         """
         function: do binary upgrade, which essentially replace the binary files
@@ -868,6 +1660,21 @@ class UpgradeImpl:
             # Normal and the database could be connected
             #    if not, exit.
             self.startCluster()
+
+            # uninstall kerberos if has already installed
+            pghost_path = DefaultValue.getEnvironmentParameterValue(
+                'PGHOST', self.context.user)
+            kerberosflagfile = "%s/kerberos_upgrade_flag" % pghost_path
+            if os.path.exists(kerberosflagfile):
+                self.stopCluster()
+                self.context.logger.log("Starting uninstall Kerberos.",
+                                        "addStep")
+                cmd = "source %s && " % self.context.userProfile
+                cmd += "%s -m uninstall -U %s" % (OMCommand.getLocalScript(
+                    "Local_Kerberos"), self.context.user)
+                self.context.sshTool.executeCommand(cmd, "")
+                self.context.logger.log("Successfully uninstall Kerberos.")
+                self.startCluster()
             if self.unSetClusterReadOnlyMode() != 0:
                 raise Exception("NOTICE: "
                                 + ErrorCode.GAUSS_529["GAUSS_52907"])
@@ -879,6 +1686,7 @@ class UpgradeImpl:
                 self.exitWithRetCode(Const.ACTION_INPLACE_UPGRADE, False,
                                      ErrorCode.GAUSS_516["GAUSS_51601"]
                                      % "cluster" + output)
+            self.getOneDNInst()
             # 4.record the old and new app dir in file
             self.recordDirFile()
             if self.isLargeInplaceUpgrade:
@@ -986,7 +1794,8 @@ class UpgradeImpl:
             if self.isLargeInplaceUpgrade:
                 self.modifyPgProcIndex()
                 self.context.logger.debug("Start to exec post upgrade script")
-                self.doUpgradeCatalog(postUpgrade=True)
+                self.doUpgradeCatalog(self.context.oldClusterNumber,
+                                      postUpgrade=True)
                 self.context.logger.debug(
                     "Successfully exec post upgrade script")
             self.context.logger.debug("Successfully start all "
@@ -1073,8 +1882,42 @@ class UpgradeImpl:
                 self.stopCluster()
                 self.startCluster()
 
+            # install Kerberos
+            self.install_kerberos()
             self.context.logger.log("Commit binary upgrade succeeded.")
             self.exitWithRetCode(Const.ACTION_INPLACE_UPGRADE, True)
+
+    def install_kerberos(self):
+        """
+        install kerberos after upgrade
+        :return:NA
+        """
+        pghost_path = DefaultValue.getEnvironmentParameterValue(
+            'PGHOST', self.context.user)
+        kerberosflagfile = "%s/kerberos_upgrade_flag" % pghost_path
+        if os.path.exists(kerberosflagfile):
+            # install kerberos
+            cmd = "source %s &&" % self.context.userProfile
+            cmd += "gs_om -t stop && "
+            cmd += "%s -m install -U %s --krb-server" % (
+                OMCommand.getLocalScript("Local_Kerberos"),
+                self.context.user)
+            (status, output) = DefaultValue.retryGetstatusoutput(cmd, 3, 5)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
+                                "Command:%s. Error:\n%s" % (cmd, output))
+            cmd = "source %s && " % self.context.userProfile
+            cmd += "%s -m install -U %s --krb-client " % (
+            OMCommand.getLocalScript("Local_Kerberos"), self.context.user)
+            self.context.sshTool.executeCommand(
+                cmd, "", hostList=self.context.clusterNodes)
+            self.context.logger.log("Successfully install Kerberos.")
+            cmd = "source %s && gs_om -t start" % self.context.userProfile
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status != 0 and not self.context.ignoreInstance:
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
+                                "Command:%s. Error:\n%s" % (cmd, output))
+            os.remove(kerberosflagfile)
 
     def refresh_dynamic_config_file(self):
         """
@@ -1570,12 +2413,12 @@ class UpgradeImpl:
             self.prepareSql("upgrade")
             self.prepareSql("rollback-post")
             self.prepareSql("rollback")
-            self.doUpgradeCatalog()
+            self.doUpgradeCatalog(self.context.oldClusterNumber)
         except Exception as e:
             raise Exception(
                 "Failed to execute update sql file. Error: %s" % str(e))
 
-    def doUpgradeCatalog(self, postUpgrade=False):
+    def doUpgradeCatalog(self, oldClusterNumber, postUpgrade=False):
         """
         function: update catalog to new version
                   1.set upgrade_from param
@@ -1589,6 +2432,8 @@ class UpgradeImpl:
         output : NA
         """
         try:
+            if self.context.is_grey_upgrade:
+                self.setUpgradeFromParam(oldClusterNumber)
             if self.context.action == Const.ACTION_INPLACE_UPGRADE:
                 if not postUpgrade:
                     self.startCluster()
@@ -1603,13 +2448,14 @@ class UpgradeImpl:
             # if we use --force to forceRollback last time,
             # it may has remaining last catalog
             if postUpgrade:
+                self.waitClusterForNormal()
                 self.execRollbackUpgradedCatalog(scriptType="rollback-post")
                 self.execRollbackUpgradedCatalog(scriptType="upgrade-post")
             else:
                 self.execRollbackUpgradedCatalog(scriptType="rollback")
                 self.execRollbackUpgradedCatalog(scriptType="upgrade")
                 self.pgxcNodeUpdateLocalhost("upgrade")
-
+            self.getLsnInfo()
             if self.context.action == \
                     Const.ACTION_INPLACE_UPGRADE and not postUpgrade:
                 self.updatePgproc()
@@ -2120,7 +2966,7 @@ class UpgradeImpl:
         stepFile = os.path.join(self.context.upgradeBackupPath,
                                 Const.GREY_UPGRADE_STEP_FILE)
         self.context.logger.debug("Get the action from file %s." % stepFile)
-        if not os.path.exists(stepFile) or os.path.isfile(stepFile):
+        if not (os.path.exists(stepFile) or os.path.isfile(stepFile)):
             self.context.logger.debug("Step file does not exists or not file,"
                                       " cannot get action from it. "
                                       "Set it to large upgrade.")
@@ -2244,6 +3090,442 @@ class UpgradeImpl:
         self.context.logger.log("\n    gs_upgradectl -t "
                                 "commit-upgrade -X %s   \n" % xmlFile)
 
+    def doGreyCommitUpgrade(self):
+        """
+        function: commit binary upgrade and clean up backup files
+                  1. unset read-only
+                  2. drop old PMK schema
+                  3. clean up other upgrade tmp files
+        input : NA
+        output: NA
+        """
+        try:
+            (status, output) = self.doHealthCheck(Const.OPTION_POSTCHECK)
+            if status != 0:
+                raise Exception(
+                    "NOTICE: " + ErrorCode.GAUSS_516[
+                        "GAUSS_51601"] % "cluster" + output)
+            if self.unSetClusterReadOnlyMode() != 0:
+                raise Exception("NOTICE: " + ErrorCode.GAUSS_529["GAUSS_52907"])
+
+            if not (self.isNodeSpecifyStep(GreyUpgradeStep.STEP_PRE_COMMIT)
+                    or self.isNodeSpecifyStep(
+                    GreyUpgradeStep.STEP_BEGIN_COMMIT)):
+                raise Exception(ErrorCode.GAUSS_529["GAUSS_52916"])
+            # for the reenter commit, the schema may have been deleted
+            if self.existTable(Const.RECORD_NODE_STEP):
+                self.recordNodeStep(GreyUpgradeStep.STEP_BEGIN_COMMIT)
+            self.setActionFile()
+            # self.restoreOriginalState()
+            if self.context.action == Const.ACTION_LARGE_UPGRADE:
+                self.setUpgradeFromParam(Const.UPGRADE_UNSET_NUM)
+                #self.reloadCmAgent()
+                self.setUpgradeMode(0)
+            time.sleep(10)
+            if self.dropPMKSchema() != 0:
+                raise Exception(ErrorCode.GAUSS_529["GAUSS_52917"])
+
+            self.clearOtherToolPackage()
+            self.cleanInstallPath(Const.OLD)
+            self.dropSupportSchema()
+            self.cleanBinaryUpgradeBakFiles()
+            self.cleanConfBakOld()
+            self.context.logger.log("Commit upgrade succeeded.")
+        except Exception as e:
+            self.exitWithRetCode(Const.ACTION_COMMIT_UPGRADE, False, str(e))
+        self.exitWithRetCode(Const.ACTION_COMMIT_UPGRADE, True)
+
+    def dropPMKSchema(self):
+        """
+        function: Notice: the pmk schema on database postgres
+        input : NA
+        output: return 0, if the operation is done successfully.
+                return 1, if the operation failed.
+        """
+        try:
+            self.context.logger.debug("Start to drop schema PMK.")
+            # execute drop commands by the CN instance
+            sql = "DROP SCHEMA IF EXISTS pmk CASCADE; "
+            retry_times = 0
+            while True:
+                (status, output) = self.execSqlCommandInPrimaryDN(sql)
+                if status != 0 or ClusterCommand.findErrorInSql(output):
+                    if retry_times < 12:
+                        self.context.logger.debug(
+                            "ERROR: Failed to DROP SCHEMA pmk for the %d time."
+                            " Error: \n%s" % (retry_times + 1, str(output)))
+                    else:
+                        raise Exception(
+                            ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
+                            " Error: \n%s" % str(output))
+                else:
+                    break
+
+                time.sleep(5)
+                retry_times += 1
+            self.context.logger.debug("Succcessfully deleted schema PMK.")
+            return 0
+        except Exception as e:
+            self.context.logger.log(
+                "NOTICE: Failed to execute SQL command on CN instance, "
+                + "please re-commit upgrade once again or " +
+                "re-execute SQL command 'DROP SCHEMA "
+                "IF EXISTS pmk CASCADE' manually.")
+            self.context.logger.debug(str(e))
+            return 1
+
+    def cleanConfBakOld(self):
+        """
+        clean conf.bak.old files in all instances
+        input : NA
+        output : NA
+        """
+        try:
+            cmd = "%s -t %s -U %s -l %s" % \
+                  (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+                   Const.ACTION_CLEAN_CONF_BAK_OLD,
+                   self.context.user,
+                   self.context.localLog)
+            hostList = copy.deepcopy(self.context.nodeNames)
+            self.context.sshTool.executeCommand(cmd, "", hostList=hostList)
+        except Exception as e:
+            raise Exception(str(e))
+        self.context.logger.debug(
+            "Successfully cleaned conf.bak.old in all instances.")
+
+    def doGreyBinaryRollback(self, action=""):
+        """
+        function: rollback the upgrade of binary
+        input : NA
+        output: return True, if the operation is done successfully.
+                return False, if the operation failed.
+        """
+        self.context.logger.log("Performing grey rollback.")
+        # before prepare upgrade function and table or after commit,
+        # table does not exist means not rollback
+        # if we read the step for file, means we have force to rollback,
+        #  the record in table is not same with file
+        # we can only read the step from file
+        try:
+            self.distributeXml()
+            if action == Const.ACTION_AUTO_ROLLBACK:
+                self.clearOtherToolPackage(action)
+            try:
+                self.getOneDNInst(True)
+            except Exception as e:
+                # don't promise DN is available in force rollback
+                if self.context.forceRollback:
+                    self.context.logger.debug("Error: %s" % str(e))
+                else:
+                    raise Exception(str(e))
+            # if the cluster is degrade and cn is down,
+            # the set command will be False, ignore the error
+            if self.unSetClusterReadOnlyMode() != 0:
+                self.context.logger.log(
+                    "WARNING: Failed to unset cluster read only mode.")
+            if self.context.forceRollback:
+                # if one node is uninstalled,
+                # there will be no binary_upgrade dir
+                self.createBakPath()
+                self.setReadStepFromFile()
+                self.createGphomePack()
+            # first time user may use forcerollback, but next time user may
+            # not use force rollback, so the step file and step
+            # table is not same, so we can only read step from file,
+            # consider if need to sync them, not important
+            # under force upgrade, only read step from file
+            maxStep = self.getNodeStep()
+            # if -2, it means there is no need to exec rollback
+            # if under upgrade continue mode, it will do upgrade not rollback,
+            #  it can enter the upgrade process
+            # when the binary_upgrade bak dir has some files
+            if maxStep == Const.BINARY_UPGRADE_NO_NEED_ROLLBACK:
+                self.cleanBinaryUpgradeBakFiles(True)
+                self.context.logger.log("No need to rollback.")
+                return True
+
+            elif maxStep == GreyUpgradeStep.STEP_BEGIN_COMMIT:
+                self.context.logger.log(
+                    ErrorCode.GAUSS_529["GAUSS_52919"] +
+                    " Please commit again! Can not rollback any more.")
+                return False
+
+            # Mark that we leave pre commit status,
+            # so that if we fail at the first few steps,
+            # we won't be allowed to commit upgrade any more.
+            elif maxStep == GreyUpgradeStep.STEP_PRE_COMMIT:
+                nodes = self.getNodesWithStep(maxStep)
+                self.recordNodeStep(
+                    GreyUpgradeStep.STEP_UPDATE_POST_CATALOG, nodes)
+                maxStep = self.getNodeStep()
+            if maxStep == GreyUpgradeStep.STEP_UPDATE_POST_CATALOG:
+                self.context.logger.debug(
+                    "Record the step %d to mark it has leaved pre-commit"
+                    " status." % GreyUpgradeStep.STEP_UPDATE_POST_CATALOG)
+                try:
+                    if self.context.action == Const.ACTION_LARGE_UPGRADE\
+                            and \
+                            self.isNodeSpecifyStep(
+                                GreyUpgradeStep.STEP_UPDATE_POST_CATALOG):
+                        self.prepareUpgradeSqlFolder()
+                        self.prepareSql("rollback-post")
+                        self.setUpgradeFromParam(self.context.oldClusterNumber)
+                        self.setUpgradeMode(2)
+                        self.execRollbackUpgradedCatalog(
+                            scriptType="rollback-post")
+                except Exception as e:
+                    if self.context.forceRollback:
+                        self.context.logger.debug("Error: %s" % str(e))
+                    else:
+                        raise Exception(str(e))
+                nodes = self.getNodesWithStep(maxStep)
+                self.recordNodeStep(GreyUpgradeStep.STEP_UPGRADE_PROCESS, nodes)
+            # rollback the nodes from maxStep, each node do its rollback
+            needSwitchProcess = False
+            if maxStep >= GreyUpgradeStep.STEP_UPGRADE_PROCESS:
+                needSwitchProcess = True
+
+            if maxStep >= GreyUpgradeStep.STEP_SWITCH_NEW_BIN:
+                self.greyRestoreConfig()
+                self.switchBin(Const.OLD)
+                self.greyRestoreGuc()
+                if needSwitchProcess:
+                    self.rollbackHotpatch()
+                    self.switchExistsProcess(True)
+                self.recordNodeStep(GreyUpgradeStep.STEP_UPDATE_CATALOG)
+            if maxStep >= GreyUpgradeStep.STEP_UPDATE_CATALOG and\
+                    self.context.action == Const.ACTION_LARGE_UPGRADE:
+                self.rollbackCatalog()
+                self.recordNodeStep(GreyUpgradeStep.STEP_INIT_STATUS)
+
+            if maxStep >= GreyUpgradeStep.STEP_INIT_STATUS:
+                # clean on all the node, because the binary_upgrade temp
+                #  dir will create in every node
+                self.cleanInstallPath(Const.NEW)
+                self.dropSupportSchema()
+                self.initOmRollbackProgressFile()
+                self.cleanBinaryUpgradeBakFiles(True)
+        except Exception as e:
+            self.context.logger.debug(str(e))
+            self.context.logger.debug(traceback.format_exc())
+            self.context.logger.log("Rollback failed. Error: %s" % str(e))
+            return False
+        self.context.logger.log("Rollback succeeded.")
+        return True
+
+    def setReadStepFromFile(self):
+        readFromFileFlag = os.path.join(self.context.upgradeBackupPath,
+                                        Const.READ_STEP_FROM_FILE_FLAG)
+        self.context.logger.debug("Under force rollback mode.")
+        g_file.createFile(readFromFileFlag, True, DefaultValue.KEY_FILE_MODE)
+        self.distributeFile(readFromFileFlag)
+        self.context.logger.debug("Create file %s. " % readFromFileFlag +
+                                  "Only read step from file.")
+
+    def getNodeStep(self):
+        """
+        get node step from file or tacle
+        """
+        maxStep = self.getNodeStepFile()
+        return maxStep
+
+    def getNodeStepFile(self):
+        if not os.path.exists(self.context.upgradeBackupPath):
+            self.context.logger.debug("Directory %s does not exist. "
+                                      "Only clean remaining files and schema."
+                                      % self.context.upgradeBackupPath)
+            return Const.BINARY_UPGRADE_NO_NEED_ROLLBACK
+        if not os.path.isdir(self.context.upgradeBackupPath):
+            raise Exception(ErrorCode.GAUSS_513["GAUSS_50211"] %
+                            self.context.upgradeBackupPath)
+        # because the binary_upgrade dir is used to block expand,
+        # so we should clean the dir when rollback
+        fileList = os.listdir(self.context.upgradeBackupPath)
+        if not fileList:
+            return GreyUpgradeStep.STEP_INIT_STATUS
+        stepFile = os.path.join(self.context.upgradeBackupPath,
+                                Const.GREY_UPGRADE_STEP_FILE)
+        if not os.path.exists(stepFile):
+            self.context.logger.debug(
+                "No need to rollback. File %s does not exist." % stepFile)
+            return Const.BINARY_UPGRADE_NO_NEED_ROLLBACK
+
+        self.context.logger.debug("Get the node step from file %s." % stepFile)
+        with open(stepFile, 'r') as csvfile:
+            reader = csv.DictReader(csvfile)
+            maxStep = Const.INVALID_UPRADE_STEP
+            for row in reader:
+                self.checkStep(row['step'])
+                maxStep = max(int(row['step']), maxStep)
+                if row['upgrade_action'] != self.context.action:
+                    raise Exception(ErrorCode.GAUSS_502["GAUSS_50222"] %
+                                    stepFile +
+                                    "\nIncorrect upgrade strategy, input "
+                                    "upgrade type: %s; record upgrade type: %s"
+                                    % (self.context.action,
+                                       row['upgrade_action']))
+        self.context.logger.debug("Get the max step [%d] from file." % maxStep)
+        self.context.logger.debug(
+            "Successfully get the node step from file %s." % stepFile)
+        return maxStep
+
+    def checkActionInTableOrFile(self):
+        """
+        under force upgrade, step file and table may not be coincident.
+        So we only use step file
+        """
+        self.checkActionInFile()
+
+    def execSqlCommandInPrimaryDN(self, sql, retryTime=3):
+        self.context.logger.debug("Start to exec sql {0}.".format(sql))
+        count = 0
+        status, output = 1, ""
+        while count < retryTime:
+            self.getOneDNInst(checkNormal=True)
+            self.context.logger.debug(
+                "Exec sql in dn node {0}".format(self.dnInst.hostname))
+            (status, output) = ClusterCommand.remoteSQLCommand(
+                sql, self.context.user,
+                self.dnInst.hostname, self.dnInst.port, False,
+                DefaultValue.DEFAULT_DB_NAME, IsInplaceUpgrade=True)
+            self.context.logger.debug(
+                "Exec sql result is, status:{0}, output is {1}".format(
+                    status, output))
+            if status != 0 or ClusterCommand.findErrorInSql(output):
+                count += 1
+                continue
+            else:
+                break
+        return status, output
+
+    def checkActionInFile(self):
+        """
+        function: check whether current action is same
+                  with record action in file
+        input : NA
+        output: NA
+        """
+        try:
+            self.context.logger.debug("Check the action in file.")
+            stepFile = os.path.join(self.context.upgradeBackupPath,
+                                    Const.GREY_UPGRADE_STEP_FILE)
+            if not os.path.isfile(stepFile):
+                self.context.logger.debug(
+                    ErrorCode.GAUSS_502["GAUSS_50201"] % (stepFile))
+                return
+
+            with open(stepFile, 'r') as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    upgrade_action = row['upgrade_action']
+                    if self.context.action != upgrade_action:
+                        raise Exception(ErrorCode.GAUSS_529["GAUSS_52925"] % (
+                            self.context.action, upgrade_action))
+            self.context.logger.debug("Successfully check the action in file.")
+            return
+        except Exception as e:
+            self.context.logger.debug("Failed to check action in table.")
+            raise Exception(str(e))
+
+    def getNodesWithStep(self, step):
+        """
+        get nodes with the given step from step file or table
+        """
+        nodes = self.getNodesWithStepFile(step)
+        return nodes
+
+    def getNodesWithStepFile(self, step):
+        """
+        get nodes with the given step from file upgrade_step.csv
+        """
+        stepFile = os.path.join(self.context.upgradeBackupPath,
+                                Const.GREY_UPGRADE_STEP_FILE)
+        self.context.logger.debug("Get the node step from file %s." % stepFile)
+        nodes = []
+        with open(stepFile, 'r') as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                if not row['step'].isdigit():
+                    raise Exception(ErrorCode.GAUSS_529["GAUSS_52926"])
+                if int(row['step']) == step:
+                    nodes.append(row['node_host'])
+        self.context.logger.debug("Nodes %s is step %d" % (nodes, step))
+        return nodes
+
+    def greyRestoreConfig(self):
+        """
+        deal with the lib/postgresql/pg_plugin
+        Under rollback, we will use new pg_plugin dir as base, the file in
+        new dir but not in old dir will be moved to old dir considering add
+        the C function, and remove from old dir considering drop the C function
+        copy the config from new dir to old dir if the config may change
+        by user action
+        """
+
+        cmd = "%s -t %s -U %s --old_cluster_app_path=%s " \
+              "--new_cluster_app_path=%s -l %s" % (
+            OMCommand.getLocalScript("Local_Upgrade_Utility"),
+            Const.ACTION_GREY_RESTORE_CONFIG,
+            self.context.user,
+            self.context.oldClusterAppPath,
+            self.context.newClusterAppPath,
+            self.context.localLog)
+        if self.context.forceRollback:
+            cmd += " --force"
+        self.context.logger.debug("Command for restoring config: %s" % cmd)
+        rollbackList = copy.deepcopy(self.context.clusterNodes)
+        self.context.sshTool.executeCommand(cmd, "", hostList=rollbackList)
+        self.context.logger.debug("Successfully restore config.")
+
+    def greyRestoreGuc(self):
+        """
+        restore the old guc in rollback
+        :return: NA
+        """
+        cmd = "%s -t %s -U %s --old_cluster_app_path=%s -X %s -l %s" % \
+              (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+               Const.ACTION_GREY_RESTORE_GUC,
+               self.context.user,
+               self.context.oldClusterAppPath,
+               self.context.xmlFile,
+               self.context.localLog)
+        if self.context.forceRollback:
+            cmd += " --force"
+        self.context.logger.debug("Command for restoring GUC: %s" % cmd)
+        rollbackList = copy.deepcopy(self.context.clusterNodes)
+        self.context.sshTool.executeCommand(cmd, "", hostList=rollbackList)
+        self.context.logger.debug("Successfully restore guc.")
+
+    def dropSupportSchema(self):
+        self.context.logger.debug("Drop schema.")
+        sql = "DROP SCHEMA IF EXISTS %s CASCADE;" % Const.UPGRADE_SCHEMA
+        retryTime = 0
+        try:
+            while retryTime < 5:
+                (status, output) = self.execSqlCommandInPrimaryDN(sql)
+                if status != 0 or ClusterCommand.findErrorInSql(output):
+                    retryTime += 1
+                    self.context.logger.debug(
+                        "Failed to execute SQL: %s. Error: \n%s. retry" % (
+                            sql, str(output)))
+                else:
+                    break
+            if status != 0 or ClusterCommand.findErrorInSql(output):
+                self.context.logger.debug(
+                    "Failed to execute SQL: %s. Error: \n%s" % (
+                        sql, str(output)))
+                raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
+                                " Please drop manually with this command.")
+            self.context.logger.debug("Successfully drop schema %s cascade." %
+                                      Const.UPGRADE_SCHEMA)
+        except Exception as e:
+            if self.context.forceRollback:
+                self.context.logger.log(
+                    "Failed to drop schema. Please drop manually "
+                    "with this command: \n     %s" % sql)
+            else:
+                raise Exception(str(e))
+
     def doInplaceBinaryRollback(self):
         """
         function: rollback the upgrade of binary
@@ -2340,6 +3622,8 @@ class UpgradeImpl:
                                     ErrorCode.GAUSS_529["GAUSS_52907"])
                 self.cleanBinaryUpgradeBakFiles(True)
                 self.cleanInstallPath(Const.NEW)
+                # install kerberos
+                self.install_kerberos()
         except Exception as e:
             self.context.logger.error(str(e))
             self.context.logger.log("Rollback failed.")
@@ -2478,11 +3762,14 @@ class UpgradeImpl:
             self.startCluster()
             self.setUpgradeMode(1)
         else:
+            self.setUpgradeFromParam(self.context.oldClusterNumber)
             self.setUpgradeMode(2)
         self.execRollbackUpgradedCatalog(scriptType="rollback")
         self.pgxcNodeUpdateLocalhost("rollback")
         if self.context.action == Const.ACTION_INPLACE_UPGRADE:
             self.stopCluster()
+        if self.context.is_grey_upgrade:
+            self.setUpgradeFromParam(Const.UPGRADE_UNSET_NUM)
         self.setUpgradeMode(0)
 
     def doPhysicalRollbackCatalog(self):
@@ -2496,6 +3783,8 @@ class UpgradeImpl:
         """
         try:
             self.startCluster()
+            if self.context.is_grey_upgrade:
+                self.setUpgradeFromParam(Const.UPGRADE_UNSET_NUM)
             self.setUpgradeMode(0)
             self.stopCluster()
             self.execPhysicalRollbackUpgradedCatalog()
@@ -2860,6 +4149,30 @@ class UpgradeImpl:
             else:
                 raise Exception(ErrorCode.GAUSS_500["GAUSS_50004"] % 't' +
                                 " Value: %s" % self.context.action)
+
+            # judgment has installed kerberos before action_inplace_upgrade
+            self.context.logger.debug(
+                "judgment has installed kerberos before action_inplace_upgrade")
+            xmlfile = os.path.join(os.path.dirname(self.context.userProfile),
+                                   DefaultValue.FI_KRB_XML)
+            if os.path.exists(xmlfile) and \
+                    self.context.action == Const.ACTION_AUTO_UPGRADE \
+                    and self.context.is_grey_upgrade:
+                raise Exception(ErrorCode.GAUSS_502["GAUSS_50200"] % "kerberos")
+            if os.path.exists(xmlfile) and self.context.is_inplace_upgrade:
+                pghost_path = DefaultValue.getEnvironmentParameterValue(
+                    'PGHOST', self.context.user)
+                destfile = "%s/krb5.conf" % os.path.dirname(
+                    self.context.userProfile)
+                kerberosflagfile = "%s/kerberos_upgrade_flag" % pghost_path
+                cmd = "cp -rf %s %s " % (destfile, kerberosflagfile)
+                (status, output) = DefaultValue.retryGetstatusoutput(cmd, 3, 5)
+                if status != 0:
+                    raise Exception(
+                        ErrorCode.GAUSS_502["GAUSS_50206"] % kerberosflagfile
+                        + " Error: \n%s" % output)
+                self.context.logger.debug(
+                    "Successful back up kerberos config file.")
         except Exception as e:
             self.context.logger.debug(traceback.format_exc())
             self.exitWithRetCode(self.context.action, False, str(e))
@@ -3168,13 +4481,244 @@ class UpgradeImpl:
                                              self.context.sshTool,
                                              self.context.isSingle,
                                              self.context.mpprcFile)
-            self.context.logger.log("Successfully checked upgrade "
-                                    "environment.", "constant")
         except Exception as e:
             self.context.logger.log("Failed to check upgrade environment.",
                                     "constant")
             raise Exception(str(e))
+        if not self.context.forceRollback:
+            if self.context.oldClusterNumber >= \
+                    Const.ENABLE_STREAM_REPLICATION_VERSION:
+                self.check_gucval_is_inval_given(
+                    Const.ENABLE_STREAM_REPLICATION_NAME, Const.VALUE_ON)
+        try:
+            if self.context.action == Const.ACTION_INPLACE_UPGRADE:
+                self.context.logger.log(
+                    "Successfully checked upgrade environment.", "constant")
+                return
+            self.checkActionInTableOrFile()
+            self.checkDifferentVersion()
+            self.checkOption()
+        except Exception as e:
+            self.context.logger.log(
+                "Failed to check upgrade environment.", "constant")
+            raise Exception(str(e))
 
+        self.context.logger.log(
+            "Successfully checked upgrade environment.", "constant")
+
+    def check_gucval_is_inval_given(self, guc_name, val_list):
+        """
+        Checks whether a given parameter is a given value list in a
+        given instance list.
+        """
+        self.context.logger.debug("checks whether the parameter:{0} is "
+                                  "the value:{1}.".format(guc_name, val_list))
+        guc_str = "{0}:{1}".format(guc_name, ",".join(val_list))
+        self.checkParam(guc_str)
+        self.context.logger.debug("Success to check the parameter:{0} value "
+                                  "is in the value:{1}.".format(guc_name,
+                                                                val_list))
+
+    def checkDifferentVersion(self):
+        """
+        if the cluster has only one version. no need to check
+        if the cluster has two version, it should be the new
+        version or the old version
+        :return:
+        """
+        self.context.logger.debug("Check the amount of cluster version.")
+        failedHost = []
+        failMsg = ""
+        gaussHome = DefaultValue.getInstallDir(self.context.user)
+        # $GAUSSHOME must has available value.
+        if gaussHome == "":
+            raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$GAUSSHOME")
+        versionFile = os.path.join(gaussHome, "bin/upgrade_version")
+        cmd = "sed -n \'3,1p\' %s" % versionFile
+        hostList = copy.deepcopy(self.context.clusterNodes)
+        (resultMap, outputCollect) = \
+            self.context.sshTool.getSshStatusOutput(cmd, hostList)
+        for key, val in resultMap.items():
+            if DefaultValue.FAILURE in val:
+                failedHost.append(key)
+                failMsg += val
+        if failedHost:
+            self.context.recordIgnoreOrFailedNodeInEveryNode(
+                self.context.failedNodeRecordFile, failedHost)
+            raise Exception(ErrorCode.GAUSS_529["GAUSS_52929"] + failMsg)
+        for result in outputCollect:
+            if result.find(self.newCommitId) or result.find(self.oldCommitId):
+                continue
+            self.context.logger.debug(
+                "Find the gausssdb version %s is not same with"
+                " current upgrade version" % str(result))
+            raise Exception(ErrorCode.GAUSS_529["GAUSS_52935"])
+        self.context.logger.debug(
+            "Successfully checked the amount of cluster version.")
+
+    def checkOption(self):
+        """
+        if user use -g first, and then use -h <last -g choose nodes>,
+        we can upgrade again
+        :return:
+        """
+        if self.context.is_grey_upgrade:
+            self.check_option_grey()
+        if len(self.context.nodeNames) != 0:
+            self.checkOptionH()
+        elif self.context.upgrade_remain:
+            self.checkOptionContinue()
+        else:
+            self.checkOptionG()
+
+    def check_option_grey(self):
+        """
+        if user use --grey first, and then can not use --grey
+        :return:
+        """
+        stepFile = os.path.join(
+            self.context.upgradeBackupPath, Const.GREY_UPGRADE_STEP_FILE)
+        if not os.path.isfile(stepFile):
+            self.context.logger.debug(
+                "File %s does not exists. No need to check." %
+                Const.GREY_UPGRADE_STEP_FILE)
+            return
+        grey_node_names = self.getUpgradedNodeNames()
+        if grey_node_names:
+            self.context.logger.log(
+                "All nodes have been upgrade, no need to upgrade again.")
+            self.exitWithRetCode(self.action, True)
+
+    def checkOptionH(self):
+        self.checkNodeNames()
+        stepFile = os.path.join(
+            self.context.upgradeBackupPath, Const.GREY_UPGRADE_STEP_FILE)
+        if not os.path.isfile(stepFile):
+            self.context.logger.debug(
+                "File %s does not exists. No need to check." %
+                Const.GREY_UPGRADE_STEP_FILE)
+            return
+        if not self.isNodesSameStep(self.context.nodeNames):
+            raise Exception(ErrorCode.GAUSS_529["GAUSS_52909"])
+        if self.isNodeSpecifyStep(
+                GreyUpgradeStep.STEP_UPDATE_POST_CATALOG,
+                self.context.nodeNames):
+            raise Exception(
+                ErrorCode.GAUSS_529["GAUSS_52910"] % self.context.nodeNames)
+        nodes = self.getNodeLessThan(GreyUpgradeStep.STEP_UPDATE_POST_CATALOG)
+        # compare whether current upgrade nodes are same with
+        # last unfinished node names
+        if nodes:
+            a = [i for i in self.context.nodeNames if i not in nodes]
+            b = [i for i in nodes if i not in self.context.nodeNames]
+            if len(a) != 0 or len(b) != 0:
+                raise Exception(
+                    ErrorCode.GAUSS_529["GAUSS_52911"] % nodes +
+                    " Please upgrade them first.")
+
+    def checkNodeNames(self):
+        self.context.logger.debug(
+            "Check if the node name is invalid or duplicated.")
+        clusterNodes = self.context.clusterInfo.getClusterNodeNames()
+        for nodeName in self.context.nodeNames:
+            if nodeName not in clusterNodes:
+                raise Exception(
+                    ErrorCode.GAUSS_500["GAUSS_50011"] % ("-h", nodeName))
+
+        undupNodes = set(self.context.nodeNames)
+        if len(self.context.nodeNames) != len(undupNodes):
+            self.context.logger.log(
+                ErrorCode.GAUSS_500["GAUSS_50004"] % (
+                        "h" + "Duplicates node names"))
+            nodeDict = {}.fromkeys(self.context.nodeNames, 0)
+            for name in self.context.nodeNames:
+                nodeDict[name] = nodeDict[name] + 1
+            for key, value in nodeDict.items():
+                if value > 1:
+                    self.context.logger.log(
+                        "Duplicates node name %s, "
+                        "only keep one in grey upgrade!" % key)
+            self.context.nodeNames = list(undupNodes)
+
+    def isNodesSameStep(self, nodes):
+        """
+        judge if given nodes are same step
+        """
+        return self.isNodeSpecifyStepInFile(nodes=nodes)
+
+    def getNodeLessThan(self, step):
+        """
+        get the nodes whose step is less than specified step, and can not be 0
+        """
+        nodes = self.getNodeLessThanInFile(step)
+        return nodes
+
+    def getNodeLessThanInFile(self, step):
+        """
+        get the nodes whose step is less than specified step, and can not be 0
+        """
+        try:
+            stepFile = os.path.join(
+                self.context.upgradeBackupPath, Const.GREY_UPGRADE_STEP_FILE)
+            self.context.logger.debug("trying to get nodes that step is "
+                                      "less than %s from %s" % (step, stepFile))
+            if not os.path.isfile(stepFile):
+                return []
+            nodes = []
+            with open(stepFile, 'r') as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    if int(row['step']) != 0 and int(row['step']) < step:
+                        nodes.append(row['node_host'])
+            self.context.logger.debug("successfully got nodes that step is "
+                                      "less than %s from %s" % (step, stepFile))
+            return nodes
+        except Exception as e:
+            exitMsg = "Failed to get nodes that step is less than {0} " \
+                      "from {1}. ERROR {2}".format(step, stepFile, str(e))
+            self.exitWithRetCode(self.action, False, exitMsg)
+
+    def checkOptionContinue(self):
+        stepFile = os.path.join(
+            self.context.upgradeBackupPath, Const.GREY_UPGRADE_STEP_FILE)
+        if not os.path.isfile(stepFile):
+            raise Exception(ErrorCode.GAUSS_529["GAUSS_52920"] +
+                            "Need to upgrade some nodes first.")
+        greyNodeNames = self.getUpgradedNodeNames()
+        # the nodes that have upgraded that should reached to precommit
+        if not self.isNodeSpecifyStep(GreyUpgradeStep.STEP_UPDATE_POST_CATALOG,
+                                      greyNodeNames):
+            raise Exception(ErrorCode.GAUSS_529["GAUSS_52912"])
+        if len(greyNodeNames) == len(self.context.clusterInfo.dbNodes):
+            self.printPrecommitBanner()
+            self.context.logger.debug(
+                "The node host in table %s.%s is equal to cluster nodes."
+                % (Const.UPGRADE_SCHEMA, Const.RECORD_NODE_STEP))
+            raise Exception(ErrorCode.GAUSS_529["GAUSS_52913"])
+        if not self.checkVersion(self.newCommitId, greyNodeNames):
+            raise Exception(
+                ErrorCode.GAUSS_529["GAUSS_52914"] +
+                "Please use the same version to upgrade remain nodes.")
+
+    def checkOptionG(self):
+        stepFile = os.path.join(
+            self.context.upgradeBackupPath, Const.GREY_UPGRADE_STEP_FILE)
+        if not os.path.isfile(stepFile):
+            self.context.logger.debug(
+                "File %s does not exists. No need to check." %
+                Const.GREY_UPGRADE_STEP_FILE)
+            return
+        # -g only support 2 loops to upgrade, if has node upgrade,
+        # cannot use -g to upgrade other nodes
+        greyNodeNames = self.getUpgradedNodeNames()
+        if not greyNodeNames:
+            self.context.logger.debug("No node has ever been upgraded.")
+            return
+        else:
+            raise Exception("-g only support if no node has ever been upgraded"
+                            " ,nodes %s have been upgraded, "
+                            "so can use --continue instead of -g to upgrade"
+                            " other nodes" % greyNodeNames)
 
     def backupClusterConfig(self):
         """
@@ -3883,7 +5427,8 @@ class UpgradeImpl:
                                 "or degrade.")
         endTime = datetime.now() + timedelta(seconds=int(waitTimeOut))
         while True:
-            cmd = "source %s;cm_ctl query" % self.context.userProfile
+            cmd = "source %s;gs_om -t status --detail" % \
+                  self.context.userProfile
             (status, output) = subprocess.getstatusoutput(cmd)
             if status == 0 and (output.find("Normal") >= 0 or
                                 output.find("Degraded") >= 0):
@@ -4219,11 +5764,19 @@ class UpgradeImpl:
                 cmd += " --force"
             self.context.logger.debug("Command for switching binary directory:"
                                       " '%s'." % cmd)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "Switch the binary directory",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            if self.context.is_grey_upgrade:
+                DefaultValue.execCommandWithMode(cmd,
+                                                 "Switch the binary directory",
+                                                 self.context.sshTool,
+                                                 self.context.isSingle,
+                                                 self.context.mpprcFile,
+                                                 self.context.nodeNames)
+            else:
+                DefaultValue.execCommandWithMode(cmd,
+                                                 "Switch the binary directory",
+                                                 self.context.sshTool,
+                                                 self.context.isSingle,
+                                                 self.context.mpprcFile)
 
         except Exception as e:
             self.context.logger.log("Failed to switch symbolic link to %s "
@@ -4246,14 +5799,16 @@ class UpgradeImpl:
                 "clean other tool package files.", "addStep")
         try:
             commonPart = DefaultValue.get_package_back_name().rsplit("_", 1)[0]
-            gphomePath = os.listdir(DefaultValue.getClusterToolPath())
+            gphomePath = \
+                os.listdir(DefaultValue.getClusterToolPath(self.context.user))
             commitId = self.newCommitId
             if action == Const.ACTION_AUTO_ROLLBACK:
                 commitId = self.oldCommitId
             for filePath in gphomePath:
                 if commonPart in filePath and commitId not in filePath:
                     toDeleteFilePath = os.path.join(
-                        DefaultValue.getClusterToolPath(), filePath)
+                        DefaultValue.getClusterToolPath(self.context.user),
+                        filePath)
                     deleteCmd = "(if [ -f '%s' ]; then rm -rf '%s'; fi) " % \
                                   (toDeleteFilePath, toDeleteFilePath)
                     DefaultValue.execCommandWithMode(
@@ -4281,11 +5836,11 @@ class UpgradeImpl:
         """
         try:
             cmd = "(if [ ! -d '%s' ]; then mkdir -p '%s'; fi)" % \
-                  (DefaultValue.getClusterToolPath(),
-                   DefaultValue.getClusterToolPath())
+                  (DefaultValue.getClusterToolPath(self.context.user),
+                   DefaultValue.getClusterToolPath(self.context.user))
             cmd += " && (chmod %d -R %s)" % \
                    (DefaultValue.KEY_DIRECTORY_MODE,
-                    DefaultValue.getClusterToolPath())
+                    DefaultValue.getClusterToolPath(self.context.user))
             self.context.logger.debug(
                 "Command for creating directory: %s" % cmd)
             DefaultValue.execCommandWithMode(cmd,
@@ -4295,8 +5850,8 @@ class UpgradeImpl:
                                              self.context.mpprcFile)
             oldPackName = "%s-Package-bak_%s.tar.gz" % \
                           (VersionInfo.PRODUCT_NAME_PACKAGE, self.oldCommitId)
-            packFilePath = "%s/%s" % (DefaultValue.getClusterToolPath(),
-                                      oldPackName)
+            packFilePath = "%s/%s" % (DefaultValue.getClusterToolPath(
+                self.context.user), oldPackName)
             copyNode = ""
             cmd = "if [ -f '%s' ]; then echo 'GetFile'; " \
                   "else echo 'NoThisFile'; fi" % packFilePath
@@ -4319,7 +5874,8 @@ class UpgradeImpl:
                         if 'NoThisFile' in outputMap[node]:
                             cmd = g_Platform.getRemoteCopyCmd(
                                 packFilePath,
-                                DefaultValue.getClusterToolPath(),
+                                DefaultValue.getClusterToolPath(
+                                    self.context.user),
                                 str(copyNode), False, 'directory', node)
                             self.context.logger.debug(
                                 "Command for copying directory: %s" % cmd)

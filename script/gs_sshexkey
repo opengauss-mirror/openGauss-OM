@@ -152,6 +152,7 @@ class GaussCreateTrust():
         self.id_rsa_pub_fname = self.id_rsa_fname + '.pub'
         self.skipHostnameSet = False
         self.isKeyboardPassword = False
+        self.nodeduplicate = False
 
     def usage(self):
         """
@@ -161,7 +162,7 @@ Usage:
   gs_sshexkey -? | --help
   gs_sshexkey -V | --version
   gs_sshexkey -f HOSTFILE [-l LOGFILE] [--skip-hostname-set]
-                          
+  gs_sshexkey -h IPLIST [-l LOGFILE] [--skip-hostname-set]
 
 General options:
   -f                          Host file containing the IP address of nodes.
@@ -169,7 +170,6 @@ General options:
   -l                          Path of log file.
       --skip-hostname-set     Whether to skip hostname setting.
                               (The default value is set.)
-  -W                          Password of nodes.
   -?, --help                  Show help information for this utility,
                               and exit the command line mode.
   -V, --version               Show version information.
@@ -196,8 +196,8 @@ General options:
             self.logFile = paraDict.get("logFile")
         if ("skipHostnameSet" in paraDict.keys()):
             self.skipHostnameSet = paraDict.get("skipHostnameSet")
-        if ("passwords" in paraDict.keys()):
-            self.passwd = paraDict.get("passwords")
+        if ("noDeduplicate" in paraDict.keys()):
+            self.nodeduplicate = paraDict.get("noDeduplicate")
 
     def checkParameter(self):
         """
@@ -224,7 +224,11 @@ General options:
             if (self.hostList == []):
                 GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
                                     % 'f' + " It cannot be empty.")
-
+        else:
+            for temp_host in self.hostList:
+                if not DefaultValue.isIpValid(temp_host):
+                    GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"]
+                                       % temp_host)
         # check logfile
         if (self.logFile != ""):
             if (not os.path.isabs(self.logFile)):
@@ -495,7 +499,7 @@ General options:
             if (not os.path.exists("/etc/hosts")):
                 raise Exception(ErrorCode.GAUSS_512["GAUSS_51221"] +
                                 " Error: \nThe /etc/hosts does not exist.")
-            cmd = "grep -v '" + HOSTS_MAPPING_FLAG + "' /etc/hosts"
+            cmd = "grep -v '" + HOSTS_MAPPING_FLAG + "' /etc/hosts| grep -v '^$'"
             (status, output) = subprocess.getstatusoutput(cmd)
             try:
                 g_file.createFile(tmpHostIpName)
@@ -507,8 +511,20 @@ General options:
                 if os.path.exists(tmpHostIpName):
                     g_file.removeFile(tmpHostIpName)
                 raise Exception(str(e))
-            for (key, value) in result.items():
-                hostIPInfo += '%s  %s  %s\n' % (key, value, HOSTS_MAPPING_FLAG)
+            if not self.nodeduplicate:
+                ipCompare = []
+                for line in output.split("\n"):
+                    if line:
+                        ipCompare.append(line.replace("\t", " ").strip().split(' ')[0])
+                tmpResult = {}
+                for s_key in list(result.keys()):
+                    if s_key not in ipCompare:
+                        tmpResult[s_key] = result[s_key]
+                for (key, value) in tmpResult.items():
+                    hostIPInfo += '%s  %s  %s\n' % (key, value, HOSTS_MAPPING_FLAG)
+            else:
+                for (key, value) in result.items():
+                    hostIPInfo += '%s  %s  %s\n' % (key, value, HOSTS_MAPPING_FLAG)
             hostIPInfo = hostIPInfo[:-1]
             ipInfoList = [hostIPInfo]
             g_file.writeFile("/etc/hosts", ipInfoList)
@@ -538,8 +554,9 @@ General options:
         """
         writeResult = []
         result = {}
-        tmpHostIpName = "./tmp_hostsiphostname_%d" % os.getpid()
+        tmpHostIpName = "./tmp_hostsiphostname_%d_%s" % (os.getpid(), ip)
         username = pwd.getpwuid(os.getuid()).pw_name
+        global ipHostInfo
         try:
             ssh = paramiko.Transport((ip, 22))
         except Exception as e:
@@ -551,18 +568,36 @@ General options:
             ssh.close()
             raise Exception(ErrorCode.GAUSS_503["GAUSS_50317"]
                             + " Error: \n%s" % str(e))
-        cmd = "grep -v '%s' %s > %s ; cp %s %s && rm -rf %s" \
-              % (" #Gauss.* IP Hosts Mapping", '/etc/hosts', tmpHostIpName,
-                 tmpHostIpName, '/etc/hosts', tmpHostIpName)
+        cmd = "grep -v '%s' %s  | grep -v '^$'" \
+              % (" #Gauss.* IP Hosts Mapping", '/etc/hosts')
         channel = ssh.open_session()
         channel.exec_command(cmd)
         ipHosts = channel.recv(9999).decode().strip()
         errInfo = channel.recv_stderr(9999).decode().strip()
-        if (errInfo):
-            writeResult.append(errInfo)
+        cmd = "echo \"%s\" > %s ; cp %s %s && rm -rf %s" \
+              % (ipHosts, tmpHostIpName, tmpHostIpName, '/etc/hosts', tmpHostIpName)
+        channel = ssh.open_session()
+        channel.exec_command(cmd)
+        ipHosts1 = channel.recv(9999).decode().strip()
+        errInfo1 = channel.recv_stderr(9999).decode().strip()
+        if ((errInfo + errInfo1)):
+            writeResult.append(errInfo + errInfo1)
         else:
-            if (not ipHosts):
-                cmd = "echo '%s' >> /etc/hosts" % (ipHostInfo)
+            if (not ipHosts1):
+                if not self.nodeduplicate:
+                    ipCompare = []
+                    for line in ipHosts.split("\n"):
+                        if line:
+                            ipCompare.append(line.replace("\t", " ").strip().split(' ')[0])
+                    tmpIpHostInfo = ""
+                    ipArray = ipHostInfo.split("\n")
+                    for info in ipArray:
+                        hostname = info.split(' ')[0]
+                        if hostname not in ipCompare:
+                            tmpIpHostInfo += info + "\n"
+                    cmd = "echo '%s' >> /etc/hosts" % tmpIpHostInfo
+                else:
+                    cmd = "echo '%s' >> /etc/hosts" % ipHostInfo
                 channel = ssh.open_session()
                 channel.exec_command(cmd)
                 errInfo = channel.recv_stderr(9999).decode().strip()
@@ -570,7 +605,6 @@ General options:
                     writeResult.append(errInfo)
         if channel:
             channel.close()
-
         result[ip] = writeResult
         if (len(writeResult) > 0):
             return (False, result)
@@ -646,21 +680,38 @@ General options:
                     if (boolInvalidIp):
                         boolInvalidIp = False
                         continue
-                    cmd = "grep -v '%s' %s > %s ; cp %s %s && rm -rf %s" % (
-                        " #Gauss.* IP Hosts Mapping", '/etc/hosts', tmpHostIpName,
-                        tmpHostIpName, '/etc/hosts', tmpHostIpName)
+                    cmd = "grep -v '%s' %s | grep -v '^$'" % (
+                        " #Gauss.* IP Hosts Mapping", '/etc/hosts')
                     channel = ssh.open_session()
                     channel.exec_command(cmd)
                     ipHosts = channel.recv(9999).decode().strip()
                     errInfo = channel.recv_stderr(9999).decode().strip()
-                    if (errInfo):
-                        writeResult.append(errInfo)
+                    cmd = "echo \"%s\" > %s ; cp %s %s && rm -rf %s" % (
+                        ipHosts, tmpHostIpName, tmpHostIpName,
+                        '/etc/hosts', tmpHostIpName)
+                    channel = ssh.open_session()
+                    channel.exec_command(cmd)
+                    ipHosts1 = channel.recv(9999).decode().strip()
+                    errInfo1 = channel.recv_stderr(9999).decode().strip()
+
+                    if (errInfo + errInfo1):
+                        writeResult.append(errInfo + errInfo1)
                     else:
-                        if (not ipHosts):
+                        if (not ipHosts1):
                             ipHostInfo = ""
-                            for (key1, value1) in result.items():
-                                ipHostInfo += '%s  %s  %s\n' % (
-                                    key1, value1, HOSTS_MAPPING_FLAG)
+                            if not self.nodeduplicate:
+                                ipCompare = []
+                                for line in ipHosts.split("\n"):
+                                    if line:
+                                        ipCompare.append(line.replace("\t", " ").strip().split(' ')[0])
+                                for (key1, value1) in result.items():
+                                    if key1 not in ipCompare:
+                                        ipHostInfo += '%s  %s  %s\n' % (
+                                            key1, value1, HOSTS_MAPPING_FLAG)
+                            else:
+                                for (key1, value1) in result.items():
+                                    ipHostInfo += '%s  %s  %s\n' % (
+                                        key1, value1, HOSTS_MAPPING_FLAG)
                             ipHostInfo = ipHostInfo[:-1]
                             cmd = "echo '%s' >> /etc/hosts" % ipHostInfo
                             channel = ssh.open_session()

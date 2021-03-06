@@ -35,10 +35,39 @@ function fn_selinux()
     return 0
 }
 
-function fn_swapoff()
+function fn_precheck()
 {
-    # 关闭交换内存
-    swapoff -a
+    system_arch=`uname -p`
+    system_name=`cat /etc/os-release | grep '^ID=".*' | grep -o -E '(openEuler|centos)'`
+    total=0
+    python3 --version >/dev/null 2>&1
+    if [ $? -ne 0 ]
+    then
+        echo "You need install python3 or create the correct soft connection."
+        return 1
+    fi
+    cat requirements_"$system_name"_"$system_arch" | while read line
+    do
+        if [ "$line"x == ""x ]
+        then
+            continue
+        fi
+        yum list installed | grep $line > result.log
+        num=`wc -l result.log | awk '{print $1}'`
+        if [ $num -eq 0 ]
+        then
+            echo "You need to install $line" > preCheck.log
+            total=`expr $total + 1`
+        fi
+        echo $total>>tmp_total
+    done < requirements_"$system_name"_"$system_arch"
+    total=$(tail -n 1 tmp_total)
+    if [ $total -gt 0 ]
+    then
+        rm -rf result.log tmp_total
+        return 1
+    fi
+    rm -rf result.log tmp_total
     return 0
 }
 

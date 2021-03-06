@@ -199,6 +199,8 @@ class OmImpl:
         cmd = queryCmd()
         if (self.context.g_opts.outFile != ""):
             cmd.outputFile = self.context.g_opts.outFile
+        else:
+            cmd.outputFile = self.logger.logFile
         if (self.context.g_opts.show_detail):
             if (
                     self.context.clusterInfo.clusterType

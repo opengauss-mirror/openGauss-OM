@@ -176,7 +176,6 @@ def _parse_release_file(firstline):
 
 
 def linux_distribution(distname='', version='', idNum='',
-
                        supported_dists=_supported_dists,
                        full_distribution_name=1):
     """
@@ -204,9 +203,9 @@ def linux_distribution(distname='', version='', idNum='',
     except os.error:
         # Probably not a Unix system
         return distname, version, idNum
-    sorted(etc)
+    sortEtc = sorted(etc)
     gFile = None
-    for file in etc:
+    for file in sortEtc:
         if os.path.islink('/etc/' + file):
             continue
         m = _release_filename.match(file)

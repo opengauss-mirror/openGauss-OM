@@ -398,11 +398,15 @@ class ExpansionImpl():
         func: after install single database on standby nodes. 
         build the relation with primary and standby nodes.
         step:
-        1. set guc config to primary node
-        2. restart standby node with Standby Mode
-        3. set guc config to standby node
-        4. rollback guc config of existing hosts if build failed
-        5. generate cluster static file and send to each node.
+        1. set primary's guc config parameter: replconninfo
+        2. set standbies' guc config parameters: replconninfo, available_zone
+        3. add trust on all hosts
+        4. generate GRPC cert on new hosts, and primary if current cluster is single instance
+        5. build new hosts :
+           (1) restart new instance with standby mode
+           (2) build new instances
+        6. rollback guc config of existing hosts if build failed
+        7. generate cluster static file and send to each node.
         """
         self.setPrimaryGUCConfig()
         self.setStandbyGUCConfig()
@@ -416,7 +420,7 @@ class ExpansionImpl():
         """
         get the exiting hosts
         """
-        self.logger.debug("Get the existing host.")
+        self.logger.debug("Get the existing hosts.")
         primaryHost = self.getPrimaryHostName()
         command = ""
         if DefaultValue.getEnv("MPPDB_ENV_SEPARATE_PATH"):
@@ -538,7 +542,7 @@ class ExpansionImpl():
         """
         stop the new standby host`s database and build it as standby mode
         """
-        self.logger.debug("Start to build build new nodes.\n")
+        self.logger.debug("Start to build new nodes.")
         
         standbyHosts = self.context.newHostList
         hostAzNameMap = self.context.hostAzNameMap

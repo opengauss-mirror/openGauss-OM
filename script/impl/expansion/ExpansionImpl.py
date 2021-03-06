@@ -632,10 +632,11 @@ class ExpansionImpl():
             resultMap, outputCollect = sshTool.getSshStatusOutput("sh %s" % \
                 tempShFile, [host], self.envFile)
             if resultMap[host] != DefaultValue.SUCCESS:
-                self.rollback()
-                self.logger.log("Failed to send gs_ctlBuildCmd bashfile "
+                self.expansionSuccess[host] = False
+                self.logger.debug("Failed to send gs_ctlBuildCmd bashfile "
                     "to %s." % host)
-                GaussLog.exitWithError(outputCollect)
+                self.logger.log("Build %s %s failed." % (hostRole, host))
+                continue
             # check whether build process has finished
             checkProcessExistCmd = "ps x"
             while True:

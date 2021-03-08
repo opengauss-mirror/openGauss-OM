@@ -4573,7 +4573,7 @@ class UpgradeImpl:
 
     def check_option_grey(self):
         """
-        if user use --grey first, and then can not use --grey
+        if nodes have been upgraded, no need to use --grey to upgrade again
         :return:
         """
         stepFile = os.path.join(

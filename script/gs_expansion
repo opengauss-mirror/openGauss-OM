@@ -214,7 +214,6 @@ General options:
         self._getBackIpNameMap()
         self._getHostAzNameMap()
         self._getNewHostCasRoleMap()
-        self._adjustOrderOfNewHostList()
 
     def checkXmlIncludeNewHost(self):
         """

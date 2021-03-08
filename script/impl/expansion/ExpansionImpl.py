@@ -944,6 +944,24 @@ remoteservice={remoteservice}'"
         
         self.logger.debug("The primary database is normal.\n")
 
+    
+    def _adjustOrderOfNewHostList(self):
+        """
+        Adjust the order of hostlist so that 
+        standby comes first and cascade standby comes last
+        """
+        newHostList = self.context.newHostList
+        newHostCasRoleMap = self.context.newHostCasRoleMap
+        i, j = 0, len(newHostList) - 1
+        while i < j:
+            while i < j and newHostCasRoleMap[newHostList[i]] == "off":
+                i += 1
+            while i < j and newHostCasRoleMap[newHostList[j]] == "on":
+                j -= 1
+            newHostList[i], newHostList[j] = newHostList[j], newHostList[i]
+            i += 1
+            j -= 1
+
     def validNodeInStandbyList(self):
         """
         check if the node has been installed in the cluster.
@@ -965,6 +983,7 @@ remoteservice={remoteservice}'"
         if len(newHostList) == 0:
             self.logger.log("There is no node can be expanded.")
             sys.exit(0)
+        self._adjustOrderOfNewHostList()
 
     def checkXmlFileAccessToUser(self):
         """

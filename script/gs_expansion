@@ -216,22 +216,6 @@ General options:
         self._getNewHostCasRoleMap()
         self._adjustOrderOfNewHostList()
 
-    def _adjustOrderOfNewHostList(self):
-        """
-        Adjust the order of hostlist so that 
-        standby comes first and cascade standby comes last
-        """
-        i, j = 0, len(self.newHostList) - 1
-        while i < j:
-            while i < j and self.newHostCasRoleMap[self.newHostList[i]] == "off":
-                i += 1
-            while i < j and self.newHostCasRoleMap[self.newHostList[j]] == "on":
-                j -= 1
-            self.newHostList[i], self.newHostList[j] = \
-                self.newHostList[j], self.newHostList[i]
-            i += 1
-            j -= 1
-
     def checkXmlIncludeNewHost(self):
         """
         check parameter node must in xml config file

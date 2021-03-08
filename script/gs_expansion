@@ -143,6 +143,9 @@ General options:
            GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35701"] % "-X")
         if len(self.newHostList) == 0:
            GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35701"] % "-h")
+        # check if upgrade action is exist
+        if DefaultValue.isUnderUpgrade(self.user):
+            GaussLog.exitWithError(ErrorCode.GAUSS_529["GAUSS_52936"])
         
         clusterInfo = ExpansipnClusterInfo()
         self.clusterInfo = clusterInfo

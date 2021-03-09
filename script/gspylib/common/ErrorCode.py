@@ -1112,8 +1112,8 @@ class ErrorCode():
                        "detail.",
         "GAUSS_35704": "[GAUSS-35704] %s [%s] does not exist on node [%s].",
         "GAUSS_35705": "[GAUSS-35705] Error, the database version is "
-                       "inconsistent in %s: %s" 
-                       
+                       "inconsistent in %s: %s",
+        "GAUSS_35706": "[GAUSS-35706] All new hosts %s failed."
     }
 
     ##########################################################################

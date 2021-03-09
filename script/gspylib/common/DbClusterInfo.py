@@ -3184,23 +3184,9 @@ class dbClusterInfo():
                         "with cm and etcd") + errMsg)
             # create a dictionary 
             nodeipport[dbNode.name] = [nodeips, nodeports]
-            # delete redundant records
-            self.__Deduplication(nodeports)
-            self.__Deduplication(nodeips)
             # check port and ip
             self.__checkPortandIP(nodeips, nodeports, dbNode.name)
         return nodeipport
-
-    def __Deduplication(self, currentlist):
-        """
-        function : Delete the deduplication.
-        input : []
-        output : NA
-        """
-        currentlist.sort()
-        for i in range(len(currentlist) - 2, -1, -1):
-            if currentlist.count(currentlist[i]) > 1:
-                del currentlist[i]
 
     def __checkPortandIP(self, ips, ports, name):
         """  
@@ -3208,12 +3194,14 @@ class dbClusterInfo():
         input : String,int,string
         output : NA
         """
-        for port in ports:
+        ipsCopy = list(set(ips))
+        portsCopy = list(set(ports))
+        for port in portsCopy:
             if (not self.__isPortValid(port)):
                 raise Exception(ErrorCode.GAUSS_512["GAUSS_51233"]
                                 % (port, name) + " Please check it.")
 
-        for ip in ips:
+        for ip in ipsCopy:
             if (not self.__isIpValid(ip)):
                 raise Exception(ErrorCode.GAUSS_506["GAUSS_50603"] + \
                                 "The IP address is: %s." % ip + " Please "

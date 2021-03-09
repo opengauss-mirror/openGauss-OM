@@ -223,16 +223,20 @@ class OmImplOLAP(OmImpl):
         self.context.g_opts.security_mode)
         if self.dataDir != "":
             cmd += " -D %s" % self.dataDir
-        (statusMap, output) = self.sshTool.getSshStatusOutput(cmd, hostList)
+        failedOutput = ''
         for nodeName in hostList:
+            (statusMap, output) = self.sshTool.getSshStatusOutput(cmd, [nodeName])
             if statusMap[nodeName] != 'Success':
-                raise Exception(
-                    ErrorCode.GAUSS_536["GAUSS_53600"] % (cmd, output))
-        if re.search("another server might be running", output):
-            self.logger.log(output)
-        if re.search("] WARNING:", output):
-            tmp = '\n'.join(re.findall(".*] WARNING:.*", output))
-            self.logger.log(output[0:output.find(":")] + '\n' + tmp)
+                failedOutput += output
+            elif re.search("another server might be running", output):
+                self.logger.log(output)
+            elif re.search("] WARNING:", output):
+                tmp = '\n'.join(re.findall(".*] WARNING:.*", output))
+                self.logger.log(output[0:output.find(":")] + '\n' + tmp)
+        if len(failedOutput):
+            self.logger.log("=========================================")
+            raise Exception(
+                ErrorCode.GAUSS_536["GAUSS_53600"] % (cmd, failedOutput))
         if startType == "cluster":
             starttime = time.time()
             cluster_state = ""

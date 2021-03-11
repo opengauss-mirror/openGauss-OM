@@ -21,6 +21,7 @@
 
 import os
 import sys
+import pwd
 import subprocess
 
 import socket
@@ -222,7 +223,7 @@ General options:
         backIpList = self.clusterInfo.getClusterBackIps()
         for nodeIp in self.newHostList:
             if nodeIp not in backIpList:
-                GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35702"] % \
+                GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35702"] %
                     nodeIp)
 
     def _getBackIpNameMap(self):
@@ -231,11 +232,17 @@ General options:
             self.backIpNameMap[backip] = \
                 self.clusterInfo.getNodeNameByBackIp(backip)
 
-    def checkExecutingUserAndHost(self):
-        # check whether current user executing this command is root
+    def checkExecutingUser(self):
+        """
+         check whether current user executing this command is root
+        """
         if os.getuid() != 0:
             GaussLog.exitWithError(ErrorCode.GAUSS_501["GAUSS_50104"])
-        # check whether current host is primary host
+
+    def checkExecutingHost(self):
+        """
+        check whether current host is primary host
+        """
         currentHost = socket.gethostname()
         primaryHost = ""
         for nodeName in self.nodeNameList:
@@ -244,8 +251,8 @@ General options:
                 primaryHost = nodeName
                 break
         if currentHost != primaryHost:
-            GaussLog.exitWithError(ErrorCode.GAUSS_501["GAUSS_50110"] % \
-                (currentHost + ", which is not primary."))
+            GaussLog.exitWithError(ErrorCode.GAUSS_501["GAUSS_50110"] %
+                (currentHost + ", which is not primary"))
 
     def checkTrust(self, hostList = None):
         """
@@ -255,18 +262,15 @@ General options:
             hostList = self.nodeNameList
         rootSSHExceptionHosts = []
         individualSSHExceptionHosts = []
-        sshTool = SshTool(hostList, timeout = 0)
-        retmap, output = sshTool.getSshStatusOutput("pwd")
         for host in hostList:
             # check root's trust
-            if retmap[host] != DefaultValue.SUCCESS:
+            checkRootTrustCmd = "ssh %s -o ConnectTimeout=10 \"pwd\"" % host
+            (status, output) = subprocess.getstatusoutput(checkRootTrustCmd)
+            if status != 0:
                 rootSSHExceptionHosts.append(host)
-            try:
-                sshTool.clenSshResultFiles()
-            except Exception as e:
-                self.logger.debug(str(e))
             # check individual user's trust
-            checkUserTrustCmd = "su - %s -c 'ssh %s \"pwd\"'" % (self.user, host)
+            checkUserTrustCmd = "su - %s -c 'ssh %s -o " \
+                "ConnectTimeout=10 \"pwd\"'" % (self.user, host)
             (status, output) = subprocess.getstatusoutput(checkUserTrustCmd)
             if status != 0:
                 individualSSHExceptionHosts.append(host)
@@ -283,6 +287,20 @@ General options:
                 sshExceptionInfo += " by individual user"
             GaussLog.exitWithError(ErrorCode.GAUSS_511["GAUSS_51100"] %
                 sshExceptionInfo)
+
+    def checkEnvfile(self):
+        """
+        check whether env file has been sourced, if not
+        1. throw error and exit if environment variable is separated
+        2. source /home/user/.bashrc otherwise
+        """
+        if not DefaultValue.getEnv("GPHOME"):
+            userpath = pwd.getpwnam(self.user).pw_dir
+            envFile = os.path.join(userpath, ".bashrc")
+            sourceEnvCmd = "source %s" % envFile
+            os.system(sourceEnvCmd)
+            if not DefaultValue.getEnv("GPHOME"):
+                GaussLog.exitWithError(ErrorCode.GAUSS_518["GAUSS_51802"] % "file")
 
     def _getHostAzNameMap(self):
         """
@@ -326,13 +344,14 @@ if __name__ == "__main__":
     """
     """
     expansion = Expansion()
+    expansion.checkExecutingUser()
     expansion.parseCommandLine()
     expansion.checkParameters()
     expansion.initLogs()
+    expansion.checkEnvfile()
     expansion.getExpansionInfo()
     expansion.checkXmlIncludeNewHost()
-    expansion.checkExecutingUserAndHost()
+    expansion.checkExecutingHost()
     expansion.checkTrust()
     expImpl = ExpansionImpl(expansion)
     expImpl.run()
-    

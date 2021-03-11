@@ -1113,7 +1113,11 @@ class ErrorCode():
         "GAUSS_35704": "[GAUSS-35704] %s [%s] does not exist on node [%s].",
         "GAUSS_35705": "[GAUSS-35705] Error, the database version is "
                        "inconsistent in %s: %s",
-        "GAUSS_35706": "[GAUSS-35706] All new hosts %s failed."
+        "GAUSS_35706": "[GAUSS-35706] Fail to %s on all new hosts.",
+        "GAUSS_35707": "[GAUSS-35707] Fail to check %s version on:\n%s",
+        "GAUSS_35708": "[GAUSS-35708] Inconsistent %s version with primary on \n%s",
+        "GAUSS_35709": "[GAUSS-35709] The %s of %s is not %s.",
+        "GAUSS_35710": "[GAUSS-35710] Generate static file [%s] not found."
     }
 
     ##########################################################################

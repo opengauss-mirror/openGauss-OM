@@ -4161,8 +4161,7 @@ class DefaultValue():
         try:
             primaryFlag = "Primary"
             count = 0
-            while count < 60:
-                count = 0
+            while count < 30:
                 cmd = "source {0} && gs_om -t status --detail".format(
                     userProfile)
                 (status, output) = subprocess.getstatusoutput(cmd)

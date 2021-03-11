@@ -1811,6 +1811,72 @@ def checkGucValue():
     input  : NA
     output : NA
     """
+    try:
+        checkGucValueByShowing()
+    except Exception as e:
+        g_logger.debug("Failed to check dn guc paramter by "
+                        "showing. Error is:{0}."
+                        "Trying to check form file".format(str(e)))
+        checkGucValueFromFile()
+
+
+def checkGucValueByShowing():
+    """
+    check dn guc value by "show guc" in database in all nodes
+    """
+    instance_list = getDnInstance()
+    if len(instance_list) != 0:
+        pool = ThreadPool(len(instance_list))
+        pool.map(checkOneInstanceGucValueByShowing, instance_list)
+        pool.close()
+        pool.join()
+
+
+def checkOneInstanceGucValueByShowing(instance):
+    """
+    check dn guc value by "show guc" in database in every node
+    :param instance:
+    :return:
+    """
+    key = g_opts.gucStr.split(':')[0].strip()
+    value = g_opts.gucStr.split(':')[1].strip().split(",")
+    g_logger.debug(
+        "Check if the value of guc {0} is {1}. "
+        "Instance data dir is: {2}".format(key, value, instance.datadir))
+    sql = "show %s;" % key
+    g_logger.debug("Command to check value is: %s" % sql)
+    retryTimes = 300
+    for i in range(retryTimes):
+        (status, output) = \
+            ClusterCommand.execSQLCommand(
+                sql, g_opts.user, "", instance.port, "postgres",
+                False, "-m", IsInplaceUpgrade=True)
+        if status == 0 and output != "":
+            g_logger.debug("Output is: %s" % output)
+            checkValue = output.strip()
+            if str(checkValue) in value:
+                return
+    raise Exception(ErrorCode.GAUSS_521["GAUSS_52102"] % key +
+                    " expect value %s" % (str(value)))
+
+
+def getDnInstance():
+    """
+    get all dn instance
+    """
+    instance_list = []
+    if len(g_dbNode.datanodes) != 0:
+        for eachInstance in g_dbNode.datanodes:
+            if eachInstance.instanceType == MASTER_INSTANCE or\
+                    eachInstance.instanceType == STANDBY_INSTANCE:
+                instance_list.append(eachInstance)
+    return instance_list
+
+
+def checkGucValueFromFile():
+    """
+    check guc value from conf file
+    """
     key = g_opts.gucStr.split(':')[0].strip()
     value = g_opts.gucStr.split(':')[1].strip()
     if value in const.VALUE_OFF:
@@ -2024,6 +2090,8 @@ def  cleanInstallPath():
     cmd += "(if [ -d '%s/logs' ]; then rm -rf '%s/logs'; fi) &&" % \
            (installPath, installPath)
     cmd += "(if [ -d '%s/utilslib' ]; then rm -rf '%s/utilslib'; fi) && " % \
+           (installPath, installPath)
+    cmd += "(if [ -d '%s/jre' ]; then rm -rf '%s/jre'; fi) && " % \
            (installPath, installPath)
     cmd += "(if [ -d '%s/jdk' ]; then rm -rf '%s/jdk'; fi) && " % \
            (installPath, installPath)

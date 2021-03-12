@@ -142,7 +142,21 @@ class DropnodeImpl():
                                                       self.userProfile, True)
                     self.commonOper.stopInstance(hostNameLoop, sshtool_host, i,
                                                  self.userProfile)
+                cmdDelCert = "ls %s/share/sslcert/grpc/* | " \
+                    "grep -v openssl.cnf | xargs rm -rf" % self.appPath
+                result, output = sshtool_host.getSshStatusOutput(cmdDelCert,
+                    [hostNameLoop], self.userProfile)
+                if result[hostNameLoop] != 'Success':
+                    self.logger.debug(output)
+                    self.logger.log("[gs_dropnode]Failed to delete the GRPC "
+                        "sslcert of %s." % hostNameLoop)
+                    self.logger.log("[gs_dropnode]Please check and delete the "
+                        "GRPC sslcert of %s manually." % hostNameLoop)
                 self.cleanSshToolFile(sshtool_host)
+            else:
+                self.logger.log("[gs_dropnode]Cannot connect %s. Please check "
+                                "and delete the GRPC sslcert of %s manually."
+                                % (hostNameLoop, hostNameLoop))
 
     def dropNodeOnAllHosts(self):
         """
@@ -508,7 +522,7 @@ class OperCommon:
         output_no = '0'
         output_result = output
         output_new_no = '1'
-        if 'ANY' in output or 'FIRST' in output:
+        if '(' in output:
             output_dn = re.findall(r'\((.*)\)', output)[0]
             output_no = re.findall(r'.*(\d) *\(.*\)', output)[0]
         else:
@@ -752,7 +766,11 @@ class OperCommon:
         command = "source %s ; gs_ctl stop -D %s -M immediate" % (env, dirDn)
         resultMap, outputCollect = sshTool.getSshStatusOutput(command, [host],
                                                               env)
-        if resultMap[host] != 'Success':
+        if 'Is server running?' in outputCollect:
+            self.logger.log("[gs_dropnode]End of stop the target node %s."
+                            % host)
+            return
+        elif resultMap[host] != 'Success':
             self.logger.debug(outputCollect)
             self.logger.log(
                 "[gs_dropnode]Cannot connect the target node %s." % host)

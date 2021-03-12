@@ -433,7 +433,7 @@ class ExpansionImpl():
             [primaryHost], self.envFile)
         self.logger.debug(outputCollect)
         if resultMap[primaryHost] != DefaultValue.SUCCESS:
-            GaussLog.exitWithError("Unable to query current cluster state.")
+            GaussLog.exitWithError(ErrorCode.GAUSS_516["GAUSS_51600"])
         instances = re.split('(?:\|)|(?:\n)', outputCollect)
         self.existingHosts = []
         pattern = re.compile('(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*')
@@ -495,7 +495,10 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
         add authentication rules about other all hosts ip in new hosts
         """
         self.logger.debug("Start to set host trust on all node.")
-        allHosts = self.existingHosts + self.context.newHostList
+        allHosts = list(self.existingHosts)
+        for host in self.context.newHostList:
+            if self.expansionSuccess[host]:
+                allHosts.append(host)
         for hostExec in allHosts:
             hostExecName = self.context.backIpNameMap[hostExec]
             dataNode = self.context.clusterInfoDict[hostExecName]["dataNode"]
@@ -511,8 +514,7 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
                             hostParam
             self.logger.debug("[%s] trustCmd:%s" % (hostExec, cmd))
             sshTool = SshTool([hostExec])
-            resultMap, outputCollect = sshTool.getSshStatusOutput(cmd,
-                [hostExec], self.envFile)
+            sshTool.getSshStatusOutput(cmd, [hostExec], self.envFile)
             self.cleanSshToolFile(sshTool)
         self.logger.debug("End to set host trust on all node.")
 
@@ -580,11 +582,14 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             primaryHost, primaryDataNode, self.envFile)
         primaryExceptionInfo = ""
         if insType != ROLE_PRIMARY:
-            primaryExceptionInfo = "The server mode of primary host" \
-                "is not primary."
+            primaryExceptionInfo = ErrorCode.GAUSS_357["GAUSS_35709"] % \
+                ("local_role", "primary", "primary")
         if dbStat != STAT_NORMAL:
-            primaryExceptionInfo = "The primary is not in Normal state."
+            primaryExceptionInfo = ErrorCode.GAUSS_357["GAUSS_35709"] % \
+                ("db_state", "primary", "Normal")
         if primaryExceptionInfo != "":
+            for host in standbyHosts:
+                self.expansionSuccess[host] = False
             self.rollback()
             GaussLog.exitWithError(primaryExceptionInfo)
 
@@ -737,7 +742,7 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             self.context.clusterInfo.saveToStaticConfig(staticConfigPath, dbNode.id)
             srcFile = staticConfigPath
             if not os.path.exists(srcFile):
-                GaussLog.exitWithError("Generate static file [%s] not found." % srcFile)
+                GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35710"] % srcFile)
             hostSsh = SshTool([hostName])
             targetFile = "%s/bin/cluster_static_config" % appPath
             hostSsh.scpFiles(srcFile, targetFile, [hostName], self.envFile)
@@ -802,50 +807,85 @@ remoteservice={remoteservice}'"
             gucDict[hostName] = guc_tempate_str
         return gucDict
 
-    def checkLocalModeOnStandbyHosts(self):
+    def checkGaussdbAndGsomVersionOfStandby(self):
         """
-        expansion the installed standby node. check standby database.
-        1. if the database is installed correctly
-        2. if the databases version are same before existing and new
+        check whether gaussdb and gs_om version of standby are same with priamry
         """
         standbyHosts = self.context.newHostList
         envFile = self.envFile
-        for host in standbyHosts:
-            self.expansionSuccess[host] = True
-        self.logger.log("Checking if the database is installed correctly with local mode.")
-        getversioncmd = "source %s;gaussdb --version" % envFile
+        if self.context.standbyLocalMode:
+            for host in standbyHosts:
+                self.expansionSuccess[host] = True
+        self.logger.log("Checking gaussdb and gs_om version.")
+        getGaussdbVersionCmd = "source %s;gaussdb --version" % envFile
+        getGsomVersionCmd = "source %s;gs_om --version" % envFile
+        gaussdbVersionPattern = re.compile("gaussdb \((.*)\) .*")
+        gsomVersionPattern = re.compile("gs_om \(.*\) .*")
         primaryHostName = self.getPrimaryHostName()
         sshPrimary = SshTool([primaryHostName])
         resultMap, outputCollect = sshPrimary.getSshStatusOutput(
-            getversioncmd, [], envFile)
+            getGaussdbVersionCmd, [], envFile)
         if resultMap[primaryHostName] != DefaultValue.SUCCESS:
-            GaussLog.exitWithError("Fail to check the version of primary.")
-        ipPattern = re.compile("\[.*\] (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):")
-        versionPattern = re.compile("gaussdb \((.*)\) .*")
-        primaryVersion = versionPattern.findall(outputCollect)[0]
-        notInstalledHosts = []
-        wrongVersionHosts = []
+            GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35707"] %
+                ("gaussdb", "primary"))
+        primaryGaussdbVersion = gaussdbVersionPattern.findall(outputCollect)[0]
+        resultMap, outputCollect = sshPrimary.getSshStatusOutput(
+            getGsomVersionCmd, [], envFile)
+        if resultMap[primaryHostName] != DefaultValue.SUCCESS:
+            GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35707"] %
+                ("gs_om", "primary"))
+        primaryGsomVersion = gsomVersionPattern.findall(outputCollect)[0]
+        self.cleanSshToolFile(sshPrimary)
+
+        failCheckGaussdbVersionHosts = []
+        failCheckGsomVersionHosts = []
+        wrongGaussdbVersionHosts = []
+        wrongGsomVersionHosts = []
         for host in standbyHosts:
-            hostName = self.context.backIpNameMap[host]
-            dataNode = self.context.clusterInfoDict[hostName]["dataNode"]
+            if not self.expansionSuccess[host]:
+                continue
             sshTool = SshTool([host])
+            # get gaussdb version
             resultMap, outputCollect = sshTool.getSshStatusOutput(
-                getversioncmd, [], envFile)
+                getGaussdbVersionCmd, [], envFile)
             if resultMap[host] != DefaultValue.SUCCESS:
                 self.expansionSuccess[host] = False
-                notInstalledHosts.append(host)
+                failCheckGaussdbVersionHosts.append(host)
             else:
-                version = versionPattern.findall(outputCollect)[0]
-                if version != primaryVersion:
+                gaussdbVersion = gaussdbVersionPattern.findall(outputCollect)[0]
+                if gaussdbVersion != primaryGaussdbVersion:
                     self.expansionSuccess[host] = False
-                    wrongVersionHosts.append(host)
-        if notInstalledHosts:
-            self.logger.log("In local mode, database is not installed "
-                "correctly on these nodes:\n%s" % ", ".join(notInstalledHosts))
-        if wrongVersionHosts:
-            self.logger.log("In local mode, the database version is not same "
-                "with primary on these nodes:\n%s" % ", ".join(wrongVersionHosts))
-        self.logger.log("End to check the database with locale mode.")
+                    wrongGaussdbVersionHosts.append(host)
+                    self.cleanSshToolFile(sshTool)
+                    continue
+            # get gs_om version
+            resultMap, outputCollect = sshTool.getSshStatusOutput(
+                getGsomVersionCmd, [], envFile)
+            if resultMap[host] != DefaultValue.SUCCESS:
+                self.expansionSuccess[host] = False
+                failCheckGsomVersionHosts.append(host)
+            else:
+                gsomVersion = gsomVersionPattern.findall(outputCollect)[0]
+                if gsomVersion != primaryGsomVersion:
+                    self.expansionSuccess[host] = False
+                    wrongGsomVersionHosts.append(host)
+            self.cleanSshToolFile(sshTool)
+        if failCheckGaussdbVersionHosts:
+            self.logger.log(ErrorCode.GAUSS_357["GAUSS_35707"] %
+                ("gaussdb", ", ".join(failCheckGaussdbVersionHosts)))
+        if failCheckGsomVersionHosts:
+            self.logger.log(ErrorCode.GAUSS_357["GAUSS_35707"] %
+                ("gs_om", ", ".join(failCheckGsomVersionHosts)))
+        if wrongGaussdbVersionHosts:
+            self.logger.log(ErrorCode.GAUSS_357["GAUSS_35708"] %
+                ("gaussdb", ", ".join(wrongGaussdbVersionHosts)))
+        if wrongGsomVersionHosts:
+            self.logger.log(ErrorCode.GAUSS_357["GAUSS_35708"] %
+                ("gs_om", ", ".join(wrongGsomVersionHosts)))
+        self.logger.log("End to check gaussdb and gs_om version.\n")
+        if self._isAllFailed():
+            GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35706"] %
+                "check gaussdb and gs_om version")
 
     def preInstall(self):
         """
@@ -899,7 +939,7 @@ remoteservice={remoteservice}'"
         """
         Check whether the cluster status is normal before expand.
         """
-        self.logger.debug("Start to check cluster status.\n")
+        self.logger.debug("Start to check cluster status.")
 
         curHostName = socket.gethostname()
         command = ""
@@ -913,9 +953,7 @@ remoteservice={remoteservice}'"
         resultMap, outputCollect = sshTool.getSshStatusOutput(command,
             [curHostName], self.envFile)
         if outputCollect.find("Primary Normal") == -1:
-            GaussLog.exitWithError("Unable to query current cluster status. " + \
-                "Please import environment variables or " +\
-                "check whether the cluster status is normal.")
+            GaussLog.exitWithError(ErrorCode.GAUSS_516["GAUSS_51600"])
         
         self.logger.debug("The primary database is normal.\n")
 
@@ -975,8 +1013,8 @@ remoteservice={remoteservice}'"
            (fstat[stat.ST_GID] == gid and (mode & stat.S_IRGRP > 0)):
             pass
         else:
-            self.logger.debug("User %s has no access right for file %s" \
-                 % (self.user, xmlFile))
+            self.logger.debug(ErrorCode.GAUSS_501["GAUSS_50100"]
+                 % (xmlFile, self.user))
             os.chown(xmlFile, uid, gid)
             os.chmod(xmlFile, stat.S_IRUSR)
 
@@ -1060,10 +1098,8 @@ remoteservice={remoteservice}'"
         if not self.context.standbyLocalMode:
             self.logger.log("Start to install database on new nodes.")
             self.installDatabaseOnHosts()
-        else:
-            self.checkLocalModeOnStandbyHosts()
-
         self.logger.log("Database on standby nodes installed finished.\n")
+        self.checkGaussdbAndGsomVersionOfStandby()
         self.logger.log("Start to establish the relationship.")
         self.buildStandbyRelation()
         # process success
@@ -1221,9 +1257,9 @@ class GsCtlCommon:
         self.logger.debug(host)
         self.logger.debug(outputCollect)
         if resultMap[host] == STATUS_FAIL:
-            GaussLog.exitWithError("Query cluster failed. Please check " \
-                "the cluster status or " \
-                "source the environmental variables of user [%s]." % self.user)
+            GaussLog.exitWithError(ErrorCode.GAUSS_516["GAUSS_51600"] +
+                "Please check the cluster status or source the environmental"
+                " variables of user [%s]." % self.user)
         self.cleanSshToolTmpFile(sshTool)
         return outputCollect
 

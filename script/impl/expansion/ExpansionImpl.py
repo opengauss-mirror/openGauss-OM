@@ -240,7 +240,6 @@ class ExpansionImpl():
         os.environ["LOGNAME"] = user_name
         os.environ["SHELL"] = pw_record.pw_shell
 
-
     def initSshConnect(self, host, user='root'):
         
         try:
@@ -431,6 +430,7 @@ class ExpansionImpl():
         sshTool = SshTool([primaryHost])
         resultMap, outputCollect = sshTool.getSshStatusOutput(command,
             [primaryHost], self.envFile)
+        self.cleanSshToolFile(sshTool)
         self.logger.debug(outputCollect)
         if resultMap[primaryHost] != DefaultValue.SUCCESS:
             GaussLog.exitWithError(ErrorCode.GAUSS_516["GAUSS_51600"])
@@ -811,7 +811,7 @@ remoteservice={remoteservice}'"
         """
         check whether gaussdb and gs_om version of standby are same with priamry
         """
-        standbyHosts = self.context.newHostList
+        standbyHosts = list(self.context.newHostList)
         envFile = self.envFile
         if self.context.standbyLocalMode:
             for host in standbyHosts:
@@ -906,11 +906,11 @@ remoteservice={remoteservice}'"
         self.logger.debug("start to delete temporary file %s" % self.tempFileDir)
         clearCmd = "if [ -d '%s' ];then rm -rf %s;fi" % \
             (self.tempFileDir, self.tempFileDir)
-        hostNames = self.context.nodeNameList
+        hosts = self.existingHosts + self.context.newHostList
         try:
-            sshTool = SshTool(hostNames)
-            result, output = sshTool.getSshStatusOutput(clearCmd, 
-            hostNames, self.envFile)
+            sshTool = SshTool(hosts)
+            result, output = sshTool.getSshStatusOutput(clearCmd,
+                hosts, self.envFile)
             self.logger.debug(output)
             self.cleanSshToolFile(sshTool)
         except Exception as e:
@@ -934,6 +934,106 @@ remoteservice={remoteservice}'"
         self.checkXmlFileAccessToUser()
         self.checkClusterStatus()
         self.validNodeInStandbyList()
+        self.checkXMLConsistency()
+
+    def checkXMLConsistency(self):
+        """
+        Check whether XML information is consistent with cluster information
+        """
+        self.logger.debug("Checking whether XML information is "
+            "consistent with cluster information")
+        self._checkEnvPara()
+        self._checkDataNodes()
+        self._checkAvailableZone()
+
+    def _checkEnvPara(self):
+        """
+        check  toolPath, appPath, logPath
+        """
+        self.logger.debug("Checking environment variable.")
+        clusterInfoDict = self.context.clusterInfoDict
+        toolPath = DefaultValue.getEnv("GPHOME")
+        appPath = DefaultValue.getEnv("GAUSSHOME")
+        if toolPath != clusterInfoDict["toolPath"]:
+            GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35711"] % "toolPath")
+        if appPath != clusterInfoDict["appPath"]:
+            GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35711"] % "appPath")
+
+    def _checkDataNodes(self):
+        """
+        check datanodes
+        """
+        self.logger.debug("Checking the consistence of datanodes.")
+        primaryName = self.getPrimaryHostName()
+        cmd = ""
+        if DefaultValue.getEnv("MPPDB_ENV_SEPARATE_PATH"):
+            cmd = "su - %s -c 'source %s;gs_om -t status --detail'" % \
+                (self.user, self.envFile)
+        else:
+            cmd = "su - %s -c 'source /etc/profile;source %s;"\
+                "gs_om -t status --detail'" % (self.user, self.envFile)
+        sshTool = SshTool([primaryName])
+        resultMap, outputCollect = sshTool.getSshStatusOutput(cmd,
+            [primaryName], self.envFile)
+        if resultMap[primaryName] != DefaultValue.SUCCESS:
+            GaussLog.exitWithError(ErrorCode.GAUSS_516["GAUSS_51600"])
+        self.cleanSshToolFile(sshTool)
+        pos = outputCollect.rfind("-----")
+        pos += len("-----") + 1
+        allNodesState = outputCollect[pos:]
+        nodeStates = re.split('(?:\|)|(?:\n)', allNodesState)
+        dataNodes = {}
+        for nodeState in nodeStates:
+            pattern = re.compile("[ ]+[^ ]+[ ]+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})[ ]+[^ ]+[ ]+([^ ]+)[ ]+")
+            result = pattern.findall(nodeState)
+            if len(result) != 0:
+                result = result[0]
+                if len(result) != 0:
+                    dataNodes[result[0]] = result[1]
+        clusterInfoDict = self.context.clusterInfoDict
+        backIpNameMap = self.context.backIpNameMap
+        for hostIp in self.existingHosts:
+            hostName = backIpNameMap[hostIp]
+            dataNode = clusterInfoDict[hostName]["dataNode"]
+            if dataNode != dataNodes[hostIp]:
+                GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35711"] %
+                    ("dataNode of %s" % hostIp))
+
+    def _checkAvailableZone(self):
+        """
+        check available_zone
+        """
+        self.logger.debug("Checking the consistence of azname")
+        clusterInfoDict = self.context.clusterInfoDict
+        backIpNameMap = self.context.backIpNameMap
+        hostAzNameMap = self.context.hostAzNameMap
+        primary = self.getPrimaryHostName()
+        for hostIp in self.existingHosts:
+            hostName = backIpNameMap[hostIp]
+            if hostName == primary:
+                continue
+            dataNode = clusterInfoDict[hostName]["dataNode"]
+            if DefaultValue.getEnv("MPPDB_ENV_SEPARATE_PATH"):
+                cmd = "su - %s -c 'source %s;" \
+                      "gs_guc check -D %s -c \"available_zone\"'" % \
+                      (self.user, self.envFile, dataNode)
+            else:
+                cmd = "su - %s -c 'source /etc/profile;source %s;" \
+                      "gs_guc check -D %s -c \"available_zone\"'" % \
+                      (self.user, self.envFile, dataNode)
+            sshTool = SshTool([hostIp])
+            resultMap, output = sshTool.getSshStatusOutput(cmd,
+                [hostIp], self.envFile)
+            if resultMap[hostIp] != DefaultValue.SUCCESS:
+                GaussLog.exitWithError(ErrorCode.GAUSS_516["GAUSS_51600"])
+            self.cleanSshToolFile(sshTool)
+            azPattern = re.compile("available_zone='(.*)'")
+            azName = azPattern.findall(output)
+            if len(azName) != 0:
+                azName = azName[0]
+            if azName != hostAzNameMap[hostIp]:
+                GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35711"] %
+                    ("azName of %s" % hostIp))
 
     def checkClusterStatus(self):
         """
@@ -1048,7 +1148,7 @@ remoteservice={remoteservice}'"
             GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35704"] \
                 % ("Group", self.group, localHost))
         if user_group_id != group_id:
-            GaussLog.exitWithError("User [%s] is not in the group [%s]."\
+            GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35712"]
                  % (self.user, self.group))
         
         hostNames = self.context.newHostList
@@ -1118,6 +1218,19 @@ remoteservice={remoteservice}'"
                 failedHosts.append(host)
         clusterInfoDict = self.context.clusterInfoDict
         for failedHost in failedHosts:
+            # rollback GRPC cert on failed hosts
+            self.logger.debug("Start to rollback GRPC cert of %s" % failedHost)
+            appPath = DefaultValue.getInstallDir(self.user)
+            caPath = os.path.join(appPath, "share/sslcert/grpc")
+            removeGRPCCertCmd = "rm -rf " + caPath
+            sshTool = SshTool([failedHost])
+            sshTool.getSshStatusOutput(removeGRPCCertCmd, [failedHost])
+            self.cleanSshToolFile(sshTool)
+            for host in self.expansionSuccess:
+                if not self.expansionSuccess[host]:
+                    sshTool = SshTool([host])
+                    sshTool.getSshStatusOutput(removeGRPCCertCmd, [host], self.envFile)
+                    self.cleanSshToolFile(sshTool)
             self.logger.debug("Start to rollback replconninfo about %s" % failedHost)
             for host in existingHosts:
                 hostName = self.context.backIpNameMap[host]
@@ -1128,13 +1241,13 @@ remoteservice={remoteservice}'"
                 self.logger.debug("[%s] rollbackReplconninfoCmd:%s" % (host,
                     rollbackReplconninfoCmd))
                 sshTool = SshTool([host])
-                (statusMap, output) = sshTool.getSshStatusOutput(rollbackReplconninfoCmd, [host])
+                sshTool.getSshStatusOutput(rollbackReplconninfoCmd, [host])
                 pg_hbaFile = os.path.join(dataNode, "pg_hba.conf")
                 rollbackPg_hbaCmd = "sed -i '/%s/s/^/#&/' %s" \
                     % (failedHost, pg_hbaFile)
                 self.logger.debug("[%s] rollbackPg_hbaCmd:%s" % (host,
                     rollbackPg_hbaCmd))
-                (statusMap, output) = sshTool.getSshStatusOutput(rollbackPg_hbaCmd, [host])
+                sshTool.getSshStatusOutput(rollbackPg_hbaCmd, [host])
                 reloadGUCCommand = "source %s ; gs_ctl reload -D %s " % \
                     (self.envFile, dataNode)
                 resultMap, outputCollect = sshTool.getSshStatusOutput(

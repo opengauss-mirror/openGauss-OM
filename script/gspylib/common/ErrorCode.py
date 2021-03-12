@@ -1117,7 +1117,9 @@ class ErrorCode():
         "GAUSS_35707": "[GAUSS-35707] Fail to check %s version on:\n%s",
         "GAUSS_35708": "[GAUSS-35708] Inconsistent %s version with primary on \n%s",
         "GAUSS_35709": "[GAUSS-35709] The %s of %s is not %s.",
-        "GAUSS_35710": "[GAUSS-35710] Generate static file [%s] not found."
+        "GAUSS_35710": "[GAUSS-35710] Generate static file [%s] not found.",
+        "GAUSS_35711": "[GAUSS-35711] %s in xml is not consistent with that in cluster.",
+        "GAUSS_35712": "[GAUSS-35712] User [%s] is not in the group [%s]."
     }
 
     ##########################################################################

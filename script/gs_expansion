@@ -234,7 +234,7 @@ General options:
 
     def checkExecutingUser(self):
         """
-         check whether current user executing this command is root
+        check whether current user executing this command is root
         """
         if os.getuid() != 0:
             GaussLog.exitWithError(ErrorCode.GAUSS_501["GAUSS_50104"])

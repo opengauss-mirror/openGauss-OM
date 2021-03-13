@@ -216,13 +216,8 @@ class BackupImplOLAP(BackupImpl):
             raise Exception(str(e))
 
     def _runCmd(self, cmd, nodes=None):
-        if self.context.clusterInfo.isSingleNode():
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
+        (status, output) = \
+            self.context.sshTool.getSshStatusOutput(cmd, nodes)
+        for node in status.keys():
+            if status[node] != DefaultValue.SUCCESS:
                 raise Exception(output)
-        else:
-            (status, output) = \
-                self.context.sshTool.getSshStatusOutput(cmd, nodes)
-            for node in status.keys():
-                if status[node] != DefaultValue.SUCCESS:
-                    raise Exception(output)

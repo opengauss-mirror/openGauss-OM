@@ -1221,8 +1221,8 @@ remoteservice={remoteservice}'"
             # rollback GRPC cert on failed hosts
             self.logger.debug("Start to rollback GRPC cert of %s" % failedHost)
             appPath = DefaultValue.getInstallDir(self.user)
-            caPath = os.path.join(appPath, "share/sslcert/grpc")
-            removeGRPCCertCmd = "rm -rf " + caPath
+            removeGRPCCertCmd = "ls %s/share/sslcert/grpc/* | grep -v openssl.cnf | " \
+                "xargs rm -rf" % appPath
             sshTool = SshTool([failedHost])
             sshTool.getSshStatusOutput(removeGRPCCertCmd, [failedHost])
             self.cleanSshToolFile(sshTool)

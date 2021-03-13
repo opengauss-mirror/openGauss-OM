@@ -41,10 +41,6 @@ from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.Common import DefaultValue
 from gspylib.common.GaussLog import GaussLog
 
-sys.path.append(sys.path[0] + "/../../../lib/")
-DefaultValue.doConfigForParamiko()
-import paramiko
-
 
 #boot/build mode
 MODE_PRIMARY = "primary"
@@ -240,22 +236,19 @@ class ExpansionImpl():
         os.environ["LOGNAME"] = user_name
         os.environ["SHELL"] = pw_record.pw_shell
 
-
     def initSshConnect(self, host, user='root'):
-        
         try:
-            getPwdStr = "Please enter the password of user [%s] on node [%s]: " \
-             % (user, host)
-            passwd = getpass.getpass(getPwdStr)
+            import paramiko
             self.sshClient = paramiko.SSHClient()
             self.sshClient.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            self.sshClient.connect(host, 22, user, passwd)
-        except paramiko.ssh_exception.AuthenticationException as e :
-            self.logger.log("Authentication failed.")
-            self.initSshConnect(host, user)
+            self.sshClient.connect(host, 22, user)
+        except paramiko.ssh_exception.AuthenticationException:
+            GaussLog.exitWithError(ErrorCode.GAUSS_511["GAUSS_51109"])
 
     def hasNormalStandbyInAZOfCascade(self, cascadeIp, existingStandbys):
-        # check whether there are normal standbies in hostAzNameMap[cascadeIp] azZone
+        """
+        check whether there are normal standbies in hostAzNameMap[cascadeIp] azZone
+        """
         hasStandbyWithSameAZ = False
         hostAzNameMap = self.context.hostAzNameMap
         for existingStandby in existingStandbys:

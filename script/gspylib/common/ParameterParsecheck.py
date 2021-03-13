@@ -246,7 +246,7 @@ class Parameter():
         input : parameter_list
         output: PARAMETER_VALUEDICT
         """
-        if (module in ("preinstall", "sshexkey")):
+        if (module in ("preinstall", "sshexkey", "expansion")):
             DefaultValue.doConfigForParamiko()
 
     def printVersionInfo(self):

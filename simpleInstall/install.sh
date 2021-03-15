@@ -156,6 +156,18 @@ function fn_create_file()
 
 function fn_post_check()
 {
+    fn_precheck
+    if [ $? -ne 0 ]
+    then
+        echo "Precheck failed, you can check preCheck.log for more details."
+        fn_precheck_result
+        if [ $? -ne 0 ]
+        then
+            return 1
+        fi
+    else
+        echo "Precheck success."
+    fi
     fn_check_user
     if [ $? -ne 0 ]
     then
@@ -171,18 +183,6 @@ function fn_post_check()
         return 1
     else
         echo "Check input success."
-    fi
-    fn_precheck
-    if [ $? -ne 0 ]
-    then
-        echo "Precheck failed.you can check preCheck.log for more details."
-        fn_precheck_result
-        if [ $? -ne 0 ]
-        then
-            return 1
-        fi
-    else
-        echo "Precheck success."
     fi
     fn_check_firewall $host_port
     if [ $? -ne 0 ]
@@ -207,7 +207,7 @@ function fn_precheck_result()
     input=$1
     if [ "$input"X = X ]
     then
-        read -p "Are you sure you want to continue?(yes/no)" input
+        read -p "Are you sure you want to continue (yes/no)? " input
     fi
     if [ "$input"X == "yes"X ]
     then
@@ -232,7 +232,7 @@ function fn_check_input()
     fi
     if [ "`netstat -anp | grep -w $host_port`" ]
     then 
-        echo "port $host_port occupied,please choose another."
+        echo "port $host_port occupied, please choose another."
         return 1
     fi
     return 0

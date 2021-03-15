@@ -46,28 +46,27 @@ function fn_precheck()
         echo "You need install python3 or create the correct soft connection."
         return 1
     fi
-    cat requirements_"$system_name"_"$system_arch" | while read line
+    while read line
     do
         if [ "$line"x == ""x ]
         then
             continue
         fi
-        yum list installed | grep $line > result.log
-        num=`wc -l result.log | awk '{print $1}'`
-        if [ $num -eq 0 ]
+        yum list installed | grep $line > /dev/null
+        if [ $? -ne 0 ]
         then
-            echo "You need to install $line" > preCheck.log
             total=`expr $total + 1`
+            if [ $total -eq 1 ]
+            then
+                echo "You need to install: " > preCheck.log
+            fi
+            echo "$line" >> preCheck.log
         fi
-        echo $total>>tmp_total
     done < requirements_"$system_name"_"$system_arch"
-    total=$(tail -n 1 tmp_total)
     if [ $total -gt 0 ]
     then
-        rm -rf result.log tmp_total
         return 1
     fi
-    rm -rf result.log tmp_total
     return 0
 }
 

@@ -203,7 +203,7 @@ class OmImplOLAP(OmImpl):
         self.logger.log("Starting %s." % startType)
         self.logger.log("=========================================")
         hostName = DefaultValue.GetHostIpOrName()
-        #get the newest dynaminc config and send to other node
+        # get the newest dynaminc config and send to other node
         self.clusterInfo.checkClusterDynamicConfig(self.context.user, hostName)
         if self.context.g_opts.nodeName == "":
             hostList = self.clusterInfo.getClusterNodeNames()
@@ -217,10 +217,10 @@ class OmImplOLAP(OmImpl):
         else:
             time_out = self.time_out
         cmd = "source %s; %s -U %s -R %s -t %s --security-mode=%s" % (
-        self.context.g_opts.mpprcFile,
-        OMCommand.getLocalScript("Local_StartInstance"),
-        self.context.user, self.context.clusterInfo.appPath, time_out,
-        self.context.g_opts.security_mode)
+            self.context.g_opts.mpprcFile,
+            OMCommand.getLocalScript("Local_StartInstance"),
+            self.context.user, self.context.clusterInfo.appPath, time_out,
+            self.context.g_opts.security_mode)
         if self.dataDir != "":
             cmd += " -D %s" % self.dataDir
         failedOutput = ''
@@ -342,8 +342,9 @@ class OmImplOLAP(OmImpl):
                 "No need to generate dynamic configuration file for one node.")
             return
         self.logger.log("Generating dynamic configuration file for all nodes.")
-        hostName = DefaultValue.GetHostIpOrName()
+        hostname = DefaultValue.GetHostIpOrName()
         sshtool = SshTool(self.context.clusterInfo.getClusterNodeNames())
-        self.context.clusterInfo.createDynamicConfig(self.context.user,
-                                                     hostName, sshtool)
+        self.context.clusterInfo.doRefreshConf(self.context.user, hostname,
+                                               sshtool)
+
         self.logger.log("Successfully generated dynamic configuration file.")

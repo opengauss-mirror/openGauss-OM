@@ -1130,7 +1130,7 @@ def __parseAttr(elem, attr, language='zh'):
     '''
     val = elem.find('/'.join([attr, language]))
     if val is not None and val.text is not None:
-        return val.text.strip()
+        return val.text.strip().encode('utf-8')
     return ""
 
 
@@ -1476,7 +1476,7 @@ def doRootCheck():
     # run root cmd
     output = SharedFuncs.runRootCmd(cmd, g_opts.pwdMap[host][0],
                                     g_opts.pwdMap[host][1], g_context.mpprc)
-    print(output.decode('utf-8'))
+    print(output)
 
 
 def __prepareCmd(items, user, checkid):

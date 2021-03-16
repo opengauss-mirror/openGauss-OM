@@ -41,7 +41,6 @@ from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.Common import DefaultValue
 from gspylib.common.GaussLog import GaussLog
 
-
 #boot/build mode
 MODE_PRIMARY = "primary"
 MODE_STANDBY = "standby"
@@ -103,6 +102,8 @@ class ExpansionImpl():
         self.logger.debug("tmp expansion dir is %s ." % self.tempFileDir)
 
         self._finalizer = weakref.finalize(self, self.clearTmpFile)
+
+        globals()["paramiko"] = __import__("paramiko")
 
     def sendSoftToHosts(self):
         """
@@ -236,14 +237,24 @@ class ExpansionImpl():
         os.environ["LOGNAME"] = user_name
         os.environ["SHELL"] = pw_record.pw_shell
 
-    def initSshConnect(self, host, user='root'):
+    def initSshConnect(self, host, user='root', timeoutNum=0):
         try:
-            import paramiko
             self.sshClient = paramiko.SSHClient()
             self.sshClient.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            self.sshClient.connect(host, 22, user)
-        except paramiko.ssh_exception.AuthenticationException:
-            GaussLog.exitWithError(ErrorCode.GAUSS_511["GAUSS_51109"])
+            if timeoutNum == 0:
+                self.sshClient.connect(host, 22, user)
+            elif timeoutNum < 4:
+                getPwdStr = "Please enter the password of user [%s] on node [%s]: " % (user, host)
+                passwd = getpass.getpass(getPwdStr)
+                try:
+                    self.sshClient.connect(host, 22, user, passwd)
+                except paramiko.ssh_exception.AuthenticationException:
+                    self.logger.log("Authentication failed.")
+                    raise Exception
+            else:
+                GaussLog.exitWithError(ErrorCode.GAUSS_511["GAUSS_51109"])
+        except Exception:
+            self.initSshConnect(host, user, timeoutNum + 1)
 
     def hasNormalStandbyInAZOfCascade(self, cascadeIp, existingStandbys):
         """

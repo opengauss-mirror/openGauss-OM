@@ -55,6 +55,8 @@ ROLE_CASCADE = "cascade standby"
 
 #db state
 STAT_NORMAL = "normal"
+STAT_STARTING = "starting"
+STAT_CATCHUP = "catchup"
 
 # master 
 MASTER_INSTANCE = 0
@@ -85,6 +87,8 @@ class ExpansionImpl():
         for newHost in self.context.newHostList:
             self.expansionSuccess[newHost] = False
         self.logger = self.context.logger
+        self.walKeepSegments = -1
+        self.walKeepSegmentsChanged = False
 
         envFile = DefaultValue.getEnv("MPPDB_ENV_SEPARATE_PATH")
         if envFile:
@@ -104,6 +108,20 @@ class ExpansionImpl():
         self._finalizer = weakref.finalize(self, self.clearTmpFile)
 
         globals()["paramiko"] = __import__("paramiko")
+
+    def __del__(self):
+        """
+        function: Delete file, rollback
+        input : NA
+        output: NA
+        """
+        if self.walKeepSegmentsChanged:
+            self.logger.debug("Start to rollback primary's wal_keep_segments")
+            primary = self.getPrimaryHostName()
+            primaryDataNode = self.context.clusterInfoDict[primary]["dataNode"]
+            self.commonGsCtl.setGucPara(primary, self.envFile, primaryDataNode,
+                "wal_keep_segments", self.walKeepSegments)
+            self.reloadPrimaryConf()
 
     def sendSoftToHosts(self):
         """
@@ -477,8 +495,9 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             mkdirCmd = "mkdir -m a+x -p %s; chown %s:%s %s" % \
                 (self.tempFileDir, self.user, self.group, self.tempFileDir)
             sshTool.getSshStatusOutput(mkdirCmd, [host], self.envFile)
-            subprocess.getstatusoutput("touch %s; cat /dev/null > %s" %
-                (tempShFile, tempShFile))
+            subprocess.getstatusoutput("if [ ! -e '%s' ]; then mkdir -m a+x -p %s;"
+                " fi; touch %s; cat /dev/null > %s" % (self.tempFileDir,
+                self.tempFileDir, tempShFile, tempShFile))
             with os.fdopen(os.open("%s" % tempShFile, os.O_WRONLY | os.O_CREAT,
                 stat.S_IWUSR | stat.S_IRUSR), 'w') as fo:
                 fo.write("#bash\n")
@@ -581,6 +600,14 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
         primaryHost = self.context.clusterInfoDict[primaryHostName]["backIp"]
         existingStandbys = list(set(self.existingHosts).difference(set([primaryHost])))
         primaryDataNode = self.context.clusterInfoDict[primaryHostName]["dataNode"]
+        self.walKeepSegments = self.commonGsCtl.queryGucParaValue(
+            primaryHost, self.envFile, primaryDataNode, "wal_keep_segments")
+        synchronous_commit = self.commonGsCtl.queryGucParaValue(
+            primaryHost, self.envFile, primaryDataNode, "synchronous_commit")
+        if synchronous_commit != "on" and int(self.walKeepSegments) < 1024:
+            self.commonGsCtl.setGucPara(primaryHost, self.envFile, primaryDataNode,
+                                        "wal_keep_segments", 1024)
+            self.walKeepSegmentsChanged = True
         self.reloadPrimaryConf()
         time.sleep(10)
         insType, dbStat = self.commonGsCtl.queryInstanceStatus( 
@@ -597,7 +624,7 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
                 self.expansionSuccess[host] = False
             self.rollback()
             GaussLog.exitWithError(primaryExceptionInfo)
-
+        waitChars = ["\\", "|", "/", "¡ª"]
         for host in standbyHosts:
             if not self.expansionSuccess[host]:
                 continue
@@ -675,18 +702,37 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
                     checkProcessExistCmd, [host])
                 if buildCmd not in outputCollect:
                     break
-                else:
-                    time.sleep(10)
+                timeFlush = 0.5
+                for i in range(0, int(60/timeFlush)):
+                    index = i % 4
+                    print("\rThe program is running {}".format(waitChars[index]), end="")
+                    time.sleep(timeFlush)
             # check build result after build process finished
-            insType, dbStat = self.commonGsCtl.queryInstanceStatus( 
+            while True:
+                timeFlush = 0.5
+                for i in range(0, int(60 / timeFlush)):
+                    index = i % 4
+                    print("\rThe program is running {}".format(waitChars[index]), end="")
+                    time.sleep(timeFlush)
+                insType, dbStat = self.commonGsCtl.queryInstanceStatus(
+                    hostName, dataNode, self.envFile)
+                if dbStat not in [STAT_STARTING, STAT_CATCHUP]:
+                    break
+            insType, dbStat = self.commonGsCtl.queryInstanceStatus(
                 hostName, dataNode, self.envFile)
             if insType == hostRole and dbStat == STAT_NORMAL:
                 if self.context.newHostCasRoleMap[host] == "off":
                     existingStandbys.append(host)
-                self.logger.log("Build %s %s success." % (hostRole, host))
+                self.logger.log("\rBuild %s %s success." % (hostRole, host))
             else:
                 self.expansionSuccess[host] = False
-                self.logger.log("Build %s %s failed." % (hostRole, host))
+                self.logger.log("\rBuild %s %s failed." % (hostRole, host))
+        if self.walKeepSegmentsChanged:
+            self.logger.debug("Start to rollback primary's wal_keep_segments")
+            self.commonGsCtl.setGucPara(primaryHost, self.envFile, primaryDataNode,
+                                        "wal_keep_segments", self.walKeepSegments)
+            self.walKeepSegmentsChanged = False
+        self.reloadPrimaryConf()
         if self._isAllFailed():
             self.rollback()
             GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35706"] % "build")
@@ -1380,6 +1426,43 @@ class GsCtlCommon:
                 " variables of user [%s]." % self.user)
         self.cleanSshToolTmpFile(sshTool)
         return outputCollect
+
+    def queryGucParaValue(self, host, env, datanode, para):
+        """
+        query guc parameter value
+        """
+        command = "source %s; gs_guc check -D %s -c \"%s\"" % \
+                  (env, datanode, para)
+        sshTool = SshTool([host])
+        resultMap, outputCollect = sshTool.getSshStatusOutput(
+            command, [host], env)
+        self.logger.debug(host)
+        self.logger.debug(outputCollect)
+        if resultMap[host] == STATUS_FAIL:
+            GaussLog.exitWithError("Fail to query [%s]'s %s." % (host, para))
+        self.cleanSshToolTmpFile(sshTool)
+        paraPattern = re.compile("    %s=(.+)" % para)
+        value = paraPattern.findall(outputCollect)
+        if len(value) != 0:
+            value = value[0]
+        else:
+            GaussLog.exitWithError("Fail to query [%s]'s %s." % (host, para))
+        return value
+
+    def setGucPara(self, host, env, datanode, para, value):
+        """
+        set guc parameter
+        """
+        command = "source %s; gs_guc set -D %s -c \"%s=%s\"" % \
+                  (env, datanode, para, value)
+        sshTool = SshTool([host])
+        resultMap, outputCollect = sshTool.getSshStatusOutput(
+            command, [host], env)
+        self.logger.debug(host)
+        self.logger.debug(outputCollect)
+        if resultMap[host] == STATUS_FAIL:
+            GaussLog.exitWithError("Fail to set [%s]'s %s." % (host, para))
+        self.cleanSshToolTmpFile(sshTool)
 
     def cleanSshToolTmpFile(self, sshTool):
         """

@@ -291,16 +291,10 @@ General options:
     def checkEnvfile(self):
         """
         check whether env file has been sourced, if not
-        1. throw error and exit if environment variable is separated
-        2. source /home/user/.bashrc otherwise
+        throw error and exit 
         """
         if not DefaultValue.getEnv("GPHOME"):
-            userpath = pwd.getpwnam(self.user).pw_dir
-            envFile = os.path.join(userpath, ".bashrc")
-            sourceEnvCmd = "source %s" % envFile
-            os.system(sourceEnvCmd)
-            if not DefaultValue.getEnv("GPHOME"):
-                GaussLog.exitWithError(ErrorCode.GAUSS_518["GAUSS_51802"] % "file")
+            GaussLog.exitWithError(ErrorCode.GAUSS_518["GAUSS_51802"] % "file")
 
     def _getHostAzNameMap(self):
         """

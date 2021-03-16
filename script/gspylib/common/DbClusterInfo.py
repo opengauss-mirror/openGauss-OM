@@ -1646,7 +1646,8 @@ class dbClusterInfo():
                     if (dbNode.name != hostName):
                         (statusMap, output) = sshtool.getSshStatusOutput(
                             sshcmd, [dbNode.name], mpprcFile)
-                        if statusMap[dbNode.name] != 'Success':
+                        if statusMap[dbNode.name] != 'Success' or \
+                                output.find("exc_sql failed"):
                             if output.find(
                                     "could not connect to the local server") \
                                     > 0 or output.find(
@@ -1663,7 +1664,7 @@ class dbClusterInfo():
                             dbState = res[0]
                     else:
                         (status, output) = subprocess.getstatusoutput(sshcmd)
-                        if status != 0:
+                        if status != 0 or output.find("exc_sql failed"):
                             if output.find(
                                     "could not connect to the local server") \
                                     > 0 or output.find(

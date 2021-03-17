@@ -5359,7 +5359,9 @@ class ClusterInstanceConfig():
                                    (dbInst.port + 4), pj.haIps[i],
                                    pj.haPort, pj.port + 5,
                                    pj.port + 4)
-                    
+                    if pj.instanceType == DefaultValue.CASCADE_STANDBY:
+                        chanalInfo += " iscascade=true"
+
                 connInfo1.append(chanalInfo)
         else:
             for pj in iter(peerInsts):
@@ -5381,7 +5383,8 @@ class ClusterInstanceConfig():
                                    (dbInst.port + 4), pj.haIps[i],
                                    pj.haPort, pj.port + 5,
                                    (pj.port + 4))
-
+                    if pj.instanceType == DefaultValue.CASCADE_STANDBY:
+                        chanalInfo += " iscascade=true"
                 connInfo1.append(chanalInfo)
 
         return connInfo1, nodename

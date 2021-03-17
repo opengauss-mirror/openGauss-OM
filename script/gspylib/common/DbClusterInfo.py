@@ -5979,7 +5979,12 @@ class dbClusterInfo():
     def isSingleNode(self):
         return (self.__getDnInstanceNum() <= 1)
 
-    def createDynamicConfig(self, user, localHostName, sshtool):
+    def doRefreshConf(self, user, localHostName, sshtool):
+        self.__createDynamicConfig(user, localHostName, sshtool)
+        self.__create_simple_datanode_config(user, localHostName, sshtool)
+        self.__reset_replconninfo(user, sshtool)
+
+    def __createDynamicConfig(self, user, localHostName, sshtool):
         """
         function : Save cluster info into to dynamic config
         input : String,int
@@ -6045,6 +6050,8 @@ class dbClusterInfo():
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50205"] % \
                             "dynamic configuration file" +
                             " Error: \n%s" % str(e))
+
+    def __create_simple_datanode_config(self, user, localhostname, sshtool):
         simpleDNConfig = self.__getDynamicSimpleDNConfig(user)
         if os.path.exists(simpleDNConfig):
             cmd = "rm -f %s" % simpleDNConfig
@@ -6058,7 +6065,7 @@ class dbClusterInfo():
         try:
             with open(simpleDNConfig, "w") as fp:
                 for dninfo in tempstatus:
-                    dnstatus = dninfo.split()[-2]
+                    dnstatus = dninfo.split()[6]
                     dnname = dninfo.split()[1]
                     if dnstatus not in statusdic:
                         fp.write("%s=%d\n" %
@@ -6073,7 +6080,7 @@ class dbClusterInfo():
                             "dynamic configuration file"
                             + " Error: \n%s" % str(e))
         try:
-            self.__sendDynamicCfgToAllNodes(localHostName,
+            self.__sendDynamicCfgToAllNodes(localhostname,
                                             simpleDNConfig,
                                             simpleDNConfig)
         except Exception as e:
@@ -6082,6 +6089,18 @@ class dbClusterInfo():
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50205"] %
                             "dynamic configuration file" +
                             " Error: \n%s" % str(e))
+
+    def __reset_replconninfo(self, user, sshtool):
+        # add for cascade
+        local_script = os.path.dirname(os.path.realpath(__file__)) \
+                       + '/../../local/Resetreplconninfo.py'
+        cmd = "python3 %s -U %s -t reset" % (local_script, user)
+        (status, output) = \
+            sshtool.getSshStatusOutput(cmd, self.getClusterNodeNames())
+        for node in self.getClusterNodeNames():
+            if status[node] != 'Success':
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"]
+                                % cmd + "Error:\n%s" % output)
 
     def __packDynamicNodeInfo(self, dbNode, localHostName, sshtool):
         # node id

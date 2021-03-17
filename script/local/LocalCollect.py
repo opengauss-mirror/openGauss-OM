@@ -974,7 +974,7 @@ def log_copy():
         else:
             cmd = "cd $GAUSSLOG && cp '%s' tmp_gs_collector/'%s'" % (log, log)
         (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
+        if status != 0 and 'Permission denied' not in output:
             (status1, output1) = subprocess.getstatusoutput(deleteCmd)
             g_jobInfo.failedTask["copy log files"] = replaceInvalidStr(output)
             g_logger.log(json.dumps(g_jobInfo.__dict__))

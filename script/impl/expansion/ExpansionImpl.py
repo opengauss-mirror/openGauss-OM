@@ -119,9 +119,13 @@ class ExpansionImpl():
             self.logger.debug("Start to rollback primary's wal_keep_segments")
             primary = self.getPrimaryHostName()
             primaryDataNode = self.context.clusterInfoDict[primary]["dataNode"]
-            self.commonGsCtl.setGucPara(primary, self.envFile, primaryDataNode,
+            status = self.commonGsCtl.setGucPara(primary, self.envFile, primaryDataNode,
                 "wal_keep_segments", self.walKeepSegments)
-            self.reloadPrimaryConf()
+            if status != DefaultValue.SUCCESS:
+                self.logger.log("Failed to rollback wal_keep_segments, please manually "
+                    "set it to original value %s." % self.walKeepSegments)
+            else:
+                self.reloadPrimaryConf()
         self.rollback()
 
     def sendSoftToHosts(self):
@@ -743,8 +747,9 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             status = self.commonGsCtl.setGucPara(primaryHost, self.envFile, primaryDataNode,
                 "wal_keep_segments", self.walKeepSegments)
             if status != DefaultValue.SUCCESS:
-                GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50007"] % "wal_keep_segments")
-            self.walKeepSegmentsChanged = False
+                self.logger.debug(ErrorCode.GAUSS_500["GAUSS_50007"] % "wal_keep_segments")
+            else:
+                self.walKeepSegmentsChanged = False
             self.reloadPrimaryConf()
         if self._isAllFailed():
             GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35706"] % "build")

@@ -471,7 +471,7 @@ BEGIN
 	     , o_busy_time
 		 , o_idle_time
 		 , o_iowait_time
-      FROM DUAL;
+      ;
 
     --  pv_db_time is not available; temporarily PMK extension is used.
     o_db_cpu_time     := total_cpu();
@@ -487,7 +487,6 @@ BEGIN
           ( SELECT (SELECT config_value FROM config_value WHERE name = 'block_size') AS block_size 
                  , (SELECT config_value FROM config_value WHERE name = 'shared_buffers') AS shared_buffers 
                  , (SELECT config_value FROM config_value WHERE name = 'work_mem') AS work_mem 
-              FROM DUAL
           )
     SELECT block_size
          , (shared_buffers * block_size)::bigint
@@ -530,7 +529,7 @@ BEGIN
                 , ( SELECT COUNT(*) FROM active_session WHERE waiting = TRUE ) 
                 , ( SELECT COUNT(*) FROM session_state )  
             INTO o_active_sql_count, o_wait_sql_count , o_session_count
-        FROM DUAL;
+        ;
     ELSE
         WITH session_state AS 
             ( SELECT state, waiting 
@@ -545,7 +544,7 @@ BEGIN
                  , ( SELECT COUNT(*) FROM active_session WHERE waiting = TRUE ) 
                  , ( SELECT COUNT(*) FROM session_state )  
              INTO o_active_sql_count, o_wait_sql_count, o_session_count
-        FROM DUAL;
+        ;
     END IF;
 
     -- Currently, the below statistics are calculated from pv_session_stat (which is not accurate) since pv_db_stat is not available
@@ -560,7 +559,7 @@ BEGIN
          , (SELECT sorts_cnt FROM sort_state WHERE statname = 'n_sort_in_disk')  
       INTO o_sorts_in_memory
          , o_sorts_in_disk
-      FROM DUAL;
+      ;
 
     SELECT SUM(checkpoints_timed)::numeric(40,0)
          , SUM(checkpoints_req)::numeric(40,0)
@@ -2860,7 +2859,6 @@ BEGIN
 							) 
 							, mppdb_cpu_time AS
 							( SELECT (total_cpu()*10.0)::bigint AS mppdb_cpu_time 	-- converting to millisecond
-                               FROM DUAL
 							)
 							, sess_cpu_stat AS
 							( SELECT ''' || i.node_name  || '''::name AS node_name

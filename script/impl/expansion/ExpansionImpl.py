@@ -135,21 +135,12 @@ class ExpansionImpl():
         self.logger.log("Start to send soft to each standby nodes.")
         srcFile = self.context.packagepath
         targetDir = os.path.realpath(os.path.join(srcFile, "../"))
-        # change mode of package dir to set privileges for users
-        tPathList = os.path.split(targetDir)
-        path2ChangeMode = targetDir
-        if len(tPathList) > 2:
-            path2ChangeMode = os.path.join(tPathList[0],tPathList[1])
-        changeModCmd =  "chmod -R a+x {srcFile}".format(user = self.user,
-            group = self.group, srcFile = path2ChangeMode)
         for host in self.context.newHostList:
             sshTool = SshTool([host], timeout = 300)
             # mkdir package dir and send package to remote nodes.
             sshTool.executeCommand("mkdir -p %s" % srcFile , "",
                 DefaultValue.SUCCESS, [host])
             sshTool.scpFiles(srcFile, targetDir, [host])
-            sshTool.executeCommand(changeModCmd, "", DefaultValue.SUCCESS,
-                [host])
             self.cleanSshToolFile(sshTool)
         self.logger.log("End to send soft to each standby nodes.")
 

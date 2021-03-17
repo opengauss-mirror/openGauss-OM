@@ -100,7 +100,8 @@ class ErrorCode():
                        "by the parameter '-%s'.",
         'GAUSS_50018': "[GAUSS-50018] : The parameter value of %s is Null.",
         'GAUSS_50019': "[GAUSS-50019] : The value of %s is error.",
-        'GAUSS_50020': "[GAUSS-50020] : The value of %s must be a digit."
+        'GAUSS_50020': "[GAUSS-50020] : The value of %s must be a digit.",
+        'GAUSS_50021': "[GAUSS-50021] : Failed to query %s parameter."
 
     }
 

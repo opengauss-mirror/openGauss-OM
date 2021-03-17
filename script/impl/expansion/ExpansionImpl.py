@@ -122,6 +122,7 @@ class ExpansionImpl():
             self.commonGsCtl.setGucPara(primary, self.envFile, primaryDataNode,
                 "wal_keep_segments", self.walKeepSegments)
             self.reloadPrimaryConf()
+        self.rollback()
 
     def sendSoftToHosts(self):
         """
@@ -434,7 +435,6 @@ class ExpansionImpl():
         self.addTrust()
         self.generateGRPCCert()
         self.buildStandbyHosts()
-        self.rollback()
         self.generateClusterStaticFile()
 
     def getExistingHosts(self):
@@ -600,13 +600,25 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
         primaryHost = self.context.clusterInfoDict[primaryHostName]["backIp"]
         existingStandbys = list(set(self.existingHosts).difference(set([primaryHost])))
         primaryDataNode = self.context.clusterInfoDict[primaryHostName]["dataNode"]
-        self.walKeepSegments = self.commonGsCtl.queryGucParaValue(
+        status, self.walKeepSegments = self.commonGsCtl.queryGucParaValue(
             primaryHost, self.envFile, primaryDataNode, "wal_keep_segments")
-        synchronous_commit = self.commonGsCtl.queryGucParaValue(
+        if status != DefaultValue.SUCCESS:
+            for host in standbyHosts:
+                self.expansionSuccess[host] = False
+            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50021"] % "wal_keep_segments")
+        status, synchronous_commit = self.commonGsCtl.queryGucParaValue(
             primaryHost, self.envFile, primaryDataNode, "synchronous_commit")
+        if status != DefaultValue.SUCCESS:
+            for host in standbyHosts:
+                self.expansionSuccess[host] = False
+            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50021"] % "synchronous_commit")
         if synchronous_commit != "on" and int(self.walKeepSegments) < 1024:
-            self.commonGsCtl.setGucPara(primaryHost, self.envFile, primaryDataNode,
-                                        "wal_keep_segments", 1024)
+            status = self.commonGsCtl.setGucPara(primaryHost, self.envFile, primaryDataNode,
+                "wal_keep_segments", 1024)
+            if status != DefaultValue.SUCCESS:
+                for host in standbyHosts:
+                    self.expansionSuccess[host] = False
+                GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50007"] % "wal_keep_segments")
             self.walKeepSegmentsChanged = True
         self.reloadPrimaryConf()
         time.sleep(10)
@@ -622,9 +634,8 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
         if primaryExceptionInfo != "":
             for host in standbyHosts:
                 self.expansionSuccess[host] = False
-            self.rollback()
             GaussLog.exitWithError(primaryExceptionInfo)
-        waitChars = ["\\", "|", "/", "¡ª"]
+        waitChars = ["\\", "|", "/", "-"]
         for host in standbyHosts:
             if not self.expansionSuccess[host]:
                 continue
@@ -703,7 +714,7 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
                 if buildCmd not in outputCollect:
                     break
                 timeFlush = 0.5
-                for i in range(0, int(60/timeFlush)):
+                for i in range(0, int(60 / timeFlush)):
                     index = i % 4
                     print("\rThe program is running {}".format(waitChars[index]), end="")
                     time.sleep(timeFlush)
@@ -729,12 +740,13 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
                 self.logger.log("\rBuild %s %s failed." % (hostRole, host))
         if self.walKeepSegmentsChanged:
             self.logger.debug("Start to rollback primary's wal_keep_segments")
-            self.commonGsCtl.setGucPara(primaryHost, self.envFile, primaryDataNode,
-                                        "wal_keep_segments", self.walKeepSegments)
+            status = self.commonGsCtl.setGucPara(primaryHost, self.envFile, primaryDataNode,
+                "wal_keep_segments", self.walKeepSegments)
+            if status != DefaultValue.SUCCESS:
+                GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50007"] % "wal_keep_segments")
             self.walKeepSegmentsChanged = False
-        self.reloadPrimaryConf()
+            self.reloadPrimaryConf()
         if self._isAllFailed():
-            self.rollback()
             GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35706"] % "build")
 
     def checkTmpDir(self, hostName):
@@ -1431,6 +1443,8 @@ class GsCtlCommon:
         """
         query guc parameter value
         """
+        status = DefaultValue.FAILURE
+        value = ""
         command = "source %s; gs_guc check -D %s -c \"%s\"" % \
                   (env, datanode, para)
         sshTool = SshTool([host])
@@ -1439,15 +1453,16 @@ class GsCtlCommon:
         self.logger.debug(host)
         self.logger.debug(outputCollect)
         if resultMap[host] == STATUS_FAIL:
-            GaussLog.exitWithError("Fail to query [%s]'s %s." % (host, para))
+            return status, ""
         self.cleanSshToolTmpFile(sshTool)
         paraPattern = re.compile("    %s=(.+)" % para)
         value = paraPattern.findall(outputCollect)
         if len(value) != 0:
+            status = resultMap[host]
             value = value[0]
         else:
-            GaussLog.exitWithError("Fail to query [%s]'s %s." % (host, para))
-        return value
+            return status, ""
+        return status, value
 
     def setGucPara(self, host, env, datanode, para, value):
         """
@@ -1460,9 +1475,8 @@ class GsCtlCommon:
             command, [host], env)
         self.logger.debug(host)
         self.logger.debug(outputCollect)
-        if resultMap[host] == STATUS_FAIL:
-            GaussLog.exitWithError("Fail to set [%s]'s %s." % (host, para))
         self.cleanSshToolTmpFile(sshTool)
+        return resultMap[host]
 
     def cleanSshToolTmpFile(self, sshTool):
         """

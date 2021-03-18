@@ -119,9 +119,13 @@ class ExpansionImpl():
             self.logger.debug("Start to rollback primary's wal_keep_segments")
             primary = self.getPrimaryHostName()
             primaryDataNode = self.context.clusterInfoDict[primary]["dataNode"]
-            self.commonGsCtl.setGucPara(primary, self.envFile, primaryDataNode,
+            status = self.commonGsCtl.setGucPara(primary, self.envFile, primaryDataNode,
                 "wal_keep_segments", self.walKeepSegments)
-            self.reloadPrimaryConf()
+            if status != DefaultValue.SUCCESS:
+                self.logger.log("Failed to rollback wal_keep_segments, please manually "
+                    "set it to original value %s." % self.walKeepSegments)
+            else:
+                self.reloadPrimaryConf()
         self.rollback()
 
     def sendSoftToHosts(self):
@@ -131,21 +135,12 @@ class ExpansionImpl():
         self.logger.log("Start to send soft to each standby nodes.")
         srcFile = self.context.packagepath
         targetDir = os.path.realpath(os.path.join(srcFile, "../"))
-        # change mode of package dir to set privileges for users
-        tPathList = os.path.split(targetDir)
-        path2ChangeMode = targetDir
-        if len(tPathList) > 2:
-            path2ChangeMode = os.path.join(tPathList[0],tPathList[1])
-        changeModCmd =  "chmod -R a+x {srcFile}".format(user = self.user,
-            group = self.group, srcFile = path2ChangeMode)
         for host in self.context.newHostList:
             sshTool = SshTool([host], timeout = 300)
             # mkdir package dir and send package to remote nodes.
             sshTool.executeCommand("mkdir -p %s" % srcFile , "",
                 DefaultValue.SUCCESS, [host])
             sshTool.scpFiles(srcFile, targetDir, [host])
-            sshTool.executeCommand(changeModCmd, "", DefaultValue.SUCCESS,
-                [host])
             self.cleanSshToolFile(sshTool)
         self.logger.log("End to send soft to each standby nodes.")
 
@@ -743,8 +738,9 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             status = self.commonGsCtl.setGucPara(primaryHost, self.envFile, primaryDataNode,
                 "wal_keep_segments", self.walKeepSegments)
             if status != DefaultValue.SUCCESS:
-                GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50007"] % "wal_keep_segments")
-            self.walKeepSegmentsChanged = False
+                self.logger.debug(ErrorCode.GAUSS_500["GAUSS_50007"] % "wal_keep_segments")
+            else:
+                self.walKeepSegmentsChanged = False
             self.reloadPrimaryConf()
         if self._isAllFailed():
             GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35706"] % "build")

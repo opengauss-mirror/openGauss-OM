@@ -290,11 +290,26 @@ General options:
 
     def checkEnvfile(self):
         """
-        check whether env file has been sourced, if not
-        throw error and exit 
+        check whether env file is sourced
+        check whether info in XML is consistent with environment variable
         """
+        self.logger.debug("Checking environment variable.")
         if not DefaultValue.getEnv("GPHOME"):
-            GaussLog.exitWithError(ErrorCode.GAUSS_518["GAUSS_51802"] % "file")
+            GaussLog.exitWithError(ErrorCode.GAUSS_518["GAUSS_51802"] % (
+                "\"GPHOME\", please import environment variable"))
+        if not DefaultValue.getEnv("GAUSSHOME"):
+            GaussLog.exitWithError(ErrorCode.GAUSS_518["GAUSS_51802"] % (
+                "\"GAUSSHOME\", please import environment variable"))
+        if not DefaultValue.getEnv("PGHOST"):
+            GaussLog.exitWithError(ErrorCode.GAUSS_518["GAUSS_51802"] % (
+                "\"PGHOST\", please import environment variable"))
+        clusterInfoDict = self.clusterInfoDict
+        toolPath = DefaultValue.getEnv("GPHOME")
+        appPath = DefaultValue.getEnv("GAUSSHOME")
+        if toolPath != clusterInfoDict["toolPath"]:
+            GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35711"] % "toolPath")
+        if appPath != clusterInfoDict["appPath"]:
+            GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35711"] % "appPath")
 
     def _getHostAzNameMap(self):
         """
@@ -342,8 +357,8 @@ if __name__ == "__main__":
     expansion.parseCommandLine()
     expansion.checkParameters()
     expansion.initLogs()
-    expansion.checkEnvfile()
     expansion.getExpansionInfo()
+    expansion.checkEnvfile()
     expansion.checkXmlIncludeNewHost()
     expansion.checkExecutingHost()
     expansion.checkTrust()

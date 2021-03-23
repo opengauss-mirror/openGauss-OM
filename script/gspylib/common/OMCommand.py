@@ -54,6 +54,8 @@ class OMCommand():
 
         if os.getgid() != 0:
             gp_home = DefaultValue.getEnv("GPHOME")
+            if not gp_home:
+                raise Exception(ErrorCode.GAUSS_518["GAUSS_51802"] % "GPHOME")
             Current_Path = os.path.join(gp_home, "script/gspylib/common")
 
         LocalScript = {

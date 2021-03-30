@@ -36,6 +36,7 @@ from gspylib.common.GaussLog import GaussLog
 from gspylib.inspection.common.SharedFuncs import cleanFile
 from gspylib.inspection.common.Exception import CheckException, \
     SQLCommandException
+from gspylib.common.OMCommand import OMCommand
 
 sys.path.append(sys.path[0] + "/../../../lib/")
 DefaultValue.doConfigForParamiko()
@@ -97,6 +98,10 @@ class DropnodeImpl():
             if "no gs_om in" in output:
                 raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$GPHOME")
             self.gphomepath = os.path.normpath(output.replace("/gs_om", ""))
+        if not DefaultValue.getEnv("PGHOST"):
+            GaussLog.exitWithError(ErrorCode.GAUSS_518["GAUSS_51802"] % (
+                "\"PGHOST\", please import environment variable"))
+        self.pghostPath = DefaultValue.getEnv("PGHOST")
         self.appPath = self.context.clusterInfo.appPath
         self.gsql_path = "source %s;%s/bin/gsql" % (self.userProfile, self.appPath)
 
@@ -167,7 +172,7 @@ class DropnodeImpl():
             # backup
             backupfile = self.commonOper.backupConf(
                 self.gphomepath, self.user,
-                hostNameLoop, self.userProfile, sshtool_host)
+                hostNameLoop, self.userProfile, sshtool_host, self.pghostPath)
             self.logger.log(
                 "[gs_dropnode]The backup file of " + hostNameLoop + " is " + backupfile)
             if hostNameLoop == self.localhostname:
@@ -191,7 +196,7 @@ class DropnodeImpl():
                 # try set
                 try:
                     self.commonOper.SetPgsqlConf(resultDict['replStr'],
-                                                 hostNameLoop,
+                                                 hostNameLoop, i,
                                                  resultDict['syncStandbyStr'],
                                                  sshtool_host,
                                                  self.userProfile,
@@ -203,7 +208,7 @@ class DropnodeImpl():
                 except ValueError:
                     self.logger.log("[gs_dropnode]Rollback pgsql process.")
                     self.commonOper.SetPgsqlConf(resultDict['replStr'],
-                                                 hostNameLoop,
+                                                 hostNameLoop, i,
                                                  resultDict['syncStandbyStr'],
                                                  sshtool_host,
                                                  self.userProfile,
@@ -212,23 +217,6 @@ class DropnodeImpl():
                                                      indexForuse],
                                                  resultDictForRollback[
                                                      'rollbackReplStr'])
-                try:
-                    repl_slot = self.commonOper.get_repl_slot(hostNameLoop,
-                        sshtool_host, self.userProfile, self.gsql_path,
-                        self.context.hostMapForExist[hostNameLoop]['port'][
-                            indexForuse])
-                    self.commonOper.SetReplSlot(hostNameLoop, sshtool_host,
-                                                self.userProfile, self.gsql_path,
-                                                self.context.hostMapForExist[
-                                                hostNameLoop]['port'][indexForuse
-                                                ], self.dnIdForDel, repl_slot)
-                except ValueError:
-                    self.logger.log("[gs_dropnode]Rollback replslot")
-                    self.commonOper.SetReplSlot(hostNameLoop, sshtool_host,
-                                                self.userProfile, self.gsql_path,
-                                                self.context.hostMapForExist[
-                                                hostNameLoop]['port'][indexForuse
-                                                ], self.dnIdForDel, repl_slot, True)
                 indexForuse += 1
             self.cleanSshToolFile(sshtool_host)
 
@@ -237,7 +225,6 @@ class DropnodeImpl():
         operation only need to be executed on primary node
         """
         for hostNameLoop in self.context.hostMapForExist.keys():
-            sshtool_host = SshTool([hostNameLoop])
             try:
                 self.commonOper.SetPghbaConf(self.userProfile, hostNameLoop,
                                              self.resultDictOfPrimary[0][
@@ -247,7 +234,18 @@ class DropnodeImpl():
                 self.commonOper.SetPghbaConf(self.userProfile, hostNameLoop,
                                              self.resultDictOfPrimary[0][
                                              'pghbaStr'], True)
-            self.cleanSshToolFile(sshtool_host)
+        indexLoop = 0
+        for i in self.context.hostMapForExist[self.localhostname]['datadir']:
+            try:
+                self.commonOper.SetReplSlot(self.localhostname, self.gsql_path,
+                    self.context.hostMapForExist[self.localhostname]['port'][indexLoop],
+                    self.dnIdForDel)
+            except ValueError:
+                self.logger.log("[gs_dropnode]Rollback replslot")
+                self.commonOper.SetReplSlot(self.localhostname, self.gsql_path,
+                    self.context.hostMapForExist[self.localhostname]['port'][indexLoop],
+                    self.dnIdForDel, True)
+                indexLoop += 1
 
     def modifyStaticConf(self):
         """
@@ -376,23 +374,10 @@ class DropnodeImpl():
                 os.unlink(dynamicConfigPath)
             except FileNotFoundError:
                 pass
-            flag = input(
-                "Only one primary node is left."
-                "It is recommended to restart the node."
-                "\nDo you want to restart the primary node now (yes/no)? ")
-            count_f = 2
-            while count_f:
-                if (
-                        flag.upper() != "YES"
-                        and flag.upper() != "NO"
-                        and flag.upper() != "Y" and flag.upper() != "N"):
-                    count_f -= 1
-                    flag = input("Please type 'yes' or 'no': ")
-                    continue
-                break
-            if flag.upper() != "YES" and flag.upper() != "Y":
-                GaussLog.exitWithError(
-                    ErrorCode.GAUSS_358["GAUSS_35805"] % flag.upper())
+            msgPrint = "Only one primary node is left. It is recommended to " \
+                       "restart the node.\nDo you want to restart the primary " \
+                       "node now (yes/no)? "
+            self.context.checkInput(msgPrint)
             sshTool = SshTool([self.localhostname])
             for i in self.context.hostMapForExist[self.localhostname]['datadir']:
                 self.commonOper.stopInstance(self.localhostname, sshTool, i,
@@ -446,19 +431,19 @@ class OperCommon:
             if dbState in ['Promoting', 'Wait', 'Demoting']:
                 GaussLog.exitWithError(ErrorCode.GAUSS_358["GAUSS_35808"] % host)
 
-    def backupConf(self, appPath, user, host, envfile, sshTool):
+    def backupConf(self, appPath, user, host, envfile, sshTool, pghostPath):
         """
         backup the configuration file (postgresql.conf and pg_hba.conf)
         The Backup.py can do this
         """
         self.logger.log(
             "[gs_dropnode]Start to backup parameter config file on %s." % host)
-        tmpPath = '/tmp/gs_dropnode_backup' + \
-                  str(datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
+        tmpPath = "%s/gs_dropnode_backup%s" % (pghostPath,
+                  str(datetime.datetime.now().strftime('%Y%m%d%H%M%S')))
         backupPyPath = os.path.join(appPath, './script/local/Backup.py')
-        cmd = "(find /tmp -type d | grep gs_dropnode_backup | xargs rm -rf;" \
+        cmd = "(find %s -type d | grep gs_dropnode_backup | xargs rm -rf;" \
               "if [ ! -d '%s' ]; then mkdir -p '%s' -m %s;fi)" \
-              % (tmpPath, tmpPath, DefaultValue.KEY_DIRECTORY_MODE)
+              % (pghostPath, tmpPath, tmpPath, DefaultValue.KEY_DIRECTORY_MODE)
         sshTool.executeCommand(cmd, "", DefaultValue.SUCCESS, [host], envfile)
         logfile = os.path.join(tmpPath, 'gs_dropnode_call_Backup_py.log')
         cmd = "python3 %s -U %s -P %s -p --nodeName=%s -l %s" \
@@ -594,71 +579,38 @@ class OperCommon:
             "[gs_dropnode]End to parse backup parameter config file %s." % host)
         return resultDict
 
-    def SetPgsqlConf(self, replNo, host, syncStandbyValue, sshTool, envfile,
+    def SetPgsqlConf(self, replNo, host, dndir, syncStandbyValue, sshTool, envfile,
                      port, replValue='', singleLeft=False):
         """
         Set the value of postgresql.conf
         """
         self.logger.log(
-            "[gs_dropnode]Start to set postgresql config file on %s." % host)
-        sqlExecFile = '/tmp/gs_dropnode_sqlExecFile_' + \
-                      str(datetime.datetime.now().strftime(
-                          '%Y%m%d%H%M%S')) + host
-        checkResultFile = '/tmp/gs_dropnode_sqlResultFile_' + \
-                          str(datetime.datetime.now().strftime(
-                              '%Y%m%d%H%M%S')) + host
-        sqlvalue = ''
+            "[gs_dropnode]Start to set openGauss config file on %s." % host)
+        setvalue = ''
         if not replValue and replNo != '':
             for i in replNo:
-                sqlvalue += "ALTER SYSTEM SET replconninfo%s = '';" % i
+                setvalue += " -c \"replconninfo%s = ''\"" % i
         if len(replValue) > 0:
             count = 0
             for i in replNo:
-                sqlvalue += "ALTER SYSTEM SET replconninfo%s = '%s';" % (
+                setvalue += " -c \"replconninfo%s = '%s'\"" % (
                 i, replValue[:-1].split('|')[count])
                 count += 1
         if not singleLeft and syncStandbyValue != '*':
-            sqlvalue += "ALTER SYSTEM SET synchronous_standby_names = '%s';" \
+            setvalue += " -c \"synchronous_standby_names = '%s'\"" \
                         % syncStandbyValue
         if singleLeft:
-            sqlvalue += "ALTER SYSTEM SET synchronous_standby_names = '';"
-        if sqlvalue != '':
-            cmd = "touch %s && chmod %s %s" % \
-                  (sqlExecFile, DefaultValue.MAX_DIRECTORY_MODE, sqlExecFile)
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                self.logger.log(
-                    "[gs_dropnode]Create the SQL command file failed:" + output)
-                GaussLog.exitWithError(ErrorCode.GAUSS_358["GAUSS_35809"])
-            try:
-                with os.fdopen(
-                    os.open("%s" % sqlExecFile, os.O_WRONLY | os.O_CREAT,
-                                stat.S_IWUSR | stat.S_IRUSR), 'w') as fo:
-                    fo.write(sqlvalue)
-                    fo.close()
-            except Exception as e:
-                cleanFile(sqlExecFile)
-                raise SQLCommandException(sqlExecFile,
-                                          "write into sql query file failed. "
-                                          + str(e))
+            setvalue += " -c \"synchronous_standby_names = ''\""
+        if setvalue != '':
+            cmd = "[need_replace_quotes] source %s;gs_guc reload -D %s%s" % \
+                (envfile, dndir, setvalue)
             self.logger.debug(
-                "[gs_dropnode]Start to send the SQL command file to all hosts.")
-            sshTool.scpFiles(sqlExecFile, '/tmp', [host])
-            cmd = "gsql -p %s -d postgres -f %s --output %s;cat %s" % (
-            port, sqlExecFile, checkResultFile, checkResultFile)
+                "[gs_dropnode]Start to set pgsql by guc on %s:%s" % (host, cmd))
             (statusMap, output) = sshTool.getSshStatusOutput(cmd, [host], envfile)
-            if "ERROR" in output:
+            if statusMap[host] != 'Success' or "Failure to perform gs_guc" in output:
                 self.logger.debug(
-                    "[gs_dropnode]Failed to execute the SQL command file on all "
-                    "hosts:" + output)
+                    "[gs_dropnode]Failed to set pgsql by guc on %s:%s" % (host, output))
                 raise ValueError(output)
-            cmd = "ls /tmp/gs_dropnode_sql* | xargs rm -rf"
-            sshTool.executeCommand(cmd, "", DefaultValue.SUCCESS, [host], envfile)
-            try:
-                os.unlink(sqlExecFile)
-                os.unlink(checkResultFile)
-            except FileNotFoundError:
-                pass
         self.logger.log(
             "[gs_dropnode]End of set postgresql config file on %s." % host)
 
@@ -700,52 +652,49 @@ class OperCommon:
         self.logger.log(
             "[gs_dropnode]End of set pg_hba config file on %s." % host)
 
-    def get_repl_slot(self, host, ssh_tool, envfile, gsql_path, port):
+    def get_repl_slot(self, host, gsql_path, port):
         """
-        Get the replication slot on primary node only
+        Get the replication slot (need to do it on standby for cascade_standby)
+        But can't do it on standby which enabled extreme rto
         """
-        self.logger.log("[gs_dropnode]Start to get repl slot on primary node.")
+        self.logger.log("[gs_dropnode]Start to get repl slot on %s." % host)
         selectSQL = "SELECT slot_name,plugin,slot_type FROM pg_replication_slots;"
-        querycmd = "%s -p %s postgres -A -t -c '%s'" % (gsql_path, port, selectSQL)
-        (status, output) = ssh_tool.getSshStatusOutput(querycmd, [host], envfile)
-        if status[host] != 'Success' or "ERROR" in output:
+        sqlcmd = "%s -p %s postgres -A -t -c '%s'" % (gsql_path, port, selectSQL)
+        (status, output) = subprocess.getstatusoutput(sqlcmd)
+        if status or "ERROR" in output:
             self.logger.debug(
                 "[gs_dropnode]Get repl slot failed:" + output)
             GaussLog.exitWithError(ErrorCode.GAUSS_358["GAUSS_35809"])
         return ','.join(output.split('\n')[1:])
 
-    def SetReplSlot(self, host, sshTool, envfile, gsqlPath, port, dnid,
-                    replslot_output, flag_rollback=False):
-        """
-        Drop the replication slot on primary node only
-        """
-        self.logger.log("[gs_dropnode]Start to set repl slot on primary node.")
+    def SetReplSlot(self, host, gsqlPath, port, dnid,
+                    flag_rollback=False):
+        self.logger.log("[gs_dropnode]Start to set repl slot on %s." % host)
+        replslot = self.get_repl_slot(host, gsqlPath, port)
         setcmd = ''
+        sql = ''
         if not flag_rollback:
             for i in dnid:
-                if i in replslot_output:
-                    setcmd += "%s -p %s postgres -A -t -c \\\"SELECT pg_drop_" \
-                              "replication_slot('%s');\\\";" % \
-                              (gsqlPath, port, i)
+                if i in replslot:
+                    sql += "SELECT pg_drop_replication_slot('%s');" % i
+            sql = "SET enable_slot_log TO 1;" + sql
+            setcmd = "sleep 5;%s -p %s postgres -A -t -c \"%s\";" % (gsqlPath, port, sql)
         if flag_rollback:
-            list_o = [i.split('|') for i in replslot_output.split(',')]
+            list_o = [i.split('|') for i in replslot.split(',')]
             for r in list_o:
                 if r[0] in dnid and r[2] == 'physical':
-                    setcmd += "%s -p %s postgres -A -t -c \\\"SELECT * FROM " \
-                                  "pg_create_physical_replication_slot('%s', false);\\\";" % \
-                                  (gsqlPath, port, r[0])
+                    sql += "SELECT * FROM pg_create_physical_replication_slot('%s', " \
+                        "false);" % r[0]
                 elif r[0] in dnid and r[2] == 'logical':
-                    setcmd += "%s -p %s postgres -A -t -c \\\"SELECT * FROM " \
-                                  "pg_create_logical_replication_slot('%s', '%s');\\\";" % \
-                                  (gsqlPath, port, r[0], r[1])
-        if setcmd != '':
-            if host == DefaultValue.GetHostIpOrName():
-                setcmd = setcmd.replace("\\", '')
-            (status, output) = sshTool.getSshStatusOutput(setcmd, [host], envfile)
-            if status[host] != 'Success' or "ERROR" in output:
+                    sql += "SELECT * FROM pg_create_logical_replication_slot('%s', " \
+                        "'%s');" % (r[0], r[1])
+            setcmd = "%s -p %s postgres -A -t -c \"%s\";" % (gsqlPath, port, sql)
+        if sql != '':
+            (status, output) = subprocess.getstatusoutput(setcmd)
+            if status or "ERROR" in output:
                 self.logger.debug("[gs_dropnode]Set repl slot failed:" + output)
                 raise ValueError(output)
-        self.logger.log("[gs_dropnode]End of set repl slot on primary node.")
+        self.logger.log("[gs_dropnode]End of set repl slot on %s." % host)
 
     def SetSyncCommit(self, dirDn):
         """
@@ -783,15 +732,16 @@ class OperCommon:
         """
         """
         self.logger.log("[gs_dropnode]Start to start the target node.")
-        start_retry_num = 1
-        command = "source %s ; gs_ctl start -D %s" % (env, dirDn)
-        while start_retry_num <= 3:
-            (status, output) = subprocess.getstatusoutput(command)
-            self.logger.debug(output)
-            if 'done' in output and 'server started' in output:
-                self.logger.log("[gs_dropnode]End of start the target node.")
-                break
-            else:
-                self.logger.debug("[gs_dropnode]Failed to start the node.")
-                GaussLog.exitWithError(ErrorCode.GAUSS_358["GAUSS_35809"])
-            start_retry_num += 1
+        command = "source %s ; %s -U %s -D %s" % (env,
+            OMCommand.getLocalScript("Local_StartInstance"), self.user, dirDn)
+        (status, output) = subprocess.getstatusoutput(command)
+        self.logger.debug(output)
+        if status:
+            self.logger.debug("[gs_dropnode]Failed to start the node.")
+            GaussLog.exitWithError(ErrorCode.GAUSS_358["GAUSS_35809"])
+        elif re.search("another server might be running", output):
+            self.logger.log(output)
+        elif re.search("] WARNING:", output):
+            tmp = '\n'.join(re.findall(".*] WARNING:.*", output))
+            self.logger.log(tmp)
+        self.logger.debug("[gs_dropnode]End to start the node.")

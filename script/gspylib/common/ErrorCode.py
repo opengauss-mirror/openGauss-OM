@@ -589,7 +589,10 @@ class ErrorCode():
                        "to end timeout.",
         'GAUSS_51649': "[GAUSS-51649] : Capture exceptions '%s' : %s.",
         'GAUSS_51650': "[GAUSS-51650] : Unclassified exceptions: %s.",
-        'GAUSS_51651': "[GAUSS-51651] : The node '%s' status is Abnormal.",
+        'GAUSS_51651': "[GAUSS-51651] : The node '%s' status is Abnormal.\n"
+                       "It is required that all the nodes should be normal "
+                       "except the target ones.\nPlease add this node in the"
+                       " list after -h if it is also a target one.",
         'GAUSS_51652': "[GAUSS-51652] : Failed to get cluster node "
                        "info.exception is: %s.",
         'GAUSS_51653': "[GAUSS-51653] : No database objects "

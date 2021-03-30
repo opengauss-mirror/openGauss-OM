@@ -260,17 +260,19 @@ General options:
         """
         if hostList == None:
             hostList = self.nodeNameList
+        gpHome = DefaultValue.getEnv("GPHOME")
+        psshPath = "python3 %s/script/gspylib/pssh/bin/pssh" % gpHome
         rootSSHExceptionHosts = []
         individualSSHExceptionHosts = []
         for host in hostList:
             # check root's trust
-            checkRootTrustCmd = "ssh %s -o ConnectTimeout=10 \"pwd\"" % host
+            checkRootTrustCmd = "%s -s -H %s 'pwd'" % (psshPath, host)
             (status, output) = subprocess.getstatusoutput(checkRootTrustCmd)
             if status != 0:
                 rootSSHExceptionHosts.append(host)
             # check individual user's trust
-            checkUserTrustCmd = "su - %s -c 'ssh %s -o " \
-                "ConnectTimeout=10 \"pwd\"'" % (self.user, host)
+            checkUserTrustCmd = "su - %s -c '%s -s -H %s pwd'" % (
+                self.user, psshPath, host)
             (status, output) = subprocess.getstatusoutput(checkUserTrustCmd)
             if status != 0:
                 individualSSHExceptionHosts.append(host)

@@ -9,12 +9,12 @@ Common functions include database installtion, startup, stop, upgrade, backup, s
 - See the compilation description of the [opengauss third-party-software](https://gitee.com/opengauss/openGauss-server/blob/master/README.en.md#compiling-third-party-software)。                     
   The final compilation and build result is stored in the binarylibs directory at the same level as openGauss-third_party.                
   The binarylibs directory will be the value of '-3rd' for build.sh     
-  You can obtain the binarylibs we have compiled. [openGauss-third_party_binarylibs.tar.gz](https://opengauss.obs.cn-south-1.myhuaweicloud.com/1.1.0/openGauss-third_party_binarylibs.tar.gz)
+  You can obtain the binarylibs we have compiled. [openGauss-third_party_binarylibs.tar.gz](https://opengauss.obs.cn-south-1.myhuaweicloud.com/2.0.0/openGauss-third_party_binarylibs.tar.gz)
 
 - ./build.sh -3rd ${BINARYLIBS_PATH}              
   The generated installation package is stored in the ./package directory:                 
-  openGauss-1.1.0-CentOS-64bit-om.sha256               
-  openGauss-1.1.0-CentOS-64bit-om.tar.gz              
+  openGauss-2.0.0-CentOS-64bit-om.sha256               
+  openGauss-2.0.0-CentOS-64bit-om.tar.gz              
    
 #### Installation
 
@@ -22,7 +22,7 @@ The OM tool strongly depends on opengaussServer. Please see the [opengauss Insta
 
 ## Quick Start
 
-See the [Quick Start](https://opengauss.org/en/docs/1.1.0/docs/Quickstart/Quickstart.html).
+See the [Quick Start](https://opengauss.org/en/docs/2.0.0/docs/Quickstart/Quickstart.html).
 
 ## Docs
 
@@ -46,7 +46,7 @@ Welcome contributions. See our [Contributor](https://opengauss.org/en/contributi
 
 ## Release Notes
 
-For the release notes, see our [RELEASE](https://opengauss.org/en/docs/1.1.0/docs/Releasenotes/Releasenotes.html).
+For the release notes, see our [RELEASE](https://opengauss.org/en/docs/2.0.0/docs/Releasenotes/Releasenotes.html).
 
 ## License
 

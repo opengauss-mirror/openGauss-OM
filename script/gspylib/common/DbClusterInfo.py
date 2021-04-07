@@ -1412,7 +1412,7 @@ class dbClusterInfo():
             return True
         return False
 
-    def queryNodeInfo(self, sshtool, localHostName, nodeId, fileName=""):
+    def queryNodeInfo(self, sshtool, localHostName, nodeId, fileName="", azName=""):
         """
         get cluster node info, if nodeid is 0, we get all node info,
         else ony get one node info
@@ -1431,6 +1431,9 @@ class dbClusterInfo():
         for dbNode in self.dbNodes:
             if dbNode.id == nodeId or nodeId == 0:
                 for dnInst in dbNode.datanodes:
+                    # filter by azName
+                    if azName and dnInst.azName != azName:
+                        continue
                     outText = outText + (
                             "node                      : %u\n" % dbNode.id)
                     outText = outText + (

@@ -220,11 +220,11 @@ Install options:
                     self.initClusterInfoFromStaticFile(self.g_opts.user)
 
             # Check --az with single-primary-multi-standby
-            if (self.g_opts.azName):
-                raise Exception(
-                    ErrorCode.GAUSS_500["GAUSS_50002"] % '-az' +
-                    ". This parameter is used in single primary multi "
-                    "standby.")
+            # if (self.g_opts.azName):
+            #     raise Exception(
+            #         ErrorCode.GAUSS_500["GAUSS_50002"] % '-az' +
+            #         ". This parameter is used in single primary multi "
+            #         "standby.")
 
             # Obtain the owner and group of the cluster installation directory
             if self.g_opts.action != ACTION_KERBEROS:
@@ -276,6 +276,17 @@ Install options:
 
             if ("dataDir" in ParaDict.keys()):
                 self.g_opts.dataDir = ParaDict.get("dataDir")
+    
+    def parseAZ(self, ParaDict):
+        """
+        
+        """
+        if self.g_opts.action == ACTION_STATUS:
+            if (ParaDict.__contains__("az_name")):
+                azname = ParaDict.get("az_name")
+                print(azname)
+                self.g_opts.azName = azname
+        
 
     def parseTimeOut(self, ParaDict):
         """
@@ -459,6 +470,8 @@ Install options:
         self.parseKerberos(ParaDict)
         # Parse log parameter
         self.parseLog(ParaDict)
+        # Parse Az info
+        self.parseAZ(ParaDict)
 
     ###########################################################################
     # Check parameters for all operations

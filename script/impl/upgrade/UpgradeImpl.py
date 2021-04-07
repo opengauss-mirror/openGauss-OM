@@ -830,41 +830,6 @@ class UpgradeImpl:
         except Exception as e:
             raise Exception(str(e))
 
-    def setUpgradeFromParam(self, ClusterVersionNumber, isCheck=True):
-        """
-        function: set upgrade_from parameter
-        Input : oldClusterNumber, isCheck
-        output : NA
-        """
-        self.context.logger.debug("Set upgrade_from guc parameter.")
-        workingGrandVersion = int(float(ClusterVersionNumber) * 1000)
-        cmd = "gs_guc set -N all -I all -c " \
-              "'upgrade_from=%s'" % workingGrandVersion
-        self.context.logger.debug("Command for setting cmagent"
-                                  " parameter: %s." % cmd)
-        try:
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                self.context.logger.debug("Set upgrade_from parameter"
-                                          " failed. cmd:%s\nOutput:%s"
-                                          % (cmd, str(output)))
-                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                                + "Error: \n%s" % str(output))
-            if isCheck:
-                gucStr = "%s:%s" % ("upgrade_from",
-                                    str(workingGrandVersion).strip())
-                self.checkParam(gucStr)
-            self.context.logger.debug("Successfully set cmagent parameter "
-                                      "upgrade_from=%s." % workingGrandVersion)
-        except Exception as e:
-            if self.context.action == Const.ACTION_INPLACE_UPGRADE or not \
-                    self.context.forceRollback:
-                raise Exception(str(e))
-            self.context.logger.log("Failed to set upgrade_from,"
-                                    " please set it manually with"
-                                    " command: \n%s" % str(cmd))
-
-
     def setUpgradeMode(self, mode):
         """
         function: set upgrade_mode parameter
@@ -2432,8 +2397,6 @@ class UpgradeImpl:
         output : NA
         """
         try:
-            if self.context.is_grey_upgrade:
-                self.setUpgradeFromParam(oldClusterNumber)
             if self.context.action == Const.ACTION_INPLACE_UPGRADE:
                 if not postUpgrade:
                     self.startCluster()
@@ -3118,8 +3081,6 @@ class UpgradeImpl:
             self.setActionFile()
             # self.restoreOriginalState()
             if self.context.action == Const.ACTION_LARGE_UPGRADE:
-                self.setUpgradeFromParam(Const.UPGRADE_UNSET_NUM)
-                #self.reloadCmAgent()
                 self.setUpgradeMode(0)
             time.sleep(10)
             if self.dropPMKSchema() != 0:
@@ -3269,7 +3230,6 @@ class UpgradeImpl:
                                 GreyUpgradeStep.STEP_UPDATE_POST_CATALOG):
                         self.prepareUpgradeSqlFolder()
                         self.prepareSql("rollback-post")
-                        self.setUpgradeFromParam(self.context.oldClusterNumber)
                         self.setUpgradeMode(2)
                         self.execRollbackUpgradedCatalog(
                             scriptType="rollback-post")
@@ -3762,14 +3722,11 @@ class UpgradeImpl:
             self.startCluster()
             self.setUpgradeMode(1)
         else:
-            self.setUpgradeFromParam(self.context.oldClusterNumber)
             self.setUpgradeMode(2)
         self.execRollbackUpgradedCatalog(scriptType="rollback")
         self.pgxcNodeUpdateLocalhost("rollback")
         if self.context.action == Const.ACTION_INPLACE_UPGRADE:
             self.stopCluster()
-        if self.context.is_grey_upgrade:
-            self.setUpgradeFromParam(Const.UPGRADE_UNSET_NUM)
         self.setUpgradeMode(0)
 
     def doPhysicalRollbackCatalog(self):
@@ -3783,8 +3740,6 @@ class UpgradeImpl:
         """
         try:
             self.startCluster()
-            if self.context.is_grey_upgrade:
-                self.setUpgradeFromParam(Const.UPGRADE_UNSET_NUM)
             self.setUpgradeMode(0)
             self.stopCluster()
             self.execPhysicalRollbackUpgradedCatalog()

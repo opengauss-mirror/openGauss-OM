@@ -127,7 +127,7 @@ Usage:
                   [-l LOGFILE]
     gs_om -t restart [-h HOSTNAME] [-D dataDir] [--time-out=SECS]
                    [--security-mode=MODE] [-l LOGFILE] [-m MODE]
-    gs_om -t status [-h HOSTNAME] [-o OUTPUT] [--detail] [--all] [-l LOGFILE]
+    gs_om -t status [-h HOSTNAME] [-o OUTPUT] [--detail] [--all] [--az=AZ] [-l LOGFILE]
     gs_om -t generateconf -X XMLFILE [--distribute] [-l LOGFILE]
     gs_om -t cert [--cert-file=CERTFILE | --rollback] [-L] [-l LOGFILE]
     gs_om -t kerberos -m [install|uninstall] -U USER [-l LOGFILE]
@@ -162,7 +162,7 @@ Options for stop
 Options for status
   -h                              Name of the host whose status is to be
                                   queried.
-  --az                            Name of the single az whose status is to
+  --az=AZ                         Name of the single az whose status is to
                                   be queried.
   -o                              Save the result to the specified file.
       --detail                    Show detailed status information.
@@ -218,13 +218,6 @@ Install options:
                     self.initClusterInfoFromStaticFile(self.g_opts.user, False)
                 else:
                     self.initClusterInfoFromStaticFile(self.g_opts.user)
-
-            # Check --az with single-primary-multi-standby
-            # if (self.g_opts.azName):
-            #     raise Exception(
-            #         ErrorCode.GAUSS_500["GAUSS_50002"] % '-az' +
-            #         ". This parameter is used in single primary multi "
-            #         "standby.")
 
             # Obtain the owner and group of the cluster installation directory
             if self.g_opts.action != ACTION_KERBEROS:

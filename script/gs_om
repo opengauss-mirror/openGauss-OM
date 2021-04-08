@@ -157,8 +157,20 @@ Options for stop
   -m, --mode=MODE                 Shutdown mode. It can be f (fast),
                                   or i (immediate).
   -D                              Path of dn
-    --time-out=SECS              Maximum waiting time when start the cluster
+      --time-out=SECS             Maximum waiting time when start the cluster
                                  or node.
+
+Options for restart
+  -h                              Name of the host to be started.
+  -m, --mode=MODE                 Shutdown mode. It can be f (fast),
+                                  or i (immediate).
+  -D                              Path of dn
+      --time-out=SECS             Maximum waiting time when start the
+                                  cluster or node.
+      --security-mode=MODE        database start with security mode: on or off
+                                        on: start with security mode
+                                        off: start without security mode
+
 Options for status
   -h                              Name of the host whose status is to be
                                   queried.
@@ -249,7 +261,8 @@ Install options:
         """
         if (self.g_opts.action == ACTION_START or
                 self.g_opts.action == ACTION_STOP or
-                self.g_opts.action == ACTION_STATUS):
+                self.g_opts.action == ACTION_STATUS or
+                self.g_opts.action == ACTION_RESTART):
             if (ParaDict.__contains__("nodename")):
                 nodename = ParaDict.get("nodename")
                 self.g_opts.estimateNodeName = nodename
@@ -285,7 +298,7 @@ Install options:
         """
         """
         if self.g_opts.action == ACTION_START or self.g_opts.action == \
-                ACTION_STOP:
+                ACTION_STOP or self.g_opts.action == ACTION_RESTART:
             if (ParaDict.__contains__("time_out")):
                 self.g_opts.time_out = ParaDict.get("time_out")
 
@@ -335,7 +348,8 @@ Install options:
     def parseStart(self, ParaDict):
         """
         """
-        if (self.g_opts.action == ACTION_START):
+        if (self.g_opts.action == ACTION_START) \
+            or self.g_opts.action == ACTION_RESTART:
             # The start query can specify az name
             if ParaDict.__contains__("az_name"):
                 self.g_opts.azName = ParaDict.get("az_name")
@@ -345,7 +359,8 @@ Install options:
     def parseStop(self, ParaDict):
         """
         """
-        if (self.g_opts.action == ACTION_STOP):
+        if (self.g_opts.action == ACTION_STOP) \
+            or self.g_opts.action == ACTION_RESTART:
             # The start query can specify az name for OLAP
             if (ParaDict.__contains__("az_name")):
                 self.g_opts.azName = ParaDict.get("az_name")
@@ -488,7 +503,7 @@ Install options:
         elif (self.g_opts.action == ACTION_STOP):
             self.checkStopParameter()
         elif (self.g_opts.action == ACTION_RESTART):
-            pass
+            self.checkRestartParameter()
         elif (self.g_opts.action == ACTION_STATUS):
             self.checkOutFileParameter()
         elif (self.g_opts.action == ACTION_REBUID):
@@ -546,23 +561,7 @@ Install options:
         # if the parameter -I is exits, then the -h parameter is required.
         if (self.g_opts.instanceName and (not self.g_opts.nodeName)):
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % "h")
-        # # If the cluster does not specify a time-out period, the default is
-        # # 300 seconds
-        # if (self.g_opts.time_out is None):
-        #     self.g_opts.time_out = DefaultValue.TIMEOUT_CLUSTER_START
-        # else:
-        #     # The timeout parameter must be a pure number
-        #     if (not str(self.g_opts.time_out).isdigit()):
-        #         GaussLog.exitWithError(
-        #             ErrorCode.GAUSS_500["GAUSS_50003"] %
-        #             ("-time-out", "a nonnegative integer"))
-        #     self.g_opts.time_out = int(self.g_opts.time_out)
-        #     # The timeout parameter must be greater than 0
-        #     # The timeout parameter must be less than the integer maximum
-        #     if (self.g_opts.time_out <= 0 or self.g_opts.time_out
-        #             >= 2147483647):
-        #         GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
-        #                                % "-time-out")
+        
         # check timeout
         self.checkTimeOutParam()
         if self.g_opts.security_mode != "off" and self.g_opts.security_mode \
@@ -590,7 +589,7 @@ Install options:
 
     def checkStopParameter(self):
         """
-        Check parameter for stop clster and node
+        Check parameter for stop cluster and node
         input : NA
         output: NA
         """
@@ -606,6 +605,23 @@ Install options:
         if (self.g_opts.mode not in [STOP_MODE_FAST, STOP_MODE_IMMEDIATE,
                                      "f", "i"]):
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % "m")
+    
+    def checkRestartParameter(self):
+        """
+        Check parameter for restart cluster and node.
+        Restart parameters are same with start and stop.
+        input : NA
+        output: NA
+        """
+        self.checkStartParameter()
+
+        if (self.g_opts.mode == ""):
+            self.g_opts.mode = STOP_MODE_FAST
+        # Specifies that the stop type must be f, i or s
+        if (self.g_opts.mode not in [STOP_MODE_FAST, STOP_MODE_IMMEDIATE,
+                                     "f", "i"]):
+            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % "m")
+
 
     def checkOutFileParameter(self):
         """

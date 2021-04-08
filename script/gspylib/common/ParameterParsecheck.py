@@ -106,7 +106,7 @@ gs_om_stop = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-I:", "-m:",
               "--az=", "-l:", "--mode=", "--nodeId=", "--time-out=", "-D:"]
 gs_om_restart = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-I:",
                "--time-out=", "--az=", "-l:", "--nodeId=", "-D:",
-               "--security-mode="]
+               "--security-mode=", "--mode=", "-m:"]
 gs_om_view = ["-t:", "-?", "--help", "-V", "--version", "-o:", "-l:"]
 gs_om_query = ["-t:", "-?", "--help", "-V", "--version", "-o:", "-l:"]
 gs_om_status = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-o:",

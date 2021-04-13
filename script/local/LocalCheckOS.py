@@ -1696,7 +1696,11 @@ def CheckIOSchedulers(isSetting=False):
     input  : Bool
     output : NA
     """
-
+    # The IO Schedulers in ubuntu system is default value,
+    # so that it cannot be modified
+    distname, version = g_Platform.dist()[0:2]
+    if distname == "debian" and version == "buster/sid":
+        return
     data = collectIOschedulers()
     for dev in list(data.devices.keys()):
         expectedScheduler = "deadline"
@@ -1924,6 +1928,9 @@ def CheckPlatformInfo():
             g_logger.log("False %s %s" % (data.distname, platformStr))
             return
     elif (data.distname == "euleros" or data.distname == "openEuler" or data.distname == "kylin"):
+        mixedType = "%s" % data.distname
+        platformStr = "%s_%s_%s" % (data.distname, data.version, data.bits)
+    elif (data.distname == "debian" or data.version == "buster/sid"):
         mixedType = "%s" % data.distname
         platformStr = "%s_%s_%s" % (data.distname, data.version, data.bits)
     else:

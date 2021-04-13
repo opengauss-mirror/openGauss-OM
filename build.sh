@@ -64,8 +64,10 @@ elif [ X$(echo $PLAT_FORM_STR | grep "openeuler") != X"" ]; then
     dist_version="openEuler"
 elif [ X$(echo $PLAT_FORM_STR | grep "euleros") != X"" ]; then
     dist_version="EulerOS"
+elif [ X$(echo $PLAT_FORM_STR | grep "ubuntu") != X"" ]; then
+    dist_version="Ubuntu"
 else
-    echo "We only support openEuler(aarch64), EulerOS(aarch64), CentOS platform."
+	echo "We only support openEuler(aarch64), EulerOS(aarch64), CentOS, Ubuntu(x86) platform."
     echo "Kernel is $kernel"
     exit 1
 fi

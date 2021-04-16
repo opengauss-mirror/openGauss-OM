@@ -94,10 +94,9 @@ Usage:
   gs_upgradectl -? | --help
   gs_upgradectl -V | --version
   gs_upgradectl -t chose-strategy [-l LOGFILE]
-  gs_upgradectl -t commit-upgrade -X XMLFILE [-l LOGFILE]
-
   gs_upgradectl -t auto-upgrade -X XMLFILE [-l LOGFILE] [--grey]
   gs_upgradectl -t auto-rollback -X XMLFILE [-l LOGFILE] [--force]
+  gs_upgradectl -t commit-upgrade -X XMLFILE [-l LOGFILE]
 
 General options:
   -?, --help                      Show help information for this utility,

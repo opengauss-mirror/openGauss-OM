@@ -2099,6 +2099,8 @@ def  cleanInstallPath():
            (installPath, installPath)
     cmd += "(if [ -d '%s/var/krb5kdc' ]; then rm -rf '%s/var/krb5kdc'; fi) &&" \
            % (installPath, installPath)
+    cmd += "(if [ -d '%s/simpleInstall' ]; then rm -rf '%s/simpleInstall';" \
+           " fi) &&" % (installPath, installPath)
     cmd += "(if [ -e '%s/version.cfg' ]; then rm -rf '%s/version.cfg'; fi)"\
            % (installPath, installPath)
     DefaultValue.execCommandLocally(cmd)

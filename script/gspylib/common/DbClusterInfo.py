@@ -168,6 +168,7 @@ SPACE_LEN = 1
 STATE_LEN = 17
 SEPERATOR_LEN = 1
 IP_LEN = 16
+PORT_LEN = 10
 
 # GPHOME
 CLUSTER_TOOL_PATH = "/opt/huawei/wisequery"
@@ -1443,6 +1444,9 @@ class dbClusterInfo():
                     outText = outText + (
                             "data_path                 : %s\n" %
                             dnInst.datadir)
+                    outText = outText + (
+                            "instance_port             : %s\n" %
+                            dnInst.port)
                     outText = outText + "type                      : " \
                                         "Datanode\n"
                     outText = outText + (
@@ -1639,6 +1643,7 @@ class dbClusterInfo():
             dbState = ""
             primaryDbNum = 0
             primaryDbState = ""
+            portMap = {}
             for dbNode in self.dbNodes:
                 for dnInst in dbNode.datanodes:
                     sshcmd = "gs_ctl query -D %s" % dnInst.datadir
@@ -1662,6 +1667,7 @@ class dbClusterInfo():
                             roleStatus = res[0]
                             res = re.findall(r'db_state\s*:\s*(\w+)', output)
                             dbState = res[0]
+                        
                     else:
                         (status, output) = subprocess.getstatusoutput(sshcmd)
                         if status != 0 or output.find("exc_sql failed") > 0:
@@ -1678,7 +1684,8 @@ class dbClusterInfo():
                             res = re.findall(r'local_role\s*:\s*(\w+)', output)
                             roleStatus = res[0]
                             res = re.findall(r'db_state\s*:\s*(\w+)', output)
-                            dbState = res[0]
+                            dbState = res[0] 
+                    
                     if (dbState == "Need"):
                         detailInformation = re.findall(
                             r'detail_information\s*:\s*(\w+)', output)
@@ -1707,6 +1714,11 @@ class dbClusterInfo():
                             clusterState = 'Degraded'
                         if dbState != "Normal":
                             clusterState = 'Degraded'
+                    
+                    # get port info by guc
+                    portMap[dbNode.name] = self.__getPortInfo(dbNode.name, \
+                        hostName, dnInst.datadir, sshtool, mpprcFile)
+
             if dnNodeCount == 1:
                 clusterState = "Unavailable" if dbState != "Normal" \
                     else "Normal"
@@ -1732,25 +1744,17 @@ class dbClusterInfo():
             nodeLen = NODE_ID_LEN + SPACE_LEN + maxNodeNameLen + SPACE_LEN
             instanceLen = INSTANCE_ID_LEN + SPACE_LEN + (
                 maxDataPathLen if cmd.dataPathQuery else 4)
+            
             if cmd.azNameQuery:
                 nodeLen += maxAzNameLen + SPACE_LEN
             if cmd.portQuery:
                 instanceLen += 7
-            for i in range(dnNodeCount - 1):
-                outText = outText + ("%-*s%-*s%-*s%-*s| " % (nodeLen,
-                                                             "node",
-                                                             IP_LEN,
-                                                             "node_ip",
-                                                             instanceLen,
-                                                             "instance",
-                                                             STATE_LEN,
-                                                             "state"))
-            outText = outText + "%-*s%-*s%-*s%s\n" % (
-                nodeLen, "node", IP_LEN, "node_ip", instanceLen, "instance",
+            
+            outText = outText + "%-*s%-*s%-*s%-*s%s\n" % (
+                nodeLen, "    node", IP_LEN, "node_ip", PORT_LEN, "port", instanceLen, "instance",
                 "state")
-            maxLen = self.nodeCount * (
-                    nodeLen + instanceLen + IP_LEN + SPACE_LEN + STATE_LEN +
-                    SPACE_LEN + SEPERATOR_LEN)
+            maxLen = nodeLen + instanceLen + IP_LEN + SPACE_LEN + PORT_LEN + SPACE_LEN + \
+                 STATE_LEN + SPACE_LEN + SEPERATOR_LEN
             seperatorLine = "-" * maxLen
             outText = outText + seperatorLine + "\n"
             i = 0
@@ -1763,29 +1767,64 @@ class dbClusterInfo():
                     outText = outText + (
                             "%-*s " % (maxNodeNameLen, dbNode.name))
                     outText = outText + ("%-15s " % dnInst.listenIps[0])
+                    
+                    # port info
+                    port = ""
+                    if portMap[dbNode.name]:
+                        port = portMap[dbNode.name]
+                    else:
+                        port = dnInst.port
+                    outText = outText + ("%-10u " % port)
+
                     outText = outText + ("%u " % dnInst.instanceId)
-                    if cmd.portQuery:
-                        outText = outText + ("%-*u " % (6, dnInst.port))
+                    
                     if cmd.dataPathQuery:
                         outText = outText + (
                                 "%-*s " % (maxDataPathLen, dnInst.datadir))
                     else:
                         outText = outText + "    "
                     outText = outText + (
-                            "%s " % self.__getDnRole(dnInst.instanceType))
+                            "%3s " % self.__getDnRole(dnInst.instanceType))
                     if dnNodeCount == 1:
                         outText = outText + ("%-7s" % "Primary")
                     else:
                         outText = outText + ("%-7s" % roleStatusArray[i])
                     outText = outText + (" %s" % dbStateArray[i])
-                    if i < (dnNodeCount - 1):
-                        outText = outText + " | "
-                    else:
-                        outText = outText + "\n"
+                    
+                    outText = outText + "\n"
                     i += 1
             self.__fprintContent(outText, cmd.outputFile)
         except Exception as e:
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51652"] % str(e))
+
+    def __getPortInfo(self, nodeName, hostName, dnpath, sshtool, mpprcFile=""):
+        """
+        function: Get port info form guc result
+        """
+        portcmd = "gs_guc check -D %s -c port" % dnpath
+        output = ""
+        if (nodeName != hostName):
+            (statusMap, output) = sshtool.getSshStatusOutput(
+                            portcmd, [nodeName], mpprcFile)
+            if statusMap[nodeName] != "Success":
+                return None
+        else:
+            (status, output) = subprocess.getstatusoutput(portcmd)
+            if status != 0:
+                return None
+
+        DEFAULT_PORT = 5432
+        if not output:
+            return None
+        portpattern = re.compile("port=(\d+|NULL)")
+        result = portpattern.findall(output)
+        portvalue = ""
+        if len(result) > 0:
+            portvalue = result.pop()
+        if portvalue != "NULL":
+            return int(portvalue)
+        return DEFAULT_PORT
+        
 
     def __getDnRole(self, instanceType):
         """
@@ -1826,6 +1865,10 @@ class dbClusterInfo():
         for dbNode in self.dbNodes:
             for dnInst in dbNode.datanodes:
                 dnNodeCount += 1
+                # Update port by query on each node. Otherwise the port is modified
+                # but the static file is not, query result will be failure
+                port = self.__getPortInfo(dbNode.name, localHostName, dnInst.datadir, sshtool)
+                dnInst.port = port
                 self.__getDnState(dnInst, dbNode, localHostName, sshtool)
                 if dnInst.localRole == "Primary":
                     primaryDbState = dnInst.state
@@ -2054,15 +2097,15 @@ class dbClusterInfo():
             userProfile = "~/.bashrc"
         # build shell command
         if os.getuid() == 0:
-            cmd = "su - %s -c 'source %s;gs_om -t status --detail|tail -1" % (
+            cmd = "su - %s -c 'source %s;gs_om -t status --detail" % (
                 user, userProfile)
         else:
-            cmd = "source %s;gs_om -t status --detail|tail -1" % (userProfile)
+            cmd = "source %s;gs_om -t status --detail" % (userProfile)
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"]
                             % cmd + " Error: \n%s" % output)
-        return output.split("\n")[0]
+        return output.split("\n")
 
     def __readStaticConfigFile(self, staticConfigFile, user, isLCCluster=False,
                                ignoreLocalEnv=False):
@@ -6059,12 +6102,15 @@ class dbClusterInfo():
                 raise Exception(ErrorCode.GAUSS_504["GAUSS_50407"] +
                                 " Error: \n%s." % str(output) +
                                 "The cmd is %s" % cmd)
-        tempstatus = self.__getStatusByOM(user).split("|")
+        output_list = self.__getStatusByOM(user)
+        output_last_info = output_list[-1].split()
+        output_num = int(output_last_info[0])
+        tempstatus = output_list[-output_num:]
         statusdic = {'Primary': 0, 'Standby': 1, 'Cascade': 3, 'Unknown': 9}
         try:
             with open(simpleDNConfig, "w") as fp:
                 for dninfo in tempstatus:
-                    dnstatus = dninfo.split()[6]
+                    dnstatus = dninfo.split()[7]
                     dnname = dninfo.split()[1]
                     if dnstatus not in statusdic:
                         fp.write("%s=%d\n" %

@@ -131,7 +131,7 @@ class Resetreplconninfo():
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"]
                             % cmd + " Error: \n%s" % output)
-        return output.split("\n")[-1]
+        return output.split("\n")
 
     def resetRepl(self):
         """
@@ -139,18 +139,32 @@ class Resetreplconninfo():
         input : NA
         output: NA
         """
-        status_list = self.__getStatusByOM().split('|')
+        output_list = self.__getStatusByOM()
+        output_last_info = output_list[-1].split()
+        output_num = int(output_last_info[0])
+        status_list = output_list[-output_num:]
         repl_list = ['replconninfo' + str(i) for i in
                      range(1, len(status_list))]
+
+        # each information index after split space. displayed as:
+        #     node    node_ip         port      instance                       state
+        # ------------------------------------------------------------------------------------------
+        # 1  ecs-66cc 192.168.0.1   5432       6001 /opt/install/data/dn   P Primary Normal
+        # 2  ecs-6ac8 192.168.0.2   5432       6002 /opt/install/data/dn   S Standby Normal
+        # If the displayed information is changed, please modify the idx value here.
+        nodename_split_idx = 1
+        nodeip_split_idx = 2
+        dndir_split_idx = 5
+        instype_split_id = 7
 
         localhost = DefaultValue.GetHostIpOrName()
         remote_ip_dict = {}
         for info_all in status_list:
             info = info_all.split()
-            if info[1] == localhost:
-                local_dndir = info[4]
+            if info[nodename_split_idx] == localhost:
+                local_dndir = info[dndir_split_idx]
             else:
-                remote_ip_dict[info[2]] = info[6]
+                remote_ip_dict[info[nodeip_split_idx]] = info[instype_split_id]
         head_cmd = "source %s;" % self.userProfile
         for repl in repl_list:
             cmd = head_cmd + 'gs_guc check -N %s -D %s -c "%s"' % \

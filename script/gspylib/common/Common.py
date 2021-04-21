@@ -797,6 +797,7 @@ class DefaultValue():
         """
         SuSENetWorkConfPath = "/etc/sysconfig/network"
         RedHatNetWorkConfPath = "/etc/sysconfig/network-scripts"
+        UbuntuNetWorkConfPath = "/etc/network"
         NetWorkConfFile = ""
         distname, version, idnum = g_Platform.dist()
         distname = distname.lower()
@@ -812,6 +813,9 @@ class DefaultValue():
                     "redhat", "centos", "euleros", "openeuler")):
                 cmd = "find %s -iname 'ifcfg-*-%s' -print" % (
                     RedHatNetWorkConfPath, networkCardNum)
+            elif (distname == "debian" and version == "buster/sid"):
+                cmd = "find %s -iname 'ifcfg-*-%s' -print" % (
+                    UbuntuNetWorkConfPath, networkCardNum)
             else:
                 cmd = "find %s -iname 'ifcfg-*-%s' -print" % (
                     SuSENetWorkConfPath, networkCardNum)
@@ -889,6 +893,12 @@ class DefaultValue():
 
         # get local host by os function
         hostIp = socket.gethostbyname(hostname)
+
+        # due to two loopback address in ubuntu, 127.0.1.1 are choosed by hostname. 
+        # there is need to choose 127.0.0.1 
+        version = g_Platform.dist()[1].split('/')[0]
+        if version == "buster" and hostIp == "127.0.1.1":
+            hostIp = "127.0.0.1"
         return hostIp
 
     @staticmethod
@@ -1468,9 +1478,10 @@ class DefaultValue():
         systemDir = "/usr/lib/systemd/system/"
         systemFile = "/usr/lib/systemd/system/gs-OS-set.service"
         # OS init file 
-        #     now we only support SuSE and RHEL/CentOS
+        #     now we only support SuSE, RHEL/CentOS and Ubuntu
         initFileSuse = "/etc/init.d/boot.local"
         initFileRedhat = "/etc/rc.d/rc.local"
+        initFileUbuntu = "/lib/systemd/system/rc.local.service"
         # system init file
         initSystemFile = "/usr/local/gauss/script/gauss-OS-set.sh"
         initSystemPath = "/usr/local/gauss/script"
@@ -1515,6 +1526,9 @@ class DefaultValue():
         elif (distname in ("redhat", "centos", "euleros", "openEuler") and
               os.path.isfile(initFileRedhat)):
             initFile = initFileRedhat
+        elif (distname == "debian" and version == "buster/sid" and 
+              os.path.isfile(initFileUbuntu)):
+            initFile = initFileUbuntu
         else:
             initFile = ""
 

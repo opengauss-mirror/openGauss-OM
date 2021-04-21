@@ -100,8 +100,10 @@ EULEROS = "euleros"
 KYLIN = "kylin"
 OPENEULER = "openeuler"
 ASIANUX = "asianux"
+DEBIAN = "debian"
+UBUNTU = "ubuntu"
 SUPPORT_WHOLE_PLATFORM_LIST = [SUSE, REDHAT, CENTOS, EULEROS,
-                               OPENEULER, KYLIN, ASIANUX]
+                               OPENEULER, KYLIN, ASIANUX, DEBIAN, UBUNTU]
 # RedhatX platform
 SUPPORT_RHEL_SERIES_PLATFORM_LIST = [REDHAT, CENTOS, "kylin", "asianux"]
 SUPPORT_RHEL6X_VERSION_LIST = ["6.4", "6.5", "6.6", "6.7", "6.8", "6.9", "10"]
@@ -129,12 +131,13 @@ PAK_EULER = "Euler"
 PAK_OPENEULER = "openEuler"
 PAK_REDHAT = "RedHat"
 PAK_ASIANUX = "asianux"
+PAK_UBUNTU = "Ubuntu"
 
 #######################################################
 _supported_dists = (
     'SuSE', 'debian', 'fedora', 'redhat', 'centos', 'euleros', "openEuler",
     'mandrake', 'mandriva', 'rocks', 'slackware', 'yellowdog', 'gentoo',
-    'UnitedLinux', 'turbolinux', 'kylin', 'asianux')
+    'UnitedLinux', 'turbolinux', 'kylin', 'asianux', 'ubuntu')
 _release_filename = re.compile(r'(\w+)[-_](release|version)')
 _lsb_release_version = re.compile(r'(.+)'
                                   ' release '
@@ -1561,6 +1564,12 @@ class LinuxPlatform(GenericPlatform):
                                         prefixStr, packageVersion,
                                         PAK_OPENEULER,
                                         BIT_VERSION, postfixStr))
+        elif distname in DEBIAN and (version == "buster/sid"):
+            fileName = os.path.join(dirName, "./../../../",
+                                    "%s-%s-%s-%s.%s" % (
+                                        prefixStr, packageVersion,
+                                        PAK_UBUNTU,
+                                        BIT_VERSION, postfixStr))
         else:
             raise Exception(ErrorCode.GAUSS_519["GAUSS_51900"] +
                             "Supported platforms are: %s." % str(
@@ -1853,8 +1862,13 @@ class RHELPlatform(LinuxPlatform):
         input  : action
         output : str
         """
+        # get system information
+        distname, version = g_Platform.dist()[0:2]
+        
         if self.isSupportSystemctl():
             return self.getSystemctlCmd("crond.service", action)
+        elif distname == "debian" and version == "buster/sid":
+            return self.getServiceCmd("cron", action)
         else:
             return self.getServiceCmd("crond", action)
 
@@ -1917,12 +1931,14 @@ class RHELPlatform(LinuxPlatform):
         try:
             distName, version, currentId = dist()
             bits = platform.architecture()[0]
+
             if ((bits == BIT_VERSION and
                  ((distName.lower() == EULEROS and version[0:3] in
                    SUPPORT_EULEROS_VERSION_LIST) or
                   (distName.lower() in SUPPORT_RHEL_SERIES_PLATFORM_LIST and
                    version[0:3] in SUPPORT_RHEL_SERIES_VERSION_LIST)) or
-                 (distName.lower() == OPENEULER)
+                 (distName.lower() == OPENEULER) or 
+                 (distName.lower() == DEBIAN and version == "buster/sid")
             )):
                 return distName.lower(), version[0:3]
             else:
@@ -1935,6 +1951,10 @@ class RHELPlatform(LinuxPlatform):
                                     " The current system is: %s%s%s" % (
                                         distName.lower(),
                                         version[0:3], currentId))
+                if distName.lower() == DEBIAN:
+                    raise Exception(ErrorCode.GAUSS_519["GAUSS_51900"] +
+                                    " The current system is: %s/%s" % (
+                                        distName.lower(), version))
                 else:
                     raise Exception(ErrorCode.GAUSS_519["GAUSS_51900"] +
                                     " The current system is: %s%s" % (
@@ -1974,6 +1994,7 @@ class UserPlatform():
         #     SuSE11          sp1/2/3/4 64bit
         #     SuSE12          sp0/1/2/3 64bit
         #     Kylin           "10" 64bit
+        #     Ubuntu          "18.04" 64bit
         distName, version, idNum = dist()
         if distName.lower() not in SUPPORT_WHOLE_PLATFORM_LIST:
             raise Exception(ErrorCode.GAUSS_519["GAUSS_51900"] +

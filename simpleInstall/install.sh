@@ -1,5 +1,12 @@
 #!/bin/bash
 
+bash_flag=`ls -l /bin/sh | grep -o -E bash`
+if [ ! $bash_flag ]
+then
+    echo "You should switch shell to bash first!"
+    exit 1
+fi
+
 readonly cur_path=$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd && cd - &>/dev/null)
 
 source $cur_path"/common.sh"
@@ -21,7 +28,7 @@ function fn_get_param()
     fn_prase_input_param $@
     host_name=`hostname -f`
     system_arch=`uname -p`
-    system_name=`cat /etc/os-release | grep '^ID=".*' | grep -o -E '(openEuler|centos)'`
+    system_name=`cat /etc/os-release | grep '^ID=.*' | grep -o -E '(openEuler|centos|ubuntu)'`
     install_tar="/home/$user_name/openGaussTar"     #安装包所在路径(可修改)
     if [ ! $install_location ]
     then
@@ -84,25 +91,29 @@ function fn_get_openGauss_tar()
 {
     mkdir -p "$install_tar" 2>/dev/null
     chown -R $user_name:$user_grp "$install_tar"
-    if [ "$system_name" == "openEuler" ] && [ "$system_arch" == "aarch64" ]
+    if [ "$system_name"X == "openEuler"X ] && [ "$system_arch"X == "aarch64"X ]
     then
         system_arch="arm"
-    elif [ "$system_name" == "openEuler" ] && [ "$system_arch" == "x86_64" ]
+    elif [ "$system_name"X == "openEuler"X ] && [ "$system_arch"X == "x86_64"X ]
     then
         system_arch="x86"
-    elif [ "$system_name" == "centos" ] && [ "$system_arch" == "x86_64" ]
+    elif [ "$system_name"X == "centos"X ] && [ "$system_arch"X == "x86_64"X ]
     then
         system_name="CentOS"
         system_arch="x86"
+    elif [ "$system_name"X == "ubuntu"X ] && [ "$system_arch"X == "x86_64"X ]
+    then
+        system_name="Ubuntu"
+        system_arch="x86"
     else
-        echo "We only support CentOS+x86, openEuler+arm and openEuler+x86 by now."
+        echo "We only support CentOS+x86, openEuler+arm, openEuler+x86 and Ubuntu+x86 by now."
         return 1
     fi
 
     cd "$install_tar"
     if [ "`find $cur_path/../ -maxdepth 1 -name "openGauss-2.0.0-*"|wc -l`" -lt "3" ]
     then
-        if [ "`find . -name "openGauss-2.0.0-*"|wc -l`" -lt "3" ]
+        if [ "`find . -name "openGauss-2.0.0-*"|wc -l`" -lt "3" ] && [ "$system_name"X != "Ubuntu"X ]
         then
             url="https://opengauss.obs.cn-south-1.myhuaweicloud.com/2.0.0/${system_arch}/openGauss-2.0.0-${system_name}-64bit-all.tar.gz"
             echo "Downloading openGauss tar from official website at ${install_tar}"
@@ -116,6 +127,12 @@ function fn_get_openGauss_tar()
             else
                 echo "wget success."
             fi
+        else
+            echo "Can not found openGauss install pkg."
+            echo "The $install_tar need openGauss-2.0.0-${system_name}-64bit-om.tar.gz"
+            echo "The $install_tar need openGauss-2.0.0-${system_name}-64bit.sha256"
+            echo "The $install_tar need openGauss-2.0.0-${system_name}-64bit.tar.bz2"
+            return 1
         fi
     else
         if [ "`find . -name "openGauss-2.0.0-*"|wc -l`" -lt "3" ]
@@ -309,11 +326,11 @@ function fn_install_demoDB()
     then
         read -p "Would you like to create a demo database (yes/no)? " input
     fi
-    if [ $input == "yes" ]
+    if [ "$input"X == "yes"X ]
     then
         fn_load_demoDB 1>$cur_path/load.log 2>&1
         fn_check_demoDB
-    elif [ $input == "no" ]
+    elif [ "$input"X == "no"X ]
     then
         return 2
     else
@@ -329,13 +346,9 @@ function fn_load_demoDB()
     chown $user_name:$user_grp /home/$user_name/{school.sql,finance.sql}
     su - $user_name -c "
     source ~/env_single
-    gs_guc set -D $install_location/cluster/dn1/ -c \"modify_initial_password = false\"
-    gs_om -t stop && gs_om -t start
-    sleep 1
     gsql -d postgres -p $host_port -f /home/$user_name/school.sql
     gsql -d postgres -p $host_port -f /home/$user_name/finance.sql
-    gs_guc set -D $install_location/cluster/dn1/ -c \"modify_initial_password = true\"
-    gs_om -t stop && gs_om -t start"
+    "
 }
 
 function fn_check_demoDB()

@@ -1,0 +1,14 @@
+libaio-dev
+flex
+bison
+libncurses5-dev
+build-essential
+patch
+libreadline-dev
+bzip2
+firewalld
+cron
+net-tools
+openssh-server
+openssh-client
+debianutils

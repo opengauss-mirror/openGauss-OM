@@ -1066,7 +1066,7 @@ remoteservice={remoteservice}'"
         nodeStates = re.split('(?:\|)|(?:\n)', allNodesState)
         dataNodes = {}
         for nodeState in nodeStates:
-            pattern = re.compile("[ ]+[^ ]+[ ]+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})[ ]+[^ ]+[ ]+([^ ]+)[ ]+")
+            pattern = re.compile("[ ]+[^ ]+[ ]+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})[ ]+[^ ]+[ ]+[^ ]+[ ]+([^ ]+)[ ]+")
             result = pattern.findall(nodeState)
             if len(result) != 0:
                 result = result[0]

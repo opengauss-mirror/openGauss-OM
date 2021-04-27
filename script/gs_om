@@ -290,7 +290,6 @@ Install options:
         if self.g_opts.action == ACTION_STATUS:
             if (ParaDict.__contains__("az_name")):
                 azname = ParaDict.get("az_name")
-                print(azname)
                 self.g_opts.azName = azname
         
 

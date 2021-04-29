@@ -127,7 +127,7 @@ Usage:
                   [-l LOGFILE]
     gs_om -t restart [-h HOSTNAME] [-D dataDir] [--time-out=SECS]
                    [--security-mode=MODE] [-l LOGFILE] [-m MODE]
-    gs_om -t status [-h HOSTNAME] [-o OUTPUT] [--detail] [--all] [-l LOGFILE]
+    gs_om -t status [-h HOSTNAME] [-o OUTPUT] [--detail] [--all] [--az=AZ] [-l LOGFILE]
     gs_om -t generateconf -X XMLFILE [--distribute] [-l LOGFILE]
     gs_om -t cert [--cert-file=CERTFILE | --rollback] [-L] [-l LOGFILE]
     gs_om -t kerberos -m [install|uninstall] -U USER [-l LOGFILE]
@@ -157,12 +157,24 @@ Options for stop
   -m, --mode=MODE                 Shutdown mode. It can be f (fast),
                                   or i (immediate).
   -D                              Path of dn
-    --time-out=SECS              Maximum waiting time when start the cluster
+      --time-out=SECS             Maximum waiting time when start the cluster
                                  or node.
+
+Options for restart
+  -h                              Name of the host to be started.
+  -m, --mode=MODE                 Shutdown mode. It can be f (fast),
+                                  or i (immediate).
+  -D                              Path of dn
+      --time-out=SECS             Maximum waiting time when start the
+                                  cluster or node.
+      --security-mode=MODE        database start with security mode: on or off
+                                        on: start with security mode
+                                        off: start without security mode
+
 Options for status
   -h                              Name of the host whose status is to be
                                   queried.
-  --az                            Name of the single az whose status is to
+  --az=AZ                         Name of the single az whose status is to
                                   be queried.
   -o                              Save the result to the specified file.
       --detail                    Show detailed status information.
@@ -219,13 +231,6 @@ Install options:
                 else:
                     self.initClusterInfoFromStaticFile(self.g_opts.user)
 
-            # Check --az with single-primary-multi-standby
-            if (self.g_opts.azName):
-                raise Exception(
-                    ErrorCode.GAUSS_500["GAUSS_50002"] % '-az' +
-                    ". This parameter is used in single primary multi "
-                    "standby.")
-
             # Obtain the owner and group of the cluster installation directory
             if self.g_opts.action != ACTION_KERBEROS:
                 (self.g_opts.user, self.g_opts.group) = g_OSlib.getPathOwner(
@@ -256,7 +261,8 @@ Install options:
         """
         if (self.g_opts.action == ACTION_START or
                 self.g_opts.action == ACTION_STOP or
-                self.g_opts.action == ACTION_STATUS):
+                self.g_opts.action == ACTION_STATUS or
+                self.g_opts.action == ACTION_RESTART):
             if (ParaDict.__contains__("nodename")):
                 nodename = ParaDict.get("nodename")
                 self.g_opts.estimateNodeName = nodename
@@ -276,12 +282,22 @@ Install options:
 
             if ("dataDir" in ParaDict.keys()):
                 self.g_opts.dataDir = ParaDict.get("dataDir")
+    
+    def parseAZ(self, ParaDict):
+        """
+        
+        """
+        if self.g_opts.action == ACTION_STATUS:
+            if (ParaDict.__contains__("az_name")):
+                azname = ParaDict.get("az_name")
+                self.g_opts.azName = azname
+        
 
     def parseTimeOut(self, ParaDict):
         """
         """
         if self.g_opts.action == ACTION_START or self.g_opts.action == \
-                ACTION_STOP:
+                ACTION_STOP or self.g_opts.action == ACTION_RESTART:
             if (ParaDict.__contains__("time_out")):
                 self.g_opts.time_out = ParaDict.get("time_out")
 
@@ -331,7 +347,8 @@ Install options:
     def parseStart(self, ParaDict):
         """
         """
-        if (self.g_opts.action == ACTION_START):
+        if (self.g_opts.action == ACTION_START) \
+            or self.g_opts.action == ACTION_RESTART:
             # The start query can specify az name
             if ParaDict.__contains__("az_name"):
                 self.g_opts.azName = ParaDict.get("az_name")
@@ -341,7 +358,8 @@ Install options:
     def parseStop(self, ParaDict):
         """
         """
-        if (self.g_opts.action == ACTION_STOP):
+        if (self.g_opts.action == ACTION_STOP) \
+            or self.g_opts.action == ACTION_RESTART:
             # The start query can specify az name for OLAP
             if (ParaDict.__contains__("az_name")):
                 self.g_opts.azName = ParaDict.get("az_name")
@@ -459,6 +477,8 @@ Install options:
         self.parseKerberos(ParaDict)
         # Parse log parameter
         self.parseLog(ParaDict)
+        # Parse Az info
+        self.parseAZ(ParaDict)
 
     ###########################################################################
     # Check parameters for all operations
@@ -482,7 +502,7 @@ Install options:
         elif (self.g_opts.action == ACTION_STOP):
             self.checkStopParameter()
         elif (self.g_opts.action == ACTION_RESTART):
-            pass
+            self.checkRestartParameter()
         elif (self.g_opts.action == ACTION_STATUS):
             self.checkOutFileParameter()
         elif (self.g_opts.action == ACTION_REBUID):
@@ -540,6 +560,14 @@ Install options:
         # if the parameter -I is exits, then the -h parameter is required.
         if (self.g_opts.instanceName and (not self.g_opts.nodeName)):
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % "h")
+        
+        # check timeout
+        self.checkTimeOutParam()
+        if self.g_opts.security_mode != "off" and self.g_opts.security_mode \
+                != "on":
+            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
+                                   % "-security-mode")
+    def checkTimeOutParam(self):
         # If the cluster does not specify a time-out period, the default is
         # 300 seconds
         if (self.g_opts.time_out is None):
@@ -558,14 +586,9 @@ Install options:
                 GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
                                        % "-time-out")
 
-        if self.g_opts.security_mode != "off" and self.g_opts.security_mode \
-                != "on":
-            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
-                                   % "-security-mode")
-
     def checkStopParameter(self):
         """
-        Check parameter for stop clster and node
+        Check parameter for stop cluster and node
         input : NA
         output: NA
         """
@@ -573,12 +596,31 @@ Install options:
         if (self.g_opts.instanceName and (not self.g_opts.nodeName)):
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % "h")
             # If no stop type is specified, the default is fast
+        # check timeout
+        self.checkTimeOutParam()
         if (self.g_opts.mode == ""):
             self.g_opts.mode = STOP_MODE_FAST
         # Specifies that the stop type must be f, i or s
         if (self.g_opts.mode not in [STOP_MODE_FAST, STOP_MODE_IMMEDIATE,
                                      "f", "i"]):
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % "m")
+    
+    def checkRestartParameter(self):
+        """
+        Check parameter for restart cluster and node.
+        Restart parameters are same with start and stop.
+        input : NA
+        output: NA
+        """
+        self.checkStartParameter()
+
+        if (self.g_opts.mode == ""):
+            self.g_opts.mode = STOP_MODE_FAST
+        # Specifies that the stop type must be f, i or s
+        if (self.g_opts.mode not in [STOP_MODE_FAST, STOP_MODE_IMMEDIATE,
+                                     "f", "i"]):
+            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % "m")
+
 
     def checkOutFileParameter(self):
         """

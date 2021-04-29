@@ -214,6 +214,11 @@ class OmImpl:
                 self.context.clusterInfo.queryNodeInfo(sshtool, hostName,
                                                        nodeId, cmd.outputFile)
                 return
+            az_name = self.context.g_opts.azName
+            if (az_name):
+                self.context.clusterInfo.queryNodeInfo(sshtool, hostName,
+                                                       nodeId, cmd.outputFile, az_name)
+                return
             if (self.context.g_opts.showAll):
                 self.context.clusterInfo.queryNodeInfo(sshtool, hostName,
                                                        nodeId, cmd.outputFile)

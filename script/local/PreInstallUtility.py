@@ -616,7 +616,7 @@ Common options:
         try:
             self.logger.debug("Change file[/etc/hosts] mode.")
             g_file.changeMode(DefaultValue.HOSTS_FILE, "/etc/hosts")
-            OMCommand.checkHostnameMapping(self.clusterInfo, self.logFile)
+            OMCommand.checkHostnameMapping(self.clusterInfo)
         except Exception as e:
             self.logger.logExit(str(e))
 

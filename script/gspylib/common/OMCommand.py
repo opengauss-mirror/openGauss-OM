@@ -359,7 +359,7 @@ class OMCommand():
             raise Exception(str(e))
 
     @staticmethod
-    def checkHostnameMapping(clusterInfo, logFile):
+    def checkHostnameMapping(clusterInfo):
         """
         function: check host name mapping
         input: NA

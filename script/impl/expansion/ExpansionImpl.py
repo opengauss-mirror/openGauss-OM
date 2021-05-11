@@ -499,7 +499,8 @@ class ExpansionImpl():
         tempShFile = "%s/guc.sh" % self.tempFileDir
         hostIpList = list(self.existingHosts)
         for host in self.expansionSuccess:
-            hostIpList.append(host)
+            if self.expansionSuccess[host]:
+                hostIpList.append(host)
 
         nodeDict = self.context.clusterInfoDict
         backIpNameMap = self.context.backIpNameMap
@@ -520,9 +521,15 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             mkdirCmd = "mkdir -m a+x -p %s; chown %s:%s %s" % \
                 (self.tempFileDir, self.user, self.group, self.tempFileDir)
             sshTool.getSshStatusOutput(mkdirCmd, [host], self.envFile)
-            subprocess.getstatusoutput("if [ ! -e '%s' ]; then mkdir -m a+x -p %s;"
+            exitcode, output = subprocess.getstatusoutput("if [ ! -e '%s' ]; then mkdir -m a+x -p %s;"
                 " fi; touch %s; cat /dev/null > %s" % (self.tempFileDir,
                 self.tempFileDir, tempShFile, tempShFile))
+            if exitcode != 0:
+                self.expansionSuccess[host] = False
+                self.logger.debug("Failed to create temp file guc.sh.")
+                self.logger.debug(exitcode)
+                self.logger.debug(output)
+                continue
             with os.fdopen(os.open("%s" % tempShFile, os.O_WRONLY | os.O_CREAT,
                 stat.S_IWUSR | stat.S_IRUSR), 'w') as fo:
                 fo.write("#bash\n")
@@ -537,6 +544,8 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             self.logger.debug(resultMap)
             self.logger.debug(outputCollect)
             self.cleanSshToolFile(sshTool)
+        if self._isAllFailed():
+            GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35706"] % "set guc")
 
     def addTrust(self):
         """
@@ -854,7 +863,8 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
         clusterInfoDict = self.context.clusterInfoDict
         hostIpList = list(self.existingHosts)
         for host in self.expansionSuccess:
-            hostIpList.append(host)
+            if self.expansionSuccess[host]:
+                hostIpList.append(host)
         hostNames = []
         for host in hostIpList:
             hostNames.append(self.context.backIpNameMap[host])

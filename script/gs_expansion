@@ -259,7 +259,9 @@ General options:
         check trust between primary/current host and every host in hostList
         """
         if hostList == None:
-            hostList = self.nodeNameList
+            hostList = list(self.nodeNameList)
+            backIpList = self.clusterInfo.getClusterBackIps()
+            hostList += backIpList
         gpHome = DefaultValue.getEnv("GPHOME")
         psshPath = "python3 %s/script/gspylib/pssh/bin/pssh" % gpHome
         rootSSHExceptionHosts = []

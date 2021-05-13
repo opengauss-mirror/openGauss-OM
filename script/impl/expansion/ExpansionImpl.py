@@ -1149,7 +1149,8 @@ remoteservice={remoteservice}'"
         self.logger.debug(resultMap)
         self.logger.debug(outputCollect)
         if outputCollect.find("Primary Normal") == -1:
-            GaussLog.exitWithError(ErrorCode.GAUSS_516["GAUSS_51600"])
+            GaussLog.exitWithError((ErrorCode.GAUSS_357["GAUSS_35709"] %
+                ("status", "primary", "Normal")) + "\nExpansion failed.")
         
         self.logger.debug("The primary database is normal.\n")
         currentWalKeepSegments = self.queryPrimaryWalKeepSegments()

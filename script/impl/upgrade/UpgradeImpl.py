@@ -2420,7 +2420,8 @@ class UpgradeImpl:
                 self.pgxcNodeUpdateLocalhost("upgrade")
             self.getLsnInfo()
             if self.context.action == \
-                    Const.ACTION_INPLACE_UPGRADE and not postUpgrade:
+                    Const.ACTION_INPLACE_UPGRADE and not postUpgrade and not \
+                    int(float(self.context.newClusterNumber) * 1000) > 92298:
                 self.updatePgproc()
         except Exception as e:
             raise Exception("update catalog failed.ERROR: %s" % str(e))

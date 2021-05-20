@@ -216,22 +216,10 @@ General options:
         """
         countClusterNodes = len(self.backIpNameMap.values())
         if (countClusterNodes - len(self.hostIpListForDel)) == 1:
-            flag = input(
-                "The cluster will have only one standalone node left after the operation!"
-                "\nDo you want to continue to drop the target node (yes/no)? ")
-            count_f = 2
-            while count_f:
-                if (
-                        flag.upper() != "YES"
-                        and flag.upper() != "NO"
-                        and flag.upper() != "Y" and flag.upper() != "N"):
-                    count_f -= 1
-                    flag = input("Please type 'yes' or 'no': ")
-                    continue
-                break
-            if flag.upper() != "YES" and flag.upper() != "Y":
-                GaussLog.exitWithError(
-                    ErrorCode.GAUSS_358["GAUSS_35805"] % flag.upper())
+            msgPrint = "The cluster will have only one standalone node left " \
+                       "after the operation!\nDo you want to continue to drop " \
+                       "the target node (yes/no)? "
+            self.checkInput(msgPrint)
             self.flagOnlyPrimary = True
 
     def check_cluster_status(self):
@@ -267,23 +255,9 @@ General options:
                 (status, output) = subprocess.getstatusoutput(cmd)
                 if 'Primary' not in output:
                     GaussLog.exitWithError(ErrorCode.GAUSS_358["GAUSS_35804"])
-
-        flag = input(
-            statusDelHost + "Do you want to continue "
-                            "to drop the target node (yes/no)? ")
-        count_f = 2
-        while count_f:
-            if (
-                    flag.upper() != "YES"
-                    and flag.upper() != "NO"
-                    and flag.upper() != "Y" and flag.upper() != "N"):
-                count_f -= 1
-                flag = input("Please type 'yes' or 'no': ")
-                continue
-            break
-        if flag.upper() != "YES" and flag.upper() != "Y":
-            GaussLog.exitWithError(
-                ErrorCode.GAUSS_358["GAUSS_35805"] % flag.upper())
+        msgPrint = "%sDo you want to continue to drop the target node (yes/no)?" \
+                   % statusDelHost
+        self.checkInput(msgPrint)
 
     def checkConnection(self, hostnames, env):
         """
@@ -321,6 +295,21 @@ General options:
         self.initLogger("gs_dropnode")
         self.logger.ignoreErr = True
 
+    def checkInput(self, msgPrint):
+        flag = input(msgPrint)
+        count_f = 2
+        while count_f:
+            if (
+                    flag.upper() != "YES"
+                    and flag.upper() != "NO"
+                    and flag.upper() != "Y" and flag.upper() != "N"):
+                count_f -= 1
+                flag = input("Please type 'yes' or 'no': ")
+                continue
+            break
+        if flag.upper() != "YES" and flag.upper() != "Y":
+            GaussLog.exitWithError(
+                ErrorCode.GAUSS_358["GAUSS_35805"] % flag.upper())
 
 if __name__ == "__main__":
     # check if user is root

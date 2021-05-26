@@ -823,8 +823,8 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
         if not os.path.exists(static_config_dir):
             os.makedirs(static_config_dir)
 
-        # valid if dynamic config file exists.
-        dynamic_file = "%s/bin/cluster_dynamic_config" % appPath
+        # valid if dynamic config file exists on primary node.
+        dynamic_file = os.path.join(appPath, "bin", "cluster_dynamic_config")
         dynamic_file_exist = False
         if os.path.exists(dynamic_file):
             dynamic_file_exist = True
@@ -840,10 +840,15 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             hostSsh = SshTool([hostName])
             targetFile = "%s/bin/cluster_static_config" % appPath
             hostSsh.scpFiles(srcFile, targetFile, [hostName], self.envFile)
-            # if dynamic config file exists, freshconfig it.
+            # if dynamic config file exists on primary node, refreshconf on each host.
+            # if not, remove it on standby nodes if exists.
+            dynamic_opt_cmd = ""
             if dynamic_file_exist:
-                refresh_cmd = "gs_om -t refreshconf"
-                hostSsh.getSshStatusOutput(refresh_cmd, [hostName], self.envFile)
+                dynamic_opt_cmd = "gs_om -t refreshconf"
+            else:
+                dynamic_opt_cmd = "if [ -f '%s' ];then rm %s;fi" % \
+                    (dynamic_file, dynamic_file)
+            hostSsh.getSshStatusOutput(dynamic_opt_cmd, [hostName], self.envFile)
             self.cleanSshToolFile(hostSsh)
         self.logger.log("End to generate and send cluster static file.\n")
         

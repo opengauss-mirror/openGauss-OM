@@ -1413,7 +1413,7 @@ def plan_simulator_check():
     g_logger.debug("Collecting plan simulator.")
     g_jobInfo.jobName = "Collecting plan simulator information"
     haveCnInst = 0
-    for cnInst in g_localnodeinfo.coordinators:
+    for cnInst in g_localnodeinfo.datanodes:
         haveCnInst = 1
         if "*" in g_opts.content:
             sql = "SELECT datname FROM pg_database" \

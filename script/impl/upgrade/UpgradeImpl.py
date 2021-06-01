@@ -855,7 +855,7 @@ class UpgradeImpl:
         output : NA
         """
         self.context.logger.debug("Set upgrade_mode guc parameter.")
-        cmd = "gs_guc %s -N all -I all -c 'upgrade_mode=%d'" % (
+        cmd = "gs_guc %s -I all -c 'upgrade_mode=%d'" % (
             setType, mode)
         self.context.logger.debug("Command for setting database"
                                   " node parameter: %s." % cmd)

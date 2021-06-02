@@ -456,6 +456,7 @@ class ExpansionImpl():
         self.setGucConfig()
         self.addTrust()
         self.generateGRPCCert()
+        self.distributeCipherFile()
         self.buildStandbyHosts()
         self.generateClusterStaticFile()
 
@@ -596,6 +597,34 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             self.context.initSshTool(needGRPCHosts)
             self.context.createGrpcCa(needGRPCHosts)
         self.logger.debug("End to generate GRPC cert.")
+
+    def distributeCipherFile(self):
+        """
+        distribute cipher file to new host
+        """
+        hostList = []
+        for host in self.expansionSuccess:
+            if self.expansionSuccess[host]:
+                hostList.append(host)
+
+        if (len(hostList) == 0):
+            return
+
+        self.logger.debug("Start to distribute cipher file.")
+        cipherFileList = ["datasource.key.cipher",
+                      "datasource.key.rand",
+                      "usermapping.key.cipher",
+                      "usermapping.key.rand"]
+
+        sshTool = SshTool(hostList)
+        appPath = self.context.clusterInfoDict["appPath"]
+        filePath = os.path.join(appPath, "bin")
+        for cipherFile in cipherFileList:
+            scpFile = os.path.join(filePath, "%s" % cipherFile)
+            self.logger.debug("try to send file: %s" % scpFile)
+            if os.path.exists(scpFile):
+                sshTool.scpFiles(scpFile, filePath, hostList)
+        self.logger.debug("End to distribute cipher file.")
 
     def reloadPrimaryConf(self, user=""):
         """

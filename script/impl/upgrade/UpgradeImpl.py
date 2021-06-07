@@ -4691,6 +4691,8 @@ class UpgradeImpl:
         #    server.key.rand
         #    datasource.key.cipher
         #    datasource.key.rand
+        #    usermapping.key.cipher
+        #    usermapping.key.rand
         #    utilslib
         #    /share/sslsert/ca.key
         #    /share/sslsert/etcdca.crt

@@ -208,6 +208,11 @@ General options:
             GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"] % "log")
 
         self.initLogger("gs_expansion")
+        # change the owner of gs_expansion.log to the db user
+        if os.path.isfile(self.logger.logFile):
+            (status, output) = subprocess.getstatusoutput("ls gs_expansion* -al | cut -d' ' -f3")
+            if output != self.user:
+                subprocess.getstatusoutput("chown {}:{} {}".format(self.user, self.group, self.logger.logFile))
         self.logger.ignoreErr = True
     
     def getExpansionInfo(self):

@@ -214,6 +214,11 @@ General options:
         function: init global infos
         """
         self.logger.debug("Init global infos")
+        
+        # verify whether it is single cluster, isSingle means single cluster
+        temp_nodes = self.getOneClusterConfigItem("nodeNames", self.user, self.xmlFile)
+        if len(temp_nodes.split(',')) < 2:
+            self.isSingle = True
 
         # init cluster info
         if self.xmlFile:

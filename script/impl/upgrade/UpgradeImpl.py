@@ -2065,9 +2065,10 @@ class UpgradeImpl:
             with open(lcgroupfile, "w") as fp_json:
                 json.dump({"lcgroupnamelist": lcgroupnames}, fp_json)
             # send file to remote nodes
-            self.context.sshTool.scpFiles(lcgroupfile, self.context.tmpDir)
-            self.context.logger.debug(
-                "Successfully to write and send logical cluster info file.")
+            if (not self.context.isSingle):
+                self.context.sshTool.scpFiles(lcgroupfile, self.context.tmpDir)
+                self.context.logger.debug(
+                    "Successfully to write and send logical cluster info file.")
             return 0
         except Exception as e:
             cmd = "(if [ -f '%s' ]; then rm -f '%s'; fi)" % (
@@ -2666,20 +2667,22 @@ class UpgradeImpl:
                         ErrorCode.GAUSS_502["GAUSS_50210"] % check_upgrade_sql)
                 self.context.logger.debug("Scp {0} file to nodes {1}".format(
                     check_upgrade_sql, dnNodeName))
-                g_OSlib.scpFile(dnNodeName, check_upgrade_sql,
-                                self.context.upgradeBackupPath)
+                if (not self.context.isSingle):
+                    g_OSlib.scpFile(dnNodeName, check_upgrade_sql,
+                                    self.context.upgradeBackupPath)
             if not os.path.isfile(maindb_sql):
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50210"] % maindb_sql)
             if not os.path.isfile(otherdb_sql):
                 raise Exception(
                     ErrorCode.GAUSS_502["GAUSS_50210"] % otherdb_sql)
-            g_OSlib.scpFile(dnNodeName, maindb_sql,
-                            self.context.upgradeBackupPath)
-            g_OSlib.scpFile(dnNodeName, otherdb_sql,
-                            self.context.upgradeBackupPath)
-            self.context.logger.debug(
-                "Scp {0} file and {1} file to nodes {2}".format(
-                    maindb_sql, otherdb_sql, dnNodeName))
+            if (not self.context.isSingle):
+                g_OSlib.scpFile(dnNodeName, maindb_sql,
+                                self.context.upgradeBackupPath)
+                g_OSlib.scpFile(dnNodeName, otherdb_sql,
+                                self.context.upgradeBackupPath)
+                self.context.logger.debug(
+                    "Scp {0} file and {1} file to nodes {2}".format(
+                        maindb_sql, otherdb_sql, dnNodeName))
             # send cmd to that node and exec
             cmd = "%s -t %s -U %s --upgrade_bak_path=%s --script_type=%s -l " \
                   "%s" % (OMCommand.getLocalScript("Local_Upgrade_Utility"),
@@ -4349,10 +4352,10 @@ class UpgradeImpl:
         # send the file to each node
         hosts = self.context.clusterInfo.getClusterNodeNames()
         hosts.remove(DefaultValue.GetHostIpOrName())
-        if not self.context.isSingle:
+        if (not self.context.isSingle):
             stepDir = os.path.normpath(os.path.dirname(step_file))
             self.context.sshTool.scpFiles(step_file, stepDir, hosts)
-        self.context.logger.debug("Successfully distribute the file %s"
+            self.context.logger.debug("Successfully distribute the file %s"
                                   % step_file)
 
     def getNodeStepInplace(self):

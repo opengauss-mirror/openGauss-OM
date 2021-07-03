@@ -612,7 +612,7 @@ class OperCommon:
                     "[gs_dropnode]Failed to set pgsql by guc on %s:%s" % (host, output))
                 raise ValueError(output)
         self.logger.log(
-            "[gs_dropnode]End of set postgresql config file on %s." % host)
+            "[gs_dropnode]End of set openGauss config file on %s." % host)
 
     def SetPghbaConf(self, envProfile, host, pgHbaValue,
                      flagRollback=False):

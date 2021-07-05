@@ -215,11 +215,6 @@ General options:
         """
         self.logger.debug("Init global infos")
         
-        # verify whether it is single cluster, isSingle means single cluster
-        temp_nodes = self.getOneClusterConfigItem("nodeNames", self.user, self.xmlFile)
-        if len(temp_nodes.split(',')) < 2:
-            self.isSingle = True
-
         # init cluster info
         if self.xmlFile:
             self.initClusterInfo()
@@ -230,6 +225,11 @@ General options:
             self.clusterNodes.append(dbNode.name)
         if len(self.clusterNodes) == 0:
             raise Exception(ErrorCode.GAUSS_512["GAUSS_51201"])
+
+        # verify whether it is single cluster, isSingle means single node     
+        if len(self.clusterNodes) == 1:
+            self.isSingle = True
+
         for nodeName in self.nodeNames:
             if nodeName not in self.clusterNodes:
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51619"] % nodeName)

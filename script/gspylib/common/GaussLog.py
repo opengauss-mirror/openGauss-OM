@@ -55,7 +55,7 @@ PREINSTALL_ACTION = ["prepare_path", "check_os_Version", "create_os_user",
                      "check_os_user", "create_cluster_paths",
                      "set_os_parameter", "set_finish_flag", "set_warning_env",
                      "prepare_user_cron_service", "prepare_user_sshd_service",
-                     "set_library", "set_sctp", "set_virtualIp",
+                     "set_library", "set_virtualIp",
                      "clean_virtualIp", "check_hostname_mapping",
                      "init_gausslog", "check_envfile", "check_dir_owner",
                      "set_user_env", "set_tool_env", "gs_preinstall"]

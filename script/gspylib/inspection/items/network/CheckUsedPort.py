@@ -46,17 +46,9 @@ class CheckUsedPort(BaseItem):
 
         return int(tcpUsed)
 
-    def getSctpUsedPort(self):
-        cmd = "cat /proc/net/sctp/assocs|" \
-              "awk '{print $12}'|sort|uniq -c |wc -l"
-        sctpUsed = SharedFuncs.runShellCmd(cmd)
-
-        return int(sctpUsed)
-
     def doCheck(self):
         portRange = self.getPortRange()
         tcpUsed = self.getTcpUsedPort()
-        sctpUsed = self.getSctpUsedPort()
         defaultPortRange = 60000 - 32768
         if (portRange < defaultPortRange):
             self.result.rst = ResultStatus.WARNING
@@ -70,14 +62,7 @@ class CheckUsedPort(BaseItem):
                               " not passed." % tcpUsed
             return
 
-        if (sctpUsed > portRange * 0.8):
-            self.result.rst = ResultStatus.WARNING
-            self.result.val = "sctp port used is %s," \
-                              "Check items are not passed." % sctpUsed
-            return
-
         self.result.rst = ResultStatus.OK
         self.result.val = "port range is %s,tcp port used is %s," \
-                          "sctp port used is %d,Check items pass." \
-                          % (portRange, tcpUsed, sctpUsed)
+                          "Check items pass." % (portRange, tcpUsed)
         return

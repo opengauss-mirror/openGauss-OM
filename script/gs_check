@@ -93,13 +93,13 @@ DEFAULT_TIMEOUT = 1500
 # because single clusters don't need to perform consistency checks and
 # internal communication class checks
 SINGLE_SKIP = ["CheckTimeZone", "CheckEncoding", "CheckKernelVer",
-               "CheckNTPD", "CheckNoCheckSum", "CheckCpuCount",
+               "CheckNTPD", "CheckCpuCount",
                "CheckMemInfo", "CheckDiskConfig",
                "CheckUpVer", "CheckPgxcgroup", "CheckPing",
                "CheckNetWorkDrop", "CheckNetSpeed"]
 
 SETITEM_SKIP = ["CheckCPU", "CheckTimeZone", "CheckOSVer", "CheckNTPD",
-                "CheckSshdService", "CheckNoCheckSum", "CheckEtcHosts",
+                "CheckSshdService", "CheckEtcHosts",
                 "CheckCpuCount", "CheckHyperThread", "CheckMemInfo",
                 "CheckKernelVer", "CheckEncoding", "CheckBootItems",
                 "CheckDropCache", "CheckFilehandle", "CheckKeyProAdj",

@@ -47,8 +47,7 @@ actioItemMap = {
 
 docker_no_need_check = ["net.core.wmem_max", "net.core.rmem_max",
                         "net.core.wmem_default", "net.core.rmem_default",
-                        "net.sctp.sctp_mem", "net.sctp.sctp_rmem",
-                        "net.sctp.sctp_wmem", "net.core.netdev_max_backlog",
+                        "net.core.netdev_max_backlog",
                         "net.ipv4.tcp_max_tw_buckets", "net.ipv4.tcp_tw_reuse",
                         "net.ipv4.tcp_tw_recycle", "net.ipv4.tcp_retries2",
                         "net.ipv4.ip_local_reserved_ports", "net.ipv4.tcp_rmem",
@@ -239,12 +238,7 @@ def checkSysctlParameter(kernelParameter, isSet):
             continue
         if (DefaultValue.checkDockerEnv() and key in docker_no_need_check):
             continue
-        # The parameter sctpchecksumerrors check method is independent
-        if (key == "sctpchecksumerrors"):
-            cmd = "cat /proc/net/sctp/snmp | grep SctpChecksumErrors" \
-                  " | awk '{print $2}'"
-        else:
-            cmd = "cat %s" % ("/proc/sys/%s" % key.replace('.', '/'))
+        cmd = "cat %s" % ("/proc/sys/%s" % key.replace('.', '/'))
         (status, output) = subprocess.getstatusoutput(cmd)
         if (status == 0):
             if (key == "vm.min_free_kbytes"
@@ -315,15 +309,6 @@ def setOSParameter(setParameterList, patchlevel):
     # vm.extfrag_threshold parameter, skip set
     if ("vm.extfrag_threshold" in setParameterList and patchlevel == "1"):
         setParameterList.pop("vm.extfrag_threshold")
-    # The parameter sctpchecksumerrors set method is independent
-    if ("sctpchecksumerrors" in setParameterList):
-        cmd = "echo 1 > /sys/module/sctp/parameters/no_checksums"
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if (status != 0):
-            g_logger.debug("The cmd is %s " % cmd)
-            g_logger.log("        Failed to enforce sysctl kernel variable"
-                         " 'sctpchecksumerrors'. Error: %s" % output)
-        setParameterList.pop("sctpchecksumerrors")
 
     if (len(setParameterList) != 0):
         g_logger.debug("Setting sysctl parameter.")
@@ -332,7 +317,7 @@ def setOSParameter(setParameterList, patchlevel):
             g_logger.log("        Set variable '%s' to '%s'"
                          % (key, setParameterList[key]))
         cmd = "sysctl -p"
-        (status, output) = subprocess.getstatusoutput(cmd)
+        (status, _) = subprocess.getstatusoutput(cmd)
         if (status != 0):
             cmderrorinfo = "sysctl -p | grep 'No such file or directory'"
             (status, outputresult) = subprocess.getstatusoutput(cmderrorinfo)

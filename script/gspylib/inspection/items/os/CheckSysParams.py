@@ -122,21 +122,13 @@ class CheckSysParams(BaseItem):
         for key in kernelParameter:
             if (patchlevel == "1" and key == "vm.extfrag_threshold"):
                 continue
-            if (key == "sctpchecksumerrors"):
-                snmpFile = "/proc/net/sctp/snmp"
-                if (os.path.isfile(snmpFile)):
-                    output = \
-                        g_file.readFile(snmpFile, 'SctpChecksumErrors')[
-                            0].split()[1].strip()
-                else:
-                    continue
-            else:
-                sysFile = "/proc/sys/%s" % key.replace('.', '/')
-                # High version of linux no longer supports tcp_tw_recycle
-                if (not os.path.exists(
-                        sysFile) and key == "net.ipv4.tcp_tw_recycle"):
-                    continue
-                output = g_file.readFile(sysFile)[0].strip()
+
+            sysFile = "/proc/sys/%s" % key.replace('.', '/')
+            # High version of linux no longer supports tcp_tw_recycle
+            if (not os.path.exists(
+                    sysFile) and key == "net.ipv4.tcp_tw_recycle"):
+                continue
+            output = g_file.readFile(sysFile)[0].strip()
             if (len(output.split()) > 1):
                 output = ' '.join(output.split())
 
@@ -184,16 +176,6 @@ class CheckSysParams(BaseItem):
                 checkResultList = checkResult.split('\'')
                 setParameterList[checkResultList[1]] = checkResultList[5]
         self.result.val = ""
-        # The parameter sctpchecksumerrors set method is independent
-        if ("sctpchecksumerrors" in setParameterList):
-            cmd = "echo 1 > /sys/module/sctp/parameters/no_checksums"
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if (status != 0):
-                self.result.val += "       " \
-                                   " Failed to enforce sysctl kernel " \
-                                   "variable 'sctpchecksumerrors'. " \
-                                   "Error: %s" % output
-            setParameterList.pop("sctpchecksumerrors")
 
         if (len(setParameterList) != 0):
             for key in setParameterList:

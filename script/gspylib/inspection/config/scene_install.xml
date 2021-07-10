@@ -12,13 +12,11 @@
         <item name="CheckStack"/>
         <item name="CheckCrondService"/>
         <item name="CheckSshdService"/>
-        <item name="CheckSctpService"/>
         <item name="CheckSysParams">
             <threshold>
                 version=V1R7C00
             </threshold>
         </item>
-        <item name="CheckNoCheckSum"/>
         <item name="CheckDiskFormat"/>
         <item name="CheckEtcHosts"/>
         <item name="CheckHyperThread"/>

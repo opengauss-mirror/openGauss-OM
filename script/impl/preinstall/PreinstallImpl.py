@@ -54,8 +54,6 @@ ACTION_PREPARE_USER_CRON_SERVICE = "prepare_user_cron_service"
 ACTION_PREPARE_USER_SSHD_SERVICE = "prepare_user_sshd_service"
 # set the dynamic link library
 ACTION_SET_LIBRARY = "set_library"
-# set sctp service
-ACTION_SET_SCTP = "set_sctp"
 # set virtual Ip
 ACTION_SET_VIRTUALIP = "set_virtualIp"
 # clean virtual Ip
@@ -1485,38 +1483,6 @@ class PreinstallImpl:
         """
         pass
 
-    def setSctp(self):
-        """
-        function: setting SCTP service
-        input: NA
-        output: NA
-        """
-        self.context.logger.log("Setting SCTP service.", "addStep")
-        try:
-            # set SCTP service
-            cmd = "%s -t %s -u %s -l %s" % (
-                OMCommand.getLocalScript("Local_PreInstall"),
-                ACTION_SET_SCTP,
-                self.context.user,
-                self.context.localLog)
-            # check the mpprcFile
-            if self.context.mpprcFile != "":
-                cmd += " -s '%s'" % self.context.mpprcFile
-            self.context.logger.debug("Command for setting SCTP: %s" % cmd)
-
-            # exec cmd for set SCTP
-            DefaultValue.execCommandWithMode(
-                cmd,
-                "set SCTP",
-                self.context.sshTool,
-                self.context.localMode or self.context.isSingle,
-                self.context.mpprcFile)
-        except Exception as e:
-            # failed set SCTP service
-            raise Exception(str(e))
-        # Successfully set SCTP service
-        self.context.logger.log("Successfully set SCTP service.", "constant")
-
     def setVirtualIp(self):
         """
         function: set the virtual IPs
@@ -1893,10 +1859,6 @@ class PreinstallImpl:
         self.checkOSVersion()
         # create path and set mode
         self.createDirs()
-
-        # set Sctp
-        if not DefaultValue.checkDockerEnv():
-            self.setSctp()
         # set os parameters
         self.setAndCheckOSParameter()
         # prepare cron service for user

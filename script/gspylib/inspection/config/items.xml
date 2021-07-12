@@ -334,24 +334,6 @@
             <analysis>default</analysis>
         </checkitem>
 
-        <checkitem id="10026" name="CheckNoCheckSum">
-            <title>
-                <zh>检查nochecksum值是否为预期值且一致(默认为N,RedHat6.4/6.5且bond是为Y)</zh>
-                <en>Check the nochecksum</en>
-            </title>
-            <threshold/>
-            <suggestion>
-                <zh>修改nochecksum值为一致的预期值</zh>
-            </suggestion>
-            <standard>
-                <zh>检查nochecksum值，若符合预期且一致则检查项通过，否则检查项不通过</zh>
-            </standard>
-            <category>network</category>
-            <permission>root</permission>
-            <scope>all</scope>
-            <analysis>consistent</analysis>
-        </checkitem>
-
         <checkitem id="10027" name="CheckOmmUserExist">
             <title>
                 <zh>检查omm用户是否已删除</zh>
@@ -454,24 +436,6 @@
             <permission>user</permission>
             <scope>all</scope>
             <analysis>consistent</analysis>
-        </checkitem>
-
-        <checkitem id="10032" name="CheckSctpService">
-            <title>
-                <zh>检查sctp服务</zh>
-                <en>Check sctp service</en>
-            </title>
-            <threshold/>
-            <suggestion>
-                <zh>安装及加载sctp服务</zh>
-            </suggestion>
-            <standard>
-                <zh>stcp服务开启且写在开机自启动文件中则检查项通过，否则检查项不通过</zh>
-            </standard>
-            <category>os</category>
-            <permission>root</permission>
-            <scope>all</scope>
-            <analysis>default</analysis>
         </checkitem>
 
         <checkitem id="10033" name="CheckHyperThread">
@@ -1841,7 +1805,7 @@
                 <zh>增大net.ipv4.ip_local_port_range或降低并发</zh>
             </suggestion>
             <standard>
-                <zh>检查net.ipv4.ip_local_port_range，范围大于等于OS默认值通过;检查TCP协议随机端口数，小于总随机端口数的80%通过;检查SCTP协议随机端口数，小于总随机端口数的80%通过</zh>
+                <zh>检查net.ipv4.ip_local_port_range，范围大于等于OS默认值通过;检查TCP协议随机端口数，小于总随机端口数的80%通过</zh>
             </standard>
             <category>network</category>
             <permission>user</permission>

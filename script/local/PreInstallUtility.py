@@ -55,7 +55,6 @@ ACTION_SET_TOOL_ENV = "set_tool_env"
 ACTION_PREPARE_USER_CRON_SERVICE = "prepare_user_cron_service"
 ACTION_PREPARE_USER_SSHD_SERVICE = "prepare_user_sshd_service"
 ACTION_SET_LIBRARY = "set_library"
-ACTION_SET_SCTP = "set_sctp"
 ACTION_SET_VIRTUALIP = "set_virtualIp"
 ACTION_CHECK_HOSTNAME_MAPPING = "check_hostname_mapping"
 ACTION_INIT_GAUSSLOG = "init_gausslog"
@@ -256,7 +255,7 @@ Common options:
             GaussLog.exitWithError(str(e))
         parameter_list = [ACTION_CHECK_OS_VERSION, ACTION_SET_FINISH_FLAG,
                           ACTION_SET_USER_ENV, ACTION_SET_LIBRARY, \
-                          ACTION_SET_SCTP, ACTION_PREPARE_USER_CRON_SERVICE,
+                          ACTION_PREPARE_USER_CRON_SERVICE,
                           ACTION_PREPARE_USER_SSHD_SERVICE, \
                           ACTION_SET_VIRTUALIP, ACTION_INIT_GAUSSLOG,
                           ACTION_CHECK_ENVFILE, ACTION_CHECK_OS_SOFTWARE, \
@@ -1981,88 +1980,6 @@ Common options:
             self.logger.logExit(str(e))
         self.logger.debug("Successfully set ARM Optimization.")
 
-    def setSctp(self):
-        """
-        function: Setting SCTP
-        input : NA
-        output: NA
-        """
-        self.logger.debug("Setting SCTP.")
-        try:
-
-            key = "install ipv6 \/bin\/true"
-            confFile = "/etc/modprobe.d/*ipv6.conf"
-
-            initFile = DefaultValue.getOSInitFile()
-            cmd = "ls %s" % confFile
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status == 0:
-                cmd = "sed -i 's/^.*\(%s.*\)/#\\1/g' %s" % (key, confFile)
-                (status, output) = subprocess.getstatusoutput(cmd)
-                if status != 0:
-                    self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50223"]
-                                        % confFile + " Error: \n%s" % output)
-            cmd = "modprobe ipv6"
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                                    + " Error: \n%s" % output)
-            cmd = "modprobe sctp"
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                                    + " Error: \n%s" % output)
-
-            cmd = "uname -r"
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                                    + " Error: \n%s" % output)
-
-            # Since redhat7.4 kernel module files ending in .xz
-            stcpFile = "/lib/modules/%s/kernel/net/sctp/sctp.ko" \
-                       % output.strip()
-            stcpFileXz = "/lib/modules/%s/kernel/net/sctp/sctp.ko.xz" \
-                         % output.strip()
-            if (not os.path.exists(stcpFile)) and \
-                    (not os.path.exists(stcpFileXz)):
-                output = stcpFile + " and " + stcpFileXz
-                self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50201"]
-                                    % output)
-
-            cmd_insmod = "insmod %s >/dev/null 2>&1" % stcpFileXz
-            (status, output) = subprocess.getstatusoutput(cmd_insmod)
-
-            cmd_insmod = "insmod %s >/dev/null 2>&1" % stcpFile
-            (status, output) = subprocess.getstatusoutput(cmd_insmod)
-
-            cmd = "lsmod | grep 'sctp ' | wc -l"
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if not str(output.strip()).isdigit() or int(output.strip()) == 0:
-                self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                                    + " Error: \n%s" % output)
-
-            init_cmd = "sed -i '/^modprobe sctp$/d' %s &&" % initFile
-            init_cmd += "echo \"modprobe sctp\" >> %s &&" % initFile
-            init_cmd += "sed -i '/^insmod.*sctp.ko/d' %s &&" % initFile
-            init_cmd += "echo \"%s\" >> %s" % (cmd_insmod, initFile)
-            (status, output) = subprocess.getstatusoutput(init_cmd)
-            if status != 0:
-                self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"]
-                                    % init_cmd + " Error: \n%s" % output)
-
-            cmd = "sed -i \"/^sysctl -p/d\" %s &&" % initFile
-            cmd += "echo \"sysctl -p\" >> %s" % initFile
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                                    + " Error: \n%s" % output)
-
-        except Exception as e:
-            self.logger.logExit(str(e))
-
-        self.logger.debug("Successfully set Sctp.")
-
     def checkVirtualIp(self):
         """
         function: Checking virtual IP
@@ -2915,8 +2832,6 @@ Common options:
                 self.prepareUserSshdService()
             elif self.action == ACTION_SET_LIBRARY:
                 self.setLibrary()
-            elif self.action == ACTION_SET_SCTP:
-                self.setSctp()
             elif self.action == ACTION_SET_VIRTUALIP:
                 DefaultValue.modifyFileOwnerFromGPHOME(self.logger.logFile)
                 self.setVirtualIp()

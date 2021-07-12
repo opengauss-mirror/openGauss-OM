@@ -40,12 +40,10 @@
         <item name="CheckSshdConfig"/>
         <item name="CheckCrondService"/>
         <item name="CheckStack"/>
-        <item name="CheckNoCheckSum"/>
         <item name="CheckSysPortRange"/>
         <item name="CheckMemInfo"/>
         <item name="CheckHyperThread"/>
         <item name="CheckTableSpace"/>
-        <item name="CheckSctpService"/>
         <item name="CheckSysadminUser"/>
         <item name="CheckGUCConsistent"/>
         <item name="CheckMaxProcMemory"/>

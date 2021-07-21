@@ -923,11 +923,11 @@ remoteheartbeatport={remoteHeartPort} \
 remoteservice={remoteservice}'"
                 """.format(dn=localeHostInfo["dataNode"],
                 index=index,
-                localhost=localeHostInfo["sshIp"],
+                localhost=localeHostInfo["backIp"],
                 localport=localeHostInfo["localport"],
                 localeHeartPort=localeHostInfo["heartBeatPort"],
                 localservice=localeHostInfo["localservice"],
-                remoteNode=remoteHostInfo["sshIp"],
+                remoteNode=remoteHostInfo["backIp"],
                 remotePort=remoteHostInfo["localport"],
                 remoteHeartPort=remoteHostInfo["heartBeatPort"],
                 remoteservice=remoteHostInfo["localservice"])
@@ -975,9 +975,10 @@ remoteservice={remoteservice}'"
         failCheckGsomVersionHosts = []
         wrongGaussdbVersionHosts = []
         wrongGsomVersionHosts = []
-        for host in standbyHosts:
-            if not self.expansionSuccess[host]:
+        for backIp in standbyHosts:
+            if not self.expansionSuccess[backIp]:
                 continue
+            host = self.context.backIpNameMap[backIp]
             sshTool = SshTool([host])
             # get gaussdb version
             resultMap, outputCollect = sshTool.getSshStatusOutput(

@@ -65,6 +65,7 @@ ACTION_SET_WHITELIST = "set_white_list"
 ACTION_CHECK_OS_SOFTWARE = "check_os_software"
 ACTION_FIX_SERVER_PACKAGE_OWNER = "fix_server_package_owner"
 ACTION_CHANGE_TOOL_ENV = "change_tool_env"
+ACTION_SET_CGROUP = "set_cgroup"
 
 g_nodeInfo = None
 envConfig = {}
@@ -168,11 +169,12 @@ Usage:
     python3 PreInstallUtility.py -t action -u user -T warning_type
     [-g group] [-X xmlfile] [-P path] [-Q clusterToolPath] [-D mount_path]
     [-e "envpara=value" [...]] [-w warningserverip] [-h nodename]
-    [-s mpprc_file] [--check_empty] [-l log]
+    [-s mpprc_file] [--check_empty] [-l log] [-D mount_path]
 Common options:
     -t                                The type of action.
     -u                                The OS user of cluster.
     -g                                The OS user's group of cluster.
+    -D                                The path that Cgroup will mount on.
     -X                                The XML file path.
     -P                                The path to be check.
     -Q                                The path of cluster tool.
@@ -192,7 +194,7 @@ Common options:
         output: NA
         """
         try:
-            opts, args = getopt.getopt(sys.argv[1:], "t:u:g:X:P:Q:e:s:l:f:R:",
+            opts, args = getopt.getopt(sys.argv[1:], "t:u:g:X:P:Q:e:s:l:f:R:D:",
                                        ["check_empty", "help"])
         except Exception as e:
             self.usage()
@@ -272,6 +274,7 @@ Common options:
                         ACTION_CREATE_CLUSTER_PATHS: \
                             self.checkCreateClusterPathsParameter,
                         ACTION_SET_TOOL_ENV: self.checkSetToolEnvParameter,
+                        ACTION_SET_CGROUP:self.checkSetCgroupParameter,
                         ACTION_CHECK_HOSTNAME_MAPPING: \
                             self.checkHostnameMappingParameter}
         function_map_keys = function_map.keys()
@@ -365,6 +368,15 @@ Common options:
         if self.group == "":
             GaussLog.exitWithError(
                 ErrorCode.GAUSS_500["GAUSS_50001"] % 'g' + ".")
+    
+    def checkSetCgroupParameter(self):
+        """
+        function: check whether SetCgroup parameter is right
+        input : NA
+        output: NA 
+        """
+        if(self.clusterToolPath == ""):
+            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % 'Q' + ".")
 
     def checkCreateClusterPathsParameter(self):
         """
@@ -405,10 +417,6 @@ Common options:
         if self.clusterToolPath == "":
             GaussLog.exitWithError(
                 ErrorCode.GAUSS_500["GAUSS_50001"] % 'Q' + ".")
-        if self.cgroupMountDir != "":
-            if not os.path.isabs(self.cgroupMountDir):
-                GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"]
-                                       % "Cgroup mount directory")
 
     def checkHostnameMappingParameter(self):
         """
@@ -1923,6 +1931,150 @@ Common options:
                                         % cmd + " Error: \n%s" % output)
         self.logger.debug("Successfully set Library.")
 
+    def isSetCgroup(self):
+        """
+        function: Determine whether the current node needs to set Cgroup
+        input : NA
+        output: True     #no need to set cgroup
+                False    #need to set cgroup
+        """
+        #Determine whether action is expansion.
+        hostName = DefaultValue.GetHostIpOrName()
+        if (len(self.clusterInfo.newNodes) == 0):
+            return False
+        #Determine whether the current node is a new node
+        for node in self.clusterInfo.newNodes:
+            if (hostName == node.name):
+                return False
+        self.logger.debug("The current node is the old node for expansion, no need to set cgroup.")
+        return True
+
+    def decompressPkg2Cgroup(self):
+        """
+        function: decompress server package to libcgroup path. gs_cgroup will be used in preinstall step.
+        input: NA
+        output: NA
+        """
+        self.logger.debug("decompress server package to libcgroup path.")
+
+        bz2FileName = g_OSlib.getBz2FilePath()
+        curPath = os.path.dirname(os.path.realpath(__file__))
+        libCgroupPath = os.path.realpath("%s/../../libcgroup" % curPath)
+        if not os.path.exists(libCgroupPath):
+            os.makedirs(libCgroupPath)
+        
+        cmd = "tar -xf %s -C %s" % (bz2FileName, libCgroupPath)
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50217"] % bz2FileName + " Error: \n%s" % output)
+
+        # load library path env
+        ld_path = os.path.join(libCgroupPath, "lib")
+        if 'LD_LIBRARY_PATH' not in os.environ:
+            os.environ['LD_LIBRARY_PATH'] = ld_path
+            os.execve(os.path.realpath(__file__), sys.argv, os.environ)
+        if not os.environ.get('LD_LIBRARY_PATH').startswith(ld_path):
+            os.environ['LD_LIBRARY_PATH'] = ld_path + ":" + os.environ['LD_LIBRARY_PATH']
+            os.execve(os.path.realpath(__file__), sys.argv, os.environ)
+
+    def setCgroup(self):
+        """
+        function: Setting Cgroup
+        input : NA
+        output: NA
+        """
+        if (self.isSetCgroup()):
+            return
+        self.logger.debug("Setting Cgroup.")
+        # decompress server pakcage
+        self.decompressPkg2Cgroup()
+        #create temp directory for libcgroup etc
+        cgroup_etc_dir = "%s/%s/etc" % (self.clusterToolPath, self.user)
+        dirName = os.path.dirname(os.path.realpath(__file__))
+        libcgroup_dir = os.path.realpath("%s/../../libcgroup/lib/libcgroup.so" % dirName)
+        cgroup_exe_dir = os.path.realpath("%s/../../libcgroup/bin/gs_cgroup" % dirName)
+        cmd = "rm -rf '%s/%s'" % (self.clusterToolPath, self.user)
+        (status, output) = DefaultValue.retryGetstatusoutput(cmd)
+        if(status != 0):
+            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50207"] % 'crash Cgroup congiguration file' + " Error: \n%s" % output)
+        cmd = "if [ ! -d '%s' ];then mkdir -p '%s' && " % (cgroup_etc_dir, cgroup_etc_dir)
+        cmd += "chmod %s '%s'/../ -R && chown %s:%s '%s'/../ -R -h;fi" % (DefaultValue.KEY_DIRECTORY_MODE, cgroup_etc_dir, self.user, self.group, cgroup_etc_dir)
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if(status != 0):
+            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50208"] % cgroup_etc_dir + " Error: \n%s" % output)
+
+        # check or prepare libcgroup lib
+        libcgroup_target = "/usr/local/lib/libcgroup.so.1"
+        cmd = "ldd %s | grep 'libcgroup.so.1'" % cgroup_exe_dir
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if(status != 0):
+            self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error: \n%s" % output)
+        elif str(output).find("not found") != -1:
+            cmd = "cp '%s' '%s' && ldconfig" % (libcgroup_dir, libcgroup_target)
+            self.logger.debug("Need copy libcgroup.so.1 from %s to %s." % (libcgroup_dir, libcgroup_target))
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if(status != 0):
+                self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50214"] % libcgroup_target + " Error: \n%s" % output) 
+
+        GPHOME_cgroupCfgFile = "%s/%s/etc/gscgroup_%s.cfg" % (self.clusterToolPath, self.user, self.user)
+        GAUSSHOME_cgroupCfgFile = "%s/etc/gscgroup_%s.cfg" % (self.clusterInfo.appPath, self.user)
+
+        cmd = "(if [ -f '%s' ]; then cp '%s' '%s';fi)" % (GAUSSHOME_cgroupCfgFile, GAUSSHOME_cgroupCfgFile, GPHOME_cgroupCfgFile)
+        self.logger.debug("Command for copying GAUSSHOME gscgroup's config file to GPHOME: %s\n" % cmd)
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if(status != 0):
+            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50214"] % GAUSSHOME_cgroupCfgFile + " Error:\n%s" % output)
+
+        #create cgroup log file.
+        binPath = self.clusterInfo.logPath + "/%s/bin/gs_cgroup/" % self.user
+        if (not os.path.exists(binPath)):
+            g_file.createDirectory(binPath)
+        cgroupLog = binPath + "gs_cgroup.log"
+        c_logger = GaussLog(cgroupLog, "gs_cgroup")
+
+        #Get OS startup file
+        initFile = DefaultValue.getOSInitFile()
+        if initFile == "":
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % "startup file of current OS" + "The startup file for euleros OS is /etc/rc.d/rc.local.")
+
+        #call cgroup
+        cmd = "%s -U %s --upgrade -c -H %s/%s" % (cgroup_exe_dir, self.user, self.clusterToolPath, self.user)
+        init_cmd = "%s && sed -i \"/.* -U .* -c -H .*/d\" %s && " % (cmd, initFile)
+        init_cmd+= "echo \"%s\" >> %s" % (cmd, initFile)
+
+        self.logger.debug("Command for executing gs_cgroup and add call cgroup cmd to init file: %s\n" % init_cmd)
+        (status, output) = subprocess.getstatusoutput(init_cmd)
+        self.logger.debug("The result of gs_cgroup is:\n%s." % output)
+        c_logger.debug(str(output))
+        #Change the owner and permission.
+        g_OSlib.checkLink(binPath)
+        g_file.changeOwner(self.user, binPath, True, retryFlag = True)
+        g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE, binPath, retryFlag = True)
+        g_file.changeMode(DefaultValue.KEY_FILE_MODE, (binPath + "*"), retryFlag = True)
+        if self.clusterInfo.logPath.strip() != "":
+            pre_bin_path = self.clusterInfo.logPath + "/%s/bin" % self.user
+            g_file.changeOwner(self.user, pre_bin_path, True, retryFlag = True)
+        c_logger.closeLog()
+        if(status != 0):
+            self.logger.logExit(str(output))
+
+        self.logger.debug("Successfully set Cgroup.")
+
+    def checkaio(self):
+        # check libaio.so file exist
+        cmd = "ls /usr/local/lib | grep '^libaio.so' | wc -l"
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if (status != 0):
+            self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error: \n%s" % output)
+        elif int(output) == 0:
+            cmd = "ls /usr/lib64 | grep '^libaio.so' | wc -l"
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if (status != 0):
+                self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error: \n%s" % output)
+            elif int(output) == 0:
+                raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % "libaio.so or libaio.so.*")
+
+
     def checkPlatformArm(self):
         """
         function: Setting ARM Optimization
@@ -2876,6 +3028,9 @@ Common options:
                 self.fix_server_pkg_permission()
             elif self.action == ACTION_CHANGE_TOOL_ENV:
                 self.changeToolEnv()
+            elif self.action == ACTION_SET_CGROUP:
+                self.checkaio()
+                self.setCgroup()
             else:
                 self.logger.logExit(ErrorCode.GAUSS_500["GAUSS_50000"]
                                     % self.action)

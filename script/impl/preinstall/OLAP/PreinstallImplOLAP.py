@@ -36,6 +36,8 @@ ACTION_SET_USER_ENV = "set_user_env"
 ACTION_SET_TOOL_ENV = "set_tool_env"
 # set core path
 ACTION_SET_CORE_PATH = "set_core_path"
+#set cgroup service
+ACTION_SET_CGROUP = "set_cgroup"
 # set virtual Ip
 ACTION_SET_VIRTUALIP = "set_virtualIp"
 # clean virtual Ip
@@ -419,6 +421,36 @@ class PreinstallImplOLAP(PreinstallImpl):
         except Exception as e:
             raise Exception(str(e))
         self.context.logger.log("Successfully set core path.", "constant")
+    
+    def setCgroup(self):
+        """
+        function: setting Cgroup
+        input: NA
+        output: NA
+        """
+        self.context.logger.log("Setting Cgroup.", "addStep")
+        try:
+            # set the cgroup
+            cmd = "%s -t %s -u %s -X '%s' -l '%s' -Q %s %s" % (OMCommand.getLocalScript("Local_PreInstall"), 
+                                                               ACTION_SET_CGROUP, 
+                                                               self.context.user, 
+                                                               self.context.xmlFile, 
+                                                               self.context.localLog, 
+                                                               self.context.clusterToolPath, 
+                                                               "")
+            self.context.logger.debug("Command for setting Cgroup: %s." % cmd)
+            # exec cmd fro set cgroup
+            DefaultValue.execCommandWithMode(cmd, 
+                                             "set Cgroup", 
+                                             self.context.sshTool, 
+                                             self.context.localMode or self.context.isSingle, 
+                                             self.context.mpprcFile)
+        except Exception as e:
+            # failed set Cgroup
+            self.context.logger.log("Error: Failed to set Cgroup.")
+            self.context.logger.logExit(str(e))
+        # Successfully set Cgroup
+        self.context.logger.log("Successfully set Cgroup.", "constant")    
 
     def setArmOptimization(self):
         """

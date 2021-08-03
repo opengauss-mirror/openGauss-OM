@@ -169,12 +169,11 @@ Usage:
     python3 PreInstallUtility.py -t action -u user -T warning_type
     [-g group] [-X xmlfile] [-P path] [-Q clusterToolPath] [-D mount_path]
     [-e "envpara=value" [...]] [-w warningserverip] [-h nodename]
-    [-s mpprc_file] [--check_empty] [-l log] [-D mount_path]
+    [-s mpprc_file] [--check_empty] [-l log]
 Common options:
     -t                                The type of action.
     -u                                The OS user of cluster.
     -g                                The OS user's group of cluster.
-    -D                                The path that Cgroup will mount on.
     -X                                The XML file path.
     -P                                The path to be check.
     -Q                                The path of cluster tool.
@@ -194,7 +193,7 @@ Common options:
         output: NA
         """
         try:
-            opts, args = getopt.getopt(sys.argv[1:], "t:u:g:X:P:Q:e:s:l:f:R:D:",
+            opts, args = getopt.getopt(sys.argv[1:], "t:u:g:X:P:Q:e:s:l:f:R:",
                                        ["check_empty", "help"])
         except Exception as e:
             self.usage()

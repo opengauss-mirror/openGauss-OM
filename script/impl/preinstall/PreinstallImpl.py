@@ -1469,6 +1469,14 @@ class PreinstallImpl:
         self.context.logger.log("Successfully set the dynamic link library.",
                                 "constant")
 
+    def setCgroup(self):
+        """
+        function: setting Cgroup
+        input: NA
+        output: NA
+        """
+        pass 
+
     def setCorePath(self):
         """
         function: setting core path
@@ -1911,6 +1919,9 @@ class PreinstallImpl:
         self.setCorePath()
         # set core path
         self.setPssh()
+        # set cgroup
+        self.setCgroup()
+
         self.setArmOptimization()
         # fix server package mode
         self.fixServerPackageOwner()

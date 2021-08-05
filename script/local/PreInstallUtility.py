@@ -1931,7 +1931,7 @@ Common options:
                                         % cmd + " Error: \n%s" % output)
         self.logger.debug("Successfully set Library.")
 
-    def isSetCgroup(self):
+    def needSetCgroup(self):
         """
         function: Determine whether the current node needs to set Cgroup
         input : NA
@@ -1983,7 +1983,7 @@ Common options:
         input : NA
         output: NA
         """
-        if (self.isSetCgroup()):
+        if (self.needSetCgroup()):
             return
         self.logger.debug("Setting Cgroup.")
         # decompress server pakcage

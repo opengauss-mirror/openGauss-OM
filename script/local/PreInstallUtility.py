@@ -660,55 +660,49 @@ Common options:
         except Exception as e:
             raise Exception(str(e))
 
-    def addAllowUser(self, user):
+    def addAllowItemValue(self, allow_item, item_value):
         """
-        function: Add "user" to AllowUsers in /etc/ssh/sshd_config
-                  if necessary.
+        function: Add "item_value" to allow_item in /etc/ssh/sshd_config if necessary.
         input:
-            user: the user name in string.
+            item_value: the item_value name in string.
         output:
             1: Successfully added.
-            0: Already added, or "AllowUsers" is disabled, nothing to do.
+            0: Already added, or allow_item is disabled, nothing to do.
         """
-        # If "AllowUsers" in sshd is enabled, only specified users
-        # can be authenticated.
-        # So we need to add the newly created user to white list.
+        # If "allow_item" in sshd is enabled, only specified users can be authenticated.
+        # So we need to add the newly created group to white list.
         sshd_config = "/etc/ssh/sshd_config"
-        allowUsersCmd = "cat " + sshd_config + " | grep '\\<AllowUsers\\>'"
-        (status, output) = subprocess.getstatusoutput(allowUsersCmd)
-
-        allowUsersRes = output
+        allow_item_cmd = "cat " + sshd_config + " | grep '\\<%s\\>'" % allow_item
+        (status, output) = subprocess.getstatusoutput(allow_item_cmd)
+ 
         # No results found. "grep" returns non-zero if nothing grepped.
-        # AllowUsers in sshd_config is disabled.
+        # AllowItem in sshd_config is disabled.
         if (status != 0) and (output is None or len(output) == 0):
-            self.logger.debug("'AllowUers' of sshd_config is disabled.")
+            self.logger.debug("'%s' of sshd_config is disabled." % allow_item)
             return 0
         elif status != 0:
             # It really failed.
             self.logger.logExit(
-                ErrorCode.GAUSS_503["GAUSS_50321"] % "AllowUsers"
-                + " Command: %s. Error: \n%s" % (
-                    allowUsersCmd, output))
+                ErrorCode.GAUSS_503["GAUSS_50321"] % allow_item + " Command: %s. Error: \n%s"
+                % (allow_item_cmd, output))
+            return 0
         else:
-            allowUsersRes = str(output).lstrip().lstrip("\t")
-            if allowUsersRes.find('#') == 0:
+            allow_item_res = str(output).lstrip().lstrip("\t")
+            if allow_item_res.find('#') == 0:
                 return 0
-            elif allowUsersRes.find('#') > 0:
-                allowUsersRes = allowUsersRes[0:allowUsersRes.find('#')]
-
-        if self.user not in allowUsersRes.split(' '):
-            setAllowUsersCmd = "sed -i '/\\<AllowUsers\\>/d' %s" % sshd_config
-            (status, output) = subprocess.getstatusoutput(setAllowUsersCmd)
-            if status != 0:
-                self.logger.logExit(ErrorCode.GAUSS_514[
-                                        "GAUSS_51400"] % setAllowUsersCmd
-                                    + " Error:\n%s" % output)
-            g_Platform.setKeyValueInSshd(allowUsersRes, user)
+            elif allow_item_res.find('#') > 0:
+                allow_item_res = allow_item_res[0: allow_item_res.find('#')]
+            if item_value not in allow_item_res.split(' '):
+                set_allow_item_cmd = "sed -i '/\\<%s\\>/d' %s" % (allow_item, sshd_config)
+                (status, output) = subprocess.getstatusoutput(set_allow_item_cmd)
+                if status != 0:
+                    self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % set_allow_item_cmd +
+                                        " Error:\n%s" % output)
+                g_Platform.setKeyValueInSshd(allow_item_res, item_value)
         # Attention: here we will not restart sshd service,
         # as it will be done in "prepareUserSshdService".
-        self.logger.debug(
-            "User '%s' added to 'AllowUsers' of %s successfully." % (
-                user, sshd_config))
+        self.logger.debug("item_value '%s' added to '%s' of %s successfully." %
+                          (item_value, allow_item, sshd_config))
         return 1
 
     def createOSUser(self):
@@ -1153,9 +1147,12 @@ Common options:
             self.logger.debug("Write ClientAliveInterval value.")
             sshdNeedReload = True
 
-        # 3. add cluster owner to 'AllowUser' to /etc/ssh/sshd_config
-        # if necessary.
-        if self.addAllowUser(self.user) > 0:
+        # 3. add cluster owner to 'AllowUsers' or 'AllowGroups' to
+        # /etc/ssh/sshd_config if necessary.
+        if self.addAllowItemValue(allow_item="AllowUsers", item_value=self.user) > 0:    
+            sshdNeedReload = True
+
+        if self.addAllowItemValue(allow_item="AllowGroups", item_value=self.group) > 0:
             sshdNeedReload = True
 
         if sshdNeedReload:

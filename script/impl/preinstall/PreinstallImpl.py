@@ -1412,10 +1412,11 @@ class PreinstallImpl:
         self.context.logger.log("Preparing SSH service.", "addStep")
         try:
             # Preparing SSH service
-            cmd = "%s -t %s -u %s -X %s -l %s" % (
-                OMCommand.getLocalScript("Local_PreInstall"),
+            cmd = "%s -t %s -u %s -g %s -X %s -l %s" % \
+                (OMCommand.getLocalScript("Local_PreInstall"),
                 ACTION_PREPARE_USER_SSHD_SERVICE,
                 self.context.user,
+                self.context.group,
                 self.context.xmlFile,
                 self.context.localLog)
             DefaultValue.execCommandWithMode(

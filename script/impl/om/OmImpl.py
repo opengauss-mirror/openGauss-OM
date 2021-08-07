@@ -186,7 +186,7 @@ class OmImpl:
         output:NA
         """
         hostName = DefaultValue.GetHostIpOrName()
-        sshtool = SshTool(self.context.clusterInfo.getClusterNodeNames())
+        sshtool = SshTool(self.context.clusterInfo.getClusterNodeNames(),timeout=self.time_out)
         nodeId = 0
         if (self.context.g_opts.nodeName != ""):
             for dbnode in self.context.clusterInfo.dbNodes:
@@ -224,7 +224,13 @@ class OmImpl:
                                                        nodeId, cmd.outputFile)
                 return
             cmd.clusterStateQuery = True
-        self.context.clusterInfo.queryClsInfo(hostName, sshtool,
+        
+
+        dbNums = len(self.context.clusterInfo.dbNodes)
+        sshtools = []
+        for i in range(dbNums - 1):
+            sshtools.append(SshTool([], timeout=self.time_out))
+        self.context.clusterInfo.queryClsInfo(hostName, sshtools,
                                               self.context.mpprcFile, cmd)
 
     def doRebuildConf(self):

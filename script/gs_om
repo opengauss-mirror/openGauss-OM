@@ -128,12 +128,13 @@ Usage:
     gs_om -t restart [-h HOSTNAME] [-D dataDir] [--time-out=SECS]
                    [--security-mode=MODE] [-l LOGFILE] [-m MODE]
     gs_om -t status [-h HOSTNAME] [-o OUTPUT] [--detail] [--all] [--az=AZ] [-l LOGFILE]
+                    [--time-out=SECS]
     gs_om -t generateconf -X XMLFILE [--distribute] [-l LOGFILE]
     gs_om -t cert [--cert-file=CERTFILE | --rollback] [-L] [-l LOGFILE]
     gs_om -t kerberos -m [install|uninstall] -U USER [-l LOGFILE]
                          [--krb-server|--krb-client]
     gs_om -t view [-o OUTPUT]
-    gs_om -t query [-o OUTPUT]
+    gs_om -t query [-o OUTPUT] [--time-out=SECS]
     gs_om -t refreshconf
 
 General options:
@@ -179,6 +180,7 @@ Options for status
   -o                              Save the result to the specified file.
       --detail                    Show detailed status information.
       --all                       Show all database node status information.
+      --time-out=SECS             Maximum waiting time when query cluster status.
 
 Options for generating configuration files
   -X                              Path of the XML configuration file.
@@ -297,7 +299,8 @@ Install options:
         """
         """
         if self.g_opts.action == ACTION_START or self.g_opts.action == \
-                ACTION_STOP or self.g_opts.action == ACTION_RESTART:
+                ACTION_STOP or self.g_opts.action == ACTION_RESTART \
+                    or self.g_opts.action == ACTION_STATUS or self.g_opts.action == ACTION_QUERY:
             if (ParaDict.__contains__("time_out")):
                 self.g_opts.time_out = ParaDict.get("time_out")
 
@@ -505,6 +508,7 @@ Install options:
             self.checkRestartParameter()
         elif (self.g_opts.action == ACTION_STATUS):
             self.checkOutFileParameter()
+            self.checkTimeOutParam()
         elif (self.g_opts.action == ACTION_REBUID):
             self.checkGenerateConfParameter()
         elif (self.g_opts.action == ACTION_CERT):
@@ -515,6 +519,7 @@ Install options:
             self.checkOutFileParameter()
         elif (self.g_opts.action == ACTION_QUERY):
             self.checkOutFileParameter()
+            self.checkTimeOutParam()
         elif (self.g_opts.action == ACTION_REFRESHCONF):
             pass
         else:

@@ -6143,9 +6143,9 @@ class dbClusterInfo():
         local_script = os.path.dirname(os.path.realpath(__file__)) \
                        + '/../../local/Resetreplconninfo.py'
         cmd = "python3 %s -U %s -t reset" % (local_script, user)
-        (status, output) = \
-            sshtool.getSshStatusOutput(cmd, self.getClusterNodeNames())
+        sshtool.setTimeOut(120)
         for node in self.getClusterNodeNames():
+            (status, output) = sshtool.getSshStatusOutput(cmd, [node])
             if status[node] != 'Success':
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"]
                                 % cmd + "Error:\n%s" % output)

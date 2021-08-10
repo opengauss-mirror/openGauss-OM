@@ -6106,8 +6106,11 @@ class dbClusterInfo():
                                 " Error: \n%s." % str(output) +
                                 "The cmd is %s" % cmd)
         output_list = self.__getStatusByOM(user)
-        output_last_info = output_list[-1].split()
-        output_num = int(output_last_info[0])
+        output_num = 0
+        pattern = re.compile("(\d+) (.*) (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}) (.*)")
+        for contont in output_list:
+            if pattern.search(contont):
+                output_num += 1
         tempstatus = output_list[-output_num:]
         statusdic = {'Primary': 0, 'Standby': 1, 'Cascade': 3, 'Unknown': 9}
         try:

@@ -23,6 +23,7 @@ import getopt
 import os
 import sys
 import subprocess
+import re
 
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
@@ -140,8 +141,11 @@ class Resetreplconninfo():
         output: NA
         """
         output_list = self.__getStatusByOM()
-        output_last_info = output_list[-1].split()
-        output_num = int(output_last_info[0])
+        output_num = 0
+        pattern = re.compile("(\d+) (.*) (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}) (.*)")
+        for contont in output_list:
+            if pattern.search(contont):
+                output_num += 1
         status_list = output_list[-output_num:]
         repl_list = ['replconninfo' + str(i) for i in
                      range(1, len(status_list))]

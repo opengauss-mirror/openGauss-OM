@@ -324,11 +324,14 @@ class OmImplOLAP(OmImpl):
         output : NA
         """
         hostName = DefaultValue.GetHostIpOrName()
-        sshtool = SshTool(self.context.clusterInfo.getClusterNodeNames())
+        dbNums = len(self.context.clusterInfo.dbNodes)
+        sshtools = []
+        for i in range(dbNums - 1):
+            sshtools.append(SshTool([], timeout=self.time_out))
         cmd = queryCmd()
         if (self.context.g_opts.outFile != ""):
             cmd.outputFile = self.context.g_opts.outFile
-        self.context.clusterInfo.queryClsInfo(hostName, sshtool,
+        self.context.clusterInfo.queryClsInfo(hostName, sshtools,
                                               self.context.mpprcFile, cmd)
 
     def doRefreshConf(self):

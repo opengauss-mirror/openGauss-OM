@@ -108,9 +108,9 @@ gs_om_restart = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-I:",
                "--time-out=", "--az=", "-l:", "--nodeId=", "-D:",
                "--security-mode=", "--mode=", "-m:"]
 gs_om_view = ["-t:", "-?", "--help", "-V", "--version", "-o:", "-l:"]
-gs_om_query = ["-t:", "-?", "--help", "-V", "--version", "-o:", "-l:"]
+gs_om_query = ["-t:", "-?", "--help", "-V", "--version", "-o:", "-l:", "--time-out="]
 gs_om_status = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-o:",
-                "--detail", "--all", "-l:", "--az="]
+                "--detail", "--all", "-l:", "--az=", "--time-out="]
 gs_om_generateconf = ["-t:", "-?", "--help", "-V", "--version", "-X:",
                       "--distribute", "-l:"]
 gs_om_cert = ["-t:", "-?", "--help", "-V", "--version", "-L", "-l:",

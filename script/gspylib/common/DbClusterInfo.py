@@ -1654,7 +1654,7 @@ class dbClusterInfo():
                 querycmd = "gs_ctl query -D %s" % dnInst.datadir
                 portcmd = "gs_guc check -D %s -c port" % dnInst.datadir
                 splitcmd = "echo %s" % "------------------------"
-                sshcmd = "%s;%s;%s" % (querycmd, splitcmd, portcmd)
+                sshcmd = "%s&&%s&&%s" % (querycmd, splitcmd, portcmd)
                 dbName = dbNode.name
                 dbInfoList.append({
                     "name": dbName,

@@ -172,8 +172,13 @@ class DN_OLAP(Kernel):
         if azNames is None:
             azNames = []
         tmpDNDict = {}
-        tmpDNDict["listen_addresses"] = "'%s'" % ",".join(
-            self.instInfo.listenIps)
+        if "127.0.0.1" in self.instInfo.listenIps:
+            tmpDNDict["listen_addresses"] = "'%s'" % ",".join(
+                self.instInfo.listenIps)
+        else:
+            tmpDNDict["listen_addresses"] = "'localhost,%s'" % ",".join(
+                self.instInfo.listenIps)
+
         tmpDNDict["local_bind_address"] = "'%s'" % self.instInfo.listenIps[0]
         tmpDNDict["port"] = self.instInfo.port
 

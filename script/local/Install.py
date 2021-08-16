@@ -592,18 +592,18 @@ class Install(LocalBaseOM):
         input : NA
         output: NA
         """
-        self.context.logger.log("Set Cgroup config file to appPath.")
+        self.logger.log("Set Cgroup config file to appPath.")
 
         source_path = os.path.join(os.getenv("GPHOME"),
-            self.context.user, "etc")
+            self.user, "etc")
         target_path = os.path.join(self.installPath, "etc")
         cmd = "cp %s/* %s" % (source_path, target_path)
-        self.context.logger.debug("set cgroup at install step cmd: %s" % cmd)
+        self.logger.debug("set cgroup at install step cmd: %s" % cmd)
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
-            self.context.logger.debug("set cgroup at install step result: %s" % output)
+            self.logger.debug("set cgroup at install step result: %s" % output)
 
-        self.context.logger.log("Successfully Set Cgroup.")
+        self.logger.log("Successfully Set Cgroup.")
 
     def installCluster(self):
         """

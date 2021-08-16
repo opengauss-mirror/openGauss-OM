@@ -2037,14 +2037,23 @@ Common options:
         if initFile == "":
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % "startup file of current OS" + "The startup file for euleros OS is /etc/rc.d/rc.local.")
 
-        #call cgroup
-        cmd = "%s -U %s --upgrade -c -H %s/%s" % (cgroup_exe_dir, self.user, self.clusterToolPath, self.user)
-        init_cmd = "%s && sed -i \"/.* -U .* -c -H .*/d\" %s && " % (cmd, initFile)
-        init_cmd+= "echo \"%s\" >> %s" % (cmd, initFile)
+        # call cgroup
+        # generate cgroup config file under cluster tool path. and then copy it to GAUSSHOME path in gs_install step.
+        execute_cmd = "%s -U %s -c -H %s/%s" % (cgroup_exe_dir, self.user, self.clusterToolPath, self.user)
+        c_logger.debug("Command for executing gs_cgroup: %s\n" % execute_cmd)
+        (status, output) = subprocess.getstatusoutput(execute_cmd)
+        c_logger.debug("The result of execute gs_cgroup is:\n%s." % output)
 
-        self.logger.debug("Command for executing gs_cgroup and add call cgroup cmd to init file: %s\n" % init_cmd)
-        (status, output) = subprocess.getstatusoutput(init_cmd)
-        self.logger.debug("The result of gs_cgroup is:\n%s." % output)
+        # set cgroup cmd to OS initFile. it will be executed at restart os system.
+        gauss_home = self.clusterInfo.appPath
+        init_cmd = "export LD_LIBRARY_PATH=%s/lib/ && %s/bin/gs_cgroup -U %s -c -H %s" % \
+             (gauss_home, gauss_home, self.user, gauss_home)
+        set_init_cmd = "sed -i \"/.* -U %s .* -c -H .*/d\" %s && " % (self.user, initFile)
+        set_init_cmd += "echo \"%s\" >> %s" % (init_cmd, initFile)
+        c_logger.debug("Command for call cgroup cmd to init file: %s\n" % set_init_cmd)
+        
+        (status, output) = subprocess.getstatusoutput(set_init_cmd)
+        c_logger.debug("The result of init gs_cgroup is:\n%s." % output)
         c_logger.debug(str(output))
         #Change the owner and permission.
         g_OSlib.checkLink(binPath)

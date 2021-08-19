@@ -585,6 +585,26 @@ class Install(LocalBaseOM):
             self.logger.log(output)
             self.logger.logExit(ErrorCode.GAUSS_501["GAUSS_50107"] % "app.")
 
+    def __setCgroup(self):
+        """
+        function: copy cgroup config file to gausshome which generated at
+                  preinstall step.
+        input : NA
+        output: NA
+        """
+        self.logger.log("Set Cgroup config file to appPath.")
+
+        source_path = os.path.join(os.getenv("GPHOME"),
+            self.user, "etc")
+        target_path = os.path.join(self.installPath, "etc")
+        cmd = "cp %s/* %s" % (source_path, target_path)
+        self.logger.debug("set cgroup at install step cmd: %s" % cmd)
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            self.logger.debug("set cgroup at install step result: %s" % output)
+
+        self.logger.log("Successfully Set Cgroup.")
+
     def installCluster(self):
         """
         function: install application
@@ -600,6 +620,7 @@ class Install(LocalBaseOM):
         self.__fixInstallPathPermission()
         self.__changeEnv()
         self.__fixFilePermission()
+        self.__setCgroup()
 
     def startCluster(self):
         """

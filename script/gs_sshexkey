@@ -170,6 +170,8 @@ General options:
   -l                          Path of log file.
       --skip-hostname-set     Whether to skip hostname setting.
                               (The default value is set.)
+      --no-deduplicate        Whether to deduplicate the hostname info in /etc/hosts.
+                              (The default value is deduplicated.)
   -?, --help                  Show help information for this utility,
                               and exit the command line mode.
   -V, --version               Show version information.

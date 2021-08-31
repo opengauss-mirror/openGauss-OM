@@ -107,6 +107,7 @@ General options:
                                   commit-upgrade.
   -X                              Path of the XML configuration file of the
                                   later version cluster.
+  -l                              Path of log file.
   --force                         Force to rollback when cluster status is
                                   not normal
   --grey                          Use grey-binary-upgrade

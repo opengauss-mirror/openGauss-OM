@@ -59,11 +59,11 @@ def parse_command():
     parser.add_option('-s', dest='shellmode', action='store_true',
                       help='Output only execution results')
     parser.add_option('-x', dest='extra',
-                      help='Additional scp parameters')
+                      help='Extra command-line arguments')
     parser.add_option('-i', dest='inline', action='store_true',
                       help='aggregated output and error for each server')
     parser.add_option('-O', dest='opt', action='append',
-                      help='Additional scp parameters')
+                      help='Additional ssh parameters')
 
     return parser
 

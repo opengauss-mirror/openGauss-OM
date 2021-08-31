@@ -26,11 +26,10 @@ import sys
 import pwd
 import getopt
 
+GPPATH = os.getenv("GPHOME")
+sys.path.insert(0, GPPATH)
 from script.gspylib.common.DbClusterInfo import dbClusterInfo
 from script.gspylib.common.Common import DefaultValue
-GPPATH = os.getenv("GPHOME")
-DefaultValue.checkPathVaild(GPPATH)
-sys.path.insert(0, GPPATH)
 from script.gspylib.common.GaussLog import GaussLog
 from script.gspylib.common.ErrorCode import ErrorCode
 from script.gspylib.threads.SshTool import SshTool

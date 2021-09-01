@@ -413,7 +413,10 @@ class fileManage():
         """
         try:
             # get uid and gid by username.
-            userInfo = pwd.getpwnam(user)
+            try:
+                userInfo = pwd.getpwnam(user)
+            except KeyError:
+                userInfo = pwd.getpwnam(user)
             uid = userInfo.pw_uid
             gid = userInfo.pw_gid
             group = grp.getgrgid(gid).gr_name

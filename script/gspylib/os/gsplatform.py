@@ -1864,7 +1864,7 @@ class RHELPlatform(LinuxPlatform):
         """
         # get system information
         distname, version = g_Platform.dist()[0:2]
-        
+
         if self.isSupportSystemctl():
             return self.getSystemctlCmd("crond.service", action)
         elif distname == "debian" and version == "buster/sid":
@@ -1937,7 +1937,7 @@ class RHELPlatform(LinuxPlatform):
                    SUPPORT_EULEROS_VERSION_LIST) or
                   (distName.lower() in SUPPORT_RHEL_SERIES_PLATFORM_LIST and
                    version[0:3] in SUPPORT_RHEL_SERIES_VERSION_LIST)) or
-                 (distName.lower() == OPENEULER) or 
+                 (distName.lower() == OPENEULER) or
                  (distName.lower() == DEBIAN and version == "buster/sid")
             )):
                 return distName.lower(), version[0:3]

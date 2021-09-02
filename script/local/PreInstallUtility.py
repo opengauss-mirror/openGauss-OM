@@ -367,15 +367,6 @@ Common options:
         if self.group == "":
             GaussLog.exitWithError(
                 ErrorCode.GAUSS_500["GAUSS_50001"] % 'g' + ".")
-    
-    def checkSetCgroupParameter(self):
-        """
-        function: check whether SetCgroup parameter is right
-        input : NA
-        output: NA 
-        """
-        if(self.clusterToolPath == ""):
-            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % 'Q' + ".")
 
     def checkCreateClusterPathsParameter(self):
         """
@@ -681,7 +672,7 @@ Common options:
         sshd_config = "/etc/ssh/sshd_config"
         allow_item_cmd = "cat " + sshd_config + " | grep '\\<%s\\>'" % allow_item
         (status, output) = subprocess.getstatusoutput(allow_item_cmd)
- 
+
         # No results found. "grep" returns non-zero if nothing grepped.
         # AllowItem in sshd_config is disabled.
         if (status != 0) and (output is None or len(output) == 0):
@@ -1156,7 +1147,7 @@ Common options:
 
         # 3. add cluster owner to 'AllowUsers' or 'AllowGroups' to
         # /etc/ssh/sshd_config if necessary.
-        if self.addAllowItemValue(allow_item="AllowUsers", item_value=self.user) > 0:    
+        if self.addAllowItemValue(allow_item="AllowUsers", item_value=self.user) > 0:
             sshdNeedReload = True
 
         if self.addAllowItemValue(allow_item="AllowGroups", item_value=self.group) > 0:
@@ -1936,18 +1927,19 @@ Common options:
         """
         #Determine whether action is expansion.
         hostName = DefaultValue.GetHostIpOrName()
-        if (len(self.clusterInfo.newNodes) == 0):
+        if len(self.clusterInfo.newNodes) == 0:
             return False
         #Determine whether the current node is a new node
         for node in self.clusterInfo.newNodes:
-            if (hostName == node.name):
+            if hostName == node.name:
                 return False
         self.logger.debug("The current node is the old node for expansion, no need to set cgroup.")
         return True
 
     def decompressPkg2Cgroup(self):
         """
-        function: decompress server package to libcgroup path. gs_cgroup will be used in preinstall step.
+        function: decompress server package to libcgroup path. gs_cgroup will be used in preinstall
+                  step.
         input: NA
         output: NA
         """
@@ -1958,11 +1950,12 @@ Common options:
         libCgroupPath = os.path.realpath("%s/../../libcgroup" % curPath)
         if not os.path.exists(libCgroupPath):
             os.makedirs(libCgroupPath)
-        
+
         cmd = "tar -xf %s -C %s" % (bz2FileName, libCgroupPath)
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
-            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50217"] % bz2FileName + " Error: \n%s" % output)
+            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50217"] % bz2FileName +
+                                " Error: \n%s" % output)
 
         # load library path env
         ld_path = os.path.join(libCgroupPath, "lib")
@@ -1979,7 +1972,7 @@ Common options:
         input : NA
         output: NA
         """
-        if (self.needSetCgroup()):
+        if self.needSetCgroup():
             return
         self.logger.debug("Setting Cgroup.")
         # decompress server pakcage
@@ -1991,39 +1984,50 @@ Common options:
         cgroup_exe_dir = os.path.realpath("%s/../../libcgroup/bin/gs_cgroup" % dirName)
         cmd = "rm -rf '%s/%s'" % (self.clusterToolPath, self.user)
         (status, output) = DefaultValue.retryGetstatusoutput(cmd)
-        if(status != 0):
-            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50207"] % 'crash Cgroup congiguration file' + " Error: \n%s" % output)
+        if status != 0:
+            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50207"] %
+                                'crash Cgroup congiguration file' + " Error: \n%s" % output)
         cmd = "if [ ! -d '%s' ];then mkdir -p '%s' && " % (cgroup_etc_dir, cgroup_etc_dir)
-        cmd += "chmod %s '%s'/../ -R && chown %s:%s '%s'/../ -R -h;fi" % (DefaultValue.KEY_DIRECTORY_MODE, cgroup_etc_dir, self.user, self.group, cgroup_etc_dir)
+        cmd += "chmod %s '%s'/../ -R && chown %s:%s '%s'/../ -R -h;fi" %\
+               (DefaultValue.KEY_DIRECTORY_MODE, cgroup_etc_dir,
+                self.user, self.group, cgroup_etc_dir)
         (status, output) = subprocess.getstatusoutput(cmd)
-        if(status != 0):
-            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50208"] % cgroup_etc_dir + " Error: \n%s" % output)
+        if status != 0:
+            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50208"] %
+                                cgroup_etc_dir + " Error: \n%s" % output)
 
         # check or prepare libcgroup lib
         libcgroup_target = "/usr/local/lib/libcgroup.so.1"
         cmd = "ldd %s | grep 'libcgroup.so.1'" % cgroup_exe_dir
         (status, output) = subprocess.getstatusoutput(cmd)
-        if(status != 0):
+        if status != 0:
             self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error: \n%s" % output)
         elif str(output).find("not found") != -1:
             cmd = "cp '%s' '%s' && ldconfig" % (libcgroup_dir, libcgroup_target)
-            self.logger.debug("Need copy libcgroup.so.1 from %s to %s." % (libcgroup_dir, libcgroup_target))
+            self.logger.debug("Need copy libcgroup.so.1 from %s to %s." %
+                              (libcgroup_dir, libcgroup_target))
             (status, output) = subprocess.getstatusoutput(cmd)
-            if(status != 0):
-                self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50214"] % libcgroup_target + " Error: \n%s" % output) 
+            if status != 0:
+                self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50214"] % libcgroup_target +
+                                    " Error: \n%s" % output)
 
-        GPHOME_cgroupCfgFile = "%s/%s/etc/gscgroup_%s.cfg" % (self.clusterToolPath, self.user, self.user)
+        GPHOME_cgroupCfgFile = "%s/%s/etc/gscgroup_%s.cfg" % (self.clusterToolPath, self.user,
+                                                              self.user)
         GAUSSHOME_cgroupCfgFile = "%s/etc/gscgroup_%s.cfg" % (self.clusterInfo.appPath, self.user)
 
-        cmd = "(if [ -f '%s' ]; then cp '%s' '%s';fi)" % (GAUSSHOME_cgroupCfgFile, GAUSSHOME_cgroupCfgFile, GPHOME_cgroupCfgFile)
-        self.logger.debug("Command for copying GAUSSHOME gscgroup's config file to GPHOME: %s\n" % cmd)
+        cmd = "(if [ -f '%s' ]; then cp '%s' '%s';fi)" % (GAUSSHOME_cgroupCfgFile,
+                                                          GAUSSHOME_cgroupCfgFile,
+                                                          GPHOME_cgroupCfgFile)
+        self.logger.debug("Command for copying GAUSSHOME gscgroup's config file to GPHOME: %s\n"
+                          % cmd)
         (status, output) = subprocess.getstatusoutput(cmd)
-        if(status != 0):
-            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50214"] % GAUSSHOME_cgroupCfgFile + " Error:\n%s" % output)
+        if status != 0:
+            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50214"] % GAUSSHOME_cgroupCfgFile +
+                                " Error:\n%s" % output)
 
         #create cgroup log file.
         binPath = self.clusterInfo.logPath + "/%s/bin/gs_cgroup/" % self.user
-        if (not os.path.exists(binPath)):
+        if not os.path.exists(binPath):
             g_file.createDirectory(binPath)
         cgroupLog = binPath + "gs_cgroup.log"
         c_logger = GaussLog(cgroupLog, "gs_cgroup")
@@ -2031,11 +2035,14 @@ Common options:
         #Get OS startup file
         initFile = DefaultValue.getOSInitFile()
         if initFile == "":
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % "startup file of current OS" + "The startup file for euleros OS is /etc/rc.d/rc.local.")
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % "startup file of current OS" +
+                            "The startup file for euleros OS is /etc/rc.d/rc.local.")
 
         # call cgroup
-        # generate cgroup config file under cluster tool path. and then copy it to GAUSSHOME path in gs_install step.
-        execute_cmd = "%s -U %s --upgrade -c -H %s/%s" % (cgroup_exe_dir, self.user, self.clusterToolPath, self.user)
+        # generate cgroup config file under cluster tool path.
+        # and then copy it to GAUSSHOME path in gs_install step.
+        execute_cmd = "%s -U %s --upgrade -c -H %s/%s" % (cgroup_exe_dir, self.user,
+                                                          self.clusterToolPath, self.user)
         c_logger.debug("Command for executing gs_cgroup: %s\n" % execute_cmd)
         (status, output) = subprocess.getstatusoutput(execute_cmd)
         c_logger.debug("The result of execute gs_cgroup is:\n%s." % output)
@@ -2060,7 +2067,7 @@ Common options:
             pre_bin_path = self.clusterInfo.logPath + "/%s/bin" % self.user
             g_file.changeOwner(self.user, pre_bin_path, True, retryFlag = True)
         c_logger.closeLog()
-        if(status != 0):
+        if status != 0:
             self.logger.logExit(str(output))
 
         self.logger.debug("Successfully set Cgroup.")
@@ -2069,13 +2076,14 @@ Common options:
         # check libaio.so file exist
         cmd = "ls /usr/local/lib | grep '^libaio.so' | wc -l"
         (status, output) = subprocess.getstatusoutput(cmd)
-        if (status != 0):
+        if status != 0:
             self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error: \n%s" % output)
         elif int(output) == 0:
             cmd = "ls /usr/lib64 | grep '^libaio.so' | wc -l"
             (status, output) = subprocess.getstatusoutput(cmd)
-            if (status != 0):
-                self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error: \n%s" % output)
+            if status != 0:
+                self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
+                                    " Error: \n%s" % output)
             elif int(output) == 0:
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % "libaio.so or libaio.so.*")
 

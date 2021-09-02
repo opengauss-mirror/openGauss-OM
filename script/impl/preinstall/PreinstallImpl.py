@@ -1474,7 +1474,7 @@ class PreinstallImpl:
         input: NA
         output: NA
         """
-        pass 
+        pass
 
     def setCorePath(self):
         """

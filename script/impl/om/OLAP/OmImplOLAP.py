@@ -326,7 +326,7 @@ class OmImplOLAP(OmImpl):
         hostName = DefaultValue.GetHostIpOrName()
         dbNums = len(self.context.clusterInfo.dbNodes)
         sshtools = []
-        for i in range(dbNums - 1):
+        for _ in range(dbNums - 1):
             sshtools.append(SshTool([], timeout=self.time_out))
         cmd = queryCmd()
         if (self.context.g_opts.outFile != ""):

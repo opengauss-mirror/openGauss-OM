@@ -215,7 +215,7 @@ class OmImpl:
                                                        nodeId, cmd.outputFile)
                 return
             az_name = self.context.g_opts.azName
-            if (az_name):
+            if az_name:
                 self.context.clusterInfo.queryNodeInfo(sshtool, hostName,
                                                        nodeId, cmd.outputFile, az_name)
                 return
@@ -224,11 +224,11 @@ class OmImpl:
                                                        nodeId, cmd.outputFile)
                 return
             cmd.clusterStateQuery = True
-        
+
 
         dbNums = len(self.context.clusterInfo.dbNodes)
         sshtools = []
-        for i in range(dbNums - 1):
+        for _ in range(dbNums - 1):
             sshtools.append(SshTool([], timeout=self.time_out))
         self.context.clusterInfo.queryClsInfo(hostName, sshtools,
                                               self.context.mpprcFile, cmd)

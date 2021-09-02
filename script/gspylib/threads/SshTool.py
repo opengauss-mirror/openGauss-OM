@@ -750,6 +750,14 @@ class SshTool():
                                               self.__errorPath, srcFile,
                                               targetDir, self.__resultFile)
             (status, output) = subprocess.getstatusoutput(scpCmd)
+
+            # If sending the file fails, we retry after 3s to avoid the 
+            # failure caused by intermittent network disconnection.
+            # If the fails is caused by timeout. no need to retry.
+            if status != 0 and output.find("Timed out") < 0:
+                time.sleep(3)
+                (status, output) = subprocess.getstatusoutput(scpCmd)
+
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50216"]
                                 % ("file [%s]" % srcFile) +

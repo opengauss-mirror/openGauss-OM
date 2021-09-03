@@ -26,16 +26,13 @@ import pwd
 import datetime
 import grp
 import socket
-import stat
 
 sys.path.append(sys.path[0] + "/../../../../")
 from gspylib.threads.SshTool import SshTool
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.Common import DefaultValue, ClusterCommand
 from gspylib.common.GaussLog import GaussLog
-from gspylib.inspection.common.SharedFuncs import cleanFile
-from gspylib.inspection.common.Exception import CheckException, \
-    SQLCommandException
+from gspylib.inspection.common.Exception import CheckException
 from gspylib.common.OMCommand import OMCommand
 
 sys.path.append(sys.path[0] + "/../../../lib/")
@@ -200,9 +197,6 @@ class DropnodeImpl():
                                                  resultDict['syncStandbyStr'],
                                                  sshtool_host,
                                                  self.userProfile,
-                                                 self.context.hostMapForExist[
-                                                     hostNameLoop]['port'][
-                                                     indexForuse],
                                                  '',
                                                  self.context.flagOnlyPrimary)
                 except ValueError:
@@ -212,9 +206,6 @@ class DropnodeImpl():
                                                  resultDict['syncStandbyStr'],
                                                  sshtool_host,
                                                  self.userProfile,
-                                                 self.context.hostMapForExist[
-                                                     hostNameLoop]['port'][
-                                                     indexForuse],
                                                  resultDictForRollback[
                                                      'rollbackReplStr'])
                 indexForuse += 1
@@ -580,7 +571,7 @@ class OperCommon:
         return resultDict
 
     def SetPgsqlConf(self, replNo, host, dndir, syncStandbyValue, sshTool, envfile,
-                     port, replValue='', singleLeft=False):
+                     replValue='', singleLeft=False):
         """
         Set the value of postgresql.conf
         """

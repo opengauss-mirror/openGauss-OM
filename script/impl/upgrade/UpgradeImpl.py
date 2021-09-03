@@ -2065,7 +2065,7 @@ class UpgradeImpl:
             with open(lcgroupfile, "w") as fp_json:
                 json.dump({"lcgroupnamelist": lcgroupnames}, fp_json)
             # send file to remote nodes
-            if (not self.context.isSingle):
+            if not self.context.isSingle:
                 self.context.sshTool.scpFiles(lcgroupfile, self.context.tmpDir)
                 self.context.logger.debug(
                     "Successfully to write and send logical cluster info file.")
@@ -2668,7 +2668,7 @@ class UpgradeImpl:
                         ErrorCode.GAUSS_502["GAUSS_50210"] % check_upgrade_sql)
                 self.context.logger.debug("Scp {0} file to nodes {1}".format(
                     check_upgrade_sql, dnNodeName))
-                if (not self.context.isSingle):
+                if not self.context.isSingle:
                     g_OSlib.scpFile(dnNodeName, check_upgrade_sql,
                                     self.context.upgradeBackupPath)
             if not os.path.isfile(maindb_sql):

@@ -421,7 +421,7 @@ class PreinstallImplOLAP(PreinstallImpl):
         except Exception as e:
             raise Exception(str(e))
         self.context.logger.log("Successfully set core path.", "constant")
-    
+
     def setCgroup(self):
         """
         function: setting Cgroup
@@ -431,25 +431,26 @@ class PreinstallImplOLAP(PreinstallImpl):
         self.context.logger.log("Setting Cgroup.", "addStep")
         try:
             # set the cgroup
-            cmd = "%s -t %s -u %s -X '%s' -l '%s' -Q %s" % (OMCommand.getLocalScript("Local_PreInstall"), 
-                                                               ACTION_SET_CGROUP, 
-                                                               self.context.user, 
-                                                               self.context.xmlFile, 
-                                                               self.context.localLog, 
-                                                               self.context.clusterToolPath)
+            cmd = "%s -t %s -u %s -X '%s' -l '%s' -Q %s" % (
+                OMCommand.getLocalScript("Local_PreInstall"),
+                ACTION_SET_CGROUP,
+                self.context.user,
+                self.context.xmlFile,
+                self.context.localLog,
+                self.context.clusterToolPath)
             self.context.logger.debug("Command for setting Cgroup: %s." % cmd)
             # exec cmd fro set cgroup
-            DefaultValue.execCommandWithMode(cmd, 
-                                             "set Cgroup", 
-                                             self.context.sshTool, 
-                                             self.context.localMode or self.context.isSingle, 
+            DefaultValue.execCommandWithMode(cmd,
+                                             "set Cgroup",
+                                             self.context.sshTool,
+                                             self.context.localMode or self.context.isSingle,
                                              self.context.mpprcFile)
         except Exception as e:
             # failed set Cgroup
             self.context.logger.log("Error: Failed to set Cgroup.")
             self.context.logger.logExit(str(e))
         # Successfully set Cgroup
-        self.context.logger.log("Successfully set Cgroup.", "constant")    
+        self.context.logger.log("Successfully set Cgroup.", "constant")
 
     def setArmOptimization(self):
         """

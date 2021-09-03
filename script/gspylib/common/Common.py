@@ -894,8 +894,8 @@ class DefaultValue():
         # get local host by os function
         hostIp = socket.gethostbyname(hostname)
 
-        # due to two loopback address in ubuntu, 127.0.1.1 are choosed by hostname. 
-        # there is need to choose 127.0.0.1 
+        # due to two loopback address in ubuntu, 127.0.1.1 are choosed by hostname.
+        # there is need to choose 127.0.0.1
         version = g_Platform.dist()[1].split('/')[0]
         if version == "buster" and hostIp == "127.0.1.1":
             hostIp = "127.0.0.1"
@@ -1526,7 +1526,7 @@ class DefaultValue():
         elif (distname in ("redhat", "centos", "euleros", "openEuler") and
               os.path.isfile(initFileRedhat)):
             initFile = initFileRedhat
-        elif (distname == "debian" and version == "buster/sid" and 
+        elif (distname == "debian" and version == "buster/sid" and
               os.path.isfile(initFileUbuntu)):
             initFile = initFileUbuntu
         else:

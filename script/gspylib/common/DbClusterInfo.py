@@ -1636,9 +1636,9 @@ class dbClusterInfo():
         except Exception as e:
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51652"] % str(e))
 
-    def queryClsInfoParallel(self, hostName, sshtools, mpprcFile, cmd):
+    def queryClsInfoParallel(self, hostName, sshtools, mpprcFile):
         """
-        function : queryClsInfoParallel 
+        function : queryClsInfoParallel
                    Query cluster information in parallel.
         input : String
         output : Map
@@ -1669,7 +1669,7 @@ class dbClusterInfo():
             status = 0
             output = ""
 
-            if (dnName != hostName):
+            if dnName != hostName:
                 (statusMap, output) = sshtool.getSshStatusOutput(
                     command, [dnName], mpprcFile)
                 if statusMap[dnName] != 'Success':
@@ -1678,12 +1678,12 @@ class dbClusterInfo():
                 (status, output) = subprocess.getstatusoutput(command)
 
             global_cls_query_rst[dnName] = [status, output]
-        
-        global global_cls_query_rst;
+
+        global global_cls_query_rst
         parallelTool.parallelExecute(queryInstance, dbInfoList)
-        
+
         return global_cls_query_rst
-    
+
     def queryClsInfo(self, hostName, sshtools, mpprcFile, cmd):
         try:
             clusterState = 'Normal'
@@ -1699,7 +1699,7 @@ class dbClusterInfo():
             primaryDbState = ""
             portMap = {}
 
-            queryClsResult = self.queryClsInfoParallel(hostName, sshtools, mpprcFile, cmd)
+            queryClsResult = self.queryClsInfoParallel(hostName, sshtools, mpprcFile)
 
             for dbNode in self.dbNodes:
                 for dnInst in dbNode.datanodes:
@@ -1718,8 +1718,8 @@ class dbClusterInfo():
                         res = re.findall(r'local_role\s*:\s*(\w+)', output)
                         roleStatus = res[0]
                         res = re.findall(r'db_state\s*:\s*(\w+)', output)
-                        dbState = res[0] 
-                    
+                        dbState = res[0]
+
                     if (dbState == "Need"):
                         detailInformation = re.findall(
                             r'detail_information\s*:\s*(\w+)', output)
@@ -1748,7 +1748,7 @@ class dbClusterInfo():
                             clusterState = 'Degraded'
                         if dbState != "Normal":
                             clusterState = 'Degraded'
-                    
+
                     # get port info by guc
                     portMap[dbNode.name] = self.__getPortInfoLocal(dbNode.name, queryClsResult)
             if dnNodeCount == 1:
@@ -1776,12 +1776,12 @@ class dbClusterInfo():
             nodeLen = NODE_ID_LEN + SPACE_LEN + maxNodeNameLen + SPACE_LEN
             instanceLen = INSTANCE_ID_LEN + SPACE_LEN + (
                 maxDataPathLen if cmd.dataPathQuery else 4)
-            
+
             if cmd.azNameQuery:
                 nodeLen += maxAzNameLen + SPACE_LEN
             if cmd.portQuery:
                 instanceLen += 7
-            
+
             outText = outText + "%-*s%-*s%-*s%-*s%s\n" % (
                 nodeLen, "    node", IP_LEN, "node_ip", PORT_LEN, "port", instanceLen, "instance",
                 "state")
@@ -1799,7 +1799,7 @@ class dbClusterInfo():
                     outText = outText + (
                             "%-*s " % (maxNodeNameLen, dbNode.name))
                     outText = outText + ("%-15s " % dnInst.listenIps[0])
-                    
+
                     # port info
                     port = ""
                     if portMap[dbNode.name]:
@@ -1809,7 +1809,7 @@ class dbClusterInfo():
                     outText = outText + ("%-10u " % port)
 
                     outText = outText + ("%u " % dnInst.instanceId)
-                    
+
                     if cmd.dataPathQuery:
                         outText = outText + (
                                 "%-*s " % (maxDataPathLen, dnInst.datadir))
@@ -1822,7 +1822,7 @@ class dbClusterInfo():
                     else:
                         outText = outText + ("%-7s" % roleStatusArray[i])
                     outText = outText + (" %s" % dbStateArray[i])
-                    
+
                     outText = outText + "\n"
                     i += 1
             self.__fprintContent(outText, cmd.outputFile)
@@ -1833,7 +1833,7 @@ class dbClusterInfo():
         """
         function: Get port info form guc result
         """
-        
+
         (status, output) = queryClsResult.get(nodeName)
         if status != 0:
             return None
@@ -1856,7 +1856,7 @@ class dbClusterInfo():
         """
         portcmd = "gs_guc check -D %s -c port" % dnpath
         output = ""
-        if (nodeName != hostName):
+        if nodeName != hostName:
             (statusMap, output) = sshtool.getSshStatusOutput(
                             portcmd, [nodeName], mpprcFile)
             if statusMap[nodeName] != "Success":
@@ -1877,7 +1877,7 @@ class dbClusterInfo():
         if portvalue != "NULL":
             return int(portvalue)
         return DEFAULT_PORT
-        
+
 
     def __getDnRole(self, instanceType):
         """

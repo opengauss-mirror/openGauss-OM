@@ -909,7 +909,7 @@ class ParallelBaseOM(object):
                     + "The two passwords are different, "
                       "please enter password again.")
             else:
-                cmd = "%s/gs_guc encrypt -M server -K %s -D %s " % (binPath,
+                cmd = "%s/gs_guc encrypt -M server -K '%s' -D %s " % (binPath,
                                                                     sshpwd,
                                                                     binPath)
                 (status, output) = subprocess.getstatusoutput(cmd)

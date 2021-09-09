@@ -149,6 +149,7 @@ class CmdOptions():
         self.skipItems = []
         self.LCName = None
         self.ShrinkNodes = None
+        self.nonPrinting = False
 
 
 class CheckContext():
@@ -443,6 +444,7 @@ General options:
       --skip-items                  Skip the specified check item or setting
                                     item with scene check
                                     Example: --skip-items CheckCPU,CheckMTU
+      --non-print                   Do not print output result.
   -?, --help                        Show help information for this utility,
                                     and exit the command line mode.
   -V, --version                     Show version information.
@@ -556,7 +558,8 @@ def parseCommandLine():
             raise CheckException(
                 "Format %s is not available,the valid format is %s" % (
                     g_opts.format, ",".join(formatList)))
-
+    if "nonPrinting" in list(ParaDict.keys()):
+        g_opts.nonPrinting = True
 
 def checkParameter():
     ##########################################################
@@ -1458,7 +1461,7 @@ def doRunCheck():
     # run the check process distributing and no need to clean the resource
     if __isDistributing():
         g_logger.debug("run check items done and exit the command")
-    if g_opts.format == 'default':
+    if g_opts.format == 'default' and not g_opts.nonPrinting:
         # Initialize the self.clusterInfo variable
         print(g_result.outputRaw())
 
@@ -1494,7 +1497,7 @@ def __prepareCmd(items, user, checkid):
         checkIdParam = " --cid=%s " % checkid
     if g_context.routing:
         routingParam = "--routing %s" % g_context.routing
-    cmd = "%s/gs_check -i %s %s %s -L %s -o %s -l %s" % (
+    cmd = "%s/gs_check -i %s %s %s -L %s -o %s -l %s --non-print" % (
         cmdPath, ",".join(itemsName), userParam, checkIdParam,
         routingParam, g_context.tmpPath, g_context.logFile)
     return cmd

@@ -2546,7 +2546,7 @@ class DefaultValue():
                 raise Exception(ErrorCode.GAUSS_514
                                 ["GAUSS_51402"] + "Error:\n%s" % output)
             cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && gs_guc encrypt -M server -K %s -D ./ " % randpass
+            cmd += " && gs_guc encrypt -M server -K '%s' -D ./ " % randpass
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
@@ -2580,7 +2580,7 @@ class DefaultValue():
                 raise Exception(ErrorCode.GAUSS_514
                                 ["GAUSS_51402"] + "Error:\n%s" % output)
             cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && gs_guc encrypt -M client -K %s -D ./ " % randpassClient
+            cmd += " && gs_guc encrypt -M client -K '%s' -D ./ " % randpassClient
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
@@ -2763,13 +2763,13 @@ class DefaultValue():
                 raise Exception(ErrorCode.GAUSS_514
                                 ["GAUSS_51402"] + "Error:\n%s" % output)
             cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && gs_guc encrypt -M server -K %s -D ./ " % randpass
+            cmd += " && gs_guc encrypt -M server -K '%s' -D ./ " % randpass
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
                                 ["GAUSS_51402"] + "Error:\n%s" % output)
             cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && gs_guc encrypt -M client -K %s -D ./ " % randpass
+            cmd += " && gs_guc encrypt -M client -K '%s' -D ./ " % randpass
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514

@@ -1039,6 +1039,35 @@ remoteservice={remoteservice}'"
         self.checkClusterStatus()
         self.validNodeInStandbyList()
         self.checkXMLConsistency()
+        self.checkDnDirEmpty()
+
+    def checkDnDirEmpty(self):
+        """
+        Check whether datanode dir is empty on new nodes.
+        If not empty, we assume that the datanode directory exists 
+        with other database. We should exit and check it.
+        """
+        if self.context.standbyLocalMode:
+            return
+        excepNodes = []
+        for node in self.context.newHostList:
+            nodename = self.context.backIpNameMap[node]
+            dn_dir = self.context.clusterInfoDict[nodename]["dataNode"]
+            cmd = """
+            if [ ! -d "%s" ]; then echo ""; else ls %s; fi;
+            """ % (dn_dir,dn_dir)
+            sshTool = SshTool([node])
+            (statusMap, output) = sshTool.getSshStatusOutput(cmd)
+            if statusMap[node] == DefaultValue.SUCCESS:
+                prefix = '[%s] %s:' % ("SUCCESS", node)
+                result = output[len(prefix):]
+                if result.strip():
+                    excepNodes.append(node)
+        if len(excepNodes) > 0:
+            self.logger.log("The datanode dir of [%s] is not empty. Please check it." % ",".join(excepNodes))
+            exit(0)
+        self.logger.debug("Successfully Check datanode dir is empty.")
+
 
     def checkXMLConsistency(self):
         """

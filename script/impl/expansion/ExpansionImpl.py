@@ -1064,7 +1064,8 @@ remoteservice={remoteservice}'"
                 if result.strip():
                     excepNodes.append(node)
         if len(excepNodes) > 0:
-            self.logger.log("The datanode dir of [%s] is not empty. Please check it." % ",".join(excepNodes))
+            self.logger.log("The datanode dir of [%s] is not empty.\
+                 Please check it." % ",".join(excepNodes))
             exit(0)
         self.logger.debug("Successfully Check datanode dir is empty.")
 

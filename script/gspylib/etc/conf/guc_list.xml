@@ -3,8 +3,6 @@
 <root>
 	<dn>
 	    <PARAM KEY='checkpoint_segments' VALUE='64' />
-	    <PARAM KEY='comm_tcp_mode' VALUE='on' />
-	    <PARAM KEY='comm_quota_size' VALUE='1024kB' />
 	    <PARAM KEY='max_connections' VALUE='5000' />
 	    <PARAM KEY='max_prepared_transactions' VALUE='800' />
 	    <PARAM KEY='work_mem' VALUE='64MB' />

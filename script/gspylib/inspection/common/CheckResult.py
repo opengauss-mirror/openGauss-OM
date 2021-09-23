@@ -205,6 +205,11 @@ class CheckResult(object):
 
         result = ""
         for i in self._items:
+            standstr = ""
+            try:
+                standstr = i.standard.decode()
+            except:
+                standstr = i.standard
             for j in i._items:
                 t = time.localtime(time.time())
                 dateString = time.strftime("%Y-%m-%d %H:%M:%S", t)
@@ -217,7 +222,7 @@ class CheckResult(object):
                     rst = "NG"
                 result += self.outputRaw.__doc__.format(date=dateString,
                                                         name=j.name,
-                                                        standard=i.standard,
+                                                        standard=standstr,
                                                         rst=rst,
                                                         val=j.val, raw=j.raw)
                 result += "\r\n"

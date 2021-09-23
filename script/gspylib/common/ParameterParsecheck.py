@@ -77,7 +77,7 @@ gs_check = ["-?", "--help", "-V", "--version", "-e:", "-i:",
             "--format=", "--cid=", "--disk-threshold=",
             "--time-out=", "--routing=", "--skip-items=",
             "--ShrinkNodes=", "--nodegroup-name=",
-            "--skip-root-items", "--set"]
+            "--skip-root-items", "--set", "--non-print"]
 gs_sshexkey = ["-?", "--help", "-V", "--version",
                "-f:", "--skip-hostname-set", "-l:", "-h:", "-W:", "--no-deduplicate"]
 gs_backup = ["-?", "--help", "-V", "--version", "--backup-dir=",
@@ -379,6 +379,7 @@ class Parameter():
                            "--agent-mode": "agentMode",
                            "--krb-server": "krb-server",
                            "--krb-client": "krb-client",
+                           "--non-print": "nonPrinting"
                            }
         parameterIsBool_keys = parameterIsBool.keys()
 

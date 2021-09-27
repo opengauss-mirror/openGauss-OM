@@ -8,6 +8,7 @@ then
 fi
 
 readonly cur_path=$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd && cd - &>/dev/null)
+readonly version="2.1.0"
 
 source $cur_path"/common.sh"
 
@@ -111,35 +112,35 @@ function fn_get_openGauss_tar()
     fi
 
     cd "$install_tar"
-    if [ "`find $cur_path/../ -maxdepth 1 -name "openGauss-2.0.0-*"|wc -l`" -lt "3" ]
+    if [ "`find $cur_path/../ -maxdepth 1 -name "openGauss-${version}-*"|wc -l`" -lt "3" ]
     then
-        if [ "`find . -name "openGauss-2.0.0-*"|wc -l`" -lt "3" ] && [ "$system_name"X != "Ubuntu"X ]
+        if [ "`find . -name "openGauss-${version}-*"|wc -l`" -lt "3" ] && [ "$system_name"X != "Ubuntu"X ]
         then
-            url="https://opengauss.obs.cn-south-1.myhuaweicloud.com/2.0.0/${system_arch}/openGauss-2.0.0-${system_name}-64bit-all.tar.gz"
+            url="https://opengauss.obs.cn-south-1.myhuaweicloud.com/${version}/${system_arch}/openGauss-${version}-${system_name}-64bit-all.tar.gz"
             echo "Downloading openGauss tar from official website at ${install_tar}"
-            wget $url --timeout=30 --tries=3 && tar -zxf openGauss-2.0.0-${system_name}-64bit-all.tar.gz
+            wget $url --timeout=30 --tries=3 && tar -zxf openGauss-${version}-${system_name}-64bit-all.tar.gz
             if [ $? -ne 0 ]
             then
-                echo "wget error. The $install_tar need openGauss-2.0.0-${system_name}-64bit-om.tar.gz"
-                echo "wget error. The $install_tar need openGauss-2.0.0-${system_name}-64bit.sha256"
-                echo "wget error. The $install_tar need openGauss-2.0.0-${system_name}-64bit.tar.bz2"
+                echo "wget error. The $install_tar need openGauss-${version}-${system_name}-64bit-om.tar.gz"
+                echo "wget error. The $install_tar need openGauss-${version}-${system_name}-64bit.sha256"
+                echo "wget error. The $install_tar need openGauss-${version}-${system_name}-64bit.tar.bz2"
                 return 1
             else
                 echo "wget success."
             fi
         else
             echo "Can not found openGauss install pkg."
-            echo "The $install_tar need openGauss-2.0.0-${system_name}-64bit-om.tar.gz"
-            echo "The $install_tar need openGauss-2.0.0-${system_name}-64bit.sha256"
-            echo "The $install_tar need openGauss-2.0.0-${system_name}-64bit.tar.bz2"
+            echo "The $install_tar need openGauss-${version}-${system_name}-64bit-om.tar.gz"
+            echo "The $install_tar need openGauss-${version}-${system_name}-64bit.sha256"
+            echo "The $install_tar need openGauss-${version}-${system_name}-64bit.tar.bz2"
             return 1
         fi
     else
-        if [ "`find . -name "openGauss-2.0.0-*"|wc -l`" -lt "3" ]
+        if [ "`find . -name "openGauss-${version}-*"|wc -l`" -lt "3" ]
         then
-            cp "$cur_path/../openGauss-2.0.0-${system_name}-64bit-om.tar.gz" \
-               "$cur_path/../openGauss-2.0.0-${system_name}-64bit.tar.bz2" \
-               "$cur_path/../openGauss-2.0.0-${system_name}-64bit.sha256" "$install_tar"
+            cp "$cur_path/../openGauss-${version}-${system_name}-64bit-om.tar.gz" \
+               "$cur_path/../openGauss-${version}-${system_name}-64bit.tar.bz2" \
+               "$cur_path/../openGauss-${version}-${system_name}-64bit.sha256" "$install_tar"
             if [ $? -ne 0 ]
             then
                 echo "copy Installation package error."
@@ -308,7 +309,7 @@ function fn_tar()
         echo "Get openGauss Installation package success."
     fi
     cd "${install_tar}"
-    tar -zxf "openGauss-2.0.0-${system_name}-64bit-om.tar.gz"
+    tar -zxf "openGauss-${version}-${system_name}-64bit-om.tar.gz"
     if [ $? -ne 0 ]
     then
         echo "tar package error."

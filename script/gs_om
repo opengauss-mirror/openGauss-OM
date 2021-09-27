@@ -92,6 +92,7 @@ class CmdOptions():
         self.nodeId = -1
         self.clusterInfo = None
         self.security_mode = "off"
+        self.cluster_number = ""
 
         # kerberos
         self.kerberosMode = ""
@@ -357,6 +358,8 @@ Install options:
                 self.g_opts.azName = ParaDict.get("az_name")
             if ParaDict.__contains__("security_mode"):
                 self.g_opts.security_mode = ParaDict.get("security_mode")
+            if ParaDict.__contains__("cluster_number"):
+                self.g_opts.cluster_number = ParaDict.get("cluster_number")
 
     def parseStop(self, ParaDict):
         """

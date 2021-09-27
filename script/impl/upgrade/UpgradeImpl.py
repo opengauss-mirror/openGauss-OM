@@ -1286,7 +1286,13 @@ class UpgradeImpl:
         start cluster in grey upgrade
         :return:
         """
-        cmd = "gs_om -t start"
+        versionFile = os.path.join(
+            self.context.oldClusterAppPath, "bin/upgrade_version")
+        if os.path.exists(versionFile):
+            _, number, _ = VersionInfo.get_version_info(versionFile)
+            cmd = "gs_om -t start --cluster-number='%s'" % (number)
+        else:
+            cmd = "gs_om -t start"
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %

@@ -323,13 +323,14 @@ General options:
     def decompressVersioncfg(self):
         package_path = os.path.dirname(os.path.realpath(__file__))
         toolpath = package_path + "/../"
-        cmd = "cd " + toolpath + \
-              " && tar -xpf `head -1 version.cfg`*.tar.bz2 ./version.cfg"
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd = "cd " + toolpath + " && tar -xpf `head -1 version.cfg`*.tar.bz2 ./version.cfg"
+        (status, _) = subprocess.getstatusoutput(cmd)
         if status != 0:
-            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"]
-                                % "version.cfg" + "The cmd is %s. " % cmd +
-                                "The output is %s." % output)
+            cmd = "cd " + toolpath + " && tar -xpf `ls openGauss*.tar.bz2|tail -1` ./version.cfg"
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"] % "version.cfg"
+                                       + "The cmd is %s. " % cmd + "The output is %s." % output)
 
     # init global variables
     def initGlobals(self):

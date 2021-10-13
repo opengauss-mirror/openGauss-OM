@@ -150,7 +150,7 @@ def runRootCmd(cmd, rootuser, passwd, mpprcFile=''):
     ssh = None
     try:
         import paramiko
-        cmd = "export LC_ALL=C; source /etc/profile 2>/dev/null; %s" % cmd
+        cmd = "export LC_ALL=C;source /etc/profile 2>/dev/null;export PYTHONIOENCODING=utf-8; %s" % cmd
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect('localhost', 22, rootuser, passwd)

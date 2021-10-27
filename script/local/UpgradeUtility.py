@@ -522,6 +522,11 @@ def syncPostgresqlconf(dbInstance):
                            'parallel_tuple_cost', 'parctl_min_cost', 'tcp_recv_timeout',
                            'transaction_sync_naptime', 'transaction_sync_timeout',
                            'twophase_clean_workers', 'wal_compression']
+        temp_del_guc = readDeleteGuc()
+        g_logger.debug("readDeleteGuc: %s" % temp_del_guc)
+        if 'datanode' in temp_del_guc:
+            internalGucList += temp_del_guc['datanode']
+            
         for gucName in internalGucList:
             if gucName in gucParamDict.keys():
                 del gucParamDict[gucName]

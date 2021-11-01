@@ -112,7 +112,7 @@ gs_om_query = ["-t:", "-?", "--help", "-V", "--version", "-o:", "-l:", "--time-o
 gs_om_status = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-o:",
                 "--detail", "--all", "-l:", "--az=", "--time-out="]
 gs_om_generateconf = ["-t:", "-?", "--help", "-V", "--version", "-X:",
-                      "--distribute", "-l:"]
+                      "--distribute", "-l:", "--old-values=", "--new-values="]
 gs_om_cert = ["-t:", "-?", "--help", "-V", "--version", "-L", "-l:",
               "--cert-file=", "--rollback"]
 gs_om_kerberos = ["-t:", "-?", "--help", "-V", "--version", "-m:", "-U:",
@@ -465,7 +465,10 @@ class Parameter():
             elif (key == "--exclude-tables"):
                 PARAMETER_VALUEDICT['exclude-tables'] = \
                     os.path.realpath(value.strip())
-
+            elif key == "--old-values":
+                PARAMETER_VALUEDICT['old_values'] = value.strip().split(",")
+            elif key == "--new-values":
+                PARAMETER_VALUEDICT['new_values'] = value.strip().split(",")
             # Only check / symbol for gs_lcct.
             if key in ("--name", "--nodegroup-name"):
                 self.checkLcGroupName(key, value)

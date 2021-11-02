@@ -233,6 +233,53 @@ class OmImpl:
         self.context.clusterInfo.queryClsInfo(hostName, sshtools,
                                               self.context.mpprcFile, cmd)
 
+    def change_cluster_info(self):
+        temp_change_dic = {}
+        for i in range(0, len(self.context.g_opts.old_values)):
+            temp_change_dic['90123456789%d' % i] = (self.context.g_opts.old_values[i],
+                                                    self.context.g_opts.new_values[i])
+        # change old value to middle value
+        for key, value in temp_change_dic.items():
+            for node in self.context.clusterInfo.dbNodes:
+                self.change_node_info(node, key, value[0])
+                for inst in node.datanodes:
+                    self.change_inst_info(inst, key, value[0])
+        # change middle value to new value
+        for key, value in temp_change_dic.items():
+            for node in self.context.clusterInfo.dbNodes:
+                self.change_node_info(node, value[1], key)
+                for inst in node.datanodes:
+                    self.change_inst_info(inst, value[1], key)
+
+    def change_node_info(self, node, new_value, old_value):
+        if node.name == old_value:
+            node.name = new_value
+        for i in range(len(node.backIps)):
+            if node.backIps[i] == old_value:
+                node.backIps[i] = new_value
+        for i in range(len(node.virtualIp)):
+            if node.virtualIp[i] == old_value:
+                node.virtualIp[i] = new_value
+        for i in range(len(node.sshIps)):
+            if node.sshIps[i] == old_value:
+                node.sshIps[i] = new_value
+        self.logger.debug("Change the info of node %s successfully." % node.name)
+
+    def change_inst_info(self, inst, new_value, old_value):
+        if inst.hostname == old_value:
+            inst.hostname = new_value
+        if str(inst.port) == old_value:
+            inst.port = int(new_value)
+        if str(inst.haPort) == old_value:
+            inst.haPort = int(new_value)
+        for i in range(len(inst.listenIps)):
+            if inst.listenIps[i] == old_value:
+                inst.listenIps[i] = new_value
+        for i in range(len(inst.haIps)):
+            if inst.haIps[i] == old_value:
+                inst.haIps[i] = new_value
+        self.logger.debug("Change the DN inst on %s successfully." % inst.hostname)
+
     def doRebuildConf(self):
         """
         generating static configuration files for all nodes
@@ -242,9 +289,14 @@ class OmImpl:
         try:
             self.logger.log(
                 "Generating static configuration files for all nodes.")
+            tmpDirName = ""
             # Initialize the cluster information according to the XML file
             self.context.clusterInfo = dbClusterInfo()
-            self.context.clusterInfo.initFromXml(self.context.g_opts.confFile)
+            if self.context.g_opts.old_values:
+                self.context.clusterInfo.initFromStaticConfig(self.context.user)
+                self.change_cluster_info()
+            else:
+                self.context.clusterInfo.initFromXml(self.context.g_opts.confFile)
 
             # 1.create a tmp dir
             self.logger.log(

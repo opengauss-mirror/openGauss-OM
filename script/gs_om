@@ -100,6 +100,10 @@ class CmdOptions():
         self.kerberosType = ""
         self.clusterToolPath = ""
 
+        # change_static
+        self.old_values = []
+        self.new_values = []
+
 
 ###########################################
 class OperationManager(ParallelBaseOM):
@@ -131,6 +135,7 @@ Usage:
     gs_om -t status [-h HOSTNAME] [-o OUTPUT] [--detail] [--all] [--az=AZ] [-l LOGFILE]
                     [--time-out=SECS]
     gs_om -t generateconf -X XMLFILE [--distribute] [-l LOGFILE]
+    gs_om -t generateconf --old-values=old --new-values=new [--distribute] [-l LOGFILE]
     gs_om -t cert [--cert-file=CERTFILE | --rollback] [-L] [-l LOGFILE]
     gs_om -t kerberos -m [install|uninstall] -U USER [-l LOGFILE]
                          [--krb-server|--krb-client]
@@ -185,6 +190,8 @@ Options for status
 
 Options for generating configuration files
   -X                              Path of the XML configuration file.
+  --old-values                    IP or hostname or port like "host1,ip1,port1"
+  --new-values                    IP or hostname or port like "host1,ip1,port1"
       --distribute                Distribute the static configuration file
                                   to installation directory of cluster nodes.
 
@@ -225,7 +232,7 @@ Install options:
             self.g_opts.localLog = os.path.join(dirName,
                                                 DefaultValue.LOCAL_LOG_FILE)
 
-            if (self.g_opts.action == ACTION_REBUID):
+            if self.g_opts.action == ACTION_REBUID and self.g_opts.confFile:
                 self.initClusterInfo()
             else:
                 # Initialize the self.clusterInfo variable
@@ -377,6 +384,10 @@ Install options:
             # Changeip, managecn, and generateconf require the -X parameter
             if (ParaDict.__contains__("confFile")):
                 self.g_opts.confFile = ParaDict.get("confFile")
+            if ParaDict.__contains__("old_values"):
+                self.g_opts.old_values = ParaDict.get("old_values")
+            if ParaDict.__contains__("new_values"):
+                self.g_opts.new_values = ParaDict.get("new_values")
 
     def parseGenerateconf(self, ParaDict):
         """
@@ -646,14 +657,18 @@ Install options:
         input : NA
         output: NA
         """
-
-        # check xml file
-        if (self.g_opts.confFile == ""):
-            GaussLog.exitWithError(
-                ErrorCode.GAUSS_500["GAUSS_50001"] % 'X' + ".")
-        if (not os.path.isfile(self.g_opts.confFile)):
-            GaussLog.exitWithError(
-                ErrorCode.GAUSS_502["GAUSS_50210"] % self.g_opts.confFile)
+        if self.g_opts.old_values.__len__() == 0:
+            # check xml file
+            if self.g_opts.confFile == "":
+                GaussLog.exitWithError(
+                    ErrorCode.GAUSS_500["GAUSS_50001"] % 'X' + ".")
+            if not os.path.isfile(self.g_opts.confFile):
+                GaussLog.exitWithError(
+                    ErrorCode.GAUSS_502["GAUSS_50210"] % self.g_opts.confFile)
+        else:
+            if self.g_opts.old_values.__len__() != self.g_opts.new_values.__len__():
+                GaussLog.exitWithError(
+                    ErrorCode.GAUSS_512["GAUSS_51230"] % ("old-values", "equal to new-values"))
 
     def checkCertParameter(self):
         """

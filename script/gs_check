@@ -1475,14 +1475,14 @@ def doRootCheck():
     # get local node
     host = __getLocalNode(g_context.nodes)
     # prepare the command for running check
-    cmd = __prepareCmd(g_context.items, g_context.user, g_context.checkID)
+    cmd = __prepareCmd(g_context.items, g_context.user, g_context.checkID, True)
     # run root cmd
     output = SharedFuncs.runRootCmd(cmd, g_opts.pwdMap[host][0],
                                     g_opts.pwdMap[host][1], g_context.mpprc)
-    print(output)
+    print(output.decode())
 
 
-def __prepareCmd(items, user, checkid):
+def __prepareCmd(items, user, checkid, print_output=False):
     """
     function: prepare the command for running check
     """
@@ -1491,15 +1491,19 @@ def __prepareCmd(items, user, checkid):
     userParam = ""
     checkIdParam = ""
     routingParam = ""
+    printParam = ""
+    if not print_output:
+        printParam = "--non-print"
+
     if user:
         userParam = " -U %s " % user
     if checkid:
         checkIdParam = " --cid=%s " % checkid
     if g_context.routing:
         routingParam = "--routing %s" % g_context.routing
-    cmd = "%s/gs_check -i %s %s %s -L %s -o %s -l %s --non-print" % (
+    cmd = "%s/gs_check -i %s %s %s -L %s -o %s -l %s %s" % (
         cmdPath, ",".join(itemsName), userParam, checkIdParam,
-        routingParam, g_context.tmpPath, g_context.logFile)
+        routingParam, g_context.tmpPath, g_context.logFile, printParam)
     return cmd
 
 

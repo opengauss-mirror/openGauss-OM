@@ -1092,7 +1092,8 @@ remoteservice={remoteservice}'"
             if [ ! -d "%s" ]; then echo ""; else ls %s; fi;
             """ % (dn_dir,dn_dir)
             sshTool = SshTool([node])
-            (statusMap, output) = sshTool.getSshStatusOutput(cmd)
+            (statusMap, output) = sshTool.getSshStatusOutput(cmd, 
+                env_file="/etc/profile")
             if statusMap[node] == DefaultValue.SUCCESS:
                 prefix = '[%s] %s:' % ("SUCCESS", node)
                 result = output[len(prefix):]

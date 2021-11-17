@@ -3,8 +3,8 @@
 <gs_preinstall desc="prepare installation environment">
     <scene name="OLAP" desc="business flow of LibrA/Elk/DWS">
         <configuration>
-            <reentry>ture/false</reentry>
-            <auto_rollback>ture/false</auto_rollback>
+            <reentry>true/false</reentry>
+            <auto_rollback>true/false</auto_rollback>
             <concurrency_list></concurrency_list>
         </configuration>
 
@@ -52,8 +52,8 @@
 
     <scene name="single" desc="business flow of single cluster">
         <configuration>
-            <reentry>ture/false</reentry>
-            <auto_rollback>ture/false</auto_rollback>
+            <reentry>true/false</reentry>
+            <auto_rollback>true/false</auto_rollback>
             <concurrency_list></concurrency_list>
         </configuration>
 

@@ -101,7 +101,7 @@ gs_dropnode = ["-?", "--help", "-V", "--version", "-U:", "-G:",
 # gs_om child branch
 gs_om_start = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-I:",
                "--time-out=", "--az=", "-l:", "--nodeId=", "-D:",
-               "--security-mode="]
+               "--security-mode=", "--cluster-number="]
 gs_om_stop = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-I:", "-m:",
               "--az=", "-l:", "--mode=", "--nodeId=", "--time-out=", "-D:"]
 gs_om_restart = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-I:",
@@ -338,7 +338,8 @@ class Parameter():
                               "--dbname": "dbname",
                               "--dbuser": "dbuser",
                               "--nodeId": "nodeId",
-                              "--security-mode": "security_mode"
+                              "--security-mode": "security_mode",
+                              "--cluster-number": "cluster_number"
                               }
         parameterNeedValue_keys = parameterNeedValue.keys()
 

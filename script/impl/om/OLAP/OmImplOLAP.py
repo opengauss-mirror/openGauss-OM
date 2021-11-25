@@ -216,11 +216,18 @@ class OmImplOLAP(OmImpl):
             time_out = DefaultValue.TIMEOUT_CLUSTER_START
         else:
             time_out = self.time_out
-        cmd = "source %s; %s -U %s -R %s -t %s --security-mode=%s" % (
-            self.context.g_opts.mpprcFile,
-            OMCommand.getLocalScript("Local_StartInstance"),
-            self.context.user, self.context.clusterInfo.appPath, time_out,
-            self.context.g_opts.security_mode)
+        if self.context.g_opts.cluster_number:
+            cmd = "source %s; %s -U %s -R %s -t %s --security-mode=%s --cluster_number=%s" % (
+                self.context.g_opts.mpprcFile,
+                OMCommand.getLocalScript("Local_StartInstance"),
+                self.context.user, self.context.clusterInfo.appPath, time_out,
+                self.context.g_opts.security_mode, self.context.g_opts.cluster_number)
+        else:
+            cmd = "source %s; %s -U %s -R %s -t %s --security-mode=%s" % (
+                self.context.g_opts.mpprcFile,
+                OMCommand.getLocalScript("Local_StartInstance"),
+                self.context.user, self.context.clusterInfo.appPath, time_out,
+                self.context.g_opts.security_mode)
         if self.dataDir != "":
             cmd += " -D %s" % self.dataDir
         failedOutput = ''

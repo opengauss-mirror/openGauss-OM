@@ -614,7 +614,9 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
         cipherFileList = ["datasource.key.cipher",
                       "datasource.key.rand",
                       "usermapping.key.cipher",
-                      "usermapping.key.rand"]
+                      "usermapping.key.rand",
+                      "subscription.key.cipher",
+                      "subscription.key.rand"]
 
         sshTool = SshTool(hostList)
         appPath = self.context.clusterInfoDict["appPath"]

@@ -1351,7 +1351,8 @@ def backupConfig():
 
         # backup obsserver.key.cipher/obsserver.key.rand and server.key.
         # cipher/server.key.rand and datasource.key.cipher/datasource.key.rand.
-        # usermapping.key.cipher/usermapping.key.rand
+        # usermapping.key.cipher/usermapping.key.rand and subscription.key.cipher
+        # subscription.key.rand
         OBS_cipher_key_bak_file = \
             "%s/bin/obsserver.key.cipher" % clusterAppPath
         cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s';fi)" % (
@@ -1394,6 +1395,12 @@ def backupConfig():
         usermapping_rand = "%s/bin/usermapping.key.rand" % clusterAppPath
         cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s';fi)" % (
             usermapping_rand, usermapping_rand, bakPath)
+        subscription_cipher = "%s/bin/subscription.key.cipher" % clusterAppPath
+        cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s';fi)" % (
+            subscription_cipher, subscription_cipher, bakPath)
+        subscription_rand = "%s/bin/subscription.key.rand" % clusterAppPath
+        cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s';fi)" % (
+            subscription_rand, subscription_rand, bakPath)
         tde_key_cipher = "%s/bin/gs_tde_keys.cipher" % clusterAppPath
         cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s';fi)" % (
             tde_key_cipher, tde_key_cipher, bakPath)
@@ -1583,6 +1590,7 @@ def restoreConfig():
         # and server.key.cipher/server.key.rand
         # and datasource.key.cipher/datasource.key.rand
         # and usermapping.key.cipher/usermapping.key.rand
+        # and subscription.key.cipher/subscription.key.rand
         OBS_cipher_key_bak_file = "%s/obsserver.key.cipher" % bakPath
         cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
             OBS_cipher_key_bak_file, OBS_cipher_key_bak_file, clusterAppPath)
@@ -1623,6 +1631,12 @@ def restoreConfig():
         usermapping_rand = "%s/usermapping.key.rand" % bakPath
         cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
             usermapping_rand, usermapping_rand, clusterAppPath)
+        subscription_cipher = "%s/subscription.key.cipher" % bakPath
+        cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+            subscription_cipher, subscription_cipher, clusterAppPath)
+        subscription_rand = "%s/subscription.key.rand" % bakPath
+        cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+            subscription_rand, subscription_rand, clusterAppPath)
         tde_key_cipher = "%s/gs_tde_keys.cipher" % bakPath
         cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
             tde_key_cipher, tde_key_cipher, clusterAppPath)
@@ -3450,6 +3464,7 @@ def greyUpgradeSyncConfig():
     #  server.key.cipher/server.key.rand and
     # datasource.key.cipher/datasource.key.rand
     # usermapping.key.cipher/usermapping.key.rand
+    # subscription.key.cipher/subscription.key.rand
     OBS_cipher_key_bak_file = "%s/bin/obsserver.key.cipher" % srcDir
     cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
         OBS_cipher_key_bak_file, OBS_cipher_key_bak_file, destDir)
@@ -3498,6 +3513,12 @@ def greyUpgradeSyncConfig():
     usermapping_rand = "%s/bin/usermapping.key.rand" % srcDir
     cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
         usermapping_rand, usermapping_rand, destDir)
+    subscription_cipher = "%s/bin/subscription.key.cipher" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        subscription_cipher, subscription_cipher, destDir)
+    subscription_rand = "%s/bin/subscription.key.rand" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        subscription_rand, subscription_rand, destDir)
     tde_key_cipher = "%s/bin/gs_tde_keys.cipher" % srcDir
     cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
         tde_key_cipher, tde_key_cipher, destDir)

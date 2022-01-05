@@ -2825,6 +2825,12 @@ class UpgradeImpl:
             fileNameList.sort(reverse=True)
         else:
             fileNameList.sort()
+        if 'rollback_catalog_maindb_92_506.sql' in fileNameList:
+            fileNameList.remove('rollback_catalog_maindb_92_506.sql')
+            fileNameList.append('rollback_catalog_maindb_92_506.sql')
+        if 'rollback_catalog_otherdb_92_506.sql' in fileNameList:
+            fileNameList.remove('rollback_catalog_otherdb_92_506.sql')
+            fileNameList.append('rollback_catalog_otherdb_92_506.sql')
         fileName = "{0}_catalog_{1}_tmp.sql".format(mode, dbType)
         self.context.logger.debug("The real file list for %s: %s" % (
             dbType, fileNameList))
@@ -2837,6 +2843,12 @@ class UpgradeImpl:
         header = ["START TRANSACTION;"]
         fileNameList = self.getFileNameList("check_upgrade")
         fileNameList.sort()
+        if 'rollback_catalog_maindb_92_506.sql' in fileNameList:
+            fileNameList.remove('rollback_catalog_maindb_92_506.sql')
+            fileNameList.append('rollback_catalog_maindb_92_506.sql')
+        if 'rollback_catalog_otherdb_92_506.sql' in fileNameList:
+            fileNameList.remove('rollback_catalog_otherdb_92_506.sql')
+            fileNameList.append('rollback_catalog_otherdb_92_506.sql')
         self.context.logger.debug("The real file list for checking upgrade: "
                                   "%s" % fileNameList)
         self.togetherFile(header, "check_upgrade", fileNameList,

@@ -127,7 +127,7 @@ Usage:
   gs_om -V | --version
   OLAP scene:
     gs_om -t start [-h HOSTNAME] [-D dataDir] [--time-out=SECS]
-                   [--security-mode=MODE] [-l LOGFILE]
+                   [--security-mode=MODE] [--cluster-number=None] [-l LOGFILE]
     gs_om -t stop [-h HOSTNAME] [-D dataDir]  [--time-out=SECS] [-m MODE]
                   [-l LOGFILE]
     gs_om -t restart [-h HOSTNAME] [-D dataDir] [--time-out=SECS]

@@ -317,23 +317,46 @@ class ExpansionImpl():
             break
         return hasStandbyWithSameAZ
 
+    def getIncreaseAppNames(self, num):
+        """
+        the default new database application_name is 'dn_6001' which same with
+        primary host. It case standby node cannot set synchronization by name.
+        """
+        clusterInfo = dbClusterInfo()
+        
+        appPath = self.context.clusterInfoDict["appPath"]
+        staticFile = os.path.join(appPath, "bin", "cluster_static_config")
+        clusterInfo.initFromStaticConfigWithoutUser(staticFile)
+        dbNodes = clusterInfo.dbNodes
+
+        instanceIds = []
+        genIds = []
+        for dbNode in dbNodes:
+            for dnInst in dbNode.datanodes:
+                instanceIds.append(int(dnInst.instanceId))
+        genIds = [x + 1 + max(instanceIds) for x in range(num)]
+        return genIds
+
     def installDatabaseOnHosts(self):
         """
         install database on each standby node
         """
         standbyHosts = self.context.newHostList
+        genAppNames = self.getIncreaseAppNames(len(standbyHosts));
         tempXmlFile = "%s/clusterconfig.xml" % self.tempFileDir
-        installCmd = "source {envFile} ; gs_install -X {xmlFile} "\
-            "2>&1".format(envFile = self.envFile, xmlFile = tempXmlFile)
-        self.logger.debug(installCmd)
         primaryHostName = self.getPrimaryHostName()
         primaryHostIp = self.context.clusterInfoDict[primaryHostName]["backIp"]
         existingStandbys = list(set(self.existingHosts) - (set([primaryHostIp])))
         failedInstallHosts = []
         notInstalledCascadeHosts = []
-        for newHost in standbyHosts:
+        for idx,newHost in enumerate(standbyHosts):
             if not self.expansionSuccess[newHost]:
                 continue
+            installCmd = """source {envFile} ; gs_install -X {xmlFile} \
+                --dn-guc="application_name='dn_{appname}'" \
+                    2>&1""".format(envFile=self.envFile, xmlFile=tempXmlFile, 
+                    appname=genAppNames[idx])
+            self.logger.debug(installCmd)
             self.logger.log("Installing database on node %s:" % newHost)
             hostName = self.context.backIpNameMap[newHost]
             sshIp = self.context.clusterInfoDict[hostName]["sshIp"]

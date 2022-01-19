@@ -1918,7 +1918,8 @@ def CheckPlatformInfo():
             platformStr = "%s_%s_%s" % (data.distname,
                                         data.version, data.bits)
         elif (data.version[0:3]
-              in ("7.0", "7.1", "7.2", "7.3", "7.4", "7.5", "7.6")):
+              in ("7.0", "7.1", "7.2", "7.3", "7.4", "7.5", "7.6", "7.7", 
+              "7.8", "7.9")):
             mixedType = "%s7" % data.distname
             platformStr = "%s_%s_%s" % (data.distname, data.version,
                                         data.bits)

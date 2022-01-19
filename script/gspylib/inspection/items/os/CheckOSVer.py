@@ -34,7 +34,7 @@ class CheckOSVer(BaseItem):
             if (version[0:3] in (
                     "6.4", "6.5", "6.6", "6.7", "6.8", "6.9", "7.0", "7.1",
                     "7.2",
-                    "7.3", "7.4", "7.5", "7.6") and
+                    "7.3", "7.4", "7.5", "7.6", "7.7", "7.8", "7.9") and
                     bits == "64bit"):
                 self.result.rst = ResultStatus.OK
                 self.result.val = "The current OS is %s %s %s." % (

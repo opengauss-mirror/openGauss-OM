@@ -812,11 +812,13 @@ Common options:
             self.logger.logExit(ErrorCode.GAUSS_503["GAUSS_50311"] % "user")
 
         cmd = "echo '%s:%s' | chpasswd" % (self.user, password)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
+        proc = subprocess.Popen(["sh", "-"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, universal_newlines=True)
+        std_out, std_err = proc.communicate(cmd)
+        if proc.returncode != 0:
             self.logger.logExit(
                 ErrorCode.GAUSS_503["GAUSS_50311"] % self.user
-                + " Error: \n%s" % output)
+                + " Error: \n%s" % (std_out+std_err))
 
     def createClusterPaths(self):
         """

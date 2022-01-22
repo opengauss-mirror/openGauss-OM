@@ -329,12 +329,12 @@ class ExpansionImpl():
         clusterInfo.initFromStaticConfigWithoutUser(staticFile)
         dbNodes = clusterInfo.dbNodes
 
-        instanceIds = []
+        maxinsId = -1
         genIds = []
         for dbNode in dbNodes:
             for dnInst in dbNode.datanodes:
-                instanceIds.append(int(dnInst.instanceId))
-        genIds = [x + 1 + max(instanceIds) for x in range(num)]
+                maxinsId = max(maxinsId, int(dnInst.instanceId))
+        genIds = [x + 1 + maxinsId for x in range(num)]
         return genIds
 
     def installDatabaseOnHosts(self):

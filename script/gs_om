@@ -158,6 +158,8 @@ Options for start
       --security-mode=MODE        database start with security mode: on or off
                                         on: start with security mode
                                         off: start without security mode
+      --cluster-number            database start with kernel version corresponding
+                                  to version.cfg
 
 Options for stop
   -h                              Name of the host to be shut down.

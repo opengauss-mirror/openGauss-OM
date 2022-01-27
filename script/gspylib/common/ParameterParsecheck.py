@@ -94,7 +94,7 @@ gs_checkos = ["-?", "--help", "-V", "--version", "-h:", "-f:", "-o:",
               "-i:", "--detail",
               "-l:", "-X:"]
 gs_expansion = ["-?", "--help", "-V", "--version", "-U:", "-G:", "-L", 
-            "-X:", "-h:", "--sep-env-file="]
+            "-X:", "-h:", "--sep-env-file=", "--time-out="]
 gs_dropnode = ["-?", "--help", "-V", "--version", "-U:", "-G:",
             "-h:", "--sep-env-file="]
 

@@ -40,6 +40,8 @@ from gspylib.common.DbClusterStatus import DbClusterStatus
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.Common import DefaultValue
 from gspylib.common.GaussLog import GaussLog
+from gspylib.os.gsOSlib import g_OSlib
+import impl.upgrade.UpgradeConst as Const
 
 #boot/build mode
 MODE_PRIMARY = "primary"
@@ -161,15 +163,33 @@ class ExpansionImpl():
         """
         self.logger.log("Start to send soft to each standby nodes.")
         srcFile = self.context.packagepath
-        targetDir = os.path.realpath(os.path.join(srcFile, "../"))
+        pkgfiles = self.generatePackages(srcFile)
+        time_out = self.context.time_out if self.context.time_out else 300
         for host in self.context.newHostList:
-            sshTool = SshTool([host], timeout = 300)
+            sshTool = SshTool([host], timeout=time_out)
             # mkdir package dir and send package to remote nodes.
             sshTool.executeCommand("umask 0022;mkdir -p %s" % srcFile , "",
                 DefaultValue.SUCCESS, [host])
-            sshTool.scpFiles(srcFile, targetDir, [host])
+            for file in pkgfiles:
+                if not os.path.exists(file):
+                    GaussLog.exitWithError("Package [%s] is not found." % file)
+                sshTool.scpFiles(file, srcFile, [host])
+            sshTool.executeCommand("cd %s;tar -xf %s" % (srcFile, pkgfiles[0]) , 
+                "", DefaultValue.SUCCESS, [host])
             self.cleanSshToolFile(sshTool)
         self.logger.log("End to send soft to each standby nodes.")
+    
+    def generatePackages(self, pkgdir):
+        bz2_file = g_OSlib.getBz2FilePath()
+        bz2_sha_file = g_OSlib.getSHA256FilePath()
+        upgrade_sql_file = os.path.join(pkgdir,
+                                             Const.UPGRADE_SQL_FILE)
+        upgrade_sha_file = os.path.join(pkgdir,
+                                             Const.UPGRADE_SQL_SHA)
+        om_file = bz2_sha_file.replace(".sha256", "-om.tar.gz")
+
+        return [om_file, bz2_file, bz2_sha_file, upgrade_sql_file,
+             upgrade_sha_file]
 
     def generateAndSendXmlFile(self):
         """
@@ -616,7 +636,7 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             needGRPCHosts.append(primaryHostIp)
         self.logger.debug("Start to generate GRPC cert.")
         if needGRPCHosts:
-            self.context.initSshTool(needGRPCHosts)
+            self.context.initSshTool(needGRPCHosts, DefaultValue.TIMEOUT_PSSH_INSTALL)
             self.context.createGrpcCa(needGRPCHosts)
         self.logger.debug("End to generate GRPC cert.")
 
@@ -1093,12 +1113,34 @@ remoteservice={remoteservice}'"
     def checkNodesDetail(self):
         """
         """
+        self.checkNetworkDelay()
         self.checkUserAndGroupExists()
         self.checkXmlFileAccessToUser()
         self.checkClusterStatus()
         self.validNodeInStandbyList()
         self.checkXMLConsistency()
         self.checkDnDirEmpty()
+
+    def checkNetworkDelay(self):
+        """
+        check if network delay greater than 1000ms
+        """
+        backips = self.context.newHostList
+        for backip in backips:
+            ck_net_delay = "ping -s 8192 -c 5 -i 0.3 %s | "\
+                "awk -F / '{print $5}'| awk '{print $1}'" % backip
+            (status, output) = subprocess.getstatusoutput(ck_net_delay)
+            if status == 0:
+                try:
+                    delay_val = float(output.strip())
+                    # if delay greater than 1000ms, it need to warn.
+                    if delay_val > 1000:
+                        self.logger.warn("[WARNING] The node[%s] has a high "\
+                            "latency[%s ms]." % (backip, delay_val))
+                except ValueError: 
+                    self.logger.debug("The node[%s] failed to query\
+                         the delay" % backip)
+
 
     def checkDnDirEmpty(self):
         """

@@ -999,8 +999,7 @@ Common options:
         if not needCheckEmpty:
             return
         upperDir = os.path.dirname(installPath)
-        cmd = "su - %s -c \"python3 -c \\\"import os;" \
-              "print(os.access('%s',os.W_OK))\\\"\"" % (
+        cmd = "su - %s -c \"if [ -w %s ];then echo 1; else echo 0;fi\"" % (
                   self.user, upperDir)
         self.logger.debug(
             "Command to check if we have write permission for upper path:"
@@ -1010,7 +1009,7 @@ Common options:
             self.logger.logExit(
                 ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + "Error: \n%s" % str(
                     output))
-        if output == "True":
+        if output == "1":
             return
         fileList = os.listdir(upperDir)
         if installPath in fileList:

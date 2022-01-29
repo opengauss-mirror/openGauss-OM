@@ -154,11 +154,22 @@ General options:
         # check if upgrade action is exist
         if DefaultValue.isUnderUpgrade(self.user):
             GaussLog.exitWithError(ErrorCode.GAUSS_529["GAUSS_52936"])
-        if (self.time_out and not str(self.time_out).isdigit()):
-            GaussLog.exitWithError(
-                ErrorCode.GAUSS_500["GAUSS_50003"] %
-                ("-time-out", "a nonnegative integer"))
-        self.time_out = int(self.time_out)
+
+        if (self.time_out is None):
+            self.time_out = DefaultValue.TIMEOUT_CLUSTER_START
+        else:
+            # The timeout parameter must be a pure number
+            if (not str(self.time_out).isdigit()):
+                GaussLog.exitWithError(
+                    ErrorCode.GAUSS_500["GAUSS_50003"] %
+                    ("-time-out", "a nonnegative integer"))
+            self.time_out = int(self.time_out)
+            # The timeout parameter must be greater than 0
+            # The timeout parameter must be less than the integer maximum
+            if (self.time_out <= 0 or self.time_out
+                    >= 2147483647):
+                GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
+                                       % "-time-out")
     
     def _getClusterInfoDict(self):
         clusterInfo = ExpansionClusterInfo()

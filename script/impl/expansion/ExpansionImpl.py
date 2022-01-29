@@ -764,7 +764,7 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             result, output = self.commonGsCtl.startInstanceWithMode(host,
                 dataNode, MODE_STANDBY, self.envFile)
             if result[host] != DefaultValue.SUCCESS:
-                if "uncompleted build is detected" not in output:
+                if "Uncompleted build is detected" not in output:
                     self.expansionSuccess[host] = False
                     self.logger.log("Failed to start %s as standby "
                         "before building." % host)

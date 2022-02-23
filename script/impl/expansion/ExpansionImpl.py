@@ -371,10 +371,15 @@ class ExpansionImpl():
             self.getIncreaseAppNames(len(standbyHosts))):
             if not self.expansionSuccess[newHost]:
                 continue
-            installCmd = """source {envFile} ; gs_install -X {xmlFile} \
-                --dn-guc="application_name='dn_{appname}'" \
-                    2>&1""".format(envFile=self.envFile, xmlFile=tempXmlFile, 
-                    appname=appName)
+            log_path = DefaultValue.getUserLogDirWithUser(self.user)
+            log_dir = "%s/pg_log/dn_%d" % (log_path, appName)
+            audit_dir = "%s/pg_audit/dn_%d" % (log_path, appName)
+            installCmd = "source {envFile} ; gs_install -X {xmlFile}" \
+                " --dn-guc=\"application_name='dn_{appname}'\"" \
+                " --dn-guc=\"log_directory='{log_dir}'\"" \
+                " --dn-guc=\"audit_directory='{audit_dir}'\"" \
+                " 2>&1".format(envFile=self.envFile, xmlFile=tempXmlFile, 
+                    appname=appName, log_dir=log_dir, audit_dir=audit_dir)
             self.logger.debug(installCmd)
             self.logger.log("Installing database on node %s:" % newHost)
             hostName = self.context.backIpNameMap[newHost]

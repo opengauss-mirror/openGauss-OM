@@ -75,6 +75,8 @@ ACTION_SET_ASYNCHRONOUS_IO_REQUEST = "Set_Asynchronous_IO_Request"
 #############################################################################
 netWorkLevel = 10000
 expectMTUValue = 8192
+expectRXValue = 4096
+expectTXValue = 4096
 MASTER_INSTANCE = 0
 STANDBY_INSTANCE = 1
 
@@ -1171,26 +1173,24 @@ def SetNetWorkCardInfo(networkCardNum, data):
     if (int(data.netLevel) >= int(netWorkLevel)):
         initFile = getTHPandOSInitFile()[1]
         for k in list(data.variables.keys()):
-            if ((k == "rx") and int(data.variables[k].__str__())
-                    < int(data.variables["rx_max"].__str__())):
+            if ((k == "rx") and int(data.variables[k].__str__()) < expectRXValue):
+                targetValue = min(expectRXValue, int(data.variables["rx_max"].__str__()))
                 setNetWorkMTUOrTXRXValue(
                     data.netNum, k,
-                    int(data.variables["rx_max"].__str__()),
+                    targetValue,
                     initFile)
                 g_logger.debug(
                     "Set the \"%s\" '%s' value from \"%s\" to \"%s\"."
-                    % (networkCardNum, k, int(data.variables[k].__str__()),
-                       int(data.variables["rx_max"].__str__())))
-            elif ((k == "tx") and int(data.variables[k].__str__()) <
-                  int(data.variables["tx_max"].__str__())):
+                    % (networkCardNum, k, int(data.variables[k].__str__()), targetValue))
+            if ((k == "tx") and int(data.variables[k].__str__()) < expectTXValue):
+                targetValue = min(expectTXValue, int(data.variables["tx_max"].__str__()))
                 setNetWorkMTUOrTXRXValue(
                     data.netNum, k,
-                    int(data.variables["tx_max"].__str__()),
+                    targetValue,
                     initFile)
                 g_logger.debug(
                     "Set the \"%s\" '%s' value from \"%s\" to \"%s\"."
-                    % (networkCardNum, k, int(data.variables[k].__str__()),
-                       int(data.variables["tx_max"].__str__())))
+                    % (networkCardNum, k, int(data.variables[k].__str__()), targetValue))
         # after doing setting the value, please wait a moment,
         # then we can get the real netwrok card information.
         time.sleep(2)

@@ -27,11 +27,16 @@ import re
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.ParameterParsecheck import Parameter
-from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.LocalBaseOM import LocalBaseOM
-from gspylib.os.gsfile import g_file
-from gspylib.os.gsOSlib import g_OSlib
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from base_utils.os.crontab_util import CrontabUtil
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from domain_utils.cluster_file.profile_file import ProfileFile
+from base_utils.os.process_util import ProcessUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
 
 
 class Uninstall(LocalBaseOM):
@@ -104,14 +109,14 @@ class Uninstall(LocalBaseOM):
         # clean os user environment variable
         self.logger.log("Modifying user's environmental variable $GAUSS_ENV.")
         userProfile = self.mpprcFile
-        DefaultValue.updateUserEnvVariable(userProfile, "GAUSS_ENV", "1")
+        ProfileFile.updateUserEnvVariable(userProfile, "GAUSS_ENV", "1")
         if "HOST_IP" in os.environ.keys():
-            g_file.deleteLine(userProfile, "^\\s*export\\s*WHITELIST_ENV=.*$")
+            FileUtil.deleteLine(userProfile, "^\\s*export\\s*WHITELIST_ENV=.*$")
         self.logger.log("Successfully modified user's environmental"
                         " variable GAUSS_ENV.")
 
         self.logger.debug("Deleting symbolic link to $GAUSSHOME if exists.")
-        gaussHome = DefaultValue.getInstallDir(self.user)
+        gaussHome = ClusterDir.getInstallDir(self.user)
         if gaussHome == "":
             raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$GAUSSHOME")
         if os.path.islink(gaussHome):
@@ -120,7 +125,7 @@ class Uninstall(LocalBaseOM):
         else:
             self.logger.debug("symbolic link does not exists.")
         self.logger.debug("Deleting bin file in installation path.")
-        g_file.removeDirectory("%s/bin" % self.installPath)
+        FileUtil.removeDirectory("%s/bin" % self.installPath)
         self.logger.debug("Successfully deleting bin file in"
                           " installation path.")
 
@@ -133,23 +138,23 @@ class Uninstall(LocalBaseOM):
         self.logger.log("Deleting monitor.")
         try:
             # get all content by crontab command
-            (status, output) = g_OSlib.getAllCrontab()
+            (status, output) = CrontabUtil.getAllCrontab()
             # overwrit crontabFile, make it empty.
             crontabFile = "%s/gauss_crontab_file_%d" \
-                          % (DefaultValue.getTmpDirFromEnv(), os.getpid())
-            g_file.createFile(crontabFile, True)
+                          % (EnvUtil.getTmpDirFromEnv(), os.getpid())
+            FileUtil.createFile(crontabFile, True)
             content_CronTabFile = [output]
-            g_file.writeFile(crontabFile, content_CronTabFile)
-            g_file.deleteLine(crontabFile, "\/bin\/om_monitor")
-            g_OSlib.execCrontab(crontabFile)
-            g_file.removeFile(crontabFile)
+            FileUtil.writeFile(crontabFile, content_CronTabFile)
+            FileUtil.deleteLine(crontabFile, "\/bin\/om_monitor")
+            CrontabUtil.execCrontab(crontabFile)
+            FileUtil.removeFile(crontabFile)
 
             # clean om_monitor,cm_agent,cm_server process
             for progname in ["om_monitor", "cm_agent", "cm_server"]:
-                g_OSlib.killallProcess(self.user, progname, '9')
+                ProcessUtil.killallProcess(self.user, progname, '9')
         except Exception as e:
             if os.path.exists(crontabFile):
-                g_file.removeFile(crontabFile)
+                FileUtil.removeFile(crontabFile)
             raise Exception(str(e))
         self.logger.log("Successfully deleted OMMonitor.")
 
@@ -202,10 +207,10 @@ class Uninstall(LocalBaseOM):
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"]
                                    % 'R' + ".")
 
-        self.mpprcFile = DefaultValue.getMpprcFile()
+        self.mpprcFile = EnvUtil.getMpprcFile()
         if (self.logFile == ""):
-            self.logFile = DefaultValue.getOMLogPath(
-                DefaultValue.LOCAL_LOG_FILE, self.user, self.installPath)
+            self.logFile = ClusterLog.getOMLogPath(
+                ClusterConstants.LOCAL_LOG_FILE, self.user, self.installPath)
 
     def __initLogger(self):
         """
@@ -214,6 +219,20 @@ class Uninstall(LocalBaseOM):
         output: NA
         """
         self.logger = GaussLog(self.logFile, "UninstallApp")
+
+    def _check_and_remove(self):
+        """
+        Check app directory after clean app
+        """
+        file_list = os.listdir(self.installPath)
+        if not file_list:
+            return
+        for base_name in file_list:
+            special_file = os.path.join(self.installPath, base_name)
+            if os.path.exists(special_file) and not os.path.isdir(special_file):
+                os.remove(special_file)
+                self.logger.log("Successfully cleaned {0} .".format(special_file))
+        self.logger.log("Check and clean finish.")
 
     def __cleanInstallProgram(self):
         """
@@ -243,9 +262,9 @@ class Uninstall(LocalBaseOM):
                 oldPath = retLines[0].strip()
                 newPath = retLines[1].strip()
                 if os.path.normcase(oldPath) == os.path.normcase(realLink):
-                    g_file.removeDirectory(newPath)
+                    FileUtil.removeDirectory(newPath)
                 else:
-                    g_file.removeDirectory(oldPath)
+                    FileUtil.removeDirectory(oldPath)
                 self.logger.debug("Successfully deleted other installation"
                                   " path need to delete.")
             else:
@@ -277,12 +296,12 @@ class Uninstall(LocalBaseOM):
                             elif os.path.islink(fileInBinPath):
                                 os.remove(fileInBinPath)
                             elif os.path.isdir(fileInBinPath):
-                                g_file.removeDirectory(fileInBinPath)
+                                FileUtil.removeDirectory(fileInBinPath)
                     else:
-                        g_file.removeDirectory(filePath)
+                        FileUtil.removeDirectory(filePath)
 
                 self.logger.debug("Remove path:%s." % filePath)
-
+            self._check_and_remove()
             self.logger.debug("Successfully deleted bin file"
                               " in installation path.")
 
@@ -313,7 +332,7 @@ class Uninstall(LocalBaseOM):
                                 fileNameElement[1].strip())
                             if res:
                                 removeflag = True
-                                g_file.removeDirectory(filePath)
+                                FileUtil.removeDirectory(filePath)
             if removeflag:
                 self.logger.debug("Successfully deleted empty"
                                   " installation path.")

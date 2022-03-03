@@ -27,14 +27,20 @@ import traceback
 
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
-from gspylib.common.Common import DefaultValue
+from gspylib.common.Common import DefaultValue, CmPackageException
 from gspylib.common.ParameterParsecheck import Parameter
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.LocalBaseOM import LocalBaseOM
-from gspylib.os.gsfile import g_file
-from gspylib.os.gsOSlib import g_OSlib
 from gspylib.common.DbClusterInfo import dbClusterInfo
-from gspylib.common.VersionInfo import VersionInfo
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from domain_utils.cluster_file.package_info import PackageInfo
+from domain_utils.cluster_file.profile_file import ProfileFile
+from domain_utils.cluster_file.version_info import VersionInfo
+from base_utils.os.net_util import NetUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
 
 #################################################################
 ACTION_INSTALL_CLUSTER = "install_cluster"
@@ -47,7 +53,6 @@ ACTION_BUILD_STANDBY = "build_standby"
 ACTION_BUILD_CASCADESTANDBY = "build_cascadestandby"
 #################################################################
 g_opts = None
-g_timer = None
 
 
 #################################################################
@@ -112,6 +117,41 @@ Common options:
     """
     print(usage.__doc__)
 
+def check_parameter(opts, parameter_keys, parameter_map):
+    """
+    function: check parameter
+    input : NA
+    output: NA
+    """
+    for key, value in opts:
+        if key == "-U":
+            strTemp = value
+            strList = strTemp.split(":")
+            if len(strList) != 2:
+                GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
+                                       % "U")
+            if strList[0] == "" or strList[1] == "":
+                GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
+                                       % "U")
+            g_opts.user = strList[0]
+            g_opts.group = strList[1]
+        elif key in parameter_keys:
+            parameter_map[key] = value
+        elif key == "-t":
+            g_opts.action = value
+        elif key == "--dws-mode":
+            g_opts.dws_mode = True
+        elif key == "-u":
+            g_opts.upgrade = True
+        elif key == "-T":
+            g_opts.installflag = True
+        else:
+            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"] % value)
+        Parameter.checkParaVaild(key, value)
+        if key in ["-c", "--alarm", "--product", "--licensemode"]:
+            Parameter.check_parse(key, value)
+
+    return parameter_map
 
 def parseCommandLine():
     """
@@ -146,31 +186,7 @@ def parseCommandLine():
                      "--licensemode": g_opts.licenseMode,
                      "--time_out": g_opts.time_out}
     parameter_keys = parameter_map.keys()
-    for key, value in opts:
-        if key == "-U":
-            strTemp = value
-            strList = strTemp.split(":")
-            if len(strList) != 2:
-                GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
-                                       % "U")
-            if strList[0] == "" or strList[1] == "":
-                GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
-                                       % "U")
-            g_opts.user = strList[0]
-            g_opts.group = strList[1]
-        elif key in parameter_keys:
-            parameter_map[key] = value
-        elif key == "-t":
-            g_opts.action = value
-        elif key == "--dws-mode":
-            g_opts.dws_mode = True
-        elif key == "-u":
-            g_opts.upgrade = True
-        elif key == "-T":
-            g_opts.installflag = True
-        else:
-            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"] % value)
-        Parameter.checkParaVaild(key, value)
+    parameter_map = check_parameter(opts, parameter_keys, parameter_map)
 
     g_opts.clusterConfig = parameter_map["-X"]
     g_opts.installPath = parameter_map["-R"]
@@ -230,7 +246,7 @@ def checkParameter():
                                % g_opts.static_config_file)
 
     # check mpprc file path
-    g_opts.mpprcFile = DefaultValue.getMpprcFile()
+    g_opts.mpprcFile = EnvUtil.getMpprcFile()
     g_opts.logger = GaussLog(g_opts.logFile)
     checkParameterEmpty(g_opts.user, "U")
     g_opts.installPath = os.path.normpath(g_opts.installPath)
@@ -241,8 +257,8 @@ def checkParameter():
                       + g_opts.installPath)
 
     if g_opts.logFile == "":
-        g_opts.logFile = DefaultValue.getOMLogPath(
-            DefaultValue.LOCAL_LOG_FILE, g_opts.user, "",
+        g_opts.logFile = ClusterLog.getOMLogPath(
+            ClusterConstants.LOCAL_LOG_FILE, g_opts.user, "",
             g_opts.clusterConfig)
 
     if g_opts.alarmComponent == "":
@@ -260,7 +276,7 @@ def createLinkToApp():
                           " no need to create symbolic link.")
         return
     g_opts.logger.debug("Created symbolic link to $GAUSSHOME with commitid.")
-    gaussHome = DefaultValue.getInstallDir(g_opts.user)
+    gaussHome = ClusterDir.getInstallDir(g_opts.user)
     if gaussHome == "":
         raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$GAUSSHOME")
     versionFile = VersionInfo.get_version_file()
@@ -308,9 +324,8 @@ class Install(LocalBaseOM):
             self.readConfigInfo()
         else:
             self.clusterInfo = dbClusterInfo()
-            self.clusterInfo.initFromXml(self.clusterConfig,
-                                         g_opts.static_config_file)
-            hostName = DefaultValue.GetHostIpOrName()
+            self.clusterInfo.initFromXml(self.clusterConfig)
+            hostName = NetUtil.GetHostIpOrName()
             self.dbNodeInfo = self.clusterInfo.getDbNodeByName(hostName)
             if self.dbNodeInfo is None:
                 self.logger.logExit(ErrorCode.GAUSS_516["GAUSS_51619"]
@@ -334,63 +349,82 @@ class Install(LocalBaseOM):
         self.productVersion = None
         self.time_out = None
 
+    def decompress_cm_package(self):
+        """
+        Decompress CM package
+        """
+        cm_package = os.path.join(EnvUtil.getEnvironmentParameterValue(
+            "GPHOME", self.user), "%s-cm.tar.gz" % PackageInfo.getPackageFile(
+            "bz2File").replace(".tar.bz2", ""))
+        if DefaultValue.get_cm_server_num_from_static(self.clusterInfo) == 0 and \
+                not os.path.isfile(cm_package):
+            self.logger.log("No need to decompress cm package.")
+            return
+
+        if not DefaultValue.check_cm_package(self.clusterInfo, cm_package, self.logger):
+            raise CmPackageException()
+        FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, cm_package)
+        tar_cmd = "export LD_LIBRARY_PATH=$GPHOME/script/gspylib/clib:" \
+                  "$LD_LIBRARY_PATH && "
+        # decompress tar file.
+        decompress_cmd = tar_cmd + "tar -zxf \"" + cm_package + "\" -C \"" + \
+                         self.installPath + "\""
+        self.logger.log("Decompress CM package command: " + decompress_cmd)
+        status, output = subprocess.getstatusoutput(decompress_cmd)
+        if status != 0:
+            self.logger.log("Decompress CM package failed. Output: %s" % output)
+            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50217"]
+                                % cm_package + " Error: \n%s" % str(output))
+        self.logger.log("Decompress CM package successfully.")
+
     def __decompressBinPackage(self):
         """
         function: Install database binary file.
         input : NA
         output: NA
         """
-        if self.dws_mode:
-            self.logger.log("Copying bin file.")
-            bin_image_path = DefaultValue.DWS_APP_PAHT
-            srcPath = "'%s'/*" % bin_image_path
-            destPath = "'%s'/" % self.installPath
-            cmd = g_file.SHELL_CMD_DICT["copyFile"] % (srcPath, destPath)
-            self.logger.debug("Copy command: " + cmd)
-            status, output = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50214"]
-                                    % srcPath + " Error: " + output)
-        else:
-            self.logger.log("Decompressing bin file.")
-            tarFile = g_OSlib.getBz2FilePath()
-            # let bin executable
-            g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE, tarFile)
+        self.logger.log("Decompressing bin file.")
+        tar_file = PackageInfo.getPackageFile("bz2File")
+        # let bin executable
+        FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, tar_file)
 
-            cmd = "export LD_LIBRARY_PATH=$GPHOME/script/gspylib/clib:" \
-                  "$LD_LIBRARY_PATH && "
-            # decompress tar file.
-            strCmd = cmd + "tar -xpf \"" + tarFile + "\" -C \"" + \
-                     self.installPath + "\""
-            self.logger.log("Decompress command: " + strCmd)
-            status, output = subprocess.getstatusoutput(strCmd)
-            if status != 0:
-                self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50217"]
-                                    % tarFile + " Error: \n%s" % str(output))
+        cmd = "export LD_LIBRARY_PATH=$GPHOME/script/gspylib/clib:" \
+              "$LD_LIBRARY_PATH && "
+        # decompress tar file.
+        str_cmd = cmd + "tar -xpf \"" + tar_file + "\" -C \"" + \
+                 self.installPath + "\""
+        self.logger.debug("Decompress cmd is: %s" % str_cmd)
+        status, output = subprocess.getstatusoutput(str_cmd)
+        if status != 0:
+            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50217"]
+                                % tar_file + " Error: \n%s" % str(output))
 
-            # mv $GPHOME/script/transfer.py to $GAUSSHOME/bin/
-            dirName = os.path.dirname(os.path.realpath(__file__))
-            transferFile = dirName + "/../../script/transfer.py"
-            if os.path.exists(transferFile):
-                g_file.cpFile(transferFile, self.installPath + "/bin/")
-                g_file.removeFile(transferFile)
-            # cp $GPHOME/script to $GAUSSHOME/bin/
-            g_file.cpFile(dirName + "/../../script",
-                          self.installPath + "/bin/")
+        # mv $GPHOME/script/transfer.py to $GAUSSHOME/bin/
+        dirName = os.path.dirname(os.path.realpath(__file__))
+        transferFile = dirName + "/../../script/transfer.py"
+        if os.path.exists(transferFile):
+            FileUtil.cpFile(transferFile, self.installPath + "/bin/")
+            FileUtil.removeFile(transferFile)
+        # cp $GPHOME/script to $GAUSSHOME/bin/
+        FileUtil.cpFile(dirName + "/../../script",
+                      self.installPath + "/bin/")
 
-            # cp $GAUSSHOME/bin/script/gspylib/etc/sql/pmk to /share/postgresql
-            destPath = self.installPath + "/share/postgresql/"
-            pmkPath = self.installPath + "/bin/script/gspylib/etc/sql/"
-            pmkFile = pmkPath + "pmk_schema.sql"
-            if os.path.exists(pmkFile):
-                g_file.cpFile(pmkFile, destPath)
+        # cp $GAUSSHOME/bin/script/gspylib/etc/sql/pmk to /share/postgresql
+        destPath = self.installPath + "/share/postgresql/"
+        pmkPath = self.installPath + "/bin/script/gspylib/etc/sql/"
+        pmkFile = pmkPath + "pmk_schema.sql"
+        if os.path.exists(pmkFile):
+            FileUtil.cpFile(pmkFile, destPath)
 
-            pmkSingeInstFile = pmkPath + "pmk_schema_single_inst.sql"
-            if os.path.exists(pmkSingeInstFile):
-                g_file.cpFile(pmkSingeInstFile, destPath)
+        pmk_singe_inst_file = pmkPath + "pmk_schema_single_inst.sql"
+        if os.path.exists(pmk_singe_inst_file):
+            FileUtil.cpFile(pmk_singe_inst_file, destPath)
 
-            # change owner for tar file.
-            g_file.changeOwner(self.user, self.installPath, True)
+        # decompress CM package
+        self.decompress_cm_package()
+
+        # change owner for tar file.
+        FileUtil.changeOwner(self.user, self.installPath, True)
         self.logger.log("Successfully decompressed bin file.")
 
     def __saveUpgradeVerionInfo(self):
@@ -422,10 +456,10 @@ class Install(LocalBaseOM):
             if os.path.isfile(upgradeVersionFile):
                 os.remove(upgradeVersionFile)
 
-            g_file.createFile(upgradeVersionFile)
-            g_file.writeFile(upgradeVersionFile,
+            FileUtil.createFile(upgradeVersionFile)
+            FileUtil.writeFile(upgradeVersionFile,
                              [newClusterVersion, newClusterNumber, commitId])
-            g_file.changeMode(DefaultValue.KEY_FILE_MODE, upgradeVersionFile)
+            FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, upgradeVersionFile)
         except Exception as e:
             self.logger.logExit(str(e))
 
@@ -443,11 +477,25 @@ class Install(LocalBaseOM):
             return
 
         self.logger.log("Modifying Alarm configuration.")
-        g_file.replaceFileLineContent("^.*\(alarm_component.*=.*\)", "#\\1",
+        FileUtil.replaceFileLineContent("^.*\(alarm_component.*=.*\)", "#\\1",
                                       alarmItemConfigFile)
-        g_file.writeFile(alarmItemConfigFile, ['    '])
-        g_file.writeFile(alarmItemConfigFile, ['alarm_component = %s'
+        FileUtil.writeFile(alarmItemConfigFile, ['    '])
+        FileUtil.writeFile(alarmItemConfigFile, ['alarm_component = %s'
                                                % self.alarmComponent])
+
+    def __set_manual_start(self):
+        """
+        function: Set manual start:
+                  1.set cluster_manual_start
+                  2.set etcd_manual_start
+        input : NA
+        output: NA
+        """
+        if self.upgrade:
+            return
+        cluster_manual_start_file = "'%s'/bin/cluster_manual_start" % self.installPath
+        FileUtil.createFile(cluster_manual_start_file)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, cluster_manual_start_file)
 
     def __createStaticConfig(self):
         """
@@ -459,8 +507,8 @@ class Install(LocalBaseOM):
         # save static config
         nodeId = self.dbNodeInfo.id
         self.clusterInfo.saveToStaticConfig(staticConfigPath, nodeId)
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE, staticConfigPath)
-        g_file.changeOwner(self.user, staticConfigPath, False)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, staticConfigPath)
+        FileUtil.changeOwner(self.user, staticConfigPath, False)
 
     def __bakInstallPackage(self):
         """
@@ -470,14 +518,14 @@ class Install(LocalBaseOM):
         """
         dirName = os.path.dirname(os.path.realpath(__file__))
         packageFile = "%s/%s" % (os.path.join(dirName, "./../../"),
-                                 DefaultValue.get_package_back_name())
+                                 PackageInfo.get_package_back_name())
         # Check if MPPDB package exist
         if not os.path.exists(packageFile):
             self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50201"]
                                 % 'MPPDB package' + " Can not back up.")
         # Save MPPDB package to bin path
         destPath = "'%s'/bin/" % self.installPath
-        g_file.cpFile(packageFile, destPath)
+        FileUtil.cpFile(packageFile, destPath)
 
     def __fixInstallPathPermission(self):
         """
@@ -488,7 +536,7 @@ class Install(LocalBaseOM):
         installPathFileTypeDict = {}
         try:
             # get files type
-            installPathFileTypeDict = g_file.getFilesType(self.installPath)
+            installPathFileTypeDict = FileUtil.getFilesType(self.installPath)
         except Exception as e:
             self.logger.logExit(str(e))
 
@@ -507,83 +555,9 @@ class Install(LocalBaseOM):
             if (installPathFileTypeDict[key].find("executable") >= 0 or
                     installPathFileTypeDict[key].find("ELF") >= 0 or
                     installPathFileTypeDict[key].find("directory") >= 0):
-                g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE, key, True)
+                FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, key, True)
             else:
-                g_file.changeMode(DefaultValue.KEY_FILE_MODE, key)
-
-    def __changeEnv(self):
-        """
-        function: Change GAUSS_ENV
-        input : NA
-        output: NA
-        """
-        # modified user's environmental variable $GAUSS_ENV
-        self.logger.log("Modifying user's environmental variable $GAUSS_ENV.")
-        DefaultValue.updateUserEnvVariable(self.mpprcFile, "GAUSS_ENV", "2")
-        DefaultValue.updateUserEnvVariable(self.mpprcFile, "GS_CLUSTER_NAME",
-                                           g_opts.clusterName)
-        self.logger.log("Successfully modified user's environmental"
-                        " variable $GAUSS_ENV.")
-
-    def __fixFilePermission(self):
-        """
-        function: modify permission for app path
-        input: NA
-        ouput: NA
-        """
-        self.logger.log("Fixing file permission.")
-        binPath = "'%s'/bin" % self.installPath
-        g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE, binPath, True)
-        libPath = "'%s'/lib" % self.installPath
-        g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE, libPath, True)
-        sharePath = "'%s'/share" % self.installPath
-        g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE, sharePath, True)
-        etcPath = "'%s'/etc" % self.installPath
-        g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE, etcPath, True)
-        includePath = "'%s'/include" % self.installPath
-        g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE, includePath, True)
-
-        tarFile = "'%s'/bin/'%s'" % (self.installPath,
-                                     DefaultValue.get_package_back_name())
-        if (os.path.isfile(tarFile)):
-            g_file.changeMode(DefaultValue.KEY_FILE_MODE, tarFile)
-
-        # ./script/util/*.conf *.service
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE,
-                          "'%s'/bin/script/gspylib/etc/conf/check_list.conf"
-                          % self.installPath)
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE,
-                          "'%s'/bin/script/gspylib/etc/conf/"
-                          "check_list_dws.conf" % self.installPath)
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE,
-                          "'%s'/bin/script/gspylib/etc/conf/gs-OS-set.service"
-                          % self.installPath)
-        # bin config file
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE,
-                          "'%s'/bin/alarmItem.conf" % self.installPath)
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE,
-                          "'%s'/bin/cluster_guc.conf" % self.installPath)
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE,
-                          "'%s'/bin/upgrade_version" % self.installPath)
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE,
-                          "'%s'/bin/retry_errcodes.conf" % self.installPath)
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE,
-                          "'%s'/bin/cluster_static_config" % self.installPath)
-
-        # ./script/local/*.sql
-        cmd = "find '%s'/bin/script -type f -name \"*.sql\" -exec" \
-              " chmod 600 {} \\;" % self.installPath
-        # ./lib files
-        cmd += " && find '%s'/lib/ -type f -exec chmod 600 {} \\;" \
-               % self.installPath
-        # ./share files
-        cmd += " && find '%s'/share/ -type f -exec chmod 600 {} \\;" \
-               % self.installPath
-        self.logger.debug("Command: %s" % cmd)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            self.logger.log(output)
-            self.logger.logExit(ErrorCode.GAUSS_501["GAUSS_50107"] % "app.")
+                FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, key)
 
     def __setCgroup(self):
         """
@@ -605,6 +579,80 @@ class Install(LocalBaseOM):
 
         self.logger.log("Successfully Set Cgroup.")
 
+    def __changeEnv(self):
+        """
+        function: Change GAUSS_ENV
+        input : NA
+        output: NA
+        """
+        # modified user's environmental variable $GAUSS_ENV
+        self.logger.log("Modifying user's environmental variable $GAUSS_ENV.")
+        ProfileFile.updateUserEnvVariable(self.mpprcFile, "GAUSS_ENV", "2")
+        ProfileFile.updateUserEnvVariable(self.mpprcFile, "GS_CLUSTER_NAME",
+                                           g_opts.clusterName)
+        self.logger.log("Successfully modified user's environmental"
+                        " variable $GAUSS_ENV.")
+
+    def __fixFilePermission(self):
+        """
+        function: modify permission for app path
+        input: NA
+        ouput: NA
+        """
+        self.logger.log("Fixing file permission.")
+        binPath = "'%s'/bin" % self.installPath
+        FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, binPath, True)
+        libPath = "'%s'/lib" % self.installPath
+        FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, libPath, True)
+        sharePath = "'%s'/share" % self.installPath
+        FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, sharePath, True)
+        etcPath = "'%s'/etc" % self.installPath
+        FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, etcPath, True)
+        includePath = "'%s'/include" % self.installPath
+        FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, includePath, True)
+
+        tarFile = "'%s'/bin/'%s'" % (self.installPath,
+                                     PackageInfo.get_package_back_name())
+        if (os.path.isfile(tarFile)):
+            FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, tarFile)
+
+        # ./script/util/*.conf *.service
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE,
+                          "'%s'/bin/script/gspylib/etc/conf/check_list.conf"
+                          % self.installPath)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE,
+                          "'%s'/bin/script/gspylib/etc/conf/"
+                          "check_list_dws.conf" % self.installPath)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE,
+                          "'%s'/bin/script/gspylib/etc/conf/gs-OS-set.service"
+                          % self.installPath)
+        # bin config file
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE,
+                          "'%s'/bin/alarmItem.conf" % self.installPath)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE,
+                          "'%s'/bin/cluster_guc.conf" % self.installPath)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE,
+                          "'%s'/bin/upgrade_version" % self.installPath)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE,
+                          "'%s'/bin/retry_errcodes.conf" % self.installPath)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE,
+                          "'%s'/bin/cluster_static_config" % self.installPath)
+
+        # ./script/local/*.sql
+        cmd = "find '%s'/bin/script -type f -name \"*.sql\" -exec" \
+              " chmod 600 {} \\;" % self.installPath
+        # ./lib files
+        cmd += " && find '%s'/lib/ -type f -exec chmod 600 {} \\;" \
+               % self.installPath
+        # ./share files
+        cmd += " && find '%s'/share/ -type f -exec chmod 600 {} \\;" \
+               % self.installPath
+        self.logger.debug("Command: %s" % cmd)
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            self.logger.log(output)
+            self.logger.logExit(ErrorCode.GAUSS_501["GAUSS_50107"] % "app.")
+
     def installCluster(self):
         """
         function: install application
@@ -614,6 +662,7 @@ class Install(LocalBaseOM):
         self.__decompressBinPackage()
         self.__saveUpgradeVerionInfo()
         self.__modifyAlarmItemConfFile()
+        self.__set_manual_start()
         self.__createStaticConfig()
         if not self.dws_mode:
             self.__bakInstallPackage()
@@ -660,7 +709,7 @@ class Install(LocalBaseOM):
         filename = "/tmp/temp.%s" % self.user
         try:
             if os.path.isfile(filename):
-                g_file.removeFile(filename)
+                FileUtil.removeFile(filename)
         except Exception as e:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50207"]
                             % ("file [%s]" % filename))

@@ -25,11 +25,13 @@ import os
 
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
-from gspylib.common.Common import DefaultValue
 from gspylib.common.ParameterParsecheck import Parameter
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.LocalBaseOM import LocalBaseOM
 from gspylib.threads.parallelTool import parallelTool
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
 ########################################################################
 # Global variables define
@@ -57,6 +59,7 @@ class CmdOptions():
         self.logFile = ""
         self.dws_mode = False
         self.vc_mode = False
+        self.paxos_mode = False
 
 
 def usage():
@@ -73,12 +76,12 @@ def parseCommandLine():
     """
     try:
         opts, args = getopt.getopt(sys.argv[1:], "U:P:G:l:?",
-                                   ["help", "dws_mode", "vc_mode"])
+                                   ["help", "dws_mode", "vc_mode", "paxos_mode"])
     except Exception as e:
         usage()
         GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"] % str(e))
 
-    if (len(args) > 0):
+    if len(args) > 0:
         GaussLog.exitWithError(
             ErrorCode.GAUSS_500["GAUSS_50000"] % str(args[0]))
 
@@ -86,19 +89,21 @@ def parseCommandLine():
     g_opts = CmdOptions()
 
     for (key, value) in opts:
-        if (key == "-?" or key == "--help"):
+        if key == "-?" or key == "--help":
             usage()
             sys.exit(0)
-        elif (key == "-U"):
+        elif key == "-U":
             g_opts.clusterUser = value
-        elif (key == "-P"):
+        elif key == "-P":
             g_opts.dbInitParams.append(value)
-        elif (key == "-l"):
+        elif key == "-l":
             g_opts.logFile = os.path.realpath(value)
-        elif (key == "--dws_mode"):
+        elif key == "--dws_mode":
             g_opts.dws_mode = True
-        elif (key == "--vc_mode"):
+        elif key == "--vc_mode":
             g_opts.vc_mode = True
+        elif key == "--paxos_mode":
+            g_opts.paxos_mode = True
         Parameter.checkParaVaild(key, value)
 
 
@@ -140,12 +145,12 @@ def checkParameter():
     if (g_opts.clusterUser == ""):
         GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % 'U' + ".")
     try:
-        DefaultValue.checkUser(g_opts.clusterUser, False)
+        ClusterUser.checkUser(g_opts.clusterUser, False)
     except Exception as e:
         GaussLog.exitWithError(str(e))
 
     if (g_opts.logFile == ""):
-        g_opts.logFile = DefaultValue.getOMLogPath(DefaultValue.LOCAL_LOG_FILE,
+        g_opts.logFile = ClusterLog.getOMLogPath(ClusterConstants.LOCAL_LOG_FILE,
                                                    g_opts.clusterUser, "")
 
     for param in g_opts.dbInitParams:
@@ -158,7 +163,7 @@ class initDbNode(LocalBaseOM):
     classdocs
     '''
 
-    def __init__(self, logFile, user, dwsMode=False, dbInitParams=None):
+    def __init__(self, logFile, user, dwsMode=False, dbInitParams=None, paxos_mode=False):
         """
         function: init instance
         input : logFile, user, clusterConf, dbInitParams
@@ -166,7 +171,7 @@ class initDbNode(LocalBaseOM):
         """
         if dbInitParams is None:
             dbInitParams = []
-        LocalBaseOM.__init__(self, logFile, user, "", dwsMode, dbInitParams)
+        LocalBaseOM.__init__(self, logFile, user, "", dwsMode, dbInitParams, paxos_mode)
         if self.clusterConfig == "":
             # Read config from static config file
             self.readConfigInfo()
@@ -180,7 +185,7 @@ class initDbNode(LocalBaseOM):
             self.user, self.clusterInfo.appPath))
 
         # init every component
-        self.initComponent()
+        self.initComponent(paxos_mode)
 
     def initNodeInst(self, vc_mode=False):
         """
@@ -234,7 +239,7 @@ if __name__ == '__main__':
         # add g_opts.vc_mode parameter :
         # indicates whether it is a virtual cluster mode
         dbInit = initDbNode(g_opts.logFile, g_opts.clusterUser,
-                            g_opts.dws_mode, g_opts.dbInitParams)
+                            g_opts.dws_mode, g_opts.dbInitParams, g_opts.paxos_mode)
         dbInit.initNodeInst(g_opts.vc_mode)
 
     except Exception as e:

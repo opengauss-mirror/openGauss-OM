@@ -19,8 +19,9 @@ import os
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsOSlib import g_OSlib
-from gspylib.os.gsfile import g_file
+from base_utils.os.cmd_util import CmdUtil
+from base_utils.os.file_util import FileUtil
+from base_utils.os.process_util import ProcessUtil
 
 STACK = 3072
 
@@ -32,7 +33,7 @@ class CheckStack(BaseItem):
     def doCheck(self):
         parRes = ""
         flag = 0
-        output = g_OSlib.getUserLimits('stack size')
+        output = CmdUtil.getUserLimits('stack size')
         self.result.raw = output
         StackValue = output.split()[-1]
         if (StackValue == 'unlimited'):
@@ -44,14 +45,14 @@ class CheckStack(BaseItem):
                 StackValue)
 
         if (self.cluster):
-            pidList = g_OSlib.getProcess(
+            pidList = ProcessUtil.getProcess(
                 os.path.join(self.cluster.appPath, 'bin/gaussdb'))
             for pid in pidList:
                 limitsFile = "/proc/%s/limits" % pid
                 if (not os.path.isfile(limitsFile) or not os.access(limitsFile,
                                                                     os.R_OK)):
                     continue
-                output = g_file.readFile(limitsFile, 'Max stack size')[
+                output = FileUtil.readFile(limitsFile, 'Max stack size')[
                     0].strip()
                 self.result.raw += '\n[pid]%s: %s' % (pid, output)
                 Stack = output.split()[4]

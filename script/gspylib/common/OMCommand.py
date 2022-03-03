@@ -20,17 +20,17 @@
 import os
 import sys
 import time
-import re
 import subprocess
 from multiprocessing.dummy import Pool as ThreadPool
 
 sys.path.append(sys.path[0] + "/../../")
-from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.Common import DefaultValue, ClusterCommand, \
     TempfileManagement
 from gspylib.common.DbClusterStatus import DbClusterStatus
 from gspylib.common.ErrorCode import ErrorCode
-from gspylib.os.gsplatform import g_Platform
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from base_utils.os.user_util import UserUtil
 
 
 class OMCommand():
@@ -53,7 +53,7 @@ class OMCommand():
         Current_Path = os.path.dirname(os.path.realpath(__file__))
 
         if os.getgid() != 0:
-            gp_home = DefaultValue.getEnv("GPHOME")
+            gp_home = EnvUtil.getEnv("GPHOME")
             if not gp_home:
                 raise Exception(ErrorCode.GAUSS_518["GAUSS_51802"] % "GPHOME")
             Current_Path = os.path.join(gp_home, "script/gspylib/common")
@@ -123,113 +123,13 @@ class OMCommand():
                 Current_Path + "/../../local/StopInstance.py"),
             "Local_Check_Upgrade": os.path.normpath(
                 Current_Path + "/../../local/CheckUpgrade.py"),
+            "Local_Check_SshAgent": os.path.normpath(Current_Path
+                                                     + "/../../local/CheckSshAgent.py"),
             "Local_Upgrade_Utility": os.path.normpath(
                 Current_Path + "/../../local/UpgradeUtility.py")
         }
 
         return "python3 '%s'" % LocalScript[script]
-
-    @staticmethod
-    def getSetCronCmd(user, appPath):
-        """
-        function: Set the crontab
-        input : user, appPath
-        output: cmd
-        """
-        log_path = DefaultValue.getOMLogPath(DefaultValue.OM_MONITOR_DIR_FILE,
-                                             "", appPath)
-        cronFile = "%s/gauss_cron_%d" % (
-        DefaultValue.getTmpDirFromEnv(), os.getpid())
-        cmd = "crontab -l > %s;" % cronFile
-        cmd += "sed -i '/\\/bin\\/om_monitor/d' %s; " % cronFile
-        cmd += "echo \"*/1 * * * * source /etc/profile;(if [ -f ~/.profile " \
-               "];then source ~/.profile;fi);source ~/.bashrc;nohup " \
-               "%s/bin/om_monitor -L %s >>/dev/null 2>&1 &\" >> %s;" % (
-        appPath, log_path, cronFile)
-        cmd += "crontab -u %s %s;service cron restart;" % (user, cronFile)
-        cmd += "rm -f %s" % cronFile
-
-        return cmd
-
-    @staticmethod
-    def getRemoveCronCmd(user):
-        """
-        function: get remove crontab command
-        input : user
-        output: cmd
-        """
-        cmd = "crontab -u %s -r;service cron restart" % user
-
-        return cmd
-
-    @staticmethod
-    def adaptArchiveCommand(localInstDataDir, similarInstDataDir):
-        """
-        function: Adapt guc parameter 'archive_command' for each new instance.
-                  It will be invoked by GaussReplace.py and GaussDilatation.py
-        input : localInstDataDir, similarInstDataDir
-        output: NA
-        """
-        GUC_PARAM_PATTERN = "^\\s*archive_command.*=.*$"
-        pattern = re.compile(GUC_PARAM_PATTERN)
-        archiveParaLine = ""
-        archiveDir = "%s/pg_xlog/archive" % localInstDataDir
-        archiveCommand = ""
-        try:
-            configFile = os.path.join(localInstDataDir, "postgresql.conf")
-
-            with open(configFile, 'r') as fp:
-                resList = fp.readlines()
-            lineNum = 0
-            for oneLine in resList:
-                lineNum += 1
-                # skip blank line
-                if (oneLine.strip() == ""):
-                    continue
-                # skip comment line
-                if ((oneLine.strip()).startswith('#')):
-                    continue
-                # search valid line
-                result = pattern.match(oneLine)
-                if (result is not None):
-                    # have adapt archive_command parameter
-                    archiveParaLine = oneLine.replace(similarInstDataDir,
-                                                      localInstDataDir)
-                    archiveList = archiveParaLine.split('#')
-                    if (len(archiveList) > 0):
-                        archiveCommand = archiveList[0]
-                    break
-
-            if (archiveParaLine != ""):
-                if (archiveParaLine.find("%f") < 0):
-                    raise Exception(ErrorCode.GAUSS_500["GAUSS_50009"]
-                                    + " The parameter archive command should "
-                                      "be set with %%f : %s." % archiveCommand)
-
-                if (archiveParaLine.find("%p") < 0):
-                    raise Exception(ErrorCode.GAUSS_500["GAUSS_50009"]
-                                    + " The parameter archive command should"
-                                      " be set with %%p: %s." % archiveCommand)
-
-                setCmd = "sed -i \"%dc%s\" %s" % (lineNum, archiveParaLine,
-                                                  configFile)
-                (status, output) = subprocess.getstatusoutput(setCmd)
-                if (status != 0):
-                    raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"]
-                                    % setCmd + " Error: \n%s" % output)
-
-                if (os.path.exists(archiveDir) and os.path.isdir(archiveDir)):
-                    return
-
-                mkDirCmd = "mkdir -p '%s' -m %s" % (
-                archiveDir, DefaultValue.KEY_DIRECTORY_MODE)
-                (status, output) = subprocess.getstatusoutput(mkDirCmd)
-                if (status != 0):
-                    raise Exception(ErrorCode.GAUSS_502["GAUSS_50208"]
-                                    % archiveDir + " Error: \n%s." % output
-                                    + "The cmd is %s" % mkDirCmd)
-        except Exception as e:
-            raise Exception(str(e))
 
     @staticmethod
     def doCheckStaus(user, nodeId, cluster_normal_status=None,
@@ -243,7 +143,7 @@ class OMCommand():
             statusFile = "/home/%s/gauss_check_status_%d.dat" % (
             user, os.getpid())
             TempfileManagement.removeTempFile(statusFile)
-            cmd = ClusterCommand.getQueryStatusCmd(user, "", statusFile)
+            cmd = ClusterCommand.getQueryStatusCmd("", statusFile)
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0:
                 TempfileManagement.removeTempFile(statusFile)
@@ -253,7 +153,7 @@ class OMCommand():
             clusterStatus.initFromFile(statusFile)
             TempfileManagement.removeTempFile(statusFile)
         except Exception as e:
-            DefaultValue.cleanTmpFile(statusFile)
+            FileUtil.cleanTmpFile(statusFile)
             raise Exception(
                 ErrorCode.GAUSS_516["GAUSS_51600"] + "Error: %s." % str(e))
         status = 0
@@ -286,17 +186,17 @@ class OMCommand():
         return (status, output)
 
     @staticmethod
-    def getClusterStatus(user, isExpandScene=False):
+    def getClusterStatus(isExpandScene=False):
         """
         function: get cluster status
         input : user
         output: clusterStatus
         """
-        userAbsolutePath = g_Platform.getUserHomePath()
+        userAbsolutePath = UserUtil.getUserHomePath()
         statusFile = "%s/gauss_check_status_%d.dat" % (
         userAbsolutePath, os.getpid())
         TempfileManagement.removeTempFile(statusFile)
-        cmd = ClusterCommand.getQueryStatusCmd(user, "", statusFile)
+        cmd = ClusterCommand.getQueryStatusCmd("", statusFile)
         (status, output) = subprocess.getstatusoutput(cmd)
         if (status != 0):
             TempfileManagement.removeTempFile(statusFile)
@@ -305,27 +205,6 @@ class OMCommand():
         clusterStatus.initFromFile(statusFile, isExpandScene)
         TempfileManagement.removeTempFile(statusFile)
         return clusterStatus
-
-    @staticmethod
-    def getClusterDbNodeInfo(clusterUser, xmlFile=""):
-        """
-        function: get cluster and database node info from static config file
-        input : clusterUser, xmlFile
-        output: NA
-        """
-        try:
-            clusterInfo = dbClusterInfo()
-            if (os.getuid() == 0):
-                clusterInfo.initFromXml(xmlFile)
-            else:
-                clusterInfo.initFromStaticConfig(clusterUser)
-            hostName = DefaultValue.GetHostIpOrName()
-            dbNodeInfo = clusterInfo.getDbNodeByName(hostName)
-            if (dbNodeInfo is None):
-                raise Exception(ErrorCode.GAUSS_516["GAUSS_51619"] % hostName)
-            return clusterInfo, dbNodeInfo
-        except Exception as e:
-            raise Exception(str(e))
 
     @staticmethod
     def checkHostname(nodename):
@@ -368,10 +247,10 @@ class OMCommand():
         output: NA 
         """
         nodes = clusterInfo.getClusterNodeNames()
-        if (len(nodes) > 0):
+        if len(nodes) > 0:
             try:
                 pool = ThreadPool(DefaultValue.getCpuSet())
-                results = pool.map(OMCommand.checkHostname, nodes)
+                pool.map(OMCommand.checkHostname, nodes)
                 pool.close()
                 pool.join()
             except Exception as e:

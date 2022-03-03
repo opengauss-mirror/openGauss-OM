@@ -20,8 +20,8 @@ from multiprocessing.dummy import Pool as ThreadPool
 from gspylib.common.Common import DefaultValue
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsfile import g_file
-
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.net_util import NetUtil
 
 class CheckSpecialFile(BaseItem):
     def __init__(self):
@@ -30,22 +30,22 @@ class CheckSpecialFile(BaseItem):
     def getDiskPath(self):
         nodeDirs = []
         # get PGHOST Dir
-        tmpDir = DefaultValue.getEnv("PGHOST")
+        tmpDir = EnvUtil.getEnv("PGHOST")
         nodeDirs.append(tmpDir)
 
         # get gphome dir
-        gphome_path = DefaultValue.getEnv("GPHOME")
+        gphome_path = EnvUtil.getEnv("GPHOME")
         nodeDirs.append(gphome_path)
 
         # get log dir
-        log_path = DefaultValue.getEnv("GAUSSLOG")
+        log_path = EnvUtil.getEnv("GAUSSLOG")
         nodeDirs.append(log_path)
 
         # get gausshome dir
-        gausshome_path = DefaultValue.getEnv("GAUSSHOME")
+        gausshome_path = EnvUtil.getEnv("GAUSSHOME")
         nodeDirs.append(os.path.realpath(gausshome_path))
 
-        hostName = DefaultValue.GetHostIpOrName()
+        hostName = NetUtil.GetHostIpOrName()
         dbNode = self.cluster.getDbNodeByName(hostName)
         # including dn
         for dbInst in dbNode.datanodes:
@@ -71,7 +71,7 @@ class CheckSpecialFile(BaseItem):
     def ignorePath(self, path):
         # Part of the root path and file permissions need to be ignored
         ignorePathList = []
-        toolPath = DefaultValue.getEnv("GPHOME")
+        toolPath = EnvUtil.getEnv("GPHOME")
         sudoPath = os.path.join(toolPath, "sudo")
         inspectionPath = os.path.join(toolPath, "script/inspection")
         ignorePathList.append("%s/script/gs_preinstall" % toolPath)

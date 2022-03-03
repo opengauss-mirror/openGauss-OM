@@ -20,15 +20,16 @@
 #############################################################################
 
 import getopt
-import os
 import sys
 import subprocess
 import re
 
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
-from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
+from base_utils.os.net_util import NetUtil
+from base_utils.os.env_util import EnvUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
 
 ########################################################################
 # Global variables define
@@ -115,12 +116,12 @@ class Resetreplconninfo():
         function: configure all instance on local node
         """
         # get mpprc file
-        envfile = os.getenv('MPPDB_ENV_SEPARATE_PATH')
+        envfile = EnvUtil.getEnv('MPPDB_ENV_SEPARATE_PATH')
         if envfile is not None and envfile != "":
             self.userProfile = \
                 envfile.replace("\\", "\\\\").replace('"', '\\"\\"')
         else:
-            self.userProfile = "~/.bashrc"
+            self.userProfile = ClusterConstants.BASHRC
 
     def __getStatusByOM(self):
         """
@@ -143,8 +144,12 @@ class Resetreplconninfo():
         output_list = self.__getStatusByOM()
         output_num = 0
         pattern = re.compile("(\d+) (.*) (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}) (.*)")
-        for contont in output_list:
-            if pattern.search(contont):
+        has_cm_component = True if [i for i in output_list if "CMServer State" in i] else False
+        if has_cm_component:
+            output_list = [i for i in output_list if i]
+            output_list = output_list[-1].split('|')
+        for content in output_list:
+            if pattern.search(content):
                 output_num += 1
         status_list = output_list[-output_num:]
         repl_list = ['replconninfo' + str(i) for i in
@@ -160,8 +165,11 @@ class Resetreplconninfo():
         nodeip_split_idx = 2
         dndir_split_idx = 5
         instype_split_id = 7
+        if has_cm_component:
+            dndir_split_idx = 4
+            instype_split_id = 6
 
-        localhost = DefaultValue.GetHostIpOrName()
+        localhost = NetUtil.GetHostIpOrName()
         remote_ip_dict = {}
         for info_all in status_list:
             info = info_all.split()

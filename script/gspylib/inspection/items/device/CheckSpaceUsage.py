@@ -15,14 +15,13 @@
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------
 
-import os
 import psutil
-from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.hardware.gsdisk import g_disk
+from base_utils.os.disk_util import DiskUtil
+from base_utils.os.env_util import EnvUtil
 
 
 class CheckSpaceUsage(BaseItem):
@@ -86,13 +85,13 @@ class CheckSpaceUsage(BaseItem):
 
     def obtainDataDir(self, nodeInfo):
         dataDirList = {}
-        dataDirList[DefaultValue.getEnv("PGHOST")] = ["PGHOST",
+        dataDirList[EnvUtil.getEnv("PGHOST")] = ["PGHOST",
                                                       self.diskVailPGHOST]
-        dataDirList[DefaultValue.getEnv("GPHOME")] = ["GPHOME",
+        dataDirList[EnvUtil.getEnv("GPHOME")] = ["GPHOME",
                                                       self.diskVailGPHOME]
-        dataDirList[DefaultValue.getEnv("GAUSSHOME")] = \
+        dataDirList[EnvUtil.getEnv("GAUSSHOME")] = \
             ["GAUSSHOME", self.diskVailGAUSSHOME]
-        dataDirList[DefaultValue.getEnv("GAUSSLOG")] = ["GAUSSLOG",
+        dataDirList[EnvUtil.getEnv("GAUSSLOG")] = ["GAUSSLOG",
                                                         self.diskVailGAUSSLOG]
         dataDirList["/tmp"] = ["OS_TMP", self.diskVailOS_TMP]
         for inst in nodeInfo.datanodes:
@@ -119,8 +118,8 @@ class CheckSpaceUsage(BaseItem):
         else:
             pathList = self.obtainDiskDir()
         for path in pathList:
-            diskName = g_disk.getMountPathByDataDir(path)
-            usageInfo = g_disk.getDiskSpaceUsage(path)
+            diskName = DiskUtil.getMountPathByDataDir(path)
+            usageInfo = DiskUtil.getDiskSpaceUsage(path)
             diskInfo = "%s %s%%" % (diskName, usageInfo)
             if (diskName in DiskList):
                 continue

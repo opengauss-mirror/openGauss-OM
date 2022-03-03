@@ -16,8 +16,8 @@
 # ----------------------------------------------------------------------------
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsfile import g_file
 from gspylib.common.Common import DefaultValue
+from base_utils.os.file_util import FileUtil
 
 
 class CheckHyperThread(BaseItem):
@@ -30,7 +30,7 @@ class CheckHyperThread(BaseItem):
         idCount = 0
         cores = 0
         cpuCount = 0
-        cpuInfo = g_file.readFile('/proc/cpuinfo')
+        cpuInfo = FileUtil.readFile('/proc/cpuinfo')
         for eachLine in cpuInfo:
             if (eachLine.find('physical id') >= 0):
                 # get different CPU id

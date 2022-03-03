@@ -21,7 +21,6 @@
 
 import os
 import sys
-import pwd
 import time
 import subprocess
 from datetime import datetime, timedelta
@@ -34,7 +33,10 @@ from gspylib.common.OMCommand import OMCommand
 from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.ParameterParsecheck import Parameter
-from gspylib.os.gsfile import g_file
+from base_utils.os.file_util import FileUtil
+from base_utils.os.net_util import NetUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from base_utils.common.constantsbase import ConstantsBase
 
 
 #############################################################################
@@ -167,7 +169,7 @@ def initGlobals():
     global g_clusterInfo
     g_logger = GaussLog(g_opts.logFile, "gs_checkos")
     dirName = os.path.dirname(g_opts.logFile)
-    g_opts.localLog = os.path.join(dirName, DefaultValue.LOCAL_LOG_FILE)
+    g_opts.localLog = os.path.join(dirName, ClusterConstants.LOCAL_LOG_FILE)
     g_sshTool = SshTool(g_opts.hostnameList, g_logger.logFile,
                         DefaultValue.TIMEOUT_PSSH_CHECK)
     g_clusterInfo = dbClusterInfo()
@@ -318,7 +320,7 @@ def checkHostList():
     """
     """
     if (g_opts.hostnamestr == "" and g_opts.hostlistfile == ""):
-        g_opts.hostnameList = [DefaultValue.GetHostIpOrName()]
+        g_opts.hostnameList = [NetUtil.GetHostIpOrName()]
     elif (g_opts.hostnamestr != "" and g_opts.hostlistfile != ""):
         GaussLog.exitWithError(
             ErrorCode.GAUSS_500["GAUSS_50005"] % ('h', 'f'))
@@ -383,7 +385,7 @@ def checkParameter():
     # check config file
     checkConfigFile()
     if (len(g_opts.hostnameList) == 0):
-        g_opts.hostnameList = [DefaultValue.GetHostIpOrName()]
+        g_opts.hostnameList = [NetUtil.GetHostIpOrName()]
     g_opts.hostnameList.sort()
     checkHostnameList()
     ##########################################
@@ -580,17 +582,17 @@ def performEnvCheck(action_item, failed_mesg, success_mesg, item_num,
             try:
                 # Generate an empty file as a configuration file
                 ssh_config_tmp = getTmpFile()
-                g_file.createFile(ssh_config_tmp)
+                FileUtil.createFile(ssh_config_tmp)
 
                 # Execute the ssh command with an empty configuration file when checking the encoding format
                 (status, output, outputMap) = getCmdOutput(cmd,
                                                            ssh_config_tmp)
 
                 # Clean up the generated empty configuration file
-                g_file.removeFile(ssh_config_tmp)
+                FileUtil.removeFile(ssh_config_tmp)
             except Exception as e:
                 if os.path.exists(ssh_config_tmp):
-                    g_file.removeFile(ssh_config_tmp)
+                    FileUtil.removeFile(ssh_config_tmp)
                 g_logger.debug(
                     "Execute ssh cmd [%s] with ssh_config exception." % cmd)
                 raise Exception(str(e))
@@ -888,7 +890,7 @@ def checkNetworkConfigure():
     localMTU = DefaultValue.checkNetWorkMTU(nodeIp, False)
     if (str(localMTU).find("Abnormal") >= 0 or localMTU == ""):
         return
-    cmdInfo = "--hostname=%s " % DefaultValue.GetHostIpOrName()
+    cmdInfo = "--hostname=%s " % NetUtil.GetHostIpOrName()
     if (not g_opts.localMode):
         cmdInfo += "--MTUvalue=%s " % localMTU
     if (g_opts.confFile != "" and g_opts.confFile != None):
@@ -912,7 +914,7 @@ def getLocalIPAddr():
         Ips = localHostIp
     else:
         for node in g_clusterInfo.dbNodes:
-            if (node.name == DefaultValue.GetHostIpOrName()):
+            if (node.name == NetUtil.GetHostIpOrName()):
                 Ips = node.backIps[0]
     return Ips
 
@@ -1394,18 +1396,18 @@ def checkHostnameList():
 
     # get the local hostname
     global host
-    host = DefaultValue.GetHostIpOrName()
+    host = NetUtil.GetHostIpOrName()
 
     # if g_opts.hostnameList have only one value,
     # check it whether or not local hostname
     if (len(g_opts.hostnameList) == 1):
-        if (g_opts.hostnameList[0] == DefaultValue.GetHostIpOrName()):
+        if (g_opts.hostnameList[0] == NetUtil.GetHostIpOrName()):
             g_opts.localMode = True
             return
     try:
         # check the g_opts.hostnameList values are whether or not local IPs
         # obtain the all local IPs
-        IPlist = DefaultValue.getIpAddressList()
+        IPlist = NetUtil.getIpAddressList()
         IPlist.append(host)
 
         for ip in g_opts.hostnameList:
@@ -1514,8 +1516,8 @@ def main():
         if (g_opts.outputfile != ""):
             basepath = os.path.dirname(g_opts.outputfile)
             if (not os.path.isdir(basepath)):
-                os.makedirs(basepath, DefaultValue.KEY_DIRECTORY_PERMISSION)
-            g_file.createFileInSafeMode(g_opts.outputfile)
+                os.makedirs(basepath, ConstantsBase.KEY_DIRECTORY_PERMISSION)
+            FileUtil.createFileInSafeMode(g_opts.outputfile)
             fp = open(g_opts.outputfile, "w")
             output = fp
             g_logger.log("Performing operation system check/set."
@@ -1533,7 +1535,7 @@ def main():
             fp.flush()
             fp.close()
         if g_opts.outputfile != "":
-            os.chmod(g_opts.outputfile, DefaultValue.KEY_FILE_PERMISSION)
+            os.chmod(g_opts.outputfile, ConstantsBase.KEY_FILE_PERMISSION)
             g_logger.log("Operation system check/set is completed.")
     except Exception as ex:
         if fp:

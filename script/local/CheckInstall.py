@@ -28,26 +28,27 @@ import pwd
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.Common import DefaultValue
-from gspylib.common.VersionInfo import VersionInfo
 from gspylib.common.ParameterParsecheck import Parameter
 from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.LocalBaseOM import LocalBaseOM
-from gspylib.os.gsfile import g_file
-from gspylib.os.gsOSlib import g_OSlib
 from gspylib.threads.parallelTool import parallelTool
+from base_utils.os.cmd_util import CmdUtil
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from domain_utils.cluster_file.package_info import PackageInfo
+from domain_utils.cluster_file.version_info import VersionInfo
+from base_utils.os.net_util import NetUtil
+from base_utils.os.user_util import UserUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
 
-OTHER_FLAG = "0"
-PREINSTALL_FLAG = "1"
-INSTALL_FLAG = "2"
-g_clusterInfo = None
-TIME_OUT = 2
-RETRY_TIMES = 3
 
 ########################################################################
 # Global variables define
 ########################################################################
 g_opts = None
+INSTALL_FLAG = "2"
 
 
 ########################################################################
@@ -159,11 +160,14 @@ def checkParameter():
     checkUser(g_opts.userInfo)
 
     # check mpprc file path
-    g_opts.mpprcFile = DefaultValue.getMpprcFile()
+    g_opts.mpprcFile = EnvUtil.getMpprcFile()
     checkOSUser()
 
     # check log file info
-    checkLogFile(g_opts.logFile)
+    g_opts.logFile = ClusterLog.checkLogFile(g_opts.logFile, g_opts.user, "",
+                                             ClusterConstants.LOCAL_LOG_FILE)
+    g_opts.logger = GaussLog(g_opts.logFile, "CheckInstall")
+
 
     # check configFile
     checkXMLFile()
@@ -199,7 +203,7 @@ def checkOSUser():
     output: NA
     """
     try:
-        group = g_OSlib.getGroupByUser(g_opts.user)
+        group = UserUtil.getGroupByUser(g_opts.user)
     except Exception as e:
         GaussLog.exitWithError(str(e))
     if (group != g_opts.group):
@@ -207,18 +211,6 @@ def checkOSUser():
 
     # get user env file
     g_opts.userProfile = g_opts.mpprcFile
-
-
-def checkLogFile(logFile):
-    """
-    function: check log file
-    input : logFile
-    output: NA
-    """
-    if (logFile == ""):
-        logFile = DefaultValue.getOMLogPath(DefaultValue.LOCAL_LOG_FILE,
-                                            g_opts.user, "", "")
-    g_opts.logger = GaussLog(logFile, "CheckInstall")
 
 
 def checkXMLFile():
@@ -314,7 +306,7 @@ def checkOldInstallStatus():
     g_opts.logger.log("Checking old installation.")
     # Check $GAUSS_ENV.
     try:
-        gauss_ENV = DefaultValue.getEnvironmentParameterValue("GAUSS_ENV",
+        gauss_ENV = EnvUtil.getEnvironmentParameterValue("GAUSS_ENV",
                                                               g_opts.user)
         if (str(gauss_ENV) == str(INSTALL_FLAG)):
             g_opts.logger.logExit(ErrorCode.GAUSS_518["GAUSS_51806"])
@@ -331,7 +323,7 @@ def checkSHA256():
     """
     g_opts.logger.log("Checking SHA256.")
     try:
-        DefaultValue.checkPackageOS()
+        PackageInfo.checkPackageOS()
     except Exception as e:
         g_opts.logger.logExit(str(e))
     g_opts.logger.log("Successfully checked SHA256.")
@@ -343,7 +335,7 @@ def getFileInfo(fileName):
     input : filename
     output: file context
     """
-    res = g_file.readFile(fileName)
+    res = FileUtil.readFile(fileName)
     if (len(res) != 1):
         raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % fileName)
     return res[0].strip()
@@ -408,7 +400,7 @@ def checkOSKernel():
         shmallFile = "/proc/sys/kernel/shmall"
         shmmax = getFileInfo(shmaxFile)
         shmall = getFileInfo(shmallFile)
-        PAGESIZE = g_OSlib.getSysConfiguration()
+        PAGESIZE = CmdUtil.getSysConfiguration()
         if (shared_buffers > int(shmmax)):
             g_opts.logger.logExit(ErrorCode.GAUSS_505["GAUSS_50501"])
         if (shared_buffers > int(shmall) * int(PAGESIZE)):
@@ -519,7 +511,7 @@ class CheckInstall(LocalBaseOM):
         else:
             self.clusterInfo = dbClusterInfo()
             self.clusterInfo.initFromXml(self.clusterConfig)
-            hostName = DefaultValue.GetHostIpOrName()
+            hostName = NetUtil.GetHostIpOrName()
             self.dbNodeInfo = self.clusterInfo.getDbNodeByName(hostName)
             if (self.dbNodeInfo is None):
                 self.logger.logExit(
@@ -567,7 +559,7 @@ class CheckInstall(LocalBaseOM):
         # Check $GAUSS_ENV.
         try:
             # get mpp file by env parameter MPPDB_ENV_SEPARATE_PATH
-            mpprcFile = DefaultValue.getEnv(DefaultValue.MPPRC_FILE_ENV)
+            mpprcFile = EnvUtil.getEnv(DefaultValue.MPPRC_FILE_ENV)
             if (mpprcFile != "" and mpprcFile is not None):
                 userProfile = mpprcFile
                 if (not os.path.isabs(userProfile)):
@@ -579,7 +571,7 @@ class CheckInstall(LocalBaseOM):
             else:
                 userpath = pwd.getpwnam(self.user).pw_dir
                 userProfile = os.path.join(userpath, ".bashrc")
-            reEnvList = g_file.readFile(userProfile)
+            reEnvList = FileUtil.readFile(userProfile)
             checkList = [
                 "export PATH=$GPHOME/script/gspylib/pssh/bin:$GPHOME/script"
                 ":$PATH",

@@ -119,6 +119,9 @@ function env_check()
 function copy_script_file()
 {    
     cp -rf $ROOT_DIR/script $PKG_TMP_DIR/ &&
+    if [ -f $PKG_TMP_DIR/script/gspylib/common/py_pstree.py ]; then
+        mv $PKG_TMP_DIR/script/gspylib/common/py_pstree.py $PKG_TMP_DIR/script/py_pstree.py
+    fi
     cp -rf $ROOT_DIR/other/transfer.py $PKG_TMP_DIR/script/ &&
     find $PKG_TMP_DIR/script/ -type f -print0 | xargs -0 -n 10 -r dos2unix > /dev/null 2>&1 &&
     find $PKG_TMP_DIR/script/gspylib/inspection/ -name d2utmp* -print0 | xargs -0 rm -rf &&
@@ -145,8 +148,8 @@ function version_cfg()
     echo "${version_Kernel}" >>${version_file}
     echo "${gitversion}" >>${version_file}
 
-    if [ -f ${PKG_TMP_DIR}/script/gspylib/common/VersionInfo.py ] ; then
-        sed -i -e "s/COMMON_VERSION = \"Gauss200 OM VERSION\"/COMMON_VERSION = \"$(echo ${om_version})\"/g" -e "s/__GAUSS_PRODUCT_STRING__/$module_name/g" ${PKG_TMP_DIR}/script/gspylib/common/VersionInfo.py
+    if [ -f ${PKG_TMP_DIR}/script/domain_utils/cluster_file/version_info.py ] ; then
+        sed -i -e "s/COMMON_VERSION = \"Gauss200 OM VERSION\"/COMMON_VERSION = \"$(echo ${om_version})\"/g" -e "s/__GAUSS_PRODUCT_STRING__/$module_name/g" ${PKG_TMP_DIR}/script/domain_utils/cluster_file/version_info.py
         if [ $? -ne 0 ]; then
             die "Failed to replace OM tools version number."
         fi
@@ -168,7 +171,7 @@ function clib_copy()
     if [ -f $BINARYLIBS_PATH_INSTALL_TOOLS/libpython3.*m.so.1.0 ]
     then
         cp $BINARYLIBS_PATH_INSTALL_TOOLS/libpython3.*m.so.1.0 $PKG_TMP_DIR/script/gspylib/clib
-    fi		
+    fi
     #cp $BUILD_DIR/bin/encrypt $BUILD_DIR/script/gspylib/clib
 }
 
@@ -223,6 +226,13 @@ function lib_copy()
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/paramiko             ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psutil               ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/netifaces            ${PKG_TMP_DIR}/lib
+
+    if [ -d "${BINARYLIBS_PATH_INSTALL_TOOLS}/psycopg2" ]; then
+        mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/psycopg2/
+        cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psycopg2    ${PKG_TMP_DIR}/lib
+        cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psycopg2    ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
+    fi
+
 }
 
 function main()
@@ -260,3 +270,4 @@ function main()
 
 main
 exit 0
+

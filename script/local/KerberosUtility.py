@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-#-*- coding:utf-8 -*-
-# Copyright (c) 2020 Huawei Technologies Co.,Ltd.
+# -*- coding:utf-8 -*-
+#############################################################################
+# Portions Copyright (c) 2020 Huawei Technologies Co.,Ltd.
+# Portions Copyright (c) 2007 Agendaless Consulting and Contributors.
 #
 # openGauss is licensed under Mulan PSL v2.
 # You can use this software according to the terms
@@ -14,45 +16,39 @@
 # EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
 # MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 # See the Mulan PSL v2 for more details.
-#-------------------------------------------------------------------------
-#
-# KerberosUtility.py
-#    KerberosUtility.py is a utility to handler kerberos things
-#
-# IDENTIFICATION
-#    src/manager/om/script/local/KerberosUtility.py
-#
-#-------------------------------------------------------------------------
-
+# Description  : KerberosUtility.py is a utility to handler kerberos things.
+#############################################################################
+import gc
 import sys
 import os
 import getopt
 import subprocess
 import shutil
 import pwd
+from subprocess import PIPE
 
 sys.path.append(sys.path[0] + "/../")
-from gspylib.common.VersionInfo import VersionInfo
-from gspylib.common.DbClusterInfo import initParserXMLFile, dbClusterInfo
-from gspylib.common.Common import DefaultValue
 from gspylib.common.DbClusterInfo import dbClusterInfo
+from gspylib.common.Common import DefaultValue
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.threads.SshTool import SshTool
-from gspylib.os.gsfile import g_file
 from multiprocessing.dummy import Pool as ThreadPool
+from domain_utils.cluster_file.cluster_config_file import ClusterConfigFile
+from base_utils.os.cmd_util import CmdUtil
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from base_utils.os.net_util import NetUtil
+from base_utils.common.fast_popen import FastPopen
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from domain_utils.security.random_value import RandomValue
 
 METHOD_TRUST = "trust"
-BIGDATA_HOME = "$BIGDATA_HOME"
-DUMMY_STANDBY_INSTANCE = 2
-INSTANCE_ROLE_COODINATOR = 3
 g_ignorepgHbaMiss = True
-CONFIG_ITEM_TYPE = "ConfigInstance"
 g_clusterInfo = None
-#Gauss200 IP Hosts Mapping
-GAUSS_HOSTS_MAPPING_FLAG = "#%s IP Hosts Mapping" % VersionInfo.PRODUCT_NAME
 #write /etc/hosts kerberos flag
-KERBEROS_HOSTS_MAPPING_FLAG = "#Kerberos IP Hosts Mapping"
 VALUE_LIST = ["PGKRBSRVNAME", "KRBHOSTNAME", "MPPDB_KRB5_FILE_PATH",
               "KRB5RCACHETYPE"]
 SERVER_ENV_LIST = ["KRB_HOME", "KRB5_CONFIG", "KRB5_KDC_PROFILE"]
@@ -89,7 +85,7 @@ def initGlobals():
     output: NA
     """
     global g_opts
-    logFile = DefaultValue.getOMLogPath(DefaultValue.LOCAL_LOG_FILE,
+    logFile = ClusterLog.getOMLogPath(ClusterConstants.LOCAL_LOG_FILE,
                                         g_opts.user, "")
 
     # Init logger
@@ -109,14 +105,14 @@ def initGlobals():
     try:
         # init for __clusterInfo and __dbNodeInfo
         g_opts.clusterInfo = g_clusterInfo
-        hostName = DefaultValue.GetHostIpOrName()
+        hostName = NetUtil.GetHostIpOrName()
         g_opts.dbNodeInfo = g_clusterInfo.getDbNodeByName(hostName)
 
         #get env variable file
-        g_opts.mpprcFile = DefaultValue.getMpprcFile()
+        g_opts.mpprcFile = EnvUtil.getMpprcFile()
 
         # create kerberso directory under GAUSSHOME
-        gausshome = DefaultValue.getInstallDir(g_opts.user)
+        gausshome = ClusterDir.getInstallDir(g_opts.user)
         if not gausshome:
             raise Exception(ErrorCode.GAUSS_518["GAUSS_51802"] % "GAUSSHOME")
         g_opts.gausshome = gausshome
@@ -133,7 +129,7 @@ def initGlobals():
                 g_logger.debug("%s the kerberos tool.", g_opts.action)
             else:
                 g_logger.debug("%s the kerberos client.", g_opts.action)
-            tablespace = DefaultValue.getEnv("ELK_SYSTEM_TABLESPACE")
+            tablespace = EnvUtil.getEnv("ELK_SYSTEM_TABLESPACE")
             if tablespace is not None and tablespace != "":
                 xmlfile = os.path.join(os.path.dirname(g_opts.mpprcFile),
                                        DefaultValue.FI_ELK_KRB_XML)
@@ -144,7 +140,7 @@ def initGlobals():
             if not os.path.isfile(xmlfile):
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % xmlfile)
 
-            rootNode = initParserXMLFile(xmlfile)
+            rootNode = ClusterConfigFile.initParserXMLFile(xmlfile)
             elementArray = rootNode.findall("property")
 
             for element in elementArray:
@@ -428,7 +424,7 @@ class Kerberos():
         g_logger.log("start config pg_hba file")
         try:
             # get current node information
-            hostName = DefaultValue.GetHostIpOrName()
+            hostName = NetUtil.GetHostIpOrName()
             self.__dbNodeInfo = g_clusterInfo.getDbNodeByName(hostName)
             if (self.__dbNodeInfo is None):
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51620"] % "local"
@@ -461,9 +457,7 @@ class Kerberos():
             principals = principals[1].split("@")
             # Every 1000 records merged into one"
             ipstring = ""
-            j = 0
             for ip in self.__allIps:
-                j += 1
                 if not isUninstall:
                     ipstring += " -h 'host    all             all       " \
                                 "      %s/32        gss         " \
@@ -584,6 +578,10 @@ class Kerberos():
         # check the GUC parameter string
         if gucstr == "":
             return
+        inst_type_map = {DefaultValue.INSTANCE_ROLE_DATANODE:"datanode",
+                         DefaultValue.INSTANCE_ROLE_COODINATOR:"coordinator",
+                         DefaultValue.INSTANCE_ROLE_CMSERVER:"cmserver"}
+        inst_type = " -Z %s"%inst_type_map.get(typename) if inst_type_map.get(typename) else ""
         if typename == DefaultValue.INSTANCE_ROLE_DATANODE or \
                 typename == DefaultValue.INSTANCE_ROLE_COODINATOR:
             cmd = "source '%s'; gs_guc set -D %s %s" % \
@@ -597,8 +595,8 @@ class Kerberos():
                 except Exception as e:
                     raise Exception(str(e))
         else:
-            cmd = "source '%s'; gs_guc set -N all -I all %s" % \
-                  (g_opts.mpprcFile, gucstr)
+            cmd = "source '%s'; gs_guc set %s -N all -I all %s" % \
+                  (g_opts.mpprcFile, inst_type, gucstr)
             DefaultValue.retry_gs_guc(cmd)
 
     def __gsdbStatus(self):
@@ -729,7 +727,7 @@ class Kerberos():
                    % (g_opts.krbHomePath, kinitPath,
                       g_opts.keytab, g_opts.principal)
             cmd = 'source %s; %s' % (g_opts.mpprcFile, kcmd)
-            (status, output) = DefaultValue.retryGetstatusoutput(cmd)
+            (status, output) = CmdUtil.retryGetstatusoutput(cmd)
             if(status != 0):
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
                                 + " Output: \n%s" % str(output))
@@ -748,7 +746,7 @@ class Kerberos():
         """
         g_logger.log("Set CRON.")
         cronFile = "%s/gauss_cron_%d" % \
-                   (DefaultValue.getTmpDirFromEnv(g_opts.user), os.getpid())
+                   (EnvUtil.getTmpDirFromEnv(g_opts.user), os.getpid())
         setCronCmd = "crontab -l > %s && " % cronFile
         setCronCmd += "sed -i '/^.*kinit.*$/d' '%s'; " % cronFile
         setCronCmd += '''echo '*/1 * * * * source '%s';''' \
@@ -805,7 +803,7 @@ class Kerberos():
     def __setServiceCron(self):
         g_logger.log("Set CRON.")
         cronFile = "%s/gauss_cron_%d" % \
-                   (DefaultValue.getTmpDirFromEnv(g_opts.user), os.getpid())
+                   (EnvUtil.getTmpDirFromEnv(g_opts.user), os.getpid())
         setCronCmd = "crontab -l > %s && " % cronFile
         setCronCmd += "sed -i '/^.*krb5kdc.*$/d' '%s'; " % cronFile
         setCronCmd += '''echo "*/1 * * * * source %s; ''' \
@@ -836,7 +834,7 @@ class Kerberos():
         try:
             # Remove cron
             crontabFile = "%s/gauss_crontab_file_%d" % \
-                          (DefaultValue.getTmpDirFromEnv(g_opts.user),
+                          (EnvUtil.getTmpDirFromEnv(g_opts.user),
                            os.getpid())
             cmd = "crontab -l > %s; " % crontabFile
             cmd += "sed -i '/^.*kinit.*$/d' '%s'; " % crontabFile
@@ -853,7 +851,7 @@ class Kerberos():
                   "$LD_LIBRARY_PATH;export KRB5_CONFIG=" \
                   "$MPPDB_KRB5_FILE_PATH;%s/bin/kdestroy" % \
                   (g_opts.mpprcFile, g_opts.krbHomePath, g_opts.krbHomePath)
-            (status, output) = DefaultValue.retryGetstatusoutput(cmd)
+            (status, output) = CmdUtil.retryGetstatusoutput(cmd)
             if (status != 0):
                 g_logger.debug("Failed to delete ticket. Error: \n%s" %
                                str(output))
@@ -888,8 +886,7 @@ class Kerberos():
         krb5_file = os.path.realpath(os.path.join(dest_dir, dest_file))
         kdc_ip = g_opts.dbNodeInfo.backIps[0]
         kdc_port = 21732
-        krb_conf = g_opts.gausshome_kerberso
-        gausslog = DefaultValue.getEnvironmentParameterValue("GAUSSLOG", "")
+        gausslog = EnvUtil.getEnvironmentParameterValue("GAUSSLOG", "")
         if not gausslog:
             raise Exception(ErrorCode.GAUSS_518["GAUSS_51802"] % "GAUSSLOG")
         cmd = "sed -i 's/#kdc_ip#/%s/g' %s && \
@@ -1032,14 +1029,18 @@ class Kerberos():
             dir_permission = 0o700
             os.makedirs(os.path.dirname(kerberos_database_file),
                         mode=dir_permission)
-            with open("/dev/random", 'rb') as fp:
-                srp = fp.read(16)
-            passwd = int(srp.hex(), 16)
-            cmd = "source %s && kdb5_util create -r HUAWEI.COM -s -P %s" % \
-                  (g_opts.mpprcFile, str(passwd))
-            (status, output) = subprocess.getstatusoutput(cmd)
+            passwd = RandomValue.getRandStr()
+            cmd = "source %s && echo -e '%s\n%s\n%s' | kdb5_util create -r HUAWEI.COM -s -m" % \
+                  (g_opts.mpprcFile, str(passwd), str(passwd), str(passwd))
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
+            # clean pwd info
+            del passwd, cmd
+            gc.collect()
             if status != 0:
-                g_logger.debug("The cmd is %s " % cmd)
+                g_logger.debug("The cmd is kdb5_util")
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
                                 "kdb5_util")
             g_logger.debug("Create kerberos database successfully.")
@@ -1048,7 +1049,10 @@ class Kerberos():
         cmd = "source %s && kadmin.local -q \"addprinc  " \
               "-randkey %s/huawei.huawei.com\"" % \
               (g_opts.mpprcFile, g_opts.user)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+        stdout, stderr = proc.communicate()
+        output = stdout + stderr
+        status = proc.returncode
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + output)
         g_logger.debug("Create kerberos database user successfully.")
@@ -1058,7 +1062,10 @@ class Kerberos():
               "%s/huawei.huawei.com@HUAWEI.COM\"" % \
                 (g_opts.mpprcFile, g_opts.gausshome_kerberso,
                  g_opts.user, g_opts.user)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+        stdout, stderr = proc.communicate()
+        output = stdout + stderr
+        status = proc.returncode
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + output)
         g_logger.debug("Create kerberos keytab successfully.")
@@ -1091,8 +1098,7 @@ class Kerberos():
                                       "auth_config")
         cmd = "if [ ! -d '%s' ]; then mkdir %s; fi" % (mppdb_site_dir,
                                                        mppdb_site_dir)
-        g_sshTool.executeCommand(cmd, "create auth_config directory",
-                                 DefaultValue.SUCCESS, g_sshTool.hostNames,
+        g_sshTool.executeCommand(cmd, DefaultValue.SUCCESS, g_sshTool.hostNames,
                                  g_opts.mpprcFile)
         # copy mppdb-site.xml
         src_path = os.path.realpath(os.path.join(g_opts.gausshome, "etc",
@@ -1140,10 +1146,10 @@ class Kerberos():
             except Exception as e:
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50207"] %
                                 auth_config)
-        logPath = DefaultValue.getUserLogDirWithUser(g_opts.user)
+        logPath = ClusterDir.getUserLogDirWithUser(g_opts.user)
         kerberosLog = "%s/kerberos" % logPath
         if os.path.exists(kerberosLog):
-            g_file.removeDirectory(kerberosLog)
+            FileUtil.removeDirectory(kerberosLog)
         g_logger.log("Clean auth config directory succeed.")
 
     def __cleanServer(self):
@@ -1163,7 +1169,7 @@ class Kerberos():
 
         # Remove cron
         crontabFile = "%s/gauss_crontab_file_%d" % \
-                      (DefaultValue.getTmpDirFromEnv(g_opts.user), os.getpid())
+                      (EnvUtil.getTmpDirFromEnv(g_opts.user), os.getpid())
         cmd = "crontab -l > %s; " % crontabFile
         cmd += "sed -i '/^.*krb5kdc.*$/d' '%s'; " % crontabFile
         cmd += "crontab '%s';" % crontabFile

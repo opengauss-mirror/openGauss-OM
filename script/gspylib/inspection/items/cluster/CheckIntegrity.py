@@ -17,8 +17,7 @@
 import os
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsfile import g_file
-
+from base_utils.os.file_util import FileUtil
 
 class CheckIntegrity(BaseItem):
     def __init__(self):
@@ -27,7 +26,7 @@ class CheckIntegrity(BaseItem):
     def doCheck(self):
         gaussHome = self.cluster.appPath
         gaussdbFile = os.path.join(gaussHome, "bin/gaussdb")
-        gaussdbIntegrity = g_file.getFileSHA256(gaussdbFile)
+        gaussdbIntegrity = FileUtil.getFileSHA256(gaussdbFile)
         self.result.raw = gaussdbIntegrity
         if (gaussdbIntegrity != "" and len(gaussdbIntegrity) == 64):
             self.result.rst = ResultStatus.OK

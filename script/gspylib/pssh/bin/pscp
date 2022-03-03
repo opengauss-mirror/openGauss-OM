@@ -64,7 +64,7 @@ def parse_command():
                       help='aggregated output and error for each server')
     parser.add_option('-O', dest='opt', action='append',
                       help='Additional ssh parameters')
-
+    parser.add_option('', '--trace-id', dest='trace_id', help='trace id')
     return parser
 
 

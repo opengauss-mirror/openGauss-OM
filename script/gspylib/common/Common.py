@@ -25,18 +25,19 @@ import socket
 import types
 import re
 import time
-import configparser
 import multiprocessing
 import _thread as thread
 import pwd
 import base64
-import struct
-import binascii
-import json
+import secrets
+import string
+import stat
+from subprocess import PIPE
 
 # The installation starts, but the package is not decompressed completely.
 # The lib64/libz.so.1 file is incomplete, and the hashlib depends on the
 # libz.so.1 file.
+
 num = 0
 while num < 10:
     try:
@@ -47,13 +48,8 @@ while num < 10:
         num += 1
         time.sleep(1)
 
-from random import sample
-import csv
 import shutil
-import string
-import traceback
 from ctypes import *
-from multiprocessing.dummy import Pool as ThreadPool
 from datetime import datetime
 
 localDirPath = os.path.dirname(os.path.realpath(__file__))
@@ -96,20 +92,33 @@ except ImportError as e:
     import psutil
 
 sys.path.append(localDirPath + "/../../")
-from gspylib.common.DbClusterInfo import dbClusterInfo, \
-    readOneClusterConfigItem, initParserXMLFile
 from gspylib.common.ErrorCode import ErrorCode
-from gspylib.os.gsplatform import g_Platform
+from os_platform.UserPlatform import g_Platform
 from gspylib.os.gsfile import g_file
-from gspylib.os.gsOSlib import g_OSlib
-from gspylib.os.gsservice import g_service
-from gspylib.hardware.gsmemory import g_memory
+from os_platform.gsservice import g_service
 from gspylib.threads.parallelTool import parallelTool
-from gspylib.common.VersionInfo import VersionInfo
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.ciphers import Cipher, \
-    algorithms, modes
-import impl.upgrade.UpgradeConst as Const
+from base_utils.executor.cmd_executor import CmdExecutor
+from base_utils.executor.local_remote_cmd import LocalRemoteCmd
+from domain_utils.cluster_file.cluster_config_file import ClusterConfigFile
+from base_utils.os.cmd_util import CmdUtil
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from domain_utils.cluster_file.version_info import VersionInfo
+from domain_utils.security.random_value import RandomValue
+from base_utils.os.process_util import ProcessUtil
+from domain_utils.sql_handler.sql_executor import SqlExecutor
+from domain_utils.sql_handler.sql_file import SqlFile
+from base_utils.os.net_util import NetUtil
+from base_utils.common.constantsbase import ConstantsBase
+from base_utils.security.sensitive_mask import SensitiveMask
+from os_platform.linux_distro import LinuxDistro
+from base_diff.sql_commands import SqlCommands
+from gspylib.common.DbClusterInfo import dbClusterInfo
+from base_utils.common.fast_popen import FastPopen
+from gspylib.common.Constants import Constants
+from domain_utils.cluster_file.profile_file import ProfileFile
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from gspylib.common.aes_cbc_util import AesCbcUtil
 
 noPassIPs = []
 g_lock = thread.allocate_lock()
@@ -134,23 +143,9 @@ class DefaultValue():
     def __init__(self):
         pass
 
-    TASK_INSTALL = "installation"
-    TASK_UPGRADE = "upgrade"
-    TASK_EXPAND = "expansion"
-    TASK_REPLACE = "replacement"
-    TASK_REPAIR = "repair"
     TASK_QUERY_STATUS = "status"
-    TASK_START_STOP = "startup"
     TASK_START = "startup"
     TASK_STOP = "shutdown"
-    TASK_SWITCH = "switching"
-    TASK_GAUSSROACH = "GaussRoach"
-    TASK_GAUSSROACH_SHOW = "roach_show"
-    TASK_GAUSSROACH_STOP = "roach_stop_backup"
-    TASK_GAUSSROACH_BACKUP = "roach_backup"
-    TASK_GAUSSROACH_RESTORE = "roach_restore"
-    TASK_GAUSSROACH_DELETE = "roach_delete"
-    TASK_SUCCESS_FLAG = "SUCCESS"
     ###########################
     # DWS path info
     ###########################
@@ -158,31 +153,18 @@ class DefaultValue():
     DWS_PACKAGE_PATH = "/opt/dws/package"
     DWS_APP_PAHT = "/opt/dws/app"
 
-    # CM reload signal
-    SIGNAL_RELOAD_PARA = 1
-    SIGNAL_RELOAD_FILE = 9
 
     ###########################
     # init action timeout value
     ###########################
     # start timeout value
     TIMEOUT_CLUSTER_START = 300
-    # restart nodegroup timeout value
-    TIMEOUT_NODEGROUP_RESTART = 1800
     # stop timeout value
     TIMEOUT_CLUSTER_STOP = 300
-    # failover timeout value
-    TIMEOUT_CLUSTER_FAILOVER = 300
-    # syc timeout value
-    TIMEOUT_CLUSTER_SYNC = 1800
-    # switch reset timeout value
-    TIMEOUT_CLUSTER_SWITCHRESET = 300
-    
+
     ##
     TIMEOUT_PSSH_COMMON = 80
     ###########################
-    # pssh redis timeout value
-    TIMEOUT_PSSH_REDIS = 604800
     ###########################
     # preinstall timeoutvalue
     TIMEOUT_PSSH_PREINSTALL = 1800
@@ -194,32 +176,15 @@ class DefaultValue():
     TIMEOUT_PSSH_POSTPREINSTALL = 1800
     # binary-upgrade and rollback timeout value
     TIMEOUT_PSSH_BINARY_UPGRADE = 14400
-    # expend timeout value
-    TIMEOUT_PSSH_EXPEND = 43200
-    # replace timeout value
-    TIMEOUT_PSSH_REPLACE = 86400
     # check timeout value
     TIMEOUT_PSSH_CHECK = 1800
     # backup timeout value
     TIMEOUT_PSSH_BACKUP = 1800
-    # sshexkey timeout value
-    TIMEOUT_PSSH_SSHEXKEY = 1800
     # collector timeout value
     TIMEOUT_PSSH_COLLECTOR = 1800
-    # start etcd timeout value
-    TIMEOUT_PSSH_STARTETCD = 600
-    # delCN timeout value
-    TIMEOUT_PSSH_DELCN = 1800
-    # addCN timeout value
-    TIMEOUT_PSSH_ADDCN = 86400
-    # estimate timeout value
-    TIMEOUT_PSSH_ESTIMATE = 1800
-    # changeip timeout value
-    TIMEOUT_PSSH_CHANGEIP = 1800
-    # extension connector timeout value
-    TIMEOUT_PSSH_EXTENSION = 1800
-    # VC mode timeout value
-    TIMEOUT_PSSH_VC = 43200
+
+    # exponsion switchover timeout value
+    TIMEOUT_EXPANSION_SWITCH = 30
 
     ###########################
     # init authority parameter
@@ -231,15 +196,11 @@ class DefaultValue():
     # file node
     FILE_MODE = 640
     FILE_MODE_PERMISSION = 0o640
-    KEY_DIRECTORY_PERMISSION = 0o700
     KEY_FILE_MODE = 600
     MIN_FILE_MODE = 400
-    MIN_FILE_PERMISSION = 0o400
     SPE_FILE_MODE = 500
-    KEY_FILE_PERMISSION = 0o600
     KEY_DIRECTORY_MODE = 700
     MAX_DIRECTORY_MODE = 755
-    TMP_EXE_FILE_MODE = 0o700
     SQL_FILE_MODE = 644
     # the host file permission. Do not changed it.
     HOSTS_FILE = 644
@@ -253,70 +214,26 @@ class DefaultValue():
     GREY_DISK_SIZE = 10
     # The remaining space of device
     INSTANCE_DISK_SIZE = 200
-    # lock cluster time
-    CLUSTER_LOCK_TIME = 43200
-    # lock cluster time for waiting mode
-    CLUSTER_LOCK_TIME_WAIT = 3600
 
-    # the guc paramter max_wal_senders's max value
-    MAX_WAL_SENDERS = 100
 
     # env parameter
     MPPRC_FILE_ENV = "MPPDB_ENV_SEPARATE_PATH"
-    MPPDB_TMP_PATH_ENV = "PGHOST"
-    TOOL_PATH_ENV = "GPHOME"
     SUCCESS = "Success"
     FAILURE = "Failure"
     # tablespace version directory name
     # it is from gaussdb kernel code
     TABLESPACE_VERSION_DIRECTORY = "PG_9.2_201611171"
-    # gauss log dir
-    GAUSSDB_DIR = "/var/log/gaussdb"
     # default database name
     DEFAULT_DB_NAME = "postgres"
     # database size file
     DB_SIZE_FILE = "total_database_size"
-
-    # current  directory path
-    GURRENT_DIR_FILE = "."
     # om_monitor log directory
     OM_MONITOR_DIR_FILE = "../cm/om_monitor"
-    # om_kerberos log directory
-    OM_KERBEROS_DIR_FILE = "../cm/kerberos_monitor"
     # action flag file name
     ACTION_FLAG_FILE = ".action_flag_file"
     # action log file name
-    DEFAULT_LOG_FILE = "gaussdb.log"
-    LOCAL_LOG_FILE = "gs_local.log"
-    PREINSTALL_LOG_FILE = "gs_preinstall.log"
-    DEPLOY_LOG_FILE = "gs_install.log"
-    REPLACE_LOG_FILE = "gs_replace.log"
-    UNINSTALL_LOG_FILE = "gs_uninstall.log"
-    OM_LOG_FILE = "gs_om.log"
-    UPGRADE_LOG_FILE = "gs_upgradectl.log"
-    CONTRACTION_LOG_FILE = "gs_shrink.log"
-    DILATAION_LOG_FILE = "gs_expand.log"
-    UNPREINSTALL_LOG_FILE = "gs_postuninstall.log"
-    GSROACH_LOG_FILE = "gaussdb_roach.log"
-    MANAGE_CN_LOG_FILE = "gs_om.log"
-    GS_CHECK_LOG_FILE = "gs_check.log"
-    GS_CHECKPERF_LOG_FILE = "gs_checkperf.log"
-    GS_BACKUP_LOG_FILE = "gs_backup.log"
-    GS_COLLECTOR_LOG_FILE = "gs_collector.log"
-    GS_COLLECTOR_CONFIG_FILE = "./gspylib/etc/conf/gs_collector.json"
-    GAUSS_REPLACE_LOG_FILE = "GaussReplace.log"
-    GAUSS_OM_LOG_FILE = "GaussOM.log"
-    TPCDS_INSTALL_LOG_FILE = "tpcd_install.log"
-    LCCTL_LOG_FILE = "gs_lcctl.log"
-    RESIZE_LOG_FILE = "gs_resize.log"
-    HOTPATCH_LOG_FILE = "gs_hotpatch.log"
     EXPANSION_LOG_FILE = "gs_expansion.log"
     DROPNODE_LOG_FILE = "gs_dropnode.log"
-    # hotpatch action
-    HOTPATCH_ACTION_LIST = ["load", "unload", "active", "deactive",
-                            "info", "list"]
-    # cluster lock file
-    CLUSTER_LOCK_PID = "gauss_cluster_lock.pid"
     # dump file for cn instance
     SCHEMA_COORDINATOR = "schema_coordinator.sql"
     # dump file for job data
@@ -329,12 +246,8 @@ class DefaultValue():
     DUMP_TABLES_DATANODE = "dump_tables_datanode.dat"
     # dump default group table info file for DB instance
     DUMP_Output_DATANODE = "dump_output_datanode.sql"
-    # default cluster config xml
-    CLUSTER_CONFIG_PATH = "/opt/huawei/wisequery/clusterconfig.xml"
     # default alarm tools
     ALARM_COMPONENT_PATH = "/opt/huawei/snas/bin/snas_cm_cmd"
-    # GPHOME
-    CLUSTER_TOOL_PATH = "/opt/huawei/wisequery"
     # root scripts path
     ROOT_SCRIPTS_PATH = "/root/gauss_om"
 
@@ -352,14 +265,6 @@ class DefaultValue():
                        "server.key.rand",
                        "sslcrl-file.crl"]
     SSL_CRL_FILE = CERT_FILES_LIST[5]
-    CERT_ROLLBACK_LIST = ["cacert.pem",
-                          "server.crt",
-                          "server.key",
-                          "server.key.cipher",
-                          "server.key.rand",
-                          "sslcrl-file.crl",
-                          "gsql_cert_backup.tar.gz",
-                          "certFlag"]
     CLIENT_CERT_LIST = ["client.crt",
                         "client.key",
                         "client.key.cipher",
@@ -441,13 +346,9 @@ class DefaultValue():
     # parallel number
     ###########################
     DEFAULT_PARALLEL_NUM = 12
-    DEFAULT_PARALLEL_NUM_UPGRADE = 6
 
     # SQL_EXEC_COMMAND
-    SQL_EXEC_COMMAND_WITHOUT_USER = "%s -p %s -d %s -h %s "
-    SQL_EXEC_COMMAND_WITH_USER = "%s -p %s -d %s -U %s -W %s -h %s "
     SQL_EXEC_COMMAND_WITHOUT_HOST_WITHOUT_USER = "%s -p %s -d %s "
-    SQL_EXEC_COMMAND_WITHOUT_HOST_WITH_USER = "%s -p %s -d %s -U %s -W %s "
 
     # cluster type
     CLUSTER_TYPE_SINGLE = "single"
@@ -576,68 +477,10 @@ class DefaultValue():
     }
 
     DATABASE_CHECK_WHITE_LIST = ["dbe_perf", "pg_catalog"]
-
-    SYSTEM_CHECK_COMMAND_MAP = {
-        "cpuInfo": "cat /proc/cpuinfo",
-        "memInfo": "cat /proc/meminfo",
-        "disk": "df -h",
-        "ps": "ps ux",
-        "ioStat": "iostat -xm 2 3",
-        "netFlow": "cat /proc/net/dev",
-        "spaceUsage": "free -m"
-    }
-
     # Default retry times of SQL query attempts after successful
     # operation "gs_ctl start".
     DEFAULT_RETRY_TIMES_GS_CTL = 20
     CORE_PATH_DISK_THRESHOLD = 50
-
-    @staticmethod
-    def get_package_back_name():
-        package_back_name = "%s-Package-bak_%s.tar.gz" % (
-            VersionInfo.PRODUCT_NAME_PACKAGE, VersionInfo.getCommitid())
-        return package_back_name
-
-    @staticmethod
-    def aes_cbc_decrypt(content, key):
-        check_content_key(content, key)
-        if type(key) == str:
-            key = bytes(key)
-        iv_len = 16
-        # pre shared key iv
-        iv = content[16 + 1 + 16 + 1:16 + 1 + 16 + 1 + 16]
-
-        # pre shared key  enctryt
-        enc_content = content[:iv_len]
-        backend = default_backend()
-        cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=backend)
-        decrypter = cipher.decryptor()
-        dec_content = decrypter.update(enc_content) + decrypter.finalize()
-        dec_content = dec_content.rstrip('\0')
-        server_decipher_key = dec_content[:len(dec_content) - 1]
-        return server_decipher_key
-
-    @staticmethod
-    def aes_cbc_decrypt_with_path(path):
-        with open(path + '/client.key.cipher', 'r') as f:
-            cipher_txt = f.read()
-        with open(path + '/client.key.rand', 'r') as f:
-            rand_txt = f.read()
-
-        if cipher_txt is None or cipher_txt == "":
-            return None
-
-        server_vector_cipher_vector = cipher_txt[16 + 1:16 + 1 + 16]
-        # pre shared key rand
-        server_key_rand = rand_txt[:16]
-
-        # worker key
-        server_decrypt_key = hashlib.pbkdf2_hmac('sha256', server_key_rand,
-                                                 server_vector_cipher_vector,
-                                                 10000, 16)
-
-        enc = DefaultValue.aes_cbc_decrypt(cipher_txt, server_decrypt_key)
-        return enc
 
     # Cert type
     GRPC_CA = "grpc"
@@ -655,84 +498,13 @@ class DefaultValue():
             return cmd
 
     @staticmethod
-    def checkBondMode(bondingConfFile, isCheckOS=True):
-        """
-        function : Check Bond mode
-        input  : String, bool
-        output : List
-        """
-        netNameList = []
-
-        cmd = "grep -w 'Bonding Mode' %s | awk  -F ':' '{print $NF}'" % \
-              bondingConfFile
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if (status != 0 or output.strip() == ""):
-            raise Exception(ErrorCode.GAUSS_506["GAUSS_50611"] +
-                            " Command:%s. Error:\n%s" % (cmd, output))
-
-        if (isCheckOS):
-            print("BondMode %s" % output.strip())
-
-        cmd = "grep -w 'Slave Interface' %s | awk  -F ':' '{print $NF}'" % \
-              bondingConfFile
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            raise Exception(ErrorCode.GAUSS_506["GAUSS_50611"] +
-                            " Command:%s. Error:\n%s" % (cmd, output))
-        for networkname in output.split('\n'):
-            netNameList.append(networkname.strip())
-        return netNameList
-
-    @staticmethod
-    def getNetWorkBondFlag(networkCardNum):
-        """
-        function: Check if the network interface card number is bondCard
-                  by psutil module
-        input: network interface card number
-        output: FLAG, netcardList
-        """
-        try:
-            FLAG = False
-            nicAddr = ""
-            netcardList = []
-            netWorkInfo = psutil.net_if_addrs()
-            for snic in netWorkInfo[networkCardNum]:
-                if snic.family == 17:
-                    nicAddr = snic.address
-            if nicAddr == "":
-                return FLAG, netcardList
-            for net_num in netWorkInfo.keys():
-                if net_num == networkCardNum:
-                    continue
-                for netInfo in netWorkInfo[net_num]:
-                    if netInfo.address == nicAddr:
-                        netcardList.append(net_num)
-            if len(netcardList) >= 2:
-                FLAG = True
-                for net_num in netcardList:
-                    cmd = "ip link | grep '%s'" % net_num
-                    (status, output) = subprocess.getstatusoutput(cmd)
-                    if status != 0:
-                        raise Exception((ErrorCode.GAUSS_514["GAUSS_51400"] %
-                                         cmd) + "\nError: %s" % output)
-                    if str(output).find("master %s" % networkCardNum) == -1:
-                        FLAG = False
-                        netcardList = []
-                        break
-            return FLAG, netcardList
-        except Exception as e:
-            raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] % (
-                    "if the netcardNum[%s] is bondCard" % networkCardNum)
-                            + " Error: \n%s" % str(e))
-
-    @staticmethod
     def CheckNetWorkBonding(serviceIP, isCheckOS=True):
         """
         function : Check NetWork ConfFile
         input  : String, bool
         output : List
         """
-        networkCardNum = DefaultValue.getNICNum(serviceIP)
+        networkCardNum = NetUtil.getNICNum(serviceIP)
         NetWorkConfFile = DefaultValue.getNetWorkConfFile(networkCardNum)
         bondingConfFile = "/proc/net/bonding/%s" % networkCardNum
         networkCardNumList = []
@@ -745,7 +517,7 @@ class DefaultValue():
                 if ((output.find("mode") > 0) and os.path.exists(
                         bondingConfFile)):
                     networkCardNumList = networkCardNumList + \
-                                         DefaultValue.checkBondMode(
+                                         NetUtil.checkBondMode(
                                              bondingConfFile, isCheckOS)
                 else:
                     raise Exception(ErrorCode.GAUSS_506["GAUSS_50611"] +
@@ -753,12 +525,12 @@ class DefaultValue():
             elif isCheckOS:
                 print("BondMode Null")
         else:
-            (flag, netcardList) = DefaultValue.getNetWorkBondFlag(
+            (flag, netcardList) = NetUtil.getNetWorkBondFlag(
                 networkCardNum)
             if flag:
                 if os.path.exists(bondingConfFile):
                     networkCardNumList = networkCardNumList + \
-                                         DefaultValue.checkBondMode(
+                                         NetUtil.checkBondMode(
                                              bondingConfFile, isCheckOS)
                 else:
                     sys.exit(ErrorCode.GAUSS_506["GAUSS_50611"] +
@@ -799,7 +571,7 @@ class DefaultValue():
         RedHatNetWorkConfPath = "/etc/sysconfig/network-scripts"
         UbuntuNetWorkConfPath = "/etc/network"
         NetWorkConfFile = ""
-        distname, version, idnum = g_Platform.dist()
+        distname, version, idnum = LinuxDistro.linux_distribution()
         distname = distname.lower()
         if (distname in ("redhat", "centos", "euleros", "openEuler")):
             NetWorkConfFile = "%s/ifcfg-%s" % (RedHatNetWorkConfPath,
@@ -833,47 +605,6 @@ class DefaultValue():
         return NetWorkConfFile
 
     @staticmethod
-    def getNICNum(ipAddress):
-        """
-        function: Obtain network interface card number by psutil module
-        input: ipAddress
-        output: netWorkNum
-        """
-        try:
-            netWorkNum = ""
-            netWorkInfo = psutil.net_if_addrs()
-            for nic_num in netWorkInfo.keys():
-                for netInfo in netWorkInfo[nic_num]:
-                    if netInfo.address == ipAddress:
-                        netWorkNum = nic_num
-                        break
-            if netWorkNum == "":
-                raise Exception(ErrorCode.GAUSS_506["GAUSS_50604"] % ipAddress)
-            return netWorkNum
-        except Exception as e:
-            raise Exception(ErrorCode.GAUSS_506["GAUSS_50604"] % ipAddress +
-                            " Error: \n%s" % str(e))
-
-    @staticmethod
-    def getIpAddressList():
-        """
-        """
-        # Obtain all Ips by psutil module
-        try:
-            ipAddressList = []
-            netWorkInfo = psutil.net_if_addrs()
-            for per_num in netWorkInfo.keys():
-                netInfo = netWorkInfo[per_num][0]
-                if (len(netInfo.address.split('.')) == 4):
-                    ipAddressList.append(netInfo.address)
-            if (len(ipAddressList) == 0):
-                raise Exception(ErrorCode.GAUSS_506["GAUSS_50616"])
-            return ipAddressList
-        except Exception as e:
-            raise Exception(ErrorCode.GAUSS_506["GAUSS_50616"] +
-                            " Error: \n%s" % str(e))
-
-    @staticmethod
     def getIpByHostName():
         '''
         function: get local host ip by the hostname
@@ -896,19 +627,10 @@ class DefaultValue():
 
         # due to two loopback address in ubuntu, 127.0.1.1 are choosed by hostname.
         # there is need to choose 127.0.0.1
-        version = g_Platform.dist()[1].split('/')[0]
+        version = LinuxDistro.linux_distribution()[1].split('/')[0]
         if version == "buster" and hostIp == "127.0.1.1":
             hostIp = "127.0.0.1"
         return hostIp
-
-    @staticmethod
-    def GetHostIpOrName():
-        """
-        function: Obtaining the local IP address
-        input: NA
-        output: NA
-        """
-        return g_OSlib.getHostName()
 
     @staticmethod
     def GetPythonUCS():
@@ -958,85 +680,6 @@ class DefaultValue():
             raise Exception(ErrorCode.GAUSS_503["GAUSS_50300"] % user +
                             "Detail msg: %s" % str(e))
 
-    @staticmethod
-    def checkUser(user, strict=True):
-        """
-        function : Check if user exists and if is the right user
-        input : String,boolean
-        output : NA
-        """
-        # get group
-        try:
-            DefaultValue.getUserId(user)
-        except Exception as e:
-            raise Exception(str(e))
-
-        # if not strict, skip
-        if (not strict):
-            return
-
-        # get $GAUSS_ENV, and makesure the result is correct.
-        mpprcFile = DefaultValue.getEnv(DefaultValue.MPPRC_FILE_ENV)
-        if (mpprcFile != "" and mpprcFile is not None):
-            gaussEnv = DefaultValue.getEnvironmentParameterValue("GAUSS_ENV",
-                                                                 user,
-                                                                 mpprcFile)
-        else:
-            gaussEnv = DefaultValue.getEnvironmentParameterValue("GAUSS_ENV",
-                                                                 user,
-                                                                 "~/.bashrc")
-        if not gaussEnv or str(gaussEnv) != "2":
-            raise Exception(ErrorCode.GAUSS_503["GAUSS_50300"] %
-                            ("installation path of designated user %s" % user)
-                            + " Maybe the user is not right.")
-
-    @staticmethod
-    def getMpprcFile():
-        """
-        function : get mpprc file
-        input : NA
-        output : String
-        """
-        try:
-            # get mpp file by env parameter MPPDB_ENV_SEPARATE_PATH
-            mpprcFile = DefaultValue.getEnv(DefaultValue.MPPRC_FILE_ENV)
-            if (mpprcFile != "" and mpprcFile is not None):
-                userProfile = mpprcFile
-                if (not os.path.isabs(userProfile)):
-                    raise Exception(ErrorCode.GAUSS_512["GAUSS_51206"] %
-                                    userProfile)
-                if (not os.path.exists(userProfile)):
-                    raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] %
-                                    userProfile)
-            elif (os.getuid() == 0):
-                return "/etc/profile"
-            else:
-                userAbsoluteHomePath = g_Platform.getUserHomePath()
-                userProfile = os.path.join(userAbsoluteHomePath, ".bashrc")
-            if (not os.path.isfile(userProfile)):
-                raise Exception(ErrorCode.GAUSS_502["GAUSS_50210"] %
-                                userProfile)
-            return userProfile
-        except Exception as e:
-            raise Exception(str(e))
-
-    @staticmethod
-    def isIpValid(ip):
-        """
-        function : check if the input ip address is valid
-        input : String
-        output : NA
-        """
-        Valid = re.match("^(25[0-5]|2[0-4][0-9]|[0-1]{1}[0-9]{2}|[1-9]{1}[0-9]"
-                         "{1}|[1-9])\.(25[0-5]|2[0-4][0-9]|[0-1]{1}[0-9]{2}|"
-                         "[1-9]{1}[0-9]{1}|[1-9]|0)\.(25[0-5]|2[0-4][0-9]|"
-                         "[0-1]{1}[0-9]{2}|[1-9]{1}[0-9]{1}|[1-9]|0)\."
-                         "(25[0-5]|2[0-4][0-9]|[0-1]{1}[0-9]{2}|[1-9]{1}"
-                         "[0-9]{1}|[0-9])$", ip)
-        if Valid:
-            if (Valid.group() == ip):
-                return True
-        return False
 
     @staticmethod
     def doConfigForParamiko():
@@ -1067,22 +710,22 @@ class DefaultValue():
             try:
                 flagNum = int(DefaultValue.GetPythonUCS())
                 # clean the old path info
-                g_file.removeFile(omToolsCffiPath)
-                g_file.removeFile(inspectToolsCffiPath)
+                FileUtil.removeFile(omToolsCffiPath)
+                FileUtil.removeFile(inspectToolsCffiPath)
                 # copy the correct version
                 newPythonDependCryptoPath = "%s_UCS%d_%s" % (omToolsCffiPath,
                                                           flagNum, version)
                 if os.path.exists(newPythonDependCryptoPath):
-                    g_file.cpFile(newPythonDependCryptoPath, omToolsCffiPath,
+                    FileUtil.cpFile(newPythonDependCryptoPath, omToolsCffiPath,
                                   "shell")
-                    g_file.cpFile(newPythonDependCryptoPath, inspectToolsCffiPath,
+                    FileUtil.cpFile(newPythonDependCryptoPath, inspectToolsCffiPath,
                                   "shell")
                 else:
                     newPythonDependCryptoPath = "%s_UCS%d" % (omToolsCffiPath,
                                                           flagNum)
-                    g_file.cpFile(newPythonDependCryptoPath, omToolsCffiPath,
+                    FileUtil.cpFile(newPythonDependCryptoPath, omToolsCffiPath,
                                   "shell")
-                    g_file.cpFile(newPythonDependCryptoPath, inspectToolsCffiPath,
+                    FileUtil.cpFile(newPythonDependCryptoPath, inspectToolsCffiPath,
                                   "shell")
             except Exception as e:
                 print(ErrorCode.GAUSS_516["GAUSS_51632"] %
@@ -1091,17 +734,6 @@ class DefaultValue():
                 sys.exit(1)
             sys.path.insert(0, os.path.join(localDir, "./../../lib"))
 
-    @staticmethod
-    def getInstallDir(user):
-        """
-        function : Get the installation directory for user
-        input : NA
-        output : String
-        """
-        # get the installation directory for user by $GAUSSHOME
-        gaussHome = DefaultValue.getEnvironmentParameterValue("GAUSSHOME",
-                                                              user)
-        return gaussHome
 
     @staticmethod
     def getTmpDir(user, xml_path):
@@ -1110,53 +742,7 @@ class DefaultValue():
         input : NA
         output : String 
         """
-        return dbClusterInfo.readClusterTmpMppdbPath(user, xml_path)
-
-    @staticmethod
-    def getTmpDirFromEnv(user=""):
-        """
-        function : Get the temporary directory from PGHOST
-        precondition: only root user or install user can call this function
-        input : String
-        output : String
-        """
-        tmpDir = ""
-        if (os.getuid() == 0 and user == ""):
-            return tmpDir
-        # get the temporary directory from PGHOST
-        tmpDir = DefaultValue.getEnvironmentParameterValue("PGHOST", user)
-        return tmpDir
-
-    @staticmethod
-    def getTmpFileFromEnv(fileName="", user="", desc=""):
-        """
-        function : Get the temporary directory from PGHOST
-        precondition: only root user or install user can call this function
-        input : String
-        output : String
-        """
-        tmpDir = DefaultValue.getTmpDirFromEnv(user)
-
-        # get current time
-        currentTime = time.strftime("%Y-%m-%d_%H%M%S")
-        # split the log file by '.'
-        # rebuild the file name
-        # before rebuild:        prefix.suffix
-        # after  rebuild:        prefix-currentTime-pid-desc.suffix
-        if fileName.find(".") >= 0:
-            tmpList = fileName.split(".")
-            prefix = tmpList[0]
-            suffix = tmpList[1]
-            if (desc == ""):
-                tmpFile = os.path.join(tmpDir, "%s-%s-%d.%s" % (
-                    prefix, currentTime, os.getpid(), suffix))
-            else:
-                tmpFile = os.path.join(tmpDir, "%s-%s-%d-%s.%s" % (
-                    prefix, currentTime, os.getpid(), desc, suffix))
-        else:
-            tmpFile = os.path.join(tmpDir, "%s-%s-%d" % (fileName, currentTime,
-                                                         os.getpid()))
-        return tmpFile
+        return ClusterConfigFile.readClusterTmpMppdbPath(user, xml_path)
 
     @staticmethod
     def getTmpDirAppendMppdb(user):
@@ -1166,73 +752,16 @@ class DefaultValue():
         output : String
         """
         # get the user's temporary directory 
-        tmpDir = DefaultValue.getTmpDirFromEnv(user)
+        tmpDir = EnvUtil.getTmpDirFromEnv(user)
         # if the env paramter not exist, return ""
         if (tmpDir == ""):
             return tmpDir
         # modify tmp dir
         forbidenTmpDir = "/tmp/%s" % user
         if (tmpDir == forbidenTmpDir):
-            tmpDir = os.path.join(DefaultValue.getEnv("GPHOME"),
+            tmpDir = os.path.join(EnvUtil.getEnv("GPHOME"),
                                   "%s_mppdb" % user)
         return tmpDir
-
-    @staticmethod
-    def getUserFromXml(xml_path):
-        """
-        function : Get the user from xml file
-        input : String
-        output : String
-        """
-        # the function must return a value. no matter it is correct or not
-        try:
-            bin_path = dbClusterInfo.readClusterAppPath(xml_path)
-            DefaultValue.checkPathVaild(bin_path)
-            user = g_OSlib.getPathOwner(bin_path)[0]
-        except Exception as e:
-            user = ""
-
-        return user
-
-    @staticmethod
-    def getEnvironmentParameterValue(environmentParameterName, user,
-                                     env_file=None):
-        """
-        function : Get the environment parameter value from user
-        input : String,String
-        output : String
-        """
-        userFlag = False
-        cmd = "cat /etc/passwd|grep -v nologin|grep -v halt|grep -v " \
-              "shutdown|" \
-              "awk -F: '{ print $1 }'| grep '^%s$' 2>/dev/null" % user
-        status, output = subprocess.getstatusoutput(cmd)
-        if output and status == 0:
-            DefaultValue.getUserId(user)
-            # User exists, need to check passwd.
-            userFlag = True
-
-        if userFlag and os.getuid() == 0:
-            # Only user with root permission need check if password must
-            # change.
-            DefaultValue.checkPasswdForceChange(user)
-
-        if (env_file is not None):
-            userProfile = env_file
-        else:
-            userProfile = DefaultValue.getMpprcFile()
-        # buid the shell command
-        executeCmd = "echo $%s" % environmentParameterName
-        cmd = g_Platform.getExecuteCmdWithUserProfile(user, userProfile,
-                                                      executeCmd)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if (status == 0):
-            EnvValue = output.split("\n")[0]
-            EnvValue = EnvValue.replace("\\", "\\\\").replace('"', '\\"\\"')
-            DefaultValue.checkPathVaild(EnvValue)
-            return EnvValue
-        else:
-            return ""
 
     @staticmethod
     def checkPasswdForceChange(checkUser):
@@ -1241,7 +770,7 @@ class DefaultValue():
         input : user name
         output: NA
         """
-        distname, version, currentid = g_Platform.dist()
+        distname, version, _ = LinuxDistro.linux_distribution()
         if (distname.lower() in ("suse", "redhat", "centos", "euleros",
                                  "openeuler")):
             cmd = g_file.SHELL_CMD_DICT["checkPassword"] % (checkUser,
@@ -1268,168 +797,6 @@ class DefaultValue():
             if ("password must be changed" in result):
                 raise Exception(ErrorCode.GAUSS_503["GAUSS_50307"])
 
-    @staticmethod
-    def getClusterToolPath(user):
-        """
-        function : Get the value of cluster's tool path.
-                   The value can't be None or null
-        input : NA
-        output : String
-        """
-        mpprcFile = DefaultValue.getEnv(DefaultValue.MPPRC_FILE_ENV)
-        echoEnvCmd = "echo $%s" % DefaultValue.TOOL_PATH_ENV
-        if not mpprcFile:
-            userpath = pwd.getpwnam(user).pw_dir
-            mpprcFile = os.path.join(userpath, ".bashrc")
-        cmd = g_Platform.getExecuteCmdWithUserProfile("", mpprcFile,
-                                                      echoEnvCmd)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if (status != 0):
-            raise Exception(ErrorCode.GAUSS_518["GAUSS_51802"] %
-                            DefaultValue.TOOL_PATH_ENV +
-                            " Command:%s. Error:\n%s" % (cmd, output))
-
-        clusterToolPath = output.split("\n")[0]
-        if not clusterToolPath:
-            raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] %
-                            DefaultValue.TOOL_PATH_ENV + "Value: %s." %
-                            clusterToolPath)
-
-        # Check if the path contains illegal characters
-        DefaultValue.checkPathVaild(clusterToolPath)
-
-        return clusterToolPath
-
-    @staticmethod
-    def getPreClusterToolPath(user, xml):
-        """
-        function: get the cluster tool path
-        input : NA
-        output: NA
-        """
-        try:
-            configedPath = DefaultValue.getOneClusterConfigItem(
-                "gaussdbToolPath", user, xml)
-            if (configedPath == ""):
-                configedPath = DefaultValue.CLUSTER_TOOL_PATH
-            DefaultValue.checkPathVaild(configedPath)
-            return configedPath
-        except Exception as e:
-            raise Exception(str(e))
-
-    @staticmethod
-    def getOneClusterConfigItem(item_name, user, xml):
-        """
-        function: get the OM log path
-        input : NA
-        output: NA
-        """
-        try:
-            # set env paramter CLUSTERCONFIGFILE
-            os.putenv("CLUSTERCONFIGFILE", xml)
-            # read one cluster configuration item "cluster"
-            (retStatus, retValue) = readOneClusterConfigItem(
-                initParserXMLFile(xml), item_name, "cluster")
-            if (retStatus == 0):
-                return os.path.normpath(retValue)
-            else:
-                return ""
-        except Exception as e:
-            raise Exception(str(e))
-
-    @staticmethod
-    def getUserLogDirWithUser(user):
-        """
-        function : Get the log directory from user
-        input : String
-        output : String
-        """
-        log_path = ""
-        try:
-            log_path = DefaultValue.getEnvironmentParameterValue("GAUSSLOG",
-                                                                 user)
-        except Exception as e:
-            log_path = "%s/%s" % (DefaultValue.GAUSSDB_DIR, user)
-        return log_path
-
-    @staticmethod
-    def getOMLogPath(logName, user="", appPath="", xml="", action=""):
-        """
-        function : Get the OM log path from xml file
-        input : String
-        output : String
-        """
-        logPath = ""
-        try:
-            if (user != "" and xml != ""):
-                logPath = "%s" % dbClusterInfo.readClusterLogPath(xml)
-                path = "%s/%s/om/%s" % (logPath, user, logName)
-            elif (action == "virtualip"):
-                path = "/var/log/gs_virtualip/%s" % (logName)
-            elif (user != ""):
-                logPath = DefaultValue.getUserLogDirWithUser(user)
-                path = "%s/om/%s" % (logPath, logName)
-            elif (appPath != ""):
-                user = g_OSlib.getPathOwner(appPath)[0]
-                if (user == ""):
-                    user = "."
-                if (user == "."):
-                    logPath = DefaultValue.GAUSSDB_DIR
-                else:
-                    logPath = DefaultValue.getUserLogDirWithUser(user)
-                path = "%s/om/%s" % (logPath, logName)
-            elif (xml != ""):
-                try:
-                    appPath = dbClusterInfo.readClusterAppPath(xml)
-                    user = g_OSlib.getPathOwner(appPath)[0]
-                except Exception as e:
-                    user = "."
-                if (user == ""):
-                    user = "."
-                if (user == "."):
-                    logPath = DefaultValue.GAUSSDB_DIR
-                else:
-                    logPath = DefaultValue.getUserLogDirWithUser(user)
-                path = "%s/om/%s" % (logPath, logName)
-            else:
-                logPath = DefaultValue.GAUSSDB_DIR
-                path = "%s/om/%s" % (logPath, logName)
-        except Exception as e:
-            logPath = DefaultValue.GAUSSDB_DIR
-            path = "%s/om/%s" % (logPath, DefaultValue.LOCAL_LOG_FILE)
-
-        return os.path.realpath(path)
-
-    @staticmethod
-    def getBackupDir(user, subDir=""):
-        """
-        function : Get the cluster's default backup directory for upgrade
-        input : String
-        output : String
-        """
-        bakDir = "%s/backup" % DefaultValue.getClusterToolPath(user)
-        if (subDir != ""):
-            bakDir = os.path.join(bakDir, subDir)
-
-        return bakDir
-
-    @staticmethod
-    def getAppVersion(appPath=""):
-        """
-        function : Get the version of application by $GAUSS_VERSION
-        input : String
-        output : String
-        """
-        # get user and group
-        (user, group) = g_OSlib.getPathOwner(appPath)
-        if (user == "" or group == ""):
-            return ""
-
-        # build shell command
-        # get the version of application by $GAUSS_VERSION
-        gaussVersion = DefaultValue.getEnvironmentParameterValue(
-            "GAUSS_VERSION", user)
-        return gaussVersion
 
     @staticmethod
     def getUserHome(user=""):
@@ -1447,34 +814,13 @@ class DefaultValue():
 
 
     @staticmethod
-    def getAppBVersion(appPath=""):
-        """
-        function :Get the version of application by $GAUSS_VERSION
-        input : String
-        output : String 
-        """
-        # get user and group
-        (user, group) = g_OSlib.getPathOwner(appPath)
-        if (user == "" or group == ""):
-            return ""
-        # build shell command
-        userProfile = DefaultValue.getMpprcFile()
-        executeCmd = "gaussdb -V"
-        cmd = g_Platform.getExecuteCmdWithUserProfile(user, userProfile,
-                                                      executeCmd, False)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if (status != 0):
-            return ""
-        return output.replace('gaussdb ', '').strip()
-
-    @staticmethod
     def getOSInitFile():
         """
         function : Get the OS initialization file
         input : NA
         output : String
         """
-        distname, version, currentid = g_Platform.dist()
+        distname, version, _ = LinuxDistro.linux_distribution()
         systemDir = "/usr/lib/systemd/system/"
         systemFile = "/usr/lib/systemd/system/gs-OS-set.service"
         # OS init file 
@@ -1502,8 +848,8 @@ class DefaultValue():
 
             if (not os.path.exists(systemFile) or not cgroup_gate):
                 srcFile = "%s/../etc/conf/gs-OS-set.service" % dirName
-                g_file.cpFile(srcFile, systemFile)
-                g_file.changeMode(DefaultValue.KEY_FILE_MODE, systemFile)
+                FileUtil.cpFile(srcFile, systemFile)
+                FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, systemFile)
                 # only support RHEL/Centos/Euler
                 if (distname != "SuSE"):
                     # enable gs-OS-set.service
@@ -1515,11 +861,11 @@ class DefaultValue():
                                         output)
 
             if (not os.path.exists(initSystemPath)):
-                g_file.createDirectory(initSystemPath)
+                FileUtil.createDirectory(initSystemPath)
             if (not os.path.exists(initSystemFile)):
-                g_file.createFile(initSystemFile, False)
-                g_file.writeFile(initSystemFile, ["#!/bin/bash"], "w")
-            g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE, initSystemFile)
+                FileUtil.createFile(initSystemFile, False)
+                FileUtil.writeFile(initSystemFile, ["#!/bin/bash"], "w")
+            FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, initSystemFile)
             return initSystemFile
         if (distname == "SuSE" and os.path.isfile(initFileSuse)):
             initFile = initFileSuse
@@ -1533,131 +879,6 @@ class DefaultValue():
             initFile = ""
 
         return initFile
-
-    @staticmethod
-    def getNetworkConfiguredFile(ip):
-        """
-        function: get network configuration file
-        input: ip
-        output: networkFile
-        """
-        pattern = re.compile("ifcfg-.*:.*")
-        networkFile = ""
-        try:
-            for filename in os.listdir(DefaultValue.REDHAT_NETWORK_PATH):
-                result = pattern.match(filename)
-                if (result is None):
-                    continue
-                paramfile = "%s/%s" % (DefaultValue.REDHAT_NETWORK_PATH,
-                                       filename)
-                with open(paramfile, "r") as fp:
-                    fileInfo = fp.readlines()
-                # The current opened file is generated while configing
-                # virtual IP,
-                # there are 3 lines in file, and the second line is IPADDR=IP
-                if len(fileInfo) == 3 and \
-                        fileInfo[1].find("IPADDR=%s" % ip) >= 0:
-                    networkFile += "%s " % paramfile
-            return networkFile
-        except Exception as e:
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] %
-                            "network configuration file" +
-                            " Error: \n%s " % str(e))
-
-    @staticmethod
-    def getMatchingResult(matchExpression, fileMatching, remoteHostName=""):
-        """
-        """
-        cmd = "%s -E '%s' %s" % (g_Platform.getGrepCmd(),
-                                 matchExpression, fileMatching)
-        if ("" != remoteHostName and remoteHostName !=
-                DefaultValue.GetHostIpOrName()):
-            cmd = g_OSlib.getSshCommand(remoteHostName, cmd)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        return (status, output)
-
-    @staticmethod
-    def preConfigFile(filename):
-        """
-        function: pretreatment configuration file, delete the ' ' or
-                  '\t' when they top of line
-        input: filename
-        output: NA
-        """
-        try:
-            (status, output) = DefaultValue.getMatchingResult("^[ \\t]",
-                                                              filename)
-            if (status != 0):
-                return
-            listLine = output.split('\n')
-            for strline in listLine:
-                g_file.replaceFileLineContent("^%s$" % strline,
-                                              strline.strip(), filename)
-
-        except Exception as e:
-            raise Exception(str(e))
-
-    @staticmethod
-    def getConfigFilePara(configFile, section, checkList=None,
-                          optionsName=None):
-        """
-        function: get the configuration file(check_list.conf)
-        input: section: the section in check_list.conf will be get
-               optionsName: the parameter list will be get, if parameter
-               is NULL, then get all
-        output: dist
-        """
-        if checkList is None:
-            checkList = []
-        if optionsName is None:
-            optionsName = []
-        try:
-            DefaultValue.preConfigFile(configFile)
-
-            # read the check_list.conf
-            data = {}
-            fp = configparser.RawConfigParser()
-            fp.read(configFile)
-
-            # get the sections then check the section whether or not
-            # in check_list.conf
-            secs = fp.sections()
-            if section not in secs:
-                return data
-
-            # get the parameters then check options whether or not in
-            # section parameters
-            optionList = fp.options(section)
-            if (len(optionsName) != 0 and optionsName not in optionList):
-                return data
-            elif (len(optionsName) != 0):
-                optionList = optionsName
-
-            # get th parameter values
-            for key in optionList:
-                value = fp.get(section, key)
-                if (len(value.split()) == 0):
-                    raise Exception(ErrorCode.GAUSS_500["GAUSS_50012"] % key)
-                value = value.split('#')[0]
-                if (key in checkList and not value.isdigit()):
-                    raise Exception(ErrorCode.GAUSS_500["GAUSS_50003"]
-                                    % (key, "digit"))
-                if (section == '/etc/security/limits.conf' and not
-                value.isdigit() and value != 'unlimited'):
-                    raise Exception(ErrorCode.GAUSS_500["GAUSS_50004"] % key)
-                data[key] = value
-
-            if ("vm.min_free_kbytes" in list(data.keys())):
-                swapTotalSize = g_memory.getMemTotalSize() // 1024
-                multiple = data["vm.min_free_kbytes"].split('*')[1].split('%')[
-                    0].strip()
-                val = int(swapTotalSize) * int(multiple) // 100
-                data["vm.min_free_kbytes"] = str(val)
-
-            return data
-        except Exception as e:
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51234"] % configFile +
-                            " Error: \n%s" % str(e))
 
     @staticmethod
     def checkInList(listsrc, listdest):
@@ -1701,31 +922,6 @@ class DefaultValue():
         return listname
 
     @staticmethod
-    def getEnv(envparam, default_value=None):
-        """
-        function: get the filter environment variable
-        input:envparam: String
-              default_value: String
-        output:envValue
-        """
-        try:
-            envValue = os.getenv(envparam)
-
-            if envValue is None:
-                if default_value:
-                    return default_value
-                else:
-                    return envValue
-
-            envValue = envValue.replace("\\", "\\\\").replace('"', '\\"\\"')
-
-            DefaultValue.checkPathVaild(envValue)
-
-            return envValue
-        except Exception as e:
-            raise Exception(str(e))
-
-    @staticmethod
     def checkPathVaild(envValue):
         """
         function: check path vaild
@@ -1741,257 +937,18 @@ class DefaultValue():
                                 " There are illegal characters in the path.")
 
     @staticmethod
-    def checkPasswordVaild(password, user="", clusterInfo=None):
-        """
-        function: check password vaild
-        input : password
-        output: NA
-        """
-        # rule1: check if the password contains illegal characters
-        for rac in DefaultValue.PASSWORD_CHECK_LIST:
-            flag = password.find(rac)
-            if flag >= 0:
-                raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] %
-                                "the password" + " The password contains "
-                                                 "illegal characters.")
-
-    @staticmethod
     def getPathFileOfENV(envName):
         """
         function : Get the env.
         input : envName
-        output       
+        output
         """
-        value = DefaultValue.getEnv(envName)
+        value = EnvUtil.getEnv(envName)
         if (value and not g_file.checkClusterPath(value)):
             raise Exception(ErrorCode.GAUSS_518["GAUSS_51805"] % envName +
                             "It may have been modified after the cluster "
                             "installation is complete.")
         return value
-
-    @staticmethod
-    def checkPackageOS():
-        """
-        function : get and check binary file
-        input : NA
-        output : boolean
-        """
-        try:
-            (fileSHA256, sha256Value) = g_OSlib.getFileSHA256Info()
-            if (fileSHA256 != sha256Value):
-                raise Exception(ErrorCode.GAUSS_516["GAUSS_51635"] +
-                                "The SHA256 value is different. \nBin file: "
-                                "%s\nSHA256 file: %s." % (fileSHA256,
-                                                          sha256Value))
-            return True
-        except Exception as e:
-            raise Exception(str(e))
-
-    @staticmethod
-    def removeTmpMpp(mpprcFile):
-        mppTmp_rm = os.path.dirname(mpprcFile) + "/mpprcfile_tmp"
-        if (os.path.exists(mppTmp_rm)):
-            g_file.removeDirectory(mppTmp_rm)
-
-    @staticmethod
-    def checkRemoteDir(g_sshTool, remoteDir, hostname, mpprcFile="",
-                       localMode=False):
-        '''
-        function: check the remoteDir is existing on hostname
-        input: remoteDir, hostname, mpprcFile
-        output:NA
-        '''
-        try:
-            # check package dir
-            # package path permission can not change to 750, or it will have
-            # permission issue.
-            toolpath = remoteDir.split("/")
-            toolpath[0] = "/" + toolpath[0]
-            pathcmd = ""
-            for path in toolpath:
-                if (path == ""):
-                    continue
-                cmd = g_file.SHELL_CMD_DICT["createDir"] % \
-                      (path, path, DefaultValue.MAX_DIRECTORY_MODE)
-                pathcmd += "%s; cd '%s';" % (cmd, path)
-            pathcmd = pathcmd[:-1]
-            DefaultValue.execCommandWithMode(pathcmd,
-                                             "check package directory",
-                                             g_sshTool,
-                                             localMode,
-                                             mpprcFile,
-                                             hostname)
-        except Exception as e:
-            raise Exception(str(e))
-
-    @staticmethod
-    def checkAllNodesMpprcFile(hostList, appPath, mpprcFile):
-        """
-        function:check All Nodes MpprcFile
-        input: hostList, appPath, mpprcFile
-        output:NA
-        """
-        # get mppfile, make sure it exists
-        if mpprcFile is None or mpprcFile == "/etc/profile" or mpprcFile == \
-                "~/.bashrc" or \
-                not os.path.exists(mpprcFile):
-            return
-        if (len(hostList) == 0):
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51203"] % "hostanme")
-        mppTmp = os.path.dirname(mpprcFile) + "/mpprcfile_tmp"
-        # Clean old tmp dir
-        DefaultValue.removeTmpMpp(mpprcFile)
-        # Create tmp dir for all mppfile
-        g_file.createDirectory(mppTmp)
-        # Copy every mppfile, rename them by hostname
-        for host in hostList:
-            catCmd = "%s %s > /dev/null 2>&1" % (g_Platform.getCatCmd(),
-                                                 mpprcFile)
-            cmd = g_OSlib.getSshCommand(host, catCmd)
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if (status == 0):
-                tmpEnv = "%s/%s_env" % (mppTmp, host)
-                scpCmd = g_Platform.getRemoteCopyCmd(mpprcFile, tmpEnv, host,
-                                                     False)
-                (status, output) = subprocess.getstatusoutput(scpCmd)
-                DefaultValue.execCommandLocally(scpCmd)
-                DefaultValue.checkMpprcFileChange(tmpEnv, host, mpprcFile)
-
-        # remove tmp dir
-        DefaultValue.removeTmpMpp(mpprcFile)
-
-    @staticmethod
-    def checkMpprcFileChange(mpprcFile, host="local host", mpprcFile_rm=""):
-        """
-        function:Check if mppfile has been changed
-        input: mppfile
-        output:NA
-        """
-        # get mppfile, make sure it exists
-        if mpprcFile == "" or mpprcFile is None or mpprcFile == \
-                "/etc/profile" or mpprcFile == "~/.bashrc" or \
-                not os.path.exists(mpprcFile):
-            DefaultValue.removeTmpMpp(mpprcFile)
-            return
-
-        if host == "" or host is None:
-            host = "local host"
-
-        # read the content of mppfile
-        with open(mpprcFile, 'r') as fp:
-            mpp_content = fp.read()
-            env_list = mpp_content.split('\n')
-        while '' in env_list:
-            env_list.remove('')
-        # remove ec content from list
-        for env in env_list:
-            if re.match("^if \[ -f .*\/env_ec", env):
-                env_list.remove(env)
-                break
-
-        # white elements
-        list_white = ["ELK_CONFIG_DIR", "ELK_SYSTEM_TABLESPACE",
-                      "MPPDB_ENV_SEPARATE_PATH", "GPHOME", "PATH",
-                      "LD_LIBRARY_PATH", "PYTHONPATH", "GAUSS_WARNING_TYPE",
-                      "GAUSSHOME", "PATH", "LD_LIBRARY_PATH",
-                      "S3_CLIENT_CRT_FILE", "GAUSS_VERSION", "PGHOST",
-                      "GS_CLUSTER_NAME", "GAUSSLOG", "GAUSS_ENV", "umask"]
-        # black elements
-        list_black = ["|", ";", "&", "<", ">", "`", "\\", "!", "\n"]
-
-        # check mpprcfile
-        for env in env_list:
-            env = env.strip()
-            if (env == ""):
-                continue
-            for white in list_white:
-                flag_white = 0
-                flag = env.find(white)
-                if (env.startswith('export') or flag >= 0):
-                    flag_white = 1
-                    break
-            if (flag_white == 0):
-                DefaultValue.removeTmpMpp(mpprcFile_rm)
-                raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] % env +
-                                " There are illegal characters in %s." % host)
-            for black in list_black:
-                flag = env.find(black)
-                if (flag >= 0 and env != ""):
-                    DefaultValue.removeTmpMpp(mpprcFile_rm)
-                    raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] % env +
-                                    " There are illegal characters in %s." %
-                                    host)
-
-    @staticmethod
-    def sourceEnvFile(file_env):
-        """
-        """
-        cmd = "%s '%s'" % (g_Platform.getSourceCmd(), file_env)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if (status != 0 or output.strip() != ""):
-            return (False, output)
-        return (True, "")
-
-    @staticmethod
-    def checkEnvFile(mpprcFile="", user=""):
-        """
-        function: check if the env file contains msg which may cause the
-        program failed.
-        input: NA
-        output: NA
-        """
-        (status, output) = DefaultValue.sourceEnvFile("/etc/profile")
-        if (status != True):
-            return (False, output)
-
-        if (mpprcFile != "" and os.path.isfile(mpprcFile)):
-            (status, output) = DefaultValue.sourceEnvFile(mpprcFile)
-            if (status != True):
-                return (False, output)
-
-        if ((user != "") and (os.getuid() == 0)):
-            executeCmd = "%s '%s' && %s '%s'" % (g_Platform.getSourceCmd(),
-                                                 "/etc/profile",
-                                                 g_Platform.getSourceCmd(),
-                                                 "~/.bashrc")
-            if (mpprcFile != ""):
-                remoteSourceCmd = "if [ -f '%s' ] ; then %s '%s'; fi" % \
-                                  (mpprcFile, g_Platform.getSourceCmd(),
-                                   mpprcFile)
-                executeCmd = "%s && %s" % (executeCmd, remoteSourceCmd)
-            cmd = g_Platform.getExecuteCmdWithUserProfile(user, "~/.bashrc",
-                                                          executeCmd, False)
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if (status != 0 or output.strip() != ""):
-                return (False, output)
-        return (True, "")
-
-    @staticmethod
-    def createPathUnderRoot(newPath, permission, user="", group=""):
-        """
-        function: 1.create path using root user  2.modify the path permission
-        notice: this function only can be called by root, and user and group
-        should be exist
-        input : newPath: the path we want to create.
-                   permission: the permission of the path.
-                   user: the user of the created path.
-                   group: the group of the input user.
-        output: NA
-        """
-        # check if exist and create new path
-        ownerPath = newPath
-        if (not os.path.exists(ownerPath)):
-            ownerPath = DefaultValue.getTopPathNotExist(ownerPath)
-
-        if (not os.path.isdir(newPath)):
-            g_file.createDirectory(newPath, True, permission)
-        g_file.changeMode(permission, ownerPath, True)
-        if (user != ""):
-            g_file.changeOwner(user, ownerPath, True)
-
-        # check enter permission
-        if ((user != "") and (os.getuid() == 0)):
-            g_file.cdDirectory(newPath, user)
 
     @staticmethod
     def obtainInstStr(objectList):
@@ -2030,57 +987,6 @@ class DefaultValue():
         return inputedUnsupportedParameters
 
     @staticmethod
-    def judgePathUser(tempPath):
-        """
-        function: judge the owner of path if exist
-        input: tempPath
-        output: True/False
-        """
-        try:
-            tempName = pwd.getpwuid(os.stat(tempPath).st_uid).pw_name
-            return True
-        except Exception as e:
-            # if the user is not exist
-            if (str(e).find("uid not found") >= 0):
-                return False
-            else:
-                raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] %
-                                ("the owner of %s" % tempPath) +
-                                " Error: \n%s" % str(e))
-
-    @staticmethod
-    def checkPathandChangeOwner(onePath, user, group, permission):
-        """
-        function: Get the owner of each layer path , if the user does not
-                  exist and change owner
-        input: onePath---the specified path; user---the user of cluster;
-               group---the group of cluster
-        output: the owner of path
-        precondiftion: the path exists
-        """
-        pathlist = []
-        try:
-            if (not os.path.exists(onePath)):
-                raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % onePath)
-
-            ownerPath = onePath
-            while True:
-                # obtain the each top path
-                (ownerPath, dirName) = os.path.split(ownerPath)
-                if (os.path.exists(ownerPath) and dirName != ""):
-                    pathlist.append(os.path.join(ownerPath, dirName))
-                else:
-                    break
-
-            for tempPath in pathlist:
-                # the user does not exist
-                if (not DefaultValue.judgePathUser(tempPath)):
-                    g_file.changeMode(permission, tempPath)
-                    g_file.changeOwner(user, tempPath)
-        except Exception as e:
-            raise Exception(str(e))
-
-    @staticmethod
     def checkOsVersion():
         """
         function : Check os version
@@ -2100,118 +1006,6 @@ class DefaultValue():
             return False
 
     @staticmethod
-    def checkPreInstallFlag(user):
-        """
-        function : check if have called preinstall.py script
-        input : String
-        output : boolean
-        """
-        gaussEnv = DefaultValue.getEnvironmentParameterValue("GAUSS_ENV", user)
-        if ("" == gaussEnv):
-            return False
-        if (str(gaussEnv) != "1" or str(gaussEnv) != "2"):
-            return True
-        else:
-            return False
-
-    @staticmethod
-    def cleanTmpFile(path, fp=None):
-        """
-        function : close and remove temporary file
-        input : String,file
-        output : NA
-        """
-        if (fp):
-            fp.close()
-        if (os.path.exists(path)):
-            os.remove(path)
-
-    @staticmethod
-    def distributeDatasourceFiles(sshTool, appPath, hostList):
-        """
-        function : distribute datasource files of datasource.key.cipher
-                and datasource.key.rand to remote host
-        input : String,String
-        output : NA
-        """
-        # init datasource file
-        clusterBinPath = "%s/bin" % appPath
-        datasourceCipherFile = "%s/datasource.key.cipher" % clusterBinPath
-        datasourceRandFile = "%s/datasource.key.rand" % clusterBinPath
-        tde_key_cipher = "%s/gs_tde_keys.cipher" % clusterBinPath
-
-        # If the file exists. Remote copy datasource cipher file to new nodes.
-        if (os.path.isfile(datasourceCipherFile)):
-            sshTool.scpFiles(datasourceCipherFile, clusterBinPath, hostList)
-            cmd = g_Platform.getChmodCmd(str(DefaultValue.KEY_FILE_MODE),
-                                         datasourceCipherFile)
-            sshTool.executeCommand(
-                cmd, "change the datasource cipher file permission",
-                DefaultValue.SUCCESS, hostList)
-        # If the file exists. Remote copy datasource rand file to new nodes.
-        if (os.path.isfile(datasourceRandFile)):
-            sshTool.scpFiles(datasourceRandFile, clusterBinPath, hostList)
-            cmd = g_Platform.getChmodCmd(str(DefaultValue.KEY_FILE_MODE),
-                                         datasourceRandFile)
-            sshTool.executeCommand(cmd, "change the datasource "
-                                        "rand file permission",
-                                   DefaultValue.SUCCESS, hostList)
-        # If the file exists. Remote copy gs_tde_keys.cipher to new nodes.
-        if (os.path.isfile(tde_key_cipher)):
-            sshTool.scpFiles(tde_key_cipher, clusterBinPath, hostList)
-            cmd = g_Platform.getChmodCmd(str(DefaultValue.KEY_FILE_MODE),
-                                         tde_key_cipher)
-            sshTool.executeCommand(cmd, "change the gs_tde_keys.cipher "
-                                        "permission", DefaultValue.SUCCESS,
-                                   hostList)
-
-    @staticmethod
-    def distributeUtilslibDir(sshTool, user, appPath, hostList):
-        """
-        function : distribute utilslib dir to remote host
-        input : String,String
-        output : NA
-        """
-        localHostName = DefaultValue.GetHostIpOrName()
-        # init utilslib dir
-        datasourceLibPath = "%s/utilslib" % appPath
-        if (os.path.exists(datasourceLibPath)):
-            srcPath = "'%s'/*" % datasourceLibPath
-            destPath = "'%s'/" % datasourceLibPath
-            sshTool.scpFiles(srcPath, destPath, hostList)
-
-        # init java UDF lib dir
-        javaUDFLibPath = "%s/lib/postgresql/java" % appPath
-        if (os.path.isdir(javaUDFLibPath)):
-            udfFiles = g_file.getDirectoryList(javaUDFLibPath)
-            if (len(udfFiles) > 0):
-                srcPath = "'%s'/*" % javaUDFLibPath
-                destPath = "'%s'/" % javaUDFLibPath
-                sshTool.scpFiles(srcPath, destPath, hostList)
-
-        # init postgis lib dir
-        fileLocation = {}
-        fileLocation["'%s'/lib/postgresql/" % appPath] = "postgis-*.*.so"
-        fileLocation["'%s'/lib/" % appPath] = \
-            "(libgeos_c.so.*|libproj.so.*|libjson-c.so.*|" \
-            "libgeos-*.*.*so|libstdc++.*|libgcc_s.so.*)"
-        fileLocation["'%s'/share/postgresql/extension/" % appPath] = \
-            "(postgis--*.*.*.sql|postgis.control)"
-        fileLocation["'%s'/bin/" % appPath] = "(pgsql2shp|shp2pgsql|" \
-                                              "logic_cluster_name.txt|" \
-                                              "[a-zA-Z0-9_]{1,64}." \
-                                              "cluster_static_config)"
-        fileLocation["'%s'/etc/" % appPath] = "*.gscgroup_.*.cfg"
-        for (gisLibPath, pattarn) in fileLocation.items():
-            gisFiles = g_file.getDirectoryList(gisLibPath, pattarn)
-            if (len(gisFiles) > 0):
-                if (len(gisFiles) > 1):
-                    srcPath = "%s/{%s}" % (gisLibPath, ",".join(gisFiles))
-                else:
-                    srcPath = "%s/%s" % (gisLibPath, gisFiles[0])
-                sshTool.scpFiles(srcPath, destPath, hostList)
-
-    @staticmethod
     def distributeRackFile(sshTool, hostList):
         """
         function: Distributing the rack Information File
@@ -2219,37 +1013,15 @@ class DefaultValue():
         output: NA
         """
         rack_conf_file = os.path.realpath(os.path.join(
-            DefaultValue.getEnv("GPHOME"),
+            EnvUtil.getEnv("GPHOME"),
             "script/gspylib/etc/conf/rack_info.conf"))
         rack_info_temp = os.path.realpath(os.path.join(
-            DefaultValue.getEnv("GPHOME"),
+            EnvUtil.getEnv("GPHOME"),
             "script/gspylib/etc/conf/rack_temp.conf"))
         if os.path.isfile(rack_info_temp):
             shutil.move(rack_info_temp, rack_conf_file)
         if os.path.isfile(rack_conf_file):
             sshTool.scpFiles(rack_conf_file, rack_conf_file, hostList)
-
-    @staticmethod
-    def cleanFile(fileName, hostname=""):
-        """
-        function : remove file
-        input : String,hostname
-        output : NA
-        """
-        fileList = fileName.split(",")
-
-        cmd = ""
-        for fileName in fileList:
-            deleteCmd = g_file.SHELL_CMD_DICT["deleteFile"] % (fileName,
-                                                               fileName)
-            if cmd != "":
-                cmd += ';%s' % deleteCmd
-            else:
-                cmd = deleteCmd
-
-        if ("" != hostname and DefaultValue.GetHostIpOrName() != hostname):
-            cmd = g_OSlib.getSshCommand(hostname, cmd)
-        DefaultValue.execCommandLocally(cmd)
 
     @staticmethod
     def cleanUserEnvVariable(userProfile, cleanGAUSS_WARNING_TYPE=False,
@@ -2263,66 +1035,66 @@ class DefaultValue():
             # check use profile
             if os.path.isfile(userProfile):
                 # clean version
-                g_file.deleteLine(userProfile, "^\\s*export\\"
+                FileUtil.deleteLine(userProfile, "^\\s*export\\"
                                                "s*GAUSS_VERSION=.*$")
                 # clean lib
-                g_file.deleteLine(userProfile,
+                FileUtil.deleteLine(userProfile,
                                   "^\\s*export\\s*LD_LIBRARY_PATH=\\"
                                   "$GAUSSHOME\\/lib:\\$LD_LIBRARY_PATH$")
-                g_file.deleteLine(userProfile,
+                FileUtil.deleteLine(userProfile,
                                   "^\\s*export\\s*LD_LIBRARY_PATH=\\"
                                   "$GAUSSHOME\\/lib\\/libsimsearch:\\"
                                   "$LD_LIBRARY_PATH$")
-                g_file.deleteLine(userProfile,
+                FileUtil.deleteLine(userProfile,
                                   "^\\s*export\\s*LD_LIBRARY_PATH=\\$GPHOME\\"
                                   "/script\\/gspylib\\/clib:\\"
                                   "$LD_LIBRARY_PATH$")
                 # clean bin
-                g_file.deleteLine(userProfile,
+                FileUtil.deleteLine(userProfile,
                                   "^\\s*export\\s*PATH=\\$GAUSSHOME\\"
                                   "/bin:\\$PATH$")
                 # clean GAUSSHOME
-                g_file.deleteLine(userProfile,
+                FileUtil.deleteLine(userProfile,
                                   "^\\s*export\\s*GAUSSHOME=.*$")
-                g_file.deleteLine(userProfile,
+                FileUtil.deleteLine(userProfile,
                                   "^\\s*export\\s*PGHOST=.*$")
                 # clean GAUSSLOG
-                g_file.deleteLine(userProfile,
+                FileUtil.deleteLine(userProfile,
                                   "^\\s*export\\s*GAUSSLOG=.*$")
                 # clean S3_ACCESS_KEY_ID
-                g_file.deleteLine(userProfile,
+                FileUtil.deleteLine(userProfile,
                                   "^\\s*export\\s*S3_ACCESS_KEY_ID=.*$")
                 # clean S3_SECRET_ACCESS_KEY
-                g_file.deleteLine(userProfile,
+                FileUtil.deleteLine(userProfile,
                                   "^\\s*export\\s*S3_SECRET_ACCESS_KEY=.*$")
                 # clean S3_CLIENT_CRT_FILE
-                g_file.deleteLine(userProfile,
+                FileUtil.deleteLine(userProfile,
                                   "^\\s*export\\s*S3_CLIENT_CRT_FILE=.*$")
                 # clean ETCD_UNSUPPORTED_ARCH
-                g_file.deleteLine(userProfile,
+                FileUtil.deleteLine(userProfile,
                                   "^\\s*export\\s*ETCD_UNSUPPORTED_ARCH=.*$")
 
                 if (cleanGAUSS_WARNING_TYPE):
                     # clean extension connector environment variable
                     # because only deleting env_ec in postinstall, put it with
                     # GAUSS_WARNING_TYPE
-                    g_file.deleteLine(userProfile, "^if \[ -f .*\/env_ec")
+                    FileUtil.deleteLine(userProfile, "^if \[ -f .*\/env_ec")
                     # clean GAUSS_WARNING_TYPE
-                    g_file.deleteLine(userProfile, "^\\s*export\\"
+                    FileUtil.deleteLine(userProfile, "^\\s*export\\"
                                                    "s*GAUSS_WARNING_TYPE=.*$")
 
                 if (cleanGS_CLUSTER_NAME):
                     # clean GS_CLUSTER_NAME
-                    g_file.deleteLine(userProfile, "^\\s*export\\"
+                    FileUtil.deleteLine(userProfile, "^\\s*export\\"
                                                    "s*GS_CLUSTER_NAME=.*$")
 
                 # clean AGENTPATH
-                g_file.deleteLine(userProfile, "^\\s*export\\s*AGENTPATH=.*$")
+                FileUtil.deleteLine(userProfile, "^\\s*export\\s*AGENTPATH=.*$")
                 # clean AGENTLOGPATH
-                g_file.deleteLine(userProfile, "^\\s*export\\s*AGENTLOGPATH="
+                FileUtil.deleteLine(userProfile, "^\\s*export\\s*AGENTLOGPATH="
                                                ".*$")
                 # clean umask
-                g_file.deleteLine(userProfile, "^\\s*umask\\s*.*$")
+                FileUtil.deleteLine(userProfile, "^\\s*umask\\s*.*$")
 
         except Exception as e:
             raise Exception(str(e))
@@ -2335,7 +1107,7 @@ class DefaultValue():
         output: NA
         """
         try:
-            g_file.createFileInSafeMode(userProfile)
+            FileUtil.createFileInSafeMode(userProfile)
             with open(userProfile, "a") as fp:
                 for inst_env in envList:
                     fp.write(inst_env)
@@ -2368,61 +1140,6 @@ class DefaultValue():
             envList.append("export AGENTLOGPATH=%s" % agentLogPath)
         DefaultValue.setComponentEnvVariable(userProfile, envList)
 
-    @staticmethod
-    def cleanComponentEnvVariable(userProfile, envNames):
-        """
-        function : Clean the user environment variable
-        input : String,boolean 
-        output : NA
-        """
-        try:
-            if (os.path.exists(userProfile) and os.path.isfile(userProfile)):
-                for envName in envNames:
-                    g_file.deleteLine(userProfile, "^\\s*export\\s*%s=.*$" %
-                                      envName)
-                    if (envName == "GAUSSHOME"):
-                        g_file.deleteLine(userProfile,
-                                          "^\\s*export\\s*LD_LIBRARY_PATH"
-                                          "=\\$GAUSSHOME\\/lib:"
-                                          "\\$LD_LIBRARY_PATH$")
-                        g_file.deleteLine(userProfile,
-                                          "^\\s*export\\s*LD_LIBRARY_PATH"
-                                          "=\\$GAUSSHOME\\/add-ons:"
-                                          "\\$LD_LIBRARY_PATH$")
-                        # clean bin
-                        g_file.deleteLine(userProfile,
-                                          "^\\s*export\\s*PATH"
-                                          "=\\$GAUSSHOME\\/bin:\\$PATH$")
-                    elif (envName == "CM_HOME"):
-                        # clean cm path
-                        g_file.deleteLine(userProfile,
-                                          "^\\s*export\\s*PATH"
-                                          "=\\$CM_HOME:\\$PATH$")
-                    elif (envName == "ETCD_HOME"):
-                        # clean etcd path
-                        g_file.deleteLine(
-                            userProfile, "^\\s*export\\s*PATH"
-                                         "=\\$ETCD_HOME\\/bin:\\$PATH$")
-
-        except Exception as e:
-            raise Exception(str(e))
-
-    @staticmethod
-    def updateUserEnvVariable(userProfile, variable, value):
-        """
-        function : Update the user environment variable
-        input : String,String,String
-        output : NA
-        """
-        try:
-            # delete old env information
-            deleteContent = "^\\s*export\\s*%s=.*$" % variable
-            g_file.deleteLine(userProfile, deleteContent)
-            # write the new env information into userProfile
-            writeContent = ['export %s=%s' % (variable, value)]
-            g_file.writeFile(userProfile, writeContent)
-        except Exception as e:
-            raise Exception(str(e))
 
     @staticmethod
     def createCADir(sshTool, caDir, hostList):
@@ -2447,19 +1164,19 @@ class DefaultValue():
         cmd += " && " + g_file.SHELL_CMD_DICT["renameFile"] % (tmpFile,
                                                                tmpFile,
                                                                opensslFile)
-        sshTool.executeCommand(cmd, "move file and clean dir",
+        sshTool.executeCommand(cmd,
                                DefaultValue.SUCCESS, hostList)
         # create ./demoCA/newcerts ./demoCA/private
         newcertsPath = os.path.join(caDir, "demoCA/newcerts")
-        g_file.createDirectory(newcertsPath)
+        FileUtil.createDirectory(newcertsPath)
         privatePath = os.path.join(caDir, "demoCA/private")
-        g_file.createDirectory(privatePath)
+        FileUtil.createDirectory(privatePath)
         # touch files: ./demoCA/serial ./demoCA/index.txt
         serFile = os.path.join(caDir, "demoCA/serial")
-        g_file.createFile(serFile)
-        g_file.writeFile(serFile, ["01"])
+        FileUtil.createFile(serFile, mode=DefaultValue.KEY_FILE_MODE)
+        FileUtil.writeFile(serFile, ["01"])
         indexFile = os.path.join(caDir, "demoCA/index.txt")
-        g_file.createFile(indexFile)
+        FileUtil.createFile(indexFile, mode=DefaultValue.KEY_FILE_MODE)
 
     @staticmethod
     def createServerCA(caType, caDir, logger):
@@ -2470,131 +1187,166 @@ class DefaultValue():
         """
         if (caType == DefaultValue.SERVER_CA):
             logger.log("The sslcert will be generated in %s" % caDir)
-            randpass = DefaultValue.getRandStr()
+            randpass = RandomValue.getRandStr()
             confFile = caDir + "/openssl.cnf"
             if not os.path.isfile(confFile):
                 raise Exception(ErrorCode.GAUSS_502
                                 ["GAUSS_50201"] % confFile)
-            cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && openssl genrsa -aes256  -passout pass:%s -out " % \
+            cmd = CmdUtil.getCdCmd(caDir)
+            cmd += " && echo '%s' | openssl genrsa -aes256  -passout stdin -out " % \
                    (randpass)
             cmd += "demoCA/private/cakey.pem 2048"
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
-            cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && openssl req -config openssl.cnf -new "
-            cmd += "-key demoCA/private/cakey.pem -passin pass:%s " \
-                   "-out " % (randpass)
-            cmd += "demoCA/careq.pem -subj "
-            cmd += "'/C=CN/ST=Beijing/L=Beijing/"
-            cmd += "O=huawei/OU=gauss/CN=root'"
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
-            g_file.replaceFileLineContent("CA:FALSE",
-                                          "CA:TRUE",
-                                          confFile)
-            cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && openssl ca -config openssl.cnf "
-            cmd += "-batch -passin pass:%s -out demoCA/cacert.pem " \
-                   "-keyfile " % (randpass)
-            cmd += "demoCA/private/cakey.pem "
-            cmd += "-selfsign -infiles demoCA/careq.pem "
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
-            cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && openssl genrsa -aes256 -passout pass:%s -out " \
-                   "server.key 2048" % (randpass)
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
-            cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && openssl req -config openssl.cnf -new "
-            cmd += "-key server.key -passin pass:%s -out server.req " \
-                   "-subj " % (randpass)
-            cmd += "'/C=CN/ST=Beijing/L=Beijing/"
-            cmd += "O=huawei/OU=gauss/CN=server'"
-            (status, output) = subprocess.getstatusoutput(cmd)
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
             if (status != 0):
                 raise Exception(ErrorCode.GAUSS_514
                                 ["GAUSS_51402"] + "Error:\n%s" % output)
-            g_file.replaceFileLineContent("CA:TRUE",
+            cmd = CmdUtil.getCdCmd(caDir)
+            cmd += " && echo '%s' | openssl req -config openssl.cnf -new " % (randpass)
+            cmd += "-key demoCA/private/cakey.pem -passin stdin " \
+                   "-out "
+            cmd += "demoCA/careq.pem -subj "
+            cmd += "'/C=CN/ST=Beijing/L=Beijing/"
+            cmd += "O=huawei/OU=gauss/CN=root'"
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_514
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
+            FileUtil.replaceFileLineContent("CA:FALSE",
+                                          "CA:TRUE",
+                                          confFile)
+            cmd = CmdUtil.getCdCmd(caDir)
+            cmd += " && echo '%s' | openssl ca -config openssl.cnf " % (randpass)
+            cmd += "-batch -passin stdin -out demoCA/cacert.pem " \
+                   "-keyfile "
+            cmd += "demoCA/private/cakey.pem "
+            cmd += "-selfsign -infiles demoCA/careq.pem "
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_514
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
+            cmd = CmdUtil.getCdCmd(caDir)
+            cmd += " && echo '%s' | openssl genrsa -aes256 -passout stdin -out " \
+                   "server.key 2048" % (randpass)
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_514
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
+            cmd = CmdUtil.getCdCmd(caDir)
+            cmd += " && echo '%s' | openssl req -config openssl.cnf -new " % (randpass)
+            cmd += "-key server.key -passin stdin -out server.req " \
+                   "-subj "
+            cmd += "'/C=CN/ST=Beijing/L=Beijing/"
+            cmd += "O=huawei/OU=gauss/CN=server'"
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
+            if (status != 0):
+                raise Exception(ErrorCode.GAUSS_514
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
+            FileUtil.replaceFileLineContent("CA:TRUE",
                                           "CA:FALSE",
                                           confFile)
             indexAttrFile = caDir + "/demoCA/index.txt.attr"
             if os.path.isfile(indexAttrFile):
-                g_file.replaceFileLineContent("unique_subject = yes",
+                FileUtil.replaceFileLineContent("unique_subject = yes",
                                               "unique_subject = no",
                                               indexAttrFile)
             else:
                 raise Exception(ErrorCode.GAUSS_502
                                 ["GAUSS_50201"] % indexAttrFile)
-            cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && openssl ca -config openssl.cnf -batch -in "
-            cmd += "server.req -passin pass:%s -out server.crt " \
-                   "-days 3650 -md sha256 -subj " % (randpass)
+            cmd = CmdUtil.getCdCmd(caDir)
+            cmd += " && echo '%s' | openssl ca -config openssl.cnf -batch -in " % (randpass)
+            cmd += "server.req -passin stdin -out server.crt " \
+                   "-days 3650 -md sha256 -subj "
             cmd += "'/C=CN/ST=Beijing/L=Beijing/"
             cmd += "O=huawei/OU=gauss/CN=server'"
-            (status, output) = subprocess.getstatusoutput(cmd)
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
-            cmd = g_Platform.getCdCmd(caDir)
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
+            cmd = CmdUtil.getCdCmd(caDir)
             cmd += " && gs_guc encrypt -M server -K '%s' -D ./ " % randpass
-            (status, output) = subprocess.getstatusoutput(cmd)
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
             # client key
-            randpassClient = DefaultValue.getRandStr()
-            cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && openssl genrsa -aes256  -passout pass:%s -out " \
+            randpassClient = RandomValue.getRandStr()
+            cmd = CmdUtil.getCdCmd(caDir)
+            cmd += " && echo '%s' | openssl genrsa -aes256  -passout stdin -out " \
                    "client.key 2048" % (randpassClient)
-            (status, output) = subprocess.getstatusoutput(cmd)
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
-            cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && openssl req -config openssl.cnf "
-            cmd += "-new -key client.key -passin pass:%s " \
-                   "-out client.req -subj " % (randpassClient)
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
+            cmd = CmdUtil.getCdCmd(caDir)
+            cmd += " && echo '%s' | openssl req -config openssl.cnf " % (randpassClient)
+            cmd += "-new -key client.key -passin stdin " \
+                   "-out client.req -subj "
             cmd += "'/C=CN/ST=Beijing/L=Beijing/"
             cmd += "O=huawei/OU=gauss/CN=client'"
-            (status, output) = subprocess.getstatusoutput(cmd)
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
-            cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && openssl ca -config openssl.cnf "
-            cmd += "-batch -in client.req  -passin pass:%s -out " % \
-                   (randpass)
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
+            cmd = CmdUtil.getCdCmd(caDir)
+            cmd += " && echo '%s' | openssl ca -config openssl.cnf " % (randpass)
+            cmd += "-batch -in client.req  -passin stdin -out "
             cmd += "client.crt -days 3650 -md sha256"
-            (status, output) = subprocess.getstatusoutput(cmd)
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
-            cmd = g_Platform.getCdCmd(caDir)
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
+            cmd = CmdUtil.getCdCmd(caDir)
             cmd += " && gs_guc encrypt -M client -K '%s' -D ./ " % randpassClient
-            (status, output) = subprocess.getstatusoutput(cmd)
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
-            cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && openssl pkcs8 -topk8 -outform DER"
-            cmd += " -passin pass:%s  " % randpassClient
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
+            cmd = CmdUtil.getCdCmd(caDir)
+            cmd += " && echo '%s' | openssl pkcs8 -topk8 -outform DER" % randpassClient
+            cmd += " -passin stdin  "
             cmd += " -in client.key -out client.key.pk8 -nocrypt"
-            (status, output) = subprocess.getstatusoutput(cmd)
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
-            randpass = ""
-            randpassClient = ""
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
+            del randpass, randpassClient
+
 
     @staticmethod
     def changeOpenSslConf(confFile, hostList):
@@ -2604,15 +1356,15 @@ class DefaultValue():
         output : NA
         """
         # Clean the old content.
-        lineList = g_file.readFile(confFile)
+        lineList = FileUtil.readFile(confFile)
         for i in range(len(lineList)):
             if ("[" in lineList[i] and
                     "alt_names" in lineList[i] and
                     "]" in lineList[i]):
                 row = i + 1
-                g_file.deleteLineByRowNum(confFile, row)
+                FileUtil.deleteLineByRowNum(confFile, row)
             if ("DNS." in lineList[i] and "=" in lineList[i]):
-                g_file.deleteLineByRowNum(confFile, row)
+                FileUtil.deleteLineByRowNum(confFile, row)
         # Add new one.
         dnsList = []
         dnsList.append("\n")
@@ -2623,15 +1375,28 @@ class DefaultValue():
             dns = "DNS." + str(cont) + " = " + host
             dnsList.append(dns)
             cont = cont + 1
-        g_file.writeFile(confFile, dnsList)
+        FileUtil.writeFile(confFile, dnsList)
 
     @staticmethod
-    def getRandStr():
-        with open("/dev/random", 'rb') as fp:
-            srp = fp.read(4)
-            salt = srp.hex()
-            salt = "%s%s" % (salt, "aA0")
-        return salt
+    def is_create_grpc(logger, gauss_home_path):
+        """
+        function : Check whether the grpc.conf file exists.
+        input : logger object, gauss_home_path
+        output : True or False
+        """
+        logger.debug("Start check grpc.conf file.")
+        conf_file = os.path.realpath(os.path.join(gauss_home_path,
+                                                  "share",
+                                                  "sslcert",
+                                                  "grpc",
+                                                  "openssl.cnf"))
+
+        if os.path.isfile(conf_file):
+            logger.debug("Exist openssl.cnf file [%s]." % conf_file)
+            return True
+        else:
+            logger.debug("Does not exist openssl.cnf file [%s]." % conf_file)
+            return False
 
     @staticmethod
     def createCA(caType, caDir):
@@ -2640,141 +1405,171 @@ class DefaultValue():
         input : ca file type and ca dir path
         output : NA
         """
-        if (caType == DefaultValue.GRPC_CA):
-            randpass = DefaultValue.getRandStr()
+        if caType == DefaultValue.GRPC_CA:
+            randpass = RandomValue.getRandStr()
             confFile = caDir + "/openssl.cnf"
             if (os.path.isfile(confFile)):
-                g_file.replaceFileLineContent("cakey.pem",
+                FileUtil.replaceFileLineContent("cakey.pem",
                                               "cakeynew.pem",
                                               confFile)
-                g_file.replaceFileLineContent("careq.pem",
+                FileUtil.replaceFileLineContent("careq.pem",
                                               "careqnew.pem",
                                               confFile)
-                g_file.replaceFileLineContent("cacert.pem",
+                FileUtil.replaceFileLineContent("cacert.pem",
                                               "cacertnew.pem",
                                               confFile)
-                g_file.replaceFileLineContent("server.key",
+                FileUtil.replaceFileLineContent("server.key",
                                               "servernew.key",
                                               confFile)
-                g_file.replaceFileLineContent("server.req",
+                FileUtil.replaceFileLineContent("server.req",
                                               "servernew.req",
                                               confFile)
-                g_file.replaceFileLineContent("server.crt",
+                FileUtil.replaceFileLineContent("server.crt",
                                               "servernew.crt",
                                               confFile)
-                g_file.replaceFileLineContent("client.key",
+                FileUtil.replaceFileLineContent("client.key",
                                               "clientnew.key",
                                               confFile)
-                g_file.replaceFileLineContent("client.req",
+                FileUtil.replaceFileLineContent("client.req",
                                               "clientnew.req",
                                               confFile)
-                g_file.replaceFileLineContent("client.crt",
+                FileUtil.replaceFileLineContent("client.crt",
                                               "clientnew.crt",
                                               confFile)
             else:
                 raise Exception(ErrorCode.GAUSS_502
                                 ["GAUSS_50201"] % confFile)
-            cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && openssl genrsa -aes256  -passout pass:%s -out " % \
+            cmd = CmdUtil.getCdCmd(caDir)
+            cmd += " && echo '%s' | openssl genrsa -aes256  -passout stdin -out " % \
                    (randpass)
             cmd += "demoCA/private/cakeynew.pem 2048"
-            (status, output) = subprocess.getstatusoutput(cmd)
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
-            cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && openssl req -config openssl.cnf -new "
-            cmd += "-key demoCA/private/cakeynew.pem -passin pass:%s " \
-                   "-out " % (randpass)
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
+            cmd = CmdUtil.getCdCmd(caDir)
+            cmd += " && echo '%s' | openssl req -config openssl.cnf -new " % (randpass)
+            cmd += "-key demoCA/private/cakeynew.pem -passin stdin " \
+                   "-out "
             cmd += "demoCA/careqnew.pem -subj "
             cmd += "'/C=CN/ST=Beijing/L=Beijing/"
             cmd += "O=huawei/OU=gauss/CN=root'"
-            (status, output) = subprocess.getstatusoutput(cmd)
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
-            cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && openssl ca -config openssl.cnf -days 7300 "
-            cmd += "-batch -passin pass:%s -out demoCA/cacertnew.pem " \
-                   "-md sha512 -keyfile " % (randpass)
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
+            cmd = CmdUtil.getCdCmd(caDir)
+            cmd += " && echo '%s' | openssl ca -config openssl.cnf -days 7300 " % (randpass)
+            cmd += "-batch -passin stdin -out demoCA/cacertnew.pem " \
+                   "-md sha512 -keyfile "
             cmd += "demoCA/private/cakeynew.pem "
             cmd += "-selfsign -infiles demoCA/careqnew.pem "
-            (status, output) = subprocess.getstatusoutput(cmd)
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
-            cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && openssl genrsa -aes256 -passout pass:%s -out " \
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
+            cmd = CmdUtil.getCdCmd(caDir)
+            cmd += " && echo '%s' | openssl genrsa -aes256 -passout stdin -out " \
                    "servernew.key 2048" % (randpass)
-            (status, output) = subprocess.getstatusoutput(cmd)
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
-            cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && openssl req -config openssl.cnf -new "
-            cmd += "-key servernew.key  -passin pass:%s -out servernew.req " \
-                   "-subj " % (randpass)
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
+            cmd = CmdUtil.getCdCmd(caDir)
+            cmd += " && echo '%s' | openssl req -config openssl.cnf -new " % (randpass)
+            cmd += "-key servernew.key  -passin stdin -out servernew.req " \
+                   "-subj "
             cmd += "'/C=CN/ST=Beijing/L=Beijing/"
             cmd += "O=huawei/OU=gauss/CN=root'"
-            (status, output) = subprocess.getstatusoutput(cmd)
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
             indexAttrFile = caDir + "/demoCA/index.txt.attr"
             if (os.path.isfile(indexAttrFile)):
-                g_file.replaceFileLineContent("unique_subject = yes",
+                FileUtil.replaceFileLineContent("unique_subject = yes",
                                               "unique_subject = no",
                                               indexAttrFile)
             else:
                 raise Exception(ErrorCode.GAUSS_502
                                 ["GAUSS_50201"] % indexAttrFile)
-            cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && openssl ca -config openssl.cnf -batch -in "
-            cmd += "servernew.req -passin pass:%s -out servernew.crt " \
-                   "-days 7300 -md sha512" % (randpass)
-            (status, output) = subprocess.getstatusoutput(cmd)
+            cmd = CmdUtil.getCdCmd(caDir)
+            cmd += " && echo '%s' | openssl ca -config openssl.cnf -batch -in " % (randpass)
+            cmd += "servernew.req -passin stdin -out servernew.crt " \
+                   "-days 7300 -md sha512"
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
-            cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && openssl genrsa -aes256  -passout pass:%s -out " \
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
+            cmd = CmdUtil.getCdCmd(caDir)
+            cmd += " && echo '%s' | openssl genrsa -aes256  -passout stdin -out " \
                    "clientnew.key 2048" % (randpass)
-            (status, output) = subprocess.getstatusoutput(cmd)
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
-            cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && openssl req -config openssl.cnf "
-            cmd += "-new -key clientnew.key -passin pass:%s " \
-                   "-out clientnew.req -subj " % (randpass)
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
+            cmd = CmdUtil.getCdCmd(caDir)
+            cmd += " && echo '%s' | openssl req -config openssl.cnf " % (randpass)
+            cmd += "-new -key clientnew.key -passin stdin " \
+                   "-out clientnew.req -subj "
             cmd += "'/C=CN/ST=Beijing/L=Beijing/"
             cmd += "O=huawei/OU=gauss/CN=root'"
-            (status, output) = subprocess.getstatusoutput(cmd)
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
-            cmd = g_Platform.getCdCmd(caDir)
-            cmd += " && openssl ca -config openssl.cnf "
-            cmd += "-batch -in clientnew.req  -passin pass:%s -out " % \
-                   (randpass)
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
+            cmd = CmdUtil.getCdCmd(caDir)
+            cmd += " && echo '%s' | openssl ca -config openssl.cnf " % (randpass)
+            cmd += "-batch -in clientnew.req  -passin stdin -out "
             cmd += "clientnew.crt -days 7300 -md sha512"
-            (status, output) = subprocess.getstatusoutput(cmd)
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
-            cmd = g_Platform.getCdCmd(caDir)
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
+            cmd = CmdUtil.getCdCmd(caDir)
             cmd += " && gs_guc encrypt -M server -K '%s' -D ./ " % randpass
-            (status, output) = subprocess.getstatusoutput(cmd)
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
                                 ["GAUSS_51402"] + "Error:\n%s" % output)
-            cmd = g_Platform.getCdCmd(caDir)
+            cmd = CmdUtil.getCdCmd(caDir)
             cmd += " && gs_guc encrypt -M client -K '%s' -D ./ " % randpass
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514
-                                ["GAUSS_51402"] + "Error:\n%s" % output)
-            randpass = 0
+                                ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
+            del randpass
 
     @staticmethod
     def cleanServerCaDir(caDir):
@@ -2785,15 +1580,15 @@ class DefaultValue():
         """
         certFile = caDir + "/demoCA/cacert.pem"
         if os.path.exists(certFile):
-            g_file.moveFile(certFile, caDir)
+            FileUtil.moveFile(certFile, caDir)
         clientReq = caDir + "/server.req"
-        g_file.removeFile(clientReq)
+        FileUtil.removeFile(clientReq)
         clientReq = caDir + "/client.req"
-        g_file.removeFile(clientReq)
+        FileUtil.removeFile(clientReq)
         demoCA = caDir + "/demoCA"
-        g_file.removeDirectory(demoCA)
+        FileUtil.removeDirectory(demoCA)
         allCerts = caDir + "/*"
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE, allCerts)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, allCerts)
 
     @staticmethod
     def cleanCaDir(caDir):
@@ -2804,46 +1599,15 @@ class DefaultValue():
         """
         certFile = caDir + "/demoCA/cacertnew.pem"
         if os.path.exists(certFile):
-            g_file.moveFile(certFile, caDir)
+            FileUtil.moveFile(certFile, caDir)
         clientReq = caDir + "/clientnew.req"
-        g_file.removeFile(clientReq)
+        FileUtil.removeFile(clientReq)
         clientReq = caDir + "/servernew.req"
-        g_file.removeFile(clientReq)
+        FileUtil.removeFile(clientReq)
         demoCA = caDir + "/demoCA"
-        g_file.removeDirectory(demoCA)
+        FileUtil.removeDirectory(demoCA)
         allCerts = caDir + "/*"
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE, allCerts)
-
-    @staticmethod
-    def modifyFileOwner(user, currentfile):
-        """
-        function : Modify the file's owner
-        input : String,String
-        output : String
-        """
-        # only root user can run this function
-        if (os.getuid() == 0):
-            try:
-                group = g_OSlib.getGroupByUser(user)
-            except Exception as e:
-                raise Exception(str(e))
-            if os.path.exists(currentfile):
-                g_file.changeOwner(user, currentfile)
-
-    @staticmethod
-    def modifyFileOwnerFromGPHOME(currentfile):
-        """
-        function : Modify the file's owner to the GPHOME's user
-        input : String,String
-        output : String
-        """
-        GPHOME = DefaultValue.getEnv(DefaultValue.TOOL_PATH_ENV)
-        if not GPHOME:
-            raise Exception(ErrorCode.GAUSS_518["GAUSS_51802"] % "GPHOME")
-        (user, group) = g_OSlib.getPathOwner(GPHOME)
-        if (user == "" or group == ""):
-            raise Exception(ErrorCode.GAUSS_503["GAUSS_50308"])
-        DefaultValue.modifyFileOwner(user, currentfile)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, allCerts)
 
     @staticmethod
     def obtainSSDDevice():
@@ -2878,42 +1642,13 @@ class DefaultValue():
                             "base directory of output file")
 
     @staticmethod
-    def getAllIP(g_dbNodes):
-        """
-        function : Get all node IP
-        input : list
-        output : list
-        """
-        allIP = []
-        for dbNode in g_dbNodes:
-            allIP += dbNode.backIps
-            allIP += dbNode.sshIps
-            for dbInstance in dbNode.cmservers:
-                allIP += dbInstance.haIps
-                allIP += dbInstance.listenIps
-            for dbInstance in dbNode.coordinators:
-                allIP += dbInstance.haIps
-                allIP += dbInstance.listenIps
-            for dbInstance in dbNode.datanodes:
-                allIP += dbInstance.haIps
-                allIP += dbInstance.listenIps
-            for dbInstance in dbNode.gtms:
-                allIP += dbInstance.haIps
-                allIP += dbInstance.listenIps
-            for etcdInst in dbNode.etcds:
-                allIP += etcdInst.haIps
-                allIP += etcdInst.listenIps
-
-        return allIP
-
-    @staticmethod
     def KillAllProcess(userName, procName):
         """
         function : Kill all processes by userName and procName.
         input : userName, procName
         output : boolean
         """
-        return g_OSlib.killallProcess(userName, procName, "9")
+        return ProcessUtil.killallProcess(userName, procName, "9")
 
     @staticmethod
     def sendNetworkCmd(ip):
@@ -2922,9 +1657,9 @@ class DefaultValue():
         input : String
         output : NA
         """
-        cmd = "%s |%s ttl |%s -l" % (g_Platform.getPingCmd(ip, "5", "1"),
-                                     g_Platform.getGrepCmd(),
-                                     g_Platform.getWcCmd())
+        cmd = "%s |%s ttl |%s -l" % (CmdUtil.getPingCmd(ip, "5", "1"),
+                                     CmdUtil.getGrepCmd(),
+                                     CmdUtil.getWcCmd())
         (status, output) = subprocess.getstatusoutput(cmd)
         if (str(output) == '0' or status != 0):
             g_lock.acquire()
@@ -2940,26 +1675,9 @@ class DefaultValue():
         """
         global noPassIPs
         noPassIPs = []
-        results = parallelTool.parallelExecute(DefaultValue.sendNetworkCmd,
+        parallelTool.parallelExecute(DefaultValue.sendNetworkCmd,
                                                ips)
         return noPassIPs
-
-    @staticmethod
-    def retryGetstatusoutput(cmd, retryTime=3, sleepTime=1):
-        """
-        function : retry getStatusoutput
-        @param cmd: command  going to be execute
-        @param retryTime: default retry 3 times after execution failure
-        @param sleepTime: default sleep 1 second then start retry 
-        """
-        retryTime += 1
-        for i in range(retryTime):
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if (status != 0):
-                time.sleep(sleepTime)
-            else:
-                break
-        return status, output
 
     @staticmethod
     def killInstProcessCmd(instName, isRemote=False, signal=9,
@@ -3032,85 +1750,6 @@ class DefaultValue():
         return cmd
 
     @staticmethod
-    def getRuningInstNum(procAbsPath, instDir=""):
-        """
-        """
-        if (instDir):
-            cmd = "ps ux | grep '%s' | grep '%s' | grep -v grep | wc -l" % \
-                  (procAbsPath, instDir)
-        else:
-            cmd = "ps ux | grep '%s' | grep -v grep | wc -l" % (procAbsPath)
-        return cmd
-
-    @staticmethod
-    def killCmserverProcess(sshTool, cmsInsts):
-        # Restart the instance CMSERVERS
-        failedNodes = []
-        if (len(cmsInsts) == 1 and cmsInsts[0].hostname ==
-                DefaultValue.GetHostIpOrName()):
-            cmd = DefaultValue.killInstProcessCmd("cm_server", False, 1)
-            (status, output) = DefaultValue.retryGetstatusoutput(cmd)
-            if (status != 0):
-                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                                + "Error:\n%s" % output)
-        else:
-            cmd = DefaultValue.killInstProcessCmd("cm_server", True, 1)
-            (status, output) = sshTool.getSshStatusOutput(
-                cmd, [cmsInst.hostname for cmsInst in cmsInsts])
-            for cmNodeName in status.keys():
-                if (status[cmNodeName] != DefaultValue.SUCCESS):
-                    failedNodes.append(cmNodeName)
-
-            # judge failed nodes
-            if (len(failedNodes)):
-                time.sleep(1)
-                (status, output) = sshTool.getSshStatusOutput(cmd, failedNodes)
-                for cmNodeName in failedNodes:
-                    if (status[cmNodeName] != DefaultValue.SUCCESS):
-                        raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"]
-                                        % cmd + "Error:\n%s" % output)
-
-        time.sleep(10)
-
-    @staticmethod
-    def getParaValueFromConfigFile(paraList, instList, instType="cm_server"):
-        """
-        function : Get guc parameter from config file for cm_server or gtm.
-        input : paraList, instList, instType
-        output : paraMap
-        """
-        paraMap = {}
-        for para in paraList:
-            for inst in instList:
-                configPath = os.path.join(inst.datadir, "%s.conf" % instType)
-                (status, output) = DefaultValue.getMatchingResult(
-                    "\<'%s'\>" % para, configPath, inst.hostname)
-                if (status != 0 and status != 256):
-                    if (instType == "gtm"):
-                        output = ""
-                    else:
-                        raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] %
-                                        configPath + " Error:%s." % output)
-                configValue = ""
-                for line in output.split('\n'):
-                    confInfo = line.strip()
-                    if (confInfo.startswith('#') or confInfo == ""):
-                        continue
-                    elif (confInfo.startswith(para)):
-                        configValue = \
-                            confInfo.split('#')[0].split('=')[
-                                1].strip().lower()
-                        if (paraMap.__contains__(para) and paraMap[para] !=
-                                configValue):
-                            raise Exception(
-                                ErrorCode.GAUSS_530["GAUSS_53011"] %
-                                "Parameter '%s', it is different in "
-                                "same level instance." % para)
-                        paraMap[para] = configValue
-                        break
-        return paraMap
-
-    @staticmethod
     def retry_gs_guc(cmd):
         """
         function : Retry 3 times when HINT error
@@ -3128,116 +1767,6 @@ class DefaultValue():
             retryTimes = retryTimes + 1
             time.sleep(3)
 
-    @staticmethod
-    def distributePackagesToRemote(g_sshTool, srcPackageDir, destPackageDir,
-                                   hostname=None, mpprcFile="",
-                                   clusterInfo=None):
-        '''
-        function: distribute the package to remote nodes
-        input: g_sshTool, hostname, srcPackageDir, destPackageDir, mpprcFile,
-               clusterType
-        output:NA
-        '''
-        if hostname is None:
-            hostname = []
-        try:
-            # check the destPackageDir is existing on hostname
-            DefaultValue.checkRemoteDir(g_sshTool, destPackageDir, hostname,
-                                        mpprcFile)
-
-            # Send compressed package to every host
-            g_sshTool.scpFiles("%s/%s" % (
-                srcPackageDir, DefaultValue.get_package_back_name()),
-                               destPackageDir, hostname, mpprcFile)
-            # Decompress package on every host
-            srcPackage = "'%s'/'%s'" % (destPackageDir,
-                                        DefaultValue.get_package_back_name())
-            cmd = g_Platform.getDecompressFilesCmd(srcPackage, destPackageDir)
-            g_sshTool.executeCommand(cmd, "extract %s server package" %
-                                     VersionInfo.PRODUCT_NAME,
-                                     DefaultValue.SUCCESS, hostname, mpprcFile)
-
-            # change owner and mode of packages
-            destPath = "'%s'/*" % destPackageDir
-            cmd = g_Platform.getChmodCmd(str(DefaultValue.MAX_DIRECTORY_MODE),
-                                         destPath, True)
-            g_sshTool.executeCommand(cmd, "change permission",
-                                     DefaultValue.SUCCESS, hostname, mpprcFile)
-
-        except Exception as e:
-            raise Exception(str(e))
-
-    @staticmethod
-    def distributeTransEncryptFile(appPath, sshTool, hostList):
-        '''
-        function: Distribute trans encrypt file to the node of hostList
-        input : appPath, sshTool, hostList
-        output: NA
-        '''
-        try:
-            installBinPath = "%s/bin" % appPath
-            transEncryptKeyCipher = "%s/trans_encrypt.key.cipher" % \
-                                    installBinPath
-            transEncryptKeyRand = "%s/trans_encrypt.key.rand" % installBinPath
-            transEncryptKeyAkSk = "%s/trans_encrypt_ak_sk.key" % installBinPath
-
-            if (os.path.exists(transEncryptKeyCipher)):
-                # MIN_FILE_MODE can not be scp, so expand the permission.
-                cmd = g_Platform.getChmodCmd(
-                    str(DefaultValue.KEY_DIRECTORY_MODE),
-                    transEncryptKeyCipher)
-                (status, output) = subprocess.getstatusoutput(cmd)
-                if (status != 0):
-                    raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                                    + "Error:\n%s" % str(output))
-                sshTool.scpFiles(transEncryptKeyCipher, installBinPath,
-                                 hostList)
-                cmd = g_Platform.getChmodCmd(
-                    str(DefaultValue.MIN_FILE_MODE), transEncryptKeyCipher)
-                sshTool.executeCommand(
-                    cmd, "change permission", DefaultValue.SUCCESS, hostList)
-                (status, output) = subprocess.getstatusoutput(cmd)
-                if (status != 0):
-                    raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                                    + "Error:\n%s" % str(output))
-
-            if (os.path.exists(transEncryptKeyRand)):
-                # MIN_FILE_MODE can not be scp, so expand the permission.
-                cmd = g_Platform.getChmodCmd(
-                    str(DefaultValue.KEY_DIRECTORY_MODE), transEncryptKeyRand)
-                (status, output) = subprocess.getstatusoutput(cmd)
-                if (status != 0):
-                    raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                                    + "Error:\n%s" % str(output))
-                sshTool.scpFiles(transEncryptKeyRand, installBinPath, hostList)
-                cmd = g_Platform.getChmodCmd(str(DefaultValue.MIN_FILE_MODE),
-                                             transEncryptKeyRand)
-                sshTool.executeCommand(
-                    cmd, "change permission", DefaultValue.SUCCESS, hostList)
-                (status, output) = subprocess.getstatusoutput(cmd)
-                if (status != 0):
-                    raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                                    + "Error:\n%s" % str(output))
-
-            if (os.path.exists(transEncryptKeyAkSk)):
-                # MIN_FILE_MODE can not be scp, so expand the permission.
-                cmd = g_Platform.getChmodCmd(
-                    str(DefaultValue.KEY_DIRECTORY_MODE), transEncryptKeyAkSk)
-                (status, output) = subprocess.getstatusoutput(cmd)
-                if (status != 0):
-                    raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                                    + "Error:\n%s" % str(output))
-                sshTool.scpFiles(transEncryptKeyAkSk, installBinPath, hostList)
-                cmd = g_Platform.getChmodCmd(str(DefaultValue.MIN_FILE_MODE),
-                                             transEncryptKeyAkSk)
-                sshTool.executeCommand(cmd, "change permission",
-                                       DefaultValue.SUCCESS, hostList)
-                (status, output) = subprocess.getstatusoutput(cmd)
-                if (status != 0):
-                    raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                                    + "Error:\n%s" % str(output))
-        except Exception as e:
-            raise Exception(str(e))
 
     @staticmethod
     def distributeXmlConfFile(g_sshTool, confFile, hostname=None,
@@ -3254,9 +1783,9 @@ class DefaultValue():
             # check and create xml file path
             xmlDir = os.path.dirname(confFile)
             xmlDir = os.path.normpath(xmlDir)
-            DefaultValue.checkRemoteDir(g_sshTool, xmlDir, hostname, mpprcFile,
+            LocalRemoteCmd.checkRemoteDir(g_sshTool, xmlDir, hostname, mpprcFile,
                                         localMode)
-            local_node = DefaultValue.GetHostIpOrName()
+            local_node = NetUtil.GetHostIpOrName()
             # Skip local file overwriting
             if not hostname:
                 hostname = g_sshTool.hostNames[:]
@@ -3266,245 +1795,14 @@ class DefaultValue():
                 # Send xml file to every host
                 g_sshTool.scpFiles(confFile, xmlDir, hostname, mpprcFile)
             # change owner and mode of xml file
-            cmd = g_Platform.getChmodCmd(str(DefaultValue.FILE_MODE), confFile)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "change permission",
-                                             g_sshTool,
-                                             localMode,
-                                             mpprcFile,
-                                             hostname)
+            cmd = CmdUtil.getChmodCmd(str(DefaultValue.FILE_MODE), confFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            g_sshTool,
+                                            localMode,
+                                            mpprcFile,
+                                            hostname)
         except Exception as e:
             raise Exception(str(e))
-
-    @staticmethod
-    def cleanFileDir(dirName, g_sshTool=None, hostname=None):
-        '''
-        function: clean directory or file
-        input: dirName, g_sshTool, hostname
-        output:NA
-        '''
-        if hostname is None:
-            hostname = []
-        try:
-            cmd = g_file.SHELL_CMD_DICT["deleteDir"] % (dirName, dirName)
-            # If clean file or directory  on local node
-            if (g_sshTool is None):
-                (status, output) = subprocess.getstatusoutput(cmd)
-                if (status != 0):
-                    raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                                    + "Error:\n%s" % str(output))
-            else:
-                # Assign some remote node to clean directory or file.
-                if hostname == []:
-                    g_sshTool.executeCommand(cmd, "clean directory or file ")
-                else:
-                    g_sshTool.executeCommand(cmd, "clean directory or file ",
-                                             DefaultValue.SUCCESS, hostname)
-        except Exception as e:
-            raise Exception(str(e))
-
-    @staticmethod
-    def execCommandLocally(cmd):
-        """ 
-        functino: exec only on local node
-        input: cmd
-        output: NA
-        """
-        # exec the cmd
-        (status, output) = subprocess.getstatusoutput(cmd)
-        # if cmd failed, then raise
-        if (status != 0 and "[GAUSS-5" in str(output)):
-            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                            + "Error:\n%s" % str(output))
-        elif (status != 0):
-            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % str(cmd) +
-                            " Error: \n%s" % str(output))
-
-    @staticmethod
-    def execCommandWithMode(cmd, descript, g_sshTool, localMode=False,
-                            mpprcFile='', hostList=None):
-        """ 
-        function: check the mode, if local mode, exec only on local node,
-        else exec on all nodes
-        input: cmd, decript, g_sshTool, localMode, mpprcFile
-        output: NA
-        """
-        if hostList is None:
-            hostList = []
-        # check the localMode
-        if localMode:
-            # localMode
-            DefaultValue.execCommandLocally(cmd)
-        else:
-            # Non-native mode
-            g_sshTool.executeCommand(cmd, descript, DefaultValue.SUCCESS,
-                                     hostList, mpprcFile)
-
-    @staticmethod
-    def getDevices():
-        """
-        functino: get device
-        input: NA
-        output: NA
-        """
-        cmd = "fdisk -l 2>/dev/null | grep \"Disk /dev/\" | " \
-              "grep -Ev \"/dev/mapper/|loop\" | awk '{ print $2 }' | " \
-              "awk -F'/' '{ print $NF }' | sed s/:$//g"
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if (status != 0):
-            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
-                            " Error: \n%s" % output)
-        devList = output.split('\n')
-        return devList
-
-    @staticmethod
-    def copyCAfile(sshTool, hostList):
-        """
-        functino: copy CA file
-        input: NA
-        output: NA
-        """
-        try:
-            user = pwd.getpwuid(os.getuid()).pw_name
-            gaussHome = DefaultValue.getInstallDir(user)
-            sslpath = "%s/share/sslcert/etcd/" % gaussHome
-            caKeyFile = "%s/ca.key" % sslpath
-            caCrtFile = "%s/etcdca.crt" % sslpath
-            clientKeyFile = "%s/client.key" % sslpath
-            clientCrtFile = "%s/client.crt" % sslpath
-            etcdKeyRand = "%s/etcd.key.rand" % sslpath
-            etcdKeyCipher = "%s/etcd.key.cipher" % sslpath
-            clientKeyRand = "%s/client.key.rand" % sslpath
-            clientKeyCipher = "%s/client.key.cipher" % sslpath
-
-            if (os.path.exists(caKeyFile)):
-                mkdirCmd = g_Platform.getMakeDirCmd(sslpath, True)
-                changModeCmd = g_Platform.getChmodCmd(
-                    str(DefaultValue.KEY_DIRECTORY_MODE), sslpath)
-                cmd = "%s && %s" % (mkdirCmd, changModeCmd)
-                sshTool.executeCommand(cmd, "create CA path",
-                                       DefaultValue.SUCCESS, hostList)
-                sshTool.scpFiles(caKeyFile, sslpath, hostList)
-                sshTool.scpFiles(caCrtFile, sslpath, hostList)
-                sshTool.scpFiles(clientKeyFile, sslpath, hostList)
-                sshTool.scpFiles(clientCrtFile, sslpath, hostList)
-                sshTool.scpFiles(etcdKeyRand, sslpath, hostList)
-                sshTool.scpFiles(etcdKeyCipher, sslpath, hostList)
-                sshTool.scpFiles(clientKeyRand, sslpath, hostList)
-                sshTool.scpFiles(clientKeyCipher, sslpath, hostList)
-                cmd = g_Platform.getChmodCmd(str(DefaultValue.KEY_FILE_MODE),
-                                             "%s %s" % (caKeyFile, caCrtFile))
-                sshTool.executeCommand(cmd, "change permission",
-                                       DefaultValue.SUCCESS, hostList)
-        except Exception as e:
-            raise Exception(str(e))
-
-    @staticmethod
-    def genCert(nodeip, etcddir, remoteip=""):
-        """
-        function: generate a certificate file for ETCD
-        input : nodeip:backip, etcddir: the dir of etcd, remoteip:sship
-        output: NA
-        """
-        try:
-            user = pwd.getpwuid(os.getuid()).pw_name
-            ###############1.Save the openssl.cnf under
-            # $GAUSSHOME/share/sslcert/etcd
-            gaussHome = DefaultValue.getInstallDir(user)
-            sslpath = "%s/share/sslcert/etcd" % gaussHome
-            sslcfg = "%s/openssl.cnf" % sslpath
-            tmp_Dir = "%s/demoCA" % sslpath
-            etcdKeyFile = "%s/etcd.key" % sslpath
-            etcdCsrFile = "%s/etcd.csr" % sslpath
-            etcdCrtFile = "%s/etcd.crt" % sslpath
-            etcdKeyRand = "%s/etcd.key.rand" % sslpath
-            etcdKeyCipher = "%s/etcd.key.cipher" % sslpath
-
-            ###############2.clean file
-            DefaultValue.cleanFileDir(tmp_Dir)
-
-            ###############3.generate server certificate and sign it
-            # create directory and copy files
-            ###############3.generate server certificate and sign it
-            randpass = DefaultValue.aes_cbc_decrypt_with_path(sslpath)
-            cmd = "%s" % g_Platform.getCdCmd(sslpath)
-            # Create paths and files
-            cmd += " && %s" % g_Platform.getMakeDirCmd("demoCA/newcerts", True)
-            cmd += " && %s" % g_Platform.getMakeDirCmd("demoCA/private", True)
-            cmd += " && %s" % g_Platform.getChmodCmd(
-                str(DefaultValue.KEY_DIRECTORY_MODE), "demoCA/newcerts")
-            cmd += " && %s" % g_Platform.getChmodCmd(
-                str(DefaultValue.KEY_DIRECTORY_MODE), "demoCA/private")
-            cmd += " && %s" % g_Platform.getTouchCmd("demoCA/index.txt")
-            cmd += " && echo '01' > demoCA/serial"
-            cmd += " && export SAN=\"IP:%s\"" % nodeip
-            cmd += " && %s " % g_Platform.getCopyCmd("ca.key",
-                                                     "demoCA/private/")
-            cmd += " && %s " % g_Platform.getCopyCmd("etcdca.crt", "demoCA/")
-
-            cmd += " && openssl req -config '%s' -newkey rsa:4096 -keyout " \
-                   "'%s' -passout pass:%s -out '%s' -subj '/CN=cn'" % \
-                   (sslcfg, etcdKeyFile, randpass, etcdCsrFile)
-            cmd += " && %s" % g_Platform.getCdCmd("demoCA")
-            cmd += " && openssl ca -startdate 200101000000Z -config " \
-                   "'%s' -extensions etcd_server -batch -keyfile " \
-                   "'%s/demoCA/private/ca.key' -passin pass:%s -cert " \
-                   "'%s/demoCA/etcdca.crt' -out '%s' -infiles '%s'" % \
-                   (sslcfg, sslpath, randpass, sslpath, etcdCrtFile,
-                    etcdCsrFile)
-            cmd += " && cd ../ && find . -type f | xargs chmod %s" % \
-                   DefaultValue.KEY_FILE_MODE
-            DefaultValue.execCommandLocally(cmd)
-            ############4.copy etcd.srt to the ETCD directory
-            # copy the file to the ETCD directory
-            etcddir = "%s/" % etcddir
-            if (remoteip):
-                g_OSlib.scpFile(remoteip, etcdKeyFile, etcddir)
-                g_OSlib.scpFile(remoteip, etcdCrtFile, etcddir)
-                g_OSlib.scpFile(remoteip, etcdKeyRand, etcddir)
-                g_OSlib.scpFile(remoteip, etcdKeyCipher, etcddir)
-            else:
-                g_file.cpFile(etcdKeyFile, etcddir)
-                g_file.cpFile(etcdCrtFile, etcddir)
-                g_file.cpFile(etcdKeyRand, etcddir)
-                g_file.cpFile(etcdKeyCipher, etcddir)
-            cmd = "unset SAN"
-            DefaultValue.execCommandLocally(cmd)
-            DefaultValue.cleanFileDir(tmp_Dir)
-        except Exception as e:
-            DefaultValue.cleanFileDir(tmp_Dir)
-            raise Exception(str(e))
-
-    @staticmethod
-    def replaceCertFilesToRemoteNode(cnNodeName, instanceList, cnInstDir):
-        """
-        function: This method is for replace SSL cert files
-        input : cnNodeName, instanceList, cnInstDir
-        output: NA
-        """
-        fileList = DefaultValue.CERT_ROLLBACK_LIST[:]
-        for file_inx in range(len(fileList)):
-            fileList[file_inx] = os.path.join(cnInstDir, fileList[file_inx])
-
-        # copy encrypt file to host
-        for instInfo in instanceList:
-            for certfile in fileList:
-                # scp certfile from cnNodeName to instInfo.hostname
-                sshCmd = g_Platform.getSshCmd(cnNodeName)
-                scpCmd = g_Platform.getRemoteCopyCmd(certfile, "%s/" %
-                                                     instInfo.datadir,
-                                                     instInfo.hostname,
-                                                     otherHost=cnNodeName)
-                cmd = "%s \"if [ -f '%s' ]; then %s; fi\"" % (sshCmd, certfile,
-                                                              scpCmd)
-                DefaultValue.execCommandLocally(cmd)
-                # change the certfile under instInfo.hostname
-                sshCmd = g_Platform.getSshCmd(instInfo.hostname)
-                chmodCmd = g_Platform.getChmodCmd(
-                    str(DefaultValue.KEY_FILE_MODE), certfile)
-                cmd = "%s \"if [ -f '%s' ]; then %s; fi\"" % (sshCmd, certfile,
-                                                              chmodCmd)
-                DefaultValue.execCommandLocally(cmd)
 
     @staticmethod
     def getSecurityMode():
@@ -3529,41 +1827,6 @@ class DefaultValue():
             raise Exception(str(ex))
 
     @staticmethod
-    def syncDependLibsAndEtcFiles(sshTool, nodeName):
-        """
-        function: Distribute etc file and libsimsearch libs to new node
-        input : NA
-        output: NA
-        """
-        try:
-            # distribute etc file to new node
-            gaussHome = DefaultValue.getEnv("GAUSSHOME")
-
-            searchConfigFile = "%s/etc/searchletConfig.yaml" % gaussHome
-            searchIniFile = "%s/etc/searchServer.ini" % gaussHome
-            if (os.path.exists(searchConfigFile)):
-                sshTool.scpFiles(searchConfigFile, searchConfigFile, nodeName)
-            if (os.path.exists(searchIniFile)):
-                sshTool.scpFiles(searchIniFile, searchIniFile, nodeName)
-
-            # distribute libsimsearch libs to new node
-            libPath = "%s/lib" % gaussHome
-            libsimsearchPath = "%s/libsimsearch" % libPath
-            if (not os.path.isdir(libsimsearchPath)):
-                return
-
-            for node in nodeName:
-                cmd = "pscp -H %s '%s' '%s' " % (node, libsimsearchPath,
-                                                 libPath)
-                (status, output) = subprocess.getstatusoutput(cmd)
-                if (status != 0):
-                    raise Exception(ErrorCode.GAUSS_502["GAUSS_50214"] % cmd +
-                                    " Error: \n%s" % str(output))
-
-        except Exception as e:
-            raise Exception(str(e))
-
-    @staticmethod
     def checkTransactionReadonly(user, DbclusterInfo, normalCNList=None):
         """
         function : check the CN's parameter default_transaction_read_only is on
@@ -3574,7 +1837,7 @@ class DefaultValue():
         cnList = []
         if normalCNList is None:
             normalCNList = []
-        localhost = DefaultValue.GetHostIpOrName()
+        localhost = NetUtil.GetHostIpOrName()
         sql = "show default_transaction_read_only;"
         try:
             if (len(normalCNList)):
@@ -3585,15 +1848,13 @@ class DefaultValue():
                     if (len(dbNode.coordinators) != 0):
                         cnList.append(dbNode.coordinators[0])
 
-            nodeInfo = DbclusterInfo.getDbNodeByName(
-                DefaultValue.GetHostIpOrName())
             security_mode_value = DefaultValue.getSecurityMode()
             # Execute sql on every CN instance
             if (security_mode_value == "on"):
                 for cooInst in cnList:
                     if (localhost == cooInst.hostname):
                         (status, result, error_output) = \
-                            ClusterCommand.excuteSqlOnLocalhost(cooInst.port,
+                            SqlExecutor.excuteSqlOnLocalhost(cooInst.port,
                                                                 sql)
                         if (status != 2):
                             return 1, "[%s]: Error: %s result: %s status: " \
@@ -3607,14 +1868,14 @@ class DefaultValue():
                         pid = os.getpid()
                         outputfile = "metadata_%s_%s_%s.json" % (
                             cooInst.hostname, pid, currentTime)
-                        tmpDir = DefaultValue.getTmpDirFromEnv()
+                        tmpDir = EnvUtil.getTmpDirFromEnv()
                         filepath = os.path.join(tmpDir, outputfile)
                         ClusterCommand.executeSQLOnRemoteHost(cooInst.hostname,
                                                               cooInst.port,
                                                               sql,
                                                               filepath)
                         (status, result, error_output) = \
-                            ClusterCommand.getSQLResult(cooInst.hostname,
+                            SqlExecutor.getSQLResult(cooInst.hostname,
                                                         outputfile)
                         if (status != 2):
                             return 1, "[%s]: Error: %s result: %s status: " \
@@ -3637,46 +1898,6 @@ class DefaultValue():
             return 1, str(e)
 
     @staticmethod
-    def makeCompressedToolPackage(packageDir):
-        """
-        function : check the output file
-        input : String
-        output : NA
-        """
-        # init bin file name, integrity file name and tar list names
-        packageDir = os.path.normpath(packageDir)
-        bz2FileName = g_OSlib.getBz2FilePath()
-        integrityFileName = g_OSlib.getSHA256FilePath()
-
-        tarLists = "--exclude=script/*.log --exclude=*.log script " \
-                   "version.cfg lib"
-        upgrade_sql_file_path = os.path.join(packageDir,
-                                             Const.UPGRADE_SQL_FILE)
-        if os.path.exists(upgrade_sql_file_path):
-            tarLists += " %s %s" % (Const.UPGRADE_SQL_SHA,
-                                    Const.UPGRADE_SQL_FILE)
-        if "HOST_IP" in os.environ.keys():
-            tarLists += " cluster_default_agent.xml"
-        try:
-            # make compressed tool package
-            cmd = "%s && " % g_Platform.getCdCmd(packageDir)
-            # do not tar *.log files 
-            cmd += g_Platform.getCompressFilesCmd(
-                DefaultValue.get_package_back_name(), tarLists)
-            cmd += " %s %s " % (os.path.basename(bz2FileName),
-                                os.path.basename(integrityFileName))
-            cmd += "&& %s " % g_Platform.getChmodCmd(
-                str(DefaultValue.KEY_FILE_MODE),
-                DefaultValue.get_package_back_name())
-            cmd += "&& %s " % g_Platform.getCdCmd("-")
-            (status, output) = DefaultValue.retryGetstatusoutput(cmd)
-            if (status != 0):
-                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
-                                " Error: \n%s" % output)
-        except Exception as e:
-            raise Exception(str(e))
-
-    @staticmethod
     def getCpuSet():
         """
         function: get cpu set of current board
@@ -3690,22 +1911,6 @@ class DefaultValue():
             return cpuSet
         else:
             return DefaultValue.DEFAULT_PARALLEL_NUM
-
-    @staticmethod
-    def getTopPathNotExist(topDirPath):
-        """
-        function : Get the top path if exist
-        input : String
-        output : String
-        """
-        tmpDir = topDirPath
-        while True:
-            # find the top path to be created
-            (tmpDir, topDirName) = os.path.split(tmpDir)
-            if os.path.exists(tmpDir) or topDirName == "":
-                tmpDir = os.path.join(tmpDir, topDirName)
-                break
-        return tmpDir
 
     @staticmethod
     def checkSHA256(binFile, sha256File):
@@ -3744,7 +1949,7 @@ class DefaultValue():
         # The file system of directory
         diskSizeInfo = {}
         dfCmd = "%s | head -2 |tail -1 | %s -F\" \" '{print $1}'" % \
-                (g_Platform.getDiskFreeCmd(path), g_Platform.getAwkCmd())
+                (CmdUtil.getDiskFreeCmd(path), CmdUtil.getAwkCmd())
         (status, output) = subprocess.getstatusoutput(dfCmd)
         if (status != 0):
             g_logger.logExit(ErrorCode.GAUSS_502["GAUSS_50219"] %
@@ -3767,69 +1972,9 @@ class DefaultValue():
         return diskSizeInfo
 
     @staticmethod
-    def kill_process(process_name):
-        """
-        function: kill process
-        input : NA
-        output: NA
-        """
-        dfCmd = DefaultValue.killInstProcessCmd(process_name, False, 9, False)
-        DefaultValue.execCommandLocally(dfCmd)
-
-    @staticmethod
-    def updateRemoteUserEnvVariable(userProfile, variable, value, ssh_tool,
-                                    hostnames=None):
-        """
-        function : Update remote user environment variable
-        input : String,String,String
-        output : NA
-        """
-        cmd = "sed -i '\\\/^\\\s*export\\\s*%s=.*$/d' %s;" % (variable,
-                                                              userProfile)
-        cmd += 'echo \\\"export %s=%s\\\" >> %s' % (variable, value,
-                                                    userProfile)
-        if hostnames and isinstance(hostnames, list):
-            ssh_tool.executeCommand(cmd, "", DefaultValue.SUCCESS, hostnames)
-        elif hostnames:
-            raise Exception("updateRomoteUserEnvVariable: %s" % (
-                    ErrorCode.GAUSS_500["GAUSS_50003"] % (hostnames, "list")))
-        else:
-            ssh_tool.executeCommand(cmd, "")
-
-    @staticmethod
-    def getInstBackupName(inst):
-        """
-        function : get backup file name (prefix) for the instance
-        input    : instance object
-        output   : backup file name for this instance
-        """
-        MAX_BACKUP_FILE_LEN = 128
-
-        backup_name = ''
-
-        if not inst:
-            return None
-        if not inst.datadir:
-            return None
-
-        datadir = inst.datadir
-        if len(datadir) < MAX_BACKUP_FILE_LEN:
-            backup_name = datadir.lstrip('/').strip('/').replace('/', '_')
-        else:
-            sha256Obj = hashlib.sha256()
-            if not sha256Obj:
-                raise Exception(ErrorCode.GAUSS_529["GAUSS_52939"]
-                                % "verification Obj.")
-            sha256Obj.update(datadir)
-            backup_name = sha256Obj.hexdigest()
-
-        return backup_name
-
-    @staticmethod
     def getPrimaryDnNum(dbClusterInfoGucDnPr):
         """
         """
-        masterInstance = 0
         dataCount = 0
         dbNodeList = dbClusterInfoGucDnPr.dbNodes
         for dbNode in dbNodeList:
@@ -3880,7 +2025,6 @@ class DefaultValue():
     def getDataNodeNum(dbClusterInfoGucDn):
         """
         """
-        masterInstance = 0
         dataNodeNum = []
         dbNodeList = dbClusterInfoGucDn.dbNodes
         for dbNode in dbNodeList:
@@ -3889,7 +2033,7 @@ class DefaultValue():
         return maxDataNodeNum
 
     @staticmethod
-    def dynamicGuc(user, logger, instanceType, tmpGucFile, gucXml=False):
+    def dynamicGuc(instanceType, tmpGucFile, gucXml=False):
         """
         function: set hba config
         input : NA
@@ -3897,7 +2041,7 @@ class DefaultValue():
         """
         try:
             instance = instanceType
-            gucList = g_file.readFile(tmpGucFile)
+            gucList = FileUtil.readFile(tmpGucFile)
             gucStr = gucList[0].replace("\n", "")
             dynamicParaList = gucStr.split(",")
             for guc in dynamicParaList:
@@ -3916,13 +2060,13 @@ class DefaultValue():
 
             # reading xml.
             gucDict = {}
-            rootNode = initParserXMLFile(gucFile)
+            rootNode = ClusterConfigFile.initParserXMLFile(gucFile)
             instanceEle = rootNode.find(instance)
             instanceList = instanceEle.findall("PARAM")
             for gucElement in instanceList:
-                DefaultValue.checkGuc(gucElement.attrib['VALUE'], logger)
+                DefaultValue.checkGuc(gucElement.attrib['VALUE'])
                 gucDict[gucElement.attrib['KEY']] = gucElement.attrib['VALUE']
-            gucParaDict = DefaultValue.initGuc(gucDict, logger,
+            gucParaDict = DefaultValue.initGuc(gucDict,
                                                dynamicParaList, gucXml)
 
             return gucParaDict
@@ -3930,7 +2074,7 @@ class DefaultValue():
             raise Exception(str(e))
 
     @staticmethod
-    def checkGuc(gucValue, logger):
+    def checkGuc(gucValue):
         """
         function: check path vaild
         input : envValue
@@ -3950,7 +2094,7 @@ class DefaultValue():
                                 "in the content." % rac)
 
     @staticmethod
-    def initGuc(gucDict, logger, dynamicParaList, gucXml=False):
+    def initGuc(gucDict, dynamicParaList, gucXml=False):
         """
         """
         for guc in gucDict:
@@ -4059,7 +2203,7 @@ class DefaultValue():
         """
         krb5Conf = os.path.join(os.path.dirname(mpprcFile),
                                 DefaultValue.FI_KRB_CONF)
-        tablespace = DefaultValue.getEnv("ELK_SYSTEM_TABLESPACE")
+        tablespace = EnvUtil.getEnv("ELK_SYSTEM_TABLESPACE")
         if (tablespace is not None and tablespace != ""):
             xmlfile = os.path.join(os.path.dirname(mpprcFile),
                                    DefaultValue.FI_ELK_KRB_XML)
@@ -4067,25 +2211,12 @@ class DefaultValue():
             xmlfile = os.path.join(os.path.dirname(mpprcFile),
                                    DefaultValue.FI_KRB_XML)
         if (os.path.exists(xmlfile) and os.path.exists(krb5Conf) and
-                DefaultValue.getEnv("PGKRBSRVNAME")):
+                EnvUtil.getEnv("PGKRBSRVNAME")):
             return True
         return False
 
     @staticmethod
-    def get_max_wal_senders_value(max_connections):
-        """
-        function : Get guc max_wal_senders value by max_connections.
-        input : NA
-        output
-        """
-        value = int(max_connections) - 1
-        if (value >= DefaultValue.MAX_WAL_SENDERS):
-            return DefaultValue.MAX_WAL_SENDERS
-        else:
-            return value
-
-    @staticmethod
-    def setActionFlagFile(module="", logger=None, mode=True):
+    def setActionFlagFile(module="", mode=True):
         """
         function: Set action flag file
         input : module
@@ -4094,7 +2225,7 @@ class DefaultValue():
         if os.getuid() == 0:
             return
         # Get the temporary directory from PGHOST
-        tmpDir = DefaultValue.getTmpDirFromEnv()
+        tmpDir = EnvUtil.getTmpDirFromEnv()
         if not tmpDir:
             raise Exception(ErrorCode.GAUSS_518["GAUSS_51802"] % "PGHOST")
         # check if tmp dir exists
@@ -4107,18 +2238,18 @@ class DefaultValue():
                                       DefaultValue.ACTION_FLAG_FILE + "_%s"
                                       % os.getpid())
         if mode:
-            g_file.createFileInSafeMode(actionFlagFile)
+            FileUtil.createFileInSafeMode(actionFlagFile)
             with open(actionFlagFile, "w") as fp:
                 fp.write(module)
                 fp.flush()
-            os.chmod(actionFlagFile, DefaultValue.KEY_FILE_PERMISSION)
+            os.chmod(actionFlagFile, ConstantsBase.KEY_FILE_PERMISSION)
         else:
             if os.path.exists(actionFlagFile):
                 os.remove(actionFlagFile)
 
     @staticmethod
     def isUnderUpgrade(user):
-        tempPath = DefaultValue.getTmpDirFromEnv(user)
+        tempPath = EnvUtil.getTmpDirFromEnv(user)
         bakPath = os.path.join(tempPath, "binary_upgrade")
         if os.path.isdir(bakPath):
             if os.listdir(bakPath):
@@ -4137,25 +2268,9 @@ class DefaultValue():
             cmd = "sed -i '/WHITELIST_ENV=/d' %s ; " \
                   "echo 'export WHITELIST_ENV=1' >> %s" % (mpprcFile,
                                                            mpprcFile)
-            sshTool.executeCommand(cmd, "Add WHITELIST_ENV",
+            sshTool.executeCommand(cmd,
                                    DefaultValue.SUCCESS, nodeNames)
             logger.debug("Successfully write $WHITELIST_ENV in %s" % mpprcFile)
-
-    @staticmethod
-    def disableWhiteList(sshTool, mpprcFile, nodeNames, logger):
-        """
-        function: delete environment value WHITELIST_ENV for agent mode
-        input : NA
-        output: NA
-        """
-        env_dist = os.environ
-        if "HOST_IP" in env_dist.keys():
-            cmd = "sed -i '/WHITELIST_ENV=/d' %s && unset WHITELIST_ENV" % \
-                  mpprcFile
-            sshTool.executeCommand(cmd, "Clear WHITELIST_ENV",
-                                   DefaultValue.SUCCESS, nodeNames)
-            logger.debug(
-                "Successfully clear $WHITELIST_ENV in %s." % mpprcFile)
 
     @staticmethod
     def checkDockerEnv():
@@ -4195,6 +2310,589 @@ class DefaultValue():
             return primaryList, output
         except Exception as e:
             raise Exception(str(e))
+
+
+    @staticmethod
+    def non_root_owner(filepath):
+        """
+        :param filepath:
+        :return:
+        """
+        if not os.path.exists(filepath):
+            return False
+        if os.stat(filepath).st_uid != 0:
+            return True
+        return False
+
+    @staticmethod
+    def check_cm_package(cluster_info, package_path, logger):
+        """
+        Check CM package
+        """
+        if cluster_info.cmscount == 0:
+            logger.debug("No CM instance in configure file.")
+            return True
+
+        logger.debug("There include cm instance on local node.")
+        if not os.path.isfile(package_path):
+            logger.debug("CM is config in configure file, but not exist cm package.")
+            return False
+        logger.debug("CM is config in configure file and cm package exist.")
+        return True
+
+
+    @staticmethod
+    def get_cm_server_num_from_static(cluster_info):
+        """
+        Get cm_server num from static config file
+        """
+        cm_server_num = 0
+        for db_node in cluster_info.dbNodes:
+            cm_server_num += len(db_node.cmservers)
+        return cm_server_num
+
+
+    @staticmethod
+    def get_secret(length=32):
+        """
+        function : random secret
+        input : int
+        output : string
+        """
+        secret_types = string.ascii_letters + string.digits + string.punctuation
+        exception_str = "`;$'\"{}[\\"
+        while True:
+            secret_word = ''.join(secrets.choice(secret_types) for _ in range(length))
+            check_flag = False
+            for i in exception_str:
+                if i in secret_word:
+                    check_flag = True
+                    break
+            if check_flag:
+                continue
+            if (any(c.islower() for c in secret_word)
+                    and any(c.isupper() for c in secret_word)
+                    and any(c in string.punctuation for c in secret_word)
+                    and sum(c.isdigit() for c in secret_word) >= 4):
+                break
+        return secret_word
+
+    @staticmethod
+    def check_add_cm(old_cluster_config_file, new_cluster_config_file, logger):
+        """
+        Check need install CM instance
+        """
+        old_cluster_info = dbClusterInfo()
+        new_cluster_info = dbClusterInfo()
+        user = pwd.getpwuid(os.getuid()).pw_name
+        old_cluster_info.initFromStaticConfig(user, old_cluster_config_file)
+        new_cluster_info.initFromStaticConfig(user, new_cluster_config_file)
+
+        if DefaultValue.get_cm_server_num_from_static(new_cluster_info) > 0 and \
+                DefaultValue.get_cm_server_num_from_static(old_cluster_info) == 0:
+            logger.debug("Need to install CM instance to node.")
+            return True
+        logger.debug("No need to install CM instance to node.")
+        return False
+
+    @staticmethod
+    def try_fast_popen(cmd, retry_time=3, sleep_time=1, check_output=False):
+        """
+        function : retry getStatusoutput
+        @param cmd: command  going to be execute
+        @param retry_time: default retry 3 times after execution failure
+        @param sleep_time: default sleep 1 second then start retry
+        """
+        retry_time += 1
+        for i in range(retry_time):
+            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE)
+            stdout, stderr = proc.communicate()
+            if proc.returncode != 0:
+                time.sleep(sleep_time)
+            elif check_output:
+                if str(stdout+stderr).strip():
+                    break
+                else:
+                    time.sleep(sleep_time)
+            else:
+                break
+        return proc.returncode, stdout, stderr
+
+    @staticmethod
+    def get_ssh_protect_path():
+        """
+        get the temp path
+        :return: string
+        """
+        ssh_protect_path = os.path.expanduser(Constants.SSH_PROTECT_PATH)
+        if not os.path.exists(ssh_protect_path):
+            FileUtil.createDirectory(ssh_protect_path,
+                                   mode=DefaultValue.KEY_DIRECTORY_MODE)
+        if os.path.isdir(ssh_protect_path):
+            dir_permission = oct(os.stat(ssh_protect_path).st_mode)[-3:]
+            if dir_permission != str(DefaultValue.KEY_DIRECTORY_MODE):
+                os.chmod(ssh_protect_path, stat.S_IRWXU)
+        else:
+            msg = "Failed to create the directory because the file"
+            msg = "%s %s with the same name exists." % (
+                msg, ssh_protect_path)
+            raise Exception(msg)
+        return ssh_protect_path
+
+    @staticmethod
+    def get_dn_info(cluster_info):
+        """
+        Get primary dn info
+        """
+        instances = []
+        dn_instances = [dn_inst for db_node in cluster_info.dbNodes
+                        for dn_inst in db_node.datanodes if int(dn_inst.mirrorId) == 1]
+        for dn_inst in dn_instances:
+            dn_info = {}
+            dn_info["id"] = dn_inst.instanceId
+            dn_info["data_dir"] = dn_inst.datadir
+            dn_info["host_name"] = dn_inst.hostname
+            instances.append(dn_info)
+        return instances
+
+    @staticmethod
+    def get_local_ips():
+        """
+        get local node all ips
+        :return:
+        """
+        # eg "ip_mappings: [('lo', '127.0.0.1'), ('eth1', '10.10.10.10')]"
+        ip_mappings = NetUtil.getIpAddressAndNICList()
+        local_ips = []
+        for ip_info in ip_mappings:
+            local_ips.append(ip_info[1])
+        return local_ips
+
+    @staticmethod
+    def get_pid(desc):
+        """
+        function : get the ID of the process
+                   that contains the specified content
+        input : string
+        output : list
+        """
+        pids = []
+        cmd = "ps ux | grep '%s' | grep -v grep" % desc
+        proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE)
+        stdout, stderr = proc.communicate()
+        if stderr:
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
+                            "Error: %s." % str(stderr))
+        for pid_line in stdout.split(os.linesep):
+            if len(pid_line.strip().split()) > 2:
+                pid = pid_line.strip().split()[1]
+                if pid.isdigit():
+                    pids.append(str(pid))
+        return pids
+
+    @staticmethod
+    def clear_ssh_id_rsa(mpprcfile, logger=""):
+        """
+        :param mpprcfile:
+        :param logger:
+        :return:
+        """
+        clear_cmd = "source %s;ssh-add -D" %mpprcfile
+        status, output = subprocess.getstatusoutput(clear_cmd)
+        if status != 0:
+            if logger:
+                logger.error("Failed to clear id_rsa in ssh-agent,Errors:%s" % output)
+            raise Exception(
+                ErrorCode.GAUSS_516["GAUSS_51632"] % "clear ssh agent"
+                + " Error:\n%s" % (output))
+        if logger:
+            logger.debug("Successfully to clear id_rsa in ssh-agent")
+
+    @staticmethod
+    def add_ssh_id_rsa(secret_word, mpprcfile, shell_file, logger=""):
+        """
+        :param secret_word:
+        :param mpprcfile:
+        :param logger:
+        :return:
+        """
+        DefaultValue.clear_ssh_id_rsa(mpprcfile, logger)
+        id_rsa_path = os.path.expanduser("~/.ssh/id_rsa")
+        cmd = "source %s;echo \"%s\" | /bin/sh %s %s" %(
+            mpprcfile, str(secret_word), shell_file, id_rsa_path)
+        if logger:
+            logger.debug("ssh-add cmd:%s" %cmd)
+        (status, stdout, stderr) = DefaultValue.try_fast_popen(cmd)
+        output = stdout + stderr
+        if logger:
+            logger.debug("add ssh id_rsa status:%s" %status)
+            logger.debug("add ssh id_rsa output:%s" %output)
+        if status != 0:
+            raise Exception("Failed to ssh-add perform.Error: %s" % output)
+        if logger:
+            logger.debug("Successfully to add id_rsa in ssh-agent")
+
+
+    @staticmethod
+    def register_ssh_agent(mpprcfile, logger=""):
+        """
+        function : register ssh agent
+        input : NA
+        output : NA
+        """
+        if logger:
+            logger.debug("Start to register ssh agent.")
+        agent_path = os.path.join("~/gaussdb_tmp/", "gauss_socket_tmp")
+        agent_path = os.path.expanduser(agent_path)
+        cmd = "ssh-agent -a %s" % (agent_path)
+        cmd_ssh_add = "source %s;ssh-agent -a %s" % (mpprcfile, agent_path)
+        list_pid = DefaultValue.get_pid(cmd)
+        if not list_pid:
+            if os.path.exists(agent_path):
+                os.remove(agent_path)
+        status, output = subprocess.getstatusoutput(cmd_ssh_add)
+        if status != 0 and "Address already in use" not in output:
+            if logger:
+                logger.error("cms is: %s;Errors:%s" % (cmd_ssh_add, output))
+            raise Exception(
+                ErrorCode.GAUSS_516["GAUSS_51632"] % "register ssh agent"
+                + "cmd is:%s;Error:\n%s" % (cmd_ssh_add, output))
+        bashrc_file = os.path.join(pwd.getpwuid(os.getuid()).pw_dir,
+                                   ".bashrc")
+        ProfileFile.updateUserEnvVariable(bashrc_file, "SSH_AUTH_SOCK", agent_path)
+        if logger:
+            logger.debug("Update environment value SSH_AUTH_SOCK successfully.")
+        update_pid_env_flag = False
+        list_pid = DefaultValue.get_pid(cmd)
+        if not list_pid:
+            raise Exception(
+                ErrorCode.GAUSS_516["GAUSS_51632"] % "register ssh agent"
+                + " Error:\nCan't find the process of ssh agent")
+        for pid in list_pid:
+            if str(pid):
+                ProfileFile.updateUserEnvVariable(bashrc_file, "SSH_AGENT_PID",
+                                                   str(pid))
+                if logger:
+                    logger.debug("Update environment value SSH_AGENT_PID successfully.")
+                update_pid_env_flag = True
+                break
+        if not update_pid_env_flag:
+            raise Exception(
+                ErrorCode.GAUSS_518["GAUSS_51804"] % "SSH_AGENT_PID")
+        DefaultValue.check_use_ssh_agent(cmd, bashrc_file, logger)
+        if logger:
+            logger.debug("ssh-add perform successfully.")
+
+    @staticmethod
+    def check_use_ssh_agent(cmd, mpprcfile, logger="", retry_imes=6):
+        """
+        function:check whether the ssh-agent process is available
+        :param cmd:
+        :param logger:
+        :param retryTimes:
+        :return:
+        """
+        RETRY_TIMES = 0
+        while True:
+            check_cmd = "source %s;ssh-add -D" % mpprcfile
+            proc = FastPopen(check_cmd, stdout=PIPE, stderr=PIPE,
+                             preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate()
+            output = stdout + stderr
+            status = proc.returncode
+            if status == 0:
+                if logger:
+                    logger.debug("The ssh-agent process is available")
+                break
+            if logger:
+                logger.debug("ssh-add -D status:%s" %status)
+                logger.debug("ssh-add -D output:%s" %output)
+            if RETRY_TIMES >= retry_imes:
+                if logger:
+                    logger.error("Failed to check whether  thessh-agent "
+                                 "process is available")
+                raise Exception((ErrorCode.GAUSS_535["GAUSS_53507"] % check_cmd)
+                                + "Errors:%s" %output)
+            DefaultValue.eval_ssh_agent(cmd, mpprcfile, logger)
+            time.sleep(2)
+            RETRY_TIMES += 1
+
+    @staticmethod
+    def eval_ssh_agent(cmd, mpprcfile, logger):
+        """
+        eval ssh-agent process and ensure that there is only one ssh-agent
+        working process
+        :param list_pid:
+        :return:
+        """
+        err_msg = ErrorCode.GAUSS_511["GAUSS_51108"]
+        try:
+            ssh_agent = "ssh-agent"
+            list_agent_pid = DefaultValue.get_pid("ssh-agent")
+            list_pid = DefaultValue.get_pid(cmd)
+            if list_pid and list_agent_pid and len(list_agent_pid) > 1:
+                kill_cmd = "ps ux|grep '%s'|grep -v '%s'|grep -v grep |" \
+                           " awk '{print $2}'| xargs kill -9" % (ssh_agent, cmd)
+                status, output = subprocess.getstatusoutput(kill_cmd)
+                if status != 0:
+                    if logger:
+                        logger.error(
+                            (ErrorCode.GAUSS_535["GAUSS_53507"] % kill_cmd)
+                            + "Errors:%s" % output)
+                    raise Exception(
+                        (ErrorCode.GAUSS_535["GAUSS_53507"] % kill_cmd)
+                        + "Errors:%s" % output)
+            eval_ssh_agent = "source %s;eval `ssh-agent -s`" % mpprcfile
+            (status, stdout, stderr) = DefaultValue.try_fast_popen(eval_ssh_agent)
+            output = stdout + stderr
+            if logger:
+                logger.debug("eval_ssh_agent status:%s" % status)
+                logger.debug("eval_ssh_agent output:%s" % output)
+            if status != 0:
+                raise Exception(
+                    (ErrorCode.GAUSS_535["GAUSS_53507"] % eval_ssh_agent)
+                    + "Errors:%s" % output)
+            if logger:
+                logger.debug("Successfully to eval ssh agent")
+        except Exception as e:
+            raise Exception("%s %s" % (err_msg, str(e)))
+
+    @staticmethod
+    def register_remote_ssh_agent(session, remote_ip, logger=""):
+        """
+        function : register ssh agent
+        input : NA
+        output : NA
+        """
+        if logger:
+            logger.debug("Start to register ssh agent on [%s] node." % remote_ip)
+        agent_path = os.path.join("~/gaussdb_tmp/", "gauss_socket_tmp")
+        agent_path = os.path.expanduser(agent_path)
+        kill_ssh_agent_cmd = "ps ux|grep 'ssh-agent'|grep -v grep |" \
+                             " awk '{print $2}'| xargs kill -9"
+        DefaultValue.kill_remote_process(session, kill_ssh_agent_cmd, logger)
+        DefaultValue.add_remote_ssh_agent(session, agent_path, logger)
+        if logger:
+            logger.debug("ssh-add perform successfully on [%s] node ." % remote_ip)
+
+    @staticmethod
+    def add_remot_ssh_id_rsa(session, secret_word, mpprcfile, shell_file, logger=""):
+        """
+        :param session:
+        :param secret_word:
+        :param mpprcfile:
+        :param shell_file:
+        :param logger:
+        :return:
+        """
+        clear_cmd = "source %s;ssh-add -D" % mpprcfile
+        (env_msg, channel_read) = DefaultValue.ssh_exec_cmd(session, clear_cmd)
+        if env_msg and "All identities removed" not in env_msg:
+            if logger:
+                logger.error(
+                    "Failed to clear id_rsa in ssh-agent,Errors:%s" % env_msg)
+            raise Exception(
+                ErrorCode.GAUSS_516["GAUSS_51632"] % "clear ssh agent"
+                + " Error:\n%s" % (env_msg))
+        if logger:
+            logger.debug("Successfully to clear id_rsa in ssh-agent")
+
+        id_rsa_path = os.path.expanduser("~/.ssh/id_rsa")
+        cmd = "source %s;echo \"%s\" | /bin/sh %s %s" % (
+            mpprcfile, str(secret_word), shell_file, id_rsa_path)
+        if logger:
+            logger.debug("ssh-add cmd:%s" % cmd)
+        (env_msg, channel_read) = DefaultValue.ssh_exec_cmd(session, cmd)
+        if env_msg:
+            logger.debug("add ssh id_rsa output:%s" % env_msg)
+            raise Exception("Failed to ssh-add perform.Error: %s" % env_msg)
+        if logger:
+            logger.debug("add ssh id_rsa output:%s" % channel_read)
+            logger.debug("Successfully to add id_rsa in ssh-agent")
+
+    @staticmethod
+    def kill_remote_process(session, kill_cmd, logger=""):
+        """
+        :param ssh_agent:
+        :return:
+        """
+        (env_msg, channel_read) = DefaultValue.ssh_exec_cmd(session, kill_cmd)
+        if logger:
+            logger.debug("cmd is %s; result is:%s;error is:%s."
+                         % (kill_cmd, channel_read, env_msg))
+
+    @staticmethod
+    def add_remote_ssh_agent(session, agent_path, logger=""):
+        """
+        :param session:
+        :param agent_path:
+        :param logger:
+        :return:
+        """
+        delete_cmd = "rm -rf %s" % agent_path
+        DefaultValue.ssh_exec_cmd(session, delete_cmd)
+        cmd = "ssh-agent -a %s" % agent_path
+        cmd_ssh_add = "source %s;ssh-agent -a %s" % (ClusterConstants.ETC_PROFILE, agent_path)
+        (env_msg, channel_read) = DefaultValue.ssh_exec_cmd(session, cmd_ssh_add)
+        if env_msg and "Address already in use" not in env_msg:
+            if logger:
+                logger.error("cms is: %s;Errors:%s" % (cmd_ssh_add, env_msg))
+            raise Exception(
+                ErrorCode.GAUSS_516["GAUSS_51632"] % "register remote ssh agent"
+                + "cmd is:%s;Error:\n%s" % (cmd_ssh_add, env_msg))
+        bashrc_file = os.path.join(pwd.getpwuid(os.getuid()).pw_dir,
+                                   ".bashrc")
+        DefaultValue.update_user_env_variable_cmd(
+            session, bashrc_file, "SSH_AUTH_SOCK", agent_path, logger)
+        if logger:
+            logger.debug("Update environment value SSH_AUTH_SOCK successfully.")
+
+        list_pid = DefaultValue.get_remote_pid(session, cmd, logger)
+        if not list_pid:
+            raise Exception(
+                ErrorCode.GAUSS_516["GAUSS_51632"] % "register ssh agent"
+                + " Error:\nCan't find the process of ssh agent")
+        update_pid_env_flag = False
+        for pid in list_pid:
+            if str(pid):
+                DefaultValue.update_user_env_variable_cmd(
+                    session, bashrc_file, "SSH_AGENT_PID", str(pid), logger)
+                if logger:
+                    logger.debug("Update environment value SSH_AGENT_PID successfully.")
+                update_pid_env_flag = True
+                break
+        if not update_pid_env_flag:
+            raise Exception(
+                ErrorCode.GAUSS_518["GAUSS_51804"] % "SSH_AGENT_PID")
+        DefaultValue.eval_remote_ssh_agent(session, cmd, bashrc_file, logger)
+
+
+    @staticmethod
+    def update_user_env_variable_cmd(session, userProfile, variable, value, logger=""):
+        """
+        function : Update the user environment variable
+        input : String,String,String
+        output : NA
+        :param session:
+        :param userProfile:
+        :param variable:
+        :param value:
+        :param logger:
+        :return:
+        """
+        try:
+            # delete old env information
+            delete_content = "^\\s*export\\s*%s=.*$" % variable
+            delete_line_cmd = "sed -i '/%s/d' %s" % (delete_content, userProfile)
+            # write the new env information into userProfile
+            write_content = 'export %s=%s' % (variable, value)
+            write_line_cmd = "sed -i '$a%s' %s" % (write_content, userProfile)
+            update_cmd = "%s && %s" % (delete_line_cmd, write_line_cmd)
+            (env_msg, channel_read) = DefaultValue.ssh_exec_cmd(session, update_cmd)
+            if env_msg:
+                if logger:
+                    logger.error(
+                        "cms is: %s;Errors:%s" % (update_cmd, env_msg))
+                raise Exception(
+                    ErrorCode.GAUSS_516["GAUSS_51632"] % "update env file;"
+                    + "cmd is:%s;Error:\n%s." % (update_cmd, env_msg))
+
+        except Exception as e:
+            raise Exception(str(e))
+
+
+    @staticmethod
+    def get_remote_pid(session, process, logger=""):
+        """
+        function : get the ID of the process
+                that contains the specified content
+        input : string
+        output : list
+        """
+        pids = []
+        cmd = "ps ux | grep '%s' | grep -v grep" % process
+        (env_msg, channel_read) = DefaultValue.ssh_exec_cmd(session, cmd)
+        if env_msg:
+            if logger:
+                logger.error("cms is: %s;Errors:%s" % (cmd, env_msg))
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
+                            "Error: %s." % str(env_msg))
+        for pid_line in channel_read.split(os.linesep):
+            if len(pid_line.strip().split()) > 2:
+                pid = pid_line.strip().split()[1]
+                if pid.isdigit():
+                    pids.append(str(pid))
+        return pids
+
+    @staticmethod
+    def eval_remote_ssh_agent(session, cmd, mpprcfile, logger):
+        """
+        eval remote ssh-agent process and ensure that there is only one ssh-agent
+        working process
+        :param list_pid:
+        :return:
+        """
+        err_msg = ErrorCode.GAUSS_511["GAUSS_51108"]
+        try:
+            ssh_agent = "ssh-agent"
+            list_agent_pid = DefaultValue.get_pid("ssh-agent")
+            list_pid = DefaultValue.get_remote_pid(session, cmd, logger)
+            if list_pid and list_agent_pid and len(list_agent_pid) > 1:
+                kill_cmd = "ps ux|grep '%s'|grep -v '%s'|grep -v grep |" \
+                           " awk '{print $2}'| xargs kill -9" % (ssh_agent, cmd)
+                DefaultValue.kill_remote_process(session, kill_cmd, logger)
+            eval_ssh_agent = "source %s;eval `ssh-agent -s`" % mpprcfile
+            (env_msg, channel_read) = DefaultValue.ssh_exec_cmd(session, eval_ssh_agent)
+            if env_msg:
+                raise Exception(
+                    (ErrorCode.GAUSS_535["GAUSS_53507"] % eval_ssh_agent)
+                    + "Errors:%s" % env_msg)
+            if logger:
+                logger.debug("eval_ssh_agent output:%s" % channel_read)
+            if logger:
+                logger.debug("Successfully to eval ssh agent")
+        except Exception as e:
+            raise Exception("%s %s" % (err_msg, str(e)))
+
+    @staticmethod
+    def ssh_exec_cmd(session, cmd):
+        '''
+        ssh remote node and execute cmd
+        :param session:
+        :param cmd:
+        :return:
+        '''
+        # make sure no echo
+        ssh_channel = session.open_session()
+        ssh_channel.exec_command(cmd)
+        env_msg = ssh_channel.recv_stderr(9999).decode().strip()
+        channel_read = ssh_channel.recv(9999).decode().strip()
+        return env_msg, channel_read
+
+    @staticmethod
+    def remove_metadata_and_dynamic_config_file(user, ssh_tool, logger):
+        """
+        Remove CM metadata directory and dynamic_config file,
+        because of CM need flush dcc value.
+        """
+        logger.debug("Start remove CM metadata directory and dynamic_config_file.")
+        # This cluster info is new cluster info.
+        cluster_info = dbClusterInfo()
+        cluster_info.initFromStaticConfig(user)
+        cluster_dynamic_config = os.path.realpath(os.path.join(cluster_info.appPath,
+                                                               "bin", "cluster_dynamic_config"))
+        for node in cluster_info.dbNodes:
+            cm_meta_data = \
+                os.path.realpath(os.path.join(os.path.dirname(node.cmagents[0].datadir),
+                                              "dcf_data", "metadata"))
+            rm_meta_data_cmd = g_file.SHELL_CMD_DICT["deleteDir"] % (cm_meta_data, cm_meta_data)
+            rm_dynamic_cmd = g_file.SHELL_CMD_DICT["deleteFile"] % (cluster_dynamic_config,
+                                                                    cluster_dynamic_config)
+            perform_cmd = "{0} && {1}".format(rm_dynamic_cmd, rm_meta_data_cmd)
+            CmdExecutor.execCommandWithMode(perform_cmd, ssh_tool, host_list=[node.name])
+            logger.debug("Remove dynamic_config_file and CM metadata directory "
+                         "on node [{0}] successfully.".format(node.name))
+        logger.log("Remove dynamic_config_file and CM metadata directory on all nodes.")
 
 
 class ClusterCommand():
@@ -4264,51 +2962,75 @@ class ClusterCommand():
     # rollback to flag of start cluster
     INSTALL_STEP_START = "Start cluster"
 
+
     @staticmethod
-    def getRedisCmd(user, port, jobs=1, timeout=None, enableVacuum="",
-                    enableFast="", redisRetry="", buildTable=False,
-                    mode="", host="", database="postgres"):
+    def getStopCmd(nodeId=0, stopMode="", timeout=0, datadir="", azName = ""):
         """
-        funciton : Get the command of gs_redis with password for redisuser
-        input : user: data redis_user
-                port: the port redis_user connect to server
-                jobs: data redis parallel nums
-                enableVacuum: is need vacuum
-                enableFast: doing fast data redistribution or not
-                redisRetry: retry to excute data redis
-                buildTable: create pgxc_redistb or not
-                mode: insert or read-only mode
-                database: database which need to data redis
+        function : Stop all cluster or a node
+        iinput : String,int,String,String
         output : String
         """
-        userProfile = DefaultValue.getMpprcFile()
-        database = database.replace('$', '\$')
-        cmd = "%s %s ; gs_redis -u %s -p %s -d %s -j %d %s %s %s" % \
-              (g_Platform.getSourceCmd(), userProfile, user, str(port),
-               database, jobs, enableVacuum, enableFast, redisRetry)
+        userProfile = EnvUtil.getMpprcFile()
+        cmd = "%s %s ; cm_ctl stop" % (CmdUtil.SOURCE_CMD, userProfile)
+        # check node id
+        if nodeId > 0:
+            cmd += " -n %d" % nodeId
+        # check data directory
+        if datadir != "":
+            cmd += " -D %s" % datadir
+        # check stop mode
+        if stopMode != "":
+            cmd += " -m %s" % stopMode
         # check timeout
-        if (timeout is not None):
+        if timeout > 0:
             cmd += " -t %d" % timeout
-        # check buildTable
-        if buildTable:
-            cmd += " -v"
-        else:
-            cmd += " -r"
-        # check mode
-        if (len(mode)):
-            cmd += " -m %s" % mode
+        # azName
+        if azName != "":
+            cmd += " -z%s" % azName
 
         return cmd
 
+
     @staticmethod
-    def getQueryStatusCmd(user, hostName="", outFile="", showAll=True):
+    def getQueryStatusCmdForDisplay(nodeId=0, outFile="",
+                                    clusterType="",
+                                    showDetail=True,
+                                    showAll=True):
         """
         function : Get the command of querying status of cluster or node
         input : String
         output : String
         """
-        userProfile = DefaultValue.getMpprcFile()
-        cmd = "%s %s ; gs_om -t status" % (g_Platform.getSourceCmd(),
+        user_profile = EnvUtil.getMpprcFile()
+        cmd = "%s %s ; cm_ctl query" % (CmdUtil.SOURCE_CMD, user_profile)
+        # check node id
+        if nodeId > 0:
+            cmd += " -v -n %d" % nodeId
+        # check -v
+        if showDetail:
+            if (clusterType ==
+                    DefaultValue.CLUSTER_TYPE_SINGLE_PRIMARY_MULTI_STANDBY):
+                cmd += " -v -C -i -d -z ALL"
+            else:
+                cmd += " -v -C -i -d"
+        else:
+            if showAll:
+                cmd += " -v"
+
+        # check out put file
+        if outFile != "":
+            cmd += " > %s" % outFile
+        return cmd
+
+    @staticmethod
+    def getQueryStatusCmd(hostName="", outFile="", showAll=True):
+        """
+        function : Get the command of querying status of cluster or node
+        input : String
+        output : String
+        """
+        userProfile = EnvUtil.getMpprcFile()
+        cmd = "%s %s ; gs_om -t status" % (CmdUtil.SOURCE_CMD,
                                            userProfile)
         # check node id
         if (hostName != ""):
@@ -4322,73 +3044,10 @@ class ClusterCommand():
 
         return cmd
 
-    @staticmethod
-    def findErrorInSqlFile(sqlFile, output):
-        """
-        function : Find error in the sql file
-        input : String,String
-        output : String
-        """
-        GSQL_BIN_FILE = "gsql"
-        # init flag
-        ERROR_MSG_FLAG = "(ERROR|FATAL|PANIC)"
-        GSQL_ERROR_PATTERN = "^%s:%s:(\d*): %s:.*" % \
-                             (GSQL_BIN_FILE, sqlFile, ERROR_MSG_FLAG)
-        pattern = re.compile(GSQL_ERROR_PATTERN)
-        for line in output.split("\n"):
-            line = line.strip()
-            result = pattern.match(line)
-            if (result is not None):
-                return True
-        return False
-
-    @staticmethod
-    def findErrorInSql(output):
-        """
-        function : Find error in sql
-        input : String
-        output : boolean 
-        """
-        # init flag
-        ERROR_MSG_FLAG = "(ERROR|FATAL|PANIC)"
-        ERROR_PATTERN = "^%s:.*" % ERROR_MSG_FLAG
-        pattern = re.compile(ERROR_PATTERN)
-
-        for line in output.split("\n"):
-            line = line.strip()
-            result = pattern.match(line)
-            if (result is not None):
-                return True
-        return False
-
-    @staticmethod
-    def getSQLCommand(port, database=DefaultValue.DEFAULT_DB_NAME,
-                      gsqlBin="gsql", host=""):
-        """
-        function : get SQL command
-        input : port, database
-        output : cmd
-        """
-        cmd = DefaultValue.SQL_EXEC_COMMAND_WITHOUT_HOST_WITHOUT_USER % \
-              (gsqlBin, str(int(port) + 1), database)
-        return cmd
-
-    @staticmethod
-    def getSQLCommandForInplaceUpgradeBackup(
-            port, database=DefaultValue.DEFAULT_DB_NAME, gsqlBin="gsql"):
-        """
-        function: get SQL command for Inplace
-                  Upgrade backupOneInstanceOldClusterDBAndRel
-        input: port, database
-        output: cmd
-        """
-        cmd = DefaultValue.SQL_EXEC_COMMAND_WITHOUT_HOST_WITHOUT_USER % (
-            gsqlBin, port, database)
-        return cmd
 
     @staticmethod
     def execSQLCommand(sql, user, host, port, database="postgres",
-                       dwsFlag=False, option="", IsInplaceUpgrade=False):
+                       option="", IsInplaceUpgrade=False):
         """
         function : Execute sql command
         input : String,String,String,int
@@ -4399,19 +3058,19 @@ class ClusterCommand():
         pid = os.getpid()
         # init SQL query file
         sqlFile = os.path.join(
-            DefaultValue.getTmpDirFromEnv(user),
+            EnvUtil.getTmpDirFromEnv(user),
             "gaussdb_query.sql_%s_%s_%s" % (str(port), str(currentTime),
                                             str(pid)))
         # init SQL result file
         queryResultFile = os.path.join(
-            DefaultValue.getTmpDirFromEnv(user),
+            EnvUtil.getTmpDirFromEnv(user),
             "gaussdb_result.sql_%s_%s_%s" % (str(port), str(currentTime),
                                              str(pid)))
         if os.path.exists(sqlFile) or os.path.exists(queryResultFile):
-            DefaultValue.cleanFile("%s,%s" % (queryResultFile, sqlFile))
+            LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile))
         # create an empty sql query file
         try:
-            g_file.createFile(sqlFile, DefaultValue.KEY_FILE_MODE)
+            FileUtil.createFile(sqlFile, True, DefaultValue.KEY_FILE_MODE)
         except Exception as e:
             if os.path.exists(sqlFile):
                 os.remove(sqlFile)
@@ -4419,69 +3078,54 @@ class ClusterCommand():
 
         # witer the SQL command into sql query file
         try:
-            g_file.createFileInSafeMode(sqlFile)
+            FileUtil.createFileInSafeMode(sqlFile)
             with open(sqlFile, 'w') as fp:
                 fp.writelines(sql)
         except Exception as e:
-            DefaultValue.cleanFile(sqlFile)
+            LocalRemoteCmd.cleanFile(sqlFile)
             return 1, str(e)
         try:
             # init hostPara
-            userProfile = DefaultValue.getMpprcFile()
+            userProfile = EnvUtil.getMpprcFile()
             hostPara = ("-h %s" % host) if host != "" else ""
             # build shell command
             # if the user is root, switch the user to execute
             if (IsInplaceUpgrade):
-                gsqlCmd = ClusterCommand.getSQLCommandForInplaceUpgradeBackup(
+                gsqlCmd = SqlCommands.getSQLCommandForInplaceUpgradeBackup(
                     port, database)
             else:
-                gsqlCmd = ClusterCommand.getSQLCommand(
-                    port, database, host=host)
+                gsqlCmd = SqlCommands.getSQLCommand(
+                    port, database)
             executeCmd = "%s %s -f '%s' --output '%s' -t -A -X %s" % (
                 gsqlCmd, hostPara, sqlFile, queryResultFile, option)
-            cmd = g_Platform.getExecuteCmdWithUserProfile(user, userProfile,
+            cmd = CmdUtil.getExecuteCmdWithUserProfile(user, userProfile,
                                                           executeCmd, False)
             (status, output) = subprocess.getstatusoutput(cmd)
-            if ClusterCommand.findErrorInSqlFile(sqlFile, output):
+            if SqlFile.findErrorInSqlFile(sqlFile, output):
                 status = 1
             if (status != 0):
-                DefaultValue.cleanFile("%s,%s" % (queryResultFile, sqlFile))
+                LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile))
                 return (status, output)
             # read the content of query result file.
         except Exception as e:
-            DefaultValue.cleanFile("%s,%s" % (queryResultFile, sqlFile))
+            LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile))
             raise Exception(str(e))
         try:
             with open(queryResultFile, 'r') as fp:
                 rowList = fp.readlines()
         except Exception as e:
-            DefaultValue.cleanFile("%s,%s" % (queryResultFile, sqlFile))
+            LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile))
             return 1, str(e)
 
         # remove local sqlFile
-        DefaultValue.cleanFile("%s,%s" % (queryResultFile, sqlFile))
+        LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile))
 
         return (0, "".join(rowList)[:-1])
 
-    @staticmethod
-    def findTupleErrorInSqlFile(sqlFile, output):
-        """
-        function : find tuple concurrently updated error in file
-        input : sqlFile, output
-        output : True, False
-        """
-        ERROR_TUPLE_PATTERN = "^gsql:(.*)tuple concurrently updated(.*)"
-        pattern = re.compile(ERROR_TUPLE_PATTERN)
-        for line in output.split("\n"):
-            line = line.strip()
-            result = pattern.match(line)
-            if (result is not None):
-                return True
-        return False
 
     @staticmethod
     def remoteSQLCommand(sql, user, host, port, ignoreError=True,
-                         database="postgres", dwsFlag=False, useTid=False,
+                         database="postgres", useTid=False,
                          IsInplaceUpgrade=False):
         """
         function : Execute sql command on remote host
@@ -4493,13 +3137,13 @@ class ClusterCommand():
         pid = os.getpid()
         # clean old sql file
         # init SQL query file
-        sqlFile = os.path.join(DefaultValue.getTmpDirFromEnv(user),
+        sqlFile = os.path.join(EnvUtil.getTmpDirFromEnv(user),
                                "gaussdb_remote_query.sql_%s_%s_%s" % (
                                    str(port),
                                    str(currentTime),
                                    str(pid)))
         # init SQL result file
-        queryResultFile = os.path.join(DefaultValue.getTmpDirFromEnv(user),
+        queryResultFile = os.path.join(EnvUtil.getTmpDirFromEnv(user),
                                        "gaussdb_remote_result.sql_%s_%s_%s" % (
                                            str(port),
                                            str(currentTime),
@@ -4510,8 +3154,7 @@ class ClusterCommand():
             sqlFile = sqlFile + str(threadPid)
             queryResultFile = queryResultFile + str(threadPid)
         if (os.path.exists(sqlFile) or os.path.exists(queryResultFile)):
-            DefaultValue.cleanFile("%s,%s" % (queryResultFile, sqlFile))
-
+            LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile))
         # create new sql file
         if (os.getuid() == 0):
             cmd = "su - %s -c 'touch %s && chmod %s %s'" % (
@@ -4524,40 +3167,36 @@ class ClusterCommand():
         if (status != 0):
             output = "%s\n%s" % (cmd, output)
             if (os.path.exists(sqlFile) or os.path.exists(queryResultFile)):
-                DefaultValue.cleanFile("%s,%s" % (queryResultFile, sqlFile))
+                LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile))
             return (status, output)
-
         # witer the SQL command into sql query file
         try:
-            g_file.createFileInSafeMode(sqlFile)
+            FileUtil.createFileInSafeMode(sqlFile)
             with open(sqlFile, 'w') as fp:
                 fp.writelines(sql)
         except Exception as e:
-            DefaultValue.cleanFile(sqlFile)
+            LocalRemoteCmd.cleanFile(sqlFile)
             return (1, str(e))
-
         # send new sql file to remote node if needed
-        localHost = DefaultValue.GetHostIpOrName()
+        localHost = NetUtil.GetHostIpOrName()
         if str(localHost) != str(host):
-            cmd = g_Platform.getRemoteCopyCmd(sqlFile, sqlFile, host)
+            cmd = LocalRemoteCmd.getRemoteCopyCmd(sqlFile, sqlFile, host)
             if os.getuid() == 0 and user != "":
                 cmd = "su - %s \"%s\"" % (user, cmd)
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0:
-                DefaultValue.cleanFile("%s,%s" % (queryResultFile, sqlFile))
+                LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile))
                 output = "%s\n%s" % (cmd, output)
                 return (status, output)
-
         # execute sql file
-        mpprcFile = DefaultValue.getMpprcFile()
+        mpprcFile = EnvUtil.getMpprcFile()
         if IsInplaceUpgrade:
-            gsql_cmd = ClusterCommand.getSQLCommandForInplaceUpgradeBackup(
+            gsql_cmd = SqlCommands.getSQLCommandForInplaceUpgradeBackup(
                 port, database)
         else:
-            gsql_cmd = ClusterCommand.getSQLCommand(port, database, host=host)
-
+            gsql_cmd = SqlCommands.getSQLCommand(port, database)
         if str(localHost) != str(host):
-            sshCmd = g_Platform.getSshCmd(host)
+            sshCmd = CmdUtil.getSshCmd(host)
             if os.getuid() == 0 and user != "":
                 cmd = " %s 'su - %s -c \"" % (sshCmd, user)
                 if mpprcFile != "" and mpprcFile is not None:
@@ -4578,9 +3217,8 @@ class ClusterCommand():
                     cmd += " 2>/dev/null"
             for i in range(RE_TIMES):
                 (status1, output1) = subprocess.getstatusoutput(cmd)
-                if ClusterCommand.findErrorInSqlFile(sqlFile, output1):
-                    if (ClusterCommand.findTupleErrorInSqlFile(sqlFile,
-                                                               output1)):
+                if SqlFile.findErrorInSqlFile(sqlFile, output1):
+                    if SqlFile.findTupleErrorInSqlFile(output1):
                         time.sleep(1)  # find tuple error --> retry
                     else:  # find error not tuple error
                         status1 = 1
@@ -4590,8 +3228,8 @@ class ClusterCommand():
             # if failed to execute gsql, then clean the sql query file on
             # current node and other node
             if (status1 != 0):
-                DefaultValue.cleanFile("%s,%s" % (queryResultFile, sqlFile))
-                DefaultValue.cleanFile("%s,%s" % (queryResultFile, sqlFile),
+                LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile))
+                LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile),
                                        host)
                 return (status1, output1)
         else:
@@ -4615,9 +3253,8 @@ class ClusterCommand():
                     cmd += " 2>/dev/null"
             for i in range(RE_TIMES):
                 (status1, output1) = subprocess.getstatusoutput(cmd)
-                if ClusterCommand.findErrorInSqlFile(sqlFile, output1):
-                    if (ClusterCommand.findTupleErrorInSqlFile(sqlFile,
-                                                               output1)):
+                if SqlFile.findErrorInSqlFile(sqlFile, output1):
+                    if SqlFile.findTupleErrorInSqlFile(output1):
                         time.sleep(1)  # find tuple error --> retry
                     else:  # find error not tuple error
                         status1 = 1
@@ -4627,217 +3264,36 @@ class ClusterCommand():
             # if failed to execute gsql, then clean the sql query file
             # on current node and other node
             if (status1 != 0):
-                DefaultValue.cleanFile("%s,%s" % (queryResultFile, sqlFile))
+                LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile))
                 return (status1, output1)
-
         if (str(localHost) != str(host)):
-            remoteCmd = g_Platform.getRemoteCopyCmd(
+            remoteCmd = LocalRemoteCmd.getRemoteCopyCmd(
                 queryResultFile,
-                DefaultValue.getTmpDirFromEnv(user) + "/", str(localHost))
+                EnvUtil.getTmpDirFromEnv(user) + "/", str(localHost))
             cmd = "%s \"%s\"" % (sshCmd, remoteCmd)
             (status, output) = subprocess.getstatusoutput(cmd)
             if (status != 0):
                 output = "%s\n%s" % (cmd, output)
-                DefaultValue.cleanFile(sqlFile)
-                DefaultValue.cleanFile("%s,%s" % (queryResultFile, sqlFile),
+                LocalRemoteCmd.cleanFile(sqlFile)
+                LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile),
                                        host)
                 return (status, output)
-
         # read the content of query result file.
         try:
             with open(queryResultFile, 'r') as fp:
                 rowList = fp.readlines()
         except Exception as e:
-            DefaultValue.cleanFile("%s,%s" % (queryResultFile, sqlFile))
+            LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile))
             if (str(localHost) != str(host)):
-                DefaultValue.cleanFile("%s,%s" % (queryResultFile, sqlFile),
+                LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile),
                                        host)
             return (1, str(e))
-
         # remove local sqlFile
-        DefaultValue.cleanFile("%s,%s" % (queryResultFile, sqlFile))
+        LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile))
         # remove remote sqlFile
         if (str(localHost) != str(host)):
-            DefaultValue.cleanFile("%s,%s" % (queryResultFile, sqlFile), host)
-
+            LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile), host)
         return (0, "".join(rowList)[:-1])
-
-    @staticmethod
-    def checkSqlConnect(user, host, port,
-                        retryTimes=DefaultValue.DEFAULT_RETRY_TIMES_GS_CTL,
-                        sql=None, dwsFlag=False):
-        """
-        After the operation "gs_ctl start" has returned the success
-         information, we will try to connect the database
-         and execute some sql to check the connection.
-
-        :param user:        The input database user.
-        :param host:        The input database host or ip address.
-        :param port:        The input database port.
-        :param retryTimes:  The times of attempts to retry the operation.
-        :param sql:         The SQL statements used in retry operation.
-        :param dwsFlag:     Whether the cluster is in the dws mode.
-
-        :type user:         str
-        :type host:         str
-        :type port:         int
-        :type retryTimes:   int
-        :type sql:          str | None
-        :type dwsFlag:      bool
-
-        :return:    Return the query result.
-        :rtype:     str
-        """
-        # Set default query sql string.
-        if sql is None:
-            sql = "select version();"
-
-        for i in range(0, retryTimes):
-            status, output = ClusterCommand.remoteSQLCommand(sql, user, host,
-                                                             port, False,
-                                                             dwsFlag=dwsFlag)
-            if status == 0 and output != "":
-                return output
-
-            time.sleep(2)
-
-        raise Exception(ErrorCode.GAUSS_516["GAUSS_51632"] %
-                        "check instance connection.")
-
-    @staticmethod
-    def remoteShellCommand(shell, user, hostname):
-        """
-        function : Execute shell command on remote host
-        input : String,String,String
-        output : String,String
-        """
-        currentTime = datetime.utcnow().strftime("%Y-%m-%d_%H%M%S%f")
-        randomnum = ''.join(sample('0123456789', 3))
-        pid = os.getpid()
-        shFile = os.path.join(DefaultValue.getTmpDirFromEnv(user),
-                              "gaussdb_remote_shell.sh_%s_%s_%s_%s" % \
-                              (str(hostname), str(currentTime), str(pid),
-                               str(randomnum)))
-        if (os.path.exists(shFile)):
-            DefaultValue.cleanFile(shFile)
-
-        # create new sh file
-        if (os.getuid() == 0):
-            cmd = "su - %s -c 'touch %s && chmod %s %s'" % \
-                  (user, shFile, DefaultValue.KEY_FILE_MODE, shFile)
-        else:
-            cmd = "touch %s && chmod %s %s" % \
-                  (shFile, DefaultValue.KEY_FILE_MODE, shFile)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if (status != 0):
-            if (os.path.exists(shFile)):
-                DefaultValue.cleanFile(shFile)
-            output = "%s\n%s" % (cmd, output)
-            return (status, output)
-
-        try:
-            with open(shFile, 'w') as fp:
-                fp.writelines(shell)
-        except Exception as e:
-            if (fp):
-                fp.close()
-            DefaultValue.cleanFile(shFile)
-            return (1, str(e))
-
-        # send new sh file to remote node if needed
-        localHost = DefaultValue.GetHostIpOrName()
-        if (str(localHost) != str(hostname)):
-            if (os.getuid() == 0):
-                cmd = """su - %s -c "pscp -H %s '%s' '%s'" """ % \
-                      (user, hostname, shFile, shFile)
-            else:
-                cmd = "pscp -H %s '%s' '%s'" % (hostname, shFile, shFile)
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if (status != 0):
-                DefaultValue.cleanFile(shFile)
-                output = "%s\n%s" % (cmd, output)
-                return (status, output)
-
-        # execute sh file
-        if (str(localHost) != str(hostname)):
-            mpprcFile = DefaultValue.getMpprcFile()
-            if (os.getuid() == 0):
-                cmd = "pssh -s -H %s  'su - %s -c \"" % \
-                      (hostname, user)
-                if (mpprcFile != "" and mpprcFile is not None):
-                    cmd += "source %s;" % mpprcFile
-                cmd += "sh %s\"'" % shFile
-            else:
-                cmd = "pssh -s -H %s '" % hostname
-                if (mpprcFile != "" and mpprcFile is not None):
-                    cmd += "source %s;" % mpprcFile
-                cmd += "sh %s'" % shFile
-        else:
-            mpprcFile = DefaultValue.getMpprcFile()
-            if (os.getuid() == 0):
-                cmd = "su - %s -c '" % user
-                if (mpprcFile != "" and mpprcFile is not None):
-                    cmd += "source %s;" % mpprcFile
-                cmd += "sh %s'" % shFile
-            else:
-                cmd = ""
-                if (mpprcFile != "" and mpprcFile is not None):
-                    cmd += "source %s;" % mpprcFile
-                cmd += "sh %s" % shFile
-
-        (status, output) = subprocess.getstatusoutput(cmd)
-
-        # clean tmp file
-        DefaultValue.cleanFile(shFile)
-        if (str(localHost) != str(hostname)):
-            DefaultValue.cleanFile(shFile, hostname)
-
-        return (status, output)
-
-    @staticmethod
-    def CopyClusterStatic():
-        """
-        function : Copy cluster_static_config_bak file to cluster_static_config
-        input : NA
-        output: NA
-        """
-        gaussHome = DefaultValue.getEnv("GAUSSHOME")
-        staticConfig = "%s/bin/cluster_static_config" % gaussHome
-        staticConfig_bak = "%s/bin/cluster_static_config_bak" % gaussHome
-        if (os.path.exists(staticConfig_bak) and not
-        os.path.exists(staticConfig)):
-            g_file.cpFile(staticConfig_bak, staticConfig)
-
-    @staticmethod
-    def getchangeDirModeCmd(user_dir):
-        """
-        function : change directory permission
-        input : user_dir
-        output: NA
-        """
-        # Use "find -exec" to mask special characters
-        cmdDir = "find '%s' -type d -exec chmod '%s' {} \;" % \
-                 (user_dir, DefaultValue.KEY_DIRECTORY_MODE)
-        (status, diroutput) = subprocess.getstatusoutput(cmdDir)
-        if (status != 0):
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % user_dir +
-                            " Command:%s. Error:\n%s" % (cmdDir, diroutput))
-
-    @staticmethod
-    def getchangeFileModeCmd(user_dir):
-        """
-        function : change log file permission
-        input : user_dir
-        output: NA
-        """
-        # Use "find -exec" to mask special characters
-        cmdFile = "find '%s' -type f -name '*.log' -exec chmod '%s' {} \;" % \
-                  (user_dir, DefaultValue.KEY_FILE_MODE)
-        (status, fileoutput) = subprocess.getstatusoutput(cmdFile)
-        if (status != 0):
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] %
-                            "log file" + " Directory:%s." % user_dir +
-                            " Command:%s. Error:\n%s" % (cmdFile, fileoutput))
 
     @staticmethod
     def countTotalSteps(script, act="", model=""):
@@ -4921,21 +3377,25 @@ class ClusterCommand():
         except Exception as e:
             raise Exception(str(e))
 
+
     @staticmethod
-    def check_input(jsonFilePath):
-        """
-        function: check the input, and load the backup JSON file.
-        @param: N/A.
-        @return: return [OK, para], if the backup JSON file is loaded
-                successfully.
-        """
-        try:
-            with open(jsonFilePath) as jsonFile:
-                para = json.load(jsonFile)
-            return [0, para]
-        except TypeError as err:
-            ERR_MSG = "input para is not json_string. %s" % err
-            return [1, ERR_MSG]
+    def aes_cbc_encrypt_with_multi(passwd, dest_path, logger):
+
+        # encrypt tool path
+        encrypt_path = os.path.realpath("%s/../clib" % os.path.dirname(os.path.realpath(__file__)))
+        # encrypt ca path
+        encrypt_ca_path = dest_path
+        cmd = "export LD_LIBRARY_PATH={encrypt_path}"
+        cmd += " && if [ -e {encrypt_ca_path} ];then rm -rf {encrypt_ca_path}/;fi"
+        cmd += " && mkdir -p {encrypt_ca_path}/cipher && mkdir -p {encrypt_ca_path}/rand"
+        cmd += " && cd {encrypt_path}"
+        cmd += " && ./encrypt {passwd} {encrypt_ca_path}/cipher {encrypt_ca_path}/rand"
+        cmd = cmd.format(encrypt_path=encrypt_path, passwd=passwd, encrypt_ca_path=encrypt_ca_path)
+        status, output = CmdUtil.getstatusoutput_by_fast_popen(cmd)
+        if status != 0 and "encrypt success" not in output:
+            raise Exception(ErrorCode.GAUSS_511["GAUSS_51103"] % "encrypt ..."
+                            + "Error is:%s" % SensitiveMask.mask_pwd(output))
+        logger.log("Generate cluster user password files successfully.\n")
 
     @staticmethod
     def executeSQLOnRemoteHost(hostName, port, sql, outputfile,
@@ -4953,152 +3413,41 @@ class ClusterCommand():
         currentTime = datetime.utcnow().strftime("%Y-%m-%d_%H%M%S%f")
         pid = os.getpid()
         sqlfile = "%s_%s_%s.sql" % (hostName, pid, currentTime)
-        tmpDir = DefaultValue.getTmpDirFromEnv() + "/"
+        tmpDir = EnvUtil.getTmpDirFromEnv() + "/"
         sqlfilepath = os.path.join(tmpDir, sqlfile)
-        g_file.createFileInSafeMode(sqlfilepath)
+        FileUtil.createFileInSafeMode(sqlfilepath)
         try:
             with open(sqlfilepath, "w") as fp:
                 fp.write(sql)
                 fp.flush()
 
-            g_OSlib.scpFile(hostName, sqlfilepath, tmpDir)
+            LocalRemoteCmd.scpFile(hostName, sqlfilepath, tmpDir)
             cmd = "%s  -p %s -S %s -f %s -s %s -d %s" % (
                 OMCommand.getLocalScript("Local_Execute_Sql"), port,
                 sqlfilepath, outputfile, snapid, database)
-            gs_sshTool.executeCommand(cmd, "execute SQL on remote host")
-            cmd = "%s %s" % (g_Platform.getRemoveCmd("directory"), sqlfilepath)
+            gs_sshTool.executeCommand(cmd)
+            cmd = "%s %s" % (CmdUtil.getRemoveCmd("directory"), sqlfilepath)
             (status, output) = subprocess.getstatusoutput(cmd)
         except Exception as e:
-            cmd = "%s %s" % (g_Platform.getRemoveCmd("directory"), sqlfilepath)
+            cmd = "%s %s" % (CmdUtil.getRemoveCmd("directory"), sqlfilepath)
             (status, output) = subprocess.getstatusoutput(cmd)
             raise Exception(str(e))
 
     @staticmethod
-    def excuteSqlOnLocalhost(port, sql, database="postgres"):
-        '''
-        function: write output message
-        input : sql
-        output: NA
-        '''
-        tmpresult = None
-        conn = None
-        try:
-            from gspylib.common.SqlResult import sqlResult
-            libpath = os.path.join(DefaultValue.getEnv("GAUSSHOME"), "lib")
-            sys.path.append(libpath)
-            libc = cdll.LoadLibrary("libpq.so.5.5")
-            conn_opts = "dbname = '%s' application_name = 'OM' " \
-                        "options='-c xc_maintenance_mode=on'  port = %s " % \
-                        (database, port)
-            conn_opts = conn_opts.encode(encoding='utf-8')
-            err_output = ""
-            libc.PQconnectdb.argtypes = [c_char_p]
-            libc.PQconnectdb.restype = c_void_p
-            libc.PQclear.argtypes = [c_void_p]
-            libc.PQfinish.argtypes = [c_void_p]
-            libc.PQerrorMessage.argtypes = [c_void_p]
-            libc.PQerrorMessage.restype = c_char_p
-            libc.PQresultStatus.argtypes = [c_void_p]
-            libc.PQresultStatus.restype = c_int
-            libc.PQexec.argtypes = [c_void_p, c_char_p]
-            libc.PQexec.restype = c_void_p
-            conn = libc.PQconnectdb(conn_opts)
-            if not conn:
-                raise Exception(ErrorCode.GAUSS_513["GAUSS_51310"]
-                                % ("by options: %s." % conn_opts))
-            sql = sql.encode(encoding='utf-8')
-            libc.PQstatus.argtypes = [c_void_p]
-            if (libc.PQstatus(conn) != 0):
-                raise Exception(ErrorCode.GAUSS_513["GAUSS_51310"] % ".")
-            tmpresult = libc.PQexec(conn, sql)
-            if not tmpresult:
-                raise Exception(ErrorCode.GAUSS_513["GAUSS_51309"] % sql)
-            status = libc.PQresultStatus(tmpresult)
-
-            resultObj = sqlResult(tmpresult)
-            resultObj.parseResult()
-            Error = libc.PQerrorMessage(conn)
-            if (Error is not None):
-                err_output = string_at(Error).decode()
-            result = resultObj.resSet
-            libc.PQclear(tmpresult)
-            libc.PQfinish(conn)
-            return status, result, err_output
-        except Exception as e:
-            libc.PQclear.argtypes = [c_void_p]
-            libc.PQfinish.argtypes = [c_void_p]
-            if tmpresult:
-                libc.PQclear(tmpresult)
-            if conn:
-                libc.PQfinish(conn)
-            raise Exception(str(e))
-
-    @staticmethod
-    def getSQLResult(hostName, jsonFile):
+    def get_pass_phrase():
         """
-        function: get sql result from jsonFile
-        input : hostName,jsonFile
-        output: status, result, error_output
+        :return:
         """
-        # copy json file from remote host
-        tmpDir = DefaultValue.getTmpDirFromEnv() + "/"
-        filepath = os.path.join(tmpDir, jsonFile)
-        scpCmd = g_Platform.getRemoteCopyCmd(filepath, tmpDir, hostName,
-                                             False, "directory")
-        DefaultValue.execCommandLocally(scpCmd)
-        # parse json file
-        status = ""
-        result = []
-        error_output = ""
-        (ret, para) = ClusterCommand.check_input(filepath)
-        if (ret != 0):
-            raise Exception(ErrorCode.GAUSS_513["GAUSS_51308"])
-
-        if "status" not in para:
-            raise Exception(ErrorCode.GAUSS_513["GAUSS_51307"])
+        encrypt_dir = DefaultValue.get_ssh_protect_path()
+        if os.path.isdir(encrypt_dir):
+            output = AesCbcUtil.aes_cbc_decrypt_with_multi(*AesCbcUtil.format_path(encrypt_dir))
+            if len(str(output).strip().split()) < 1:
+                raise Exception(
+                    "Decrypt key failed from protect ssh directory.")
+            data = str(output).strip().split()[-1]
+            return data
         else:
-            status = para["status"]
-
-        if "result" not in para:
-            raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % "")
-        else:
-            result = para["result"]
-        if "error_output" in para:
-            error_output = para["error_output"]
-
-            # remove json file from remote host and localhost
-        g_file.removeDirectory(filepath)
-
-        remoteCmd = g_Platform.getSshCmd(hostName)
-        cmd = "%s \"%s '%s'\"" % (remoteCmd,
-                                  g_Platform.getRemoveCmd("directory"),
-                                  filepath)
-        DefaultValue.execCommandLocally(cmd)
-
-        return status, result, error_output
-
-    @staticmethod
-    def checkInstStatusByGsctl(instdir, retryCount=100):
-        """
-        function: check single instance status for local instance.
-                Wait for 5 minutes. If the instance status is still Catchup,
-                the instance status is Normal.
-        input: NA
-        output: (status, output)
-        """
-        count = 0
-        while (count < retryCount):
-            time.sleep(3)
-            count += 1
-            cmd = "gs_ctl query -D %s|grep '\<db_state\>'| " \
-                  "awk -F ':' '{print $2}'" % instdir
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if (status == 0 and output.strip() == "Normal"):
-                break
-            elif (status == 0 and count == retryCount and output.strip() ==
-                  "Catchup"):
-                output = "Normal"
-        return (status, output)
+            raise Exception("Get passphrase failed.")
 
 
 class ClusterInstanceConfig():
@@ -5117,7 +3466,7 @@ class ClusterInstanceConfig():
         output: NA
         """
         # check mpprc file path
-        mpprcFile = DefaultValue.getMpprcFile()
+        mpprcFile = EnvUtil.getMpprcFile()
 
         # comment out any existing entries for this setting
         if (typename == DefaultValue.INSTANCE_ROLE_CMSERVER or typename ==
@@ -5418,18 +3767,6 @@ class TempfileManagement():
         pass
 
     @staticmethod
-    def getTempDir(dirName):
-        """
-        function: create temp directory in PGHOST
-        input: dirName
-        output:
-              pathName
-        """
-        tmpPath = DefaultValue.getTmpDirFromEnv()
-        pathName = os.path.join(tmpPath, dirName)
-        return pathName
-
-    @staticmethod
     def removeTempFile(filename, Fuzzy=False):
         """
         function: remove temp files in PGHOST
@@ -5442,6 +3779,17 @@ class TempfileManagement():
 
         if Fuzzy:
             keywords = filename + "*"
-            g_file.removeFile(keywords, "shell")
+            FileUtil.removeFile(keywords, "shell")
         else:
-            g_file.removeFile(filename)
+            FileUtil.removeFile(filename)
+
+
+class CmPackageException(BaseException):
+    def __init__(self):
+        BaseException.__init__(self)
+        self.error_info = "Cm package exception. " \
+                          "Please check the installation package " \
+                          "or delete the CM configuration from the XML file."
+
+    def __str__(self):
+        return self.error_info

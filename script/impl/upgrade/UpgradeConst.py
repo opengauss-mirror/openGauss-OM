@@ -37,8 +37,13 @@ ACTION_AUTO_UPGRADE = "auto-upgrade"
 ACTION_AUTO_ROLLBACK = "auto-rollback"
 ACTION_COMMIT_UPGRADE = "commit-upgrade"
 
+############################################################
+# function key
+# ---------------------------------------------------------
 ACTION_SYNC_CONFIG = "sync_config"
+ACTION_RELOAD_CMAGENT = "reload_cmagent"
 ACTION_SWITCH_PROCESS = "switch_little_effect_process"
+ACTION_SWITCH_CMSERVER = "switch_server"
 ACTION_SWITCH_BIN = "switch_bin"
 ACTION_COPY_CERTS = "copy_certs"
 ACTION_CLEAN_INSTALL_PATH = "clean_install_path"
@@ -73,14 +78,14 @@ ACTION_GET_LSN_INFO = "get_lsn_info"
 ACTION_GREY_RESTORE_CONFIG = "grey_restore_config"
 ACTION_GREY_RESTORE_GUC = "grey_restore_guc"
 ACTION_CLEAN_CONF_BAK_OLD = "clean_conf_bak_old"
+ACTION_SET_GUC_VALUE = "setGucValue"
+ACTION_CLEAN_CM = "clean_cm_inst"
 
 OPTION_PRECHECK = "before"
 OPTION_POSTCHECK = "after"
 INPLACE_UPGRADE_STEP_FILE = "upgrade_step.dat"
 GREY_UPGRADE_STEP_FILE = "upgrade_step.csv"
-CLUSTER_CMSCONF_FILE = "cluster_cmsconf.json"
 CLUSTER_CNSCONF_FILE = "cluster_cnconf.json"
-READONLY_MODE = "read_only_mode"
 TMP_DYNAMIC_DN_INFO = "upgrade_gauss_dn_status.dat"
 GET_LSN_SQL_FILE = "get_lsn_sql"
 INPLACE_UPGRADE_FLAG_FILE = "inplace_upgrade_flag"
@@ -89,19 +94,16 @@ POSTGRESQL_CONF_BAK_OLD = "postgresql.conf.bak.old"
 #step flag
 BINARY_UPGRADE_NO_NEED_ROLLBACK = -2
 INVALID_UPRADE_STEP = -1
-#binary upgrade step
+# binary upgrade step
 BINARY_UPGRADE_STEP_INIT_STATUS = 0
-BINARY_UPGRADE_STEP_BACKUP_STATUS = 1
 BINARY_UPGRADE_STEP_STOP_NODE = 2
 BINARY_UPGRADE_STEP_BACKUP_VERSION = 3
 BINARY_UPGRADE_STEP_UPGRADE_APP = 4
 BINARY_UPGRADE_STEP_START_NODE = 5
 BINARY_UPGRADE_STEP_PRE_COMMIT = 6
 
-ERR_GREP_NO_RESULT = 256
 
-
-#grey upgrade
+# grey upgrade
 class GreyUpgradeStep:
     def __init__(self):
         pass
@@ -116,21 +118,21 @@ class GreyUpgradeStep:
      ) = range(0, 7)
 
 
-BACKUP_DIR_LIST = ['global', 'pg_clog', 'pg_xlog', 'pg_multixact',
-                   'pg_replslot', 'pg_notify', 'pg_subtrans', 'pg_cbm',
-                   'pg_twophase']
-
-
 BACKUP_DIR_LIST_BASE = ['global', 'pg_clog', 'pg_csnlog']
 BACKUP_DIR_LIST_64BIT_XID = ['pg_multixact', 'pg_replslot', 'pg_notify',
                              'pg_subtrans', 'pg_twophase']
 VALUE_OFF = ["off", "false", "0", "no"]
 VALUE_ON = ["on", "true", "1", "yes"]
 DN_GUC = ["upgrade_mode", "enable_stream_replication"]
+
+CMS_GUC = ["backup_open", "install_type"]
+CMA_GUC = ["upgrade_from"]
+
 FIRST_GREY_UPGRADE_NUM = 92
 
-UPGRADE_PRECOMMIT_NUM = 0.001
 UPGRADE_UNSET_NUM = 0
+
+INST_TYPE_MAP = {-1: "undefined", 0: "cmserver", 4: "datanode", 5: "cmagent"}
 
 CMSERVER_GUC_DEFAULT = {"enable_transaction_read_only": "on",
                         "coordinator_heartbeat_timeout": "1800",
@@ -140,6 +142,14 @@ CMSERVER_GUC_CLOSE = {"enable_transaction_read_only": "off",
                       "coordinator_heartbeat_timeout": "0",
                       "instance_failover_delay_timeout": 40,
                       "cmserver_ha_heartbeat_timeout": 20}
+CMSERVER_GUC_DEFAULT_HA = {"enable_transaction_read_only": "on",
+                           "instance_failover_delay_timeout": 0,
+                           "cmserver_ha_heartbeat_timeout": 8}
+CMSERVER_GUC_CLOSE_HA = {"enable_transaction_read_only": "off",
+                         "instance_failover_delay_timeout": 40,
+                         "cmserver_ha_heartbeat_timeout": 20}
+CMSERVER_GUC_GREYUPGRADE_DEFAULT = {"enable_transaction_read_only": "on"}
+CMSERVER_GUC_GREYUPGRADE_CLOSE = {"enable_transaction_read_only": "off"}
 # Script name
 GS_UPGRADECTL = "gs_upgradectl"
 # table schema and table name
@@ -154,7 +164,6 @@ NEW = "new"
 UPGRADE_SQL_SHA = "upgrade_sql.sha256"
 UPGRADE_SQL_FILE = "upgrade_sql.tar.gz"
 
-COMBIN_NUM = 30
 ON_INPLACE_UPGRADE = "IsInplaceUpgrade"
 MAX_APP_SIZE = 2000
 UPGRADE_VERSION_64bit_xid = 91.208

@@ -31,6 +31,10 @@ from gspylib.common.ParameterParsecheck import Parameter
 from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
 from multiprocessing.dummy import Pool as ThreadPool
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from base_utils.os.file_util import FileUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
 ACTION_SSDPerfCheck = "SSDPerfCheck"
 INDENTATION_VALUE = 37
@@ -90,7 +94,7 @@ class LocalPerformanceCheck():
             raise Exception(ErrorCode.GAUSS_530["GAUSS_53005"])
         # Concurrent execution
         pool = ThreadPool(DefaultValue.getCpuSet())
-        results = pool.map(self.CheckSingleSSDPerf, diskDevList)
+        pool.map(self.CheckSingleSSDPerf, diskDevList)
         pool.close()
         pool.join()
 
@@ -174,7 +178,7 @@ def initGlobal():
     try:
         g_logger = GaussLog(g_opts.logFile, g_opts.action)
         # Modify log File Permissions
-        DefaultValue.modifyFileOwner(g_opts.user, g_logger.logFile)
+        FileUtil.modifyFileOwner(g_opts.user, g_logger.logFile)
         g_perfChecker = LocalPerformanceCheck()
     except Exception as e:
         g_logger.logExit(str(e))
@@ -220,11 +224,11 @@ def checkParameter():
     output: NA
     """
     # check if user exist and is the right user
-    DefaultValue.checkUser(g_opts.user)
+    ClusterUser.checkUser(g_opts.user)
     # check log file
     if (g_opts.logFile == ""):
-        g_opts.logFile = DefaultValue.getOMLogPath(
-            DefaultValue.LOCAL_LOG_FILE, g_opts.user, "")
+        g_opts.logFile = ClusterLog.getOMLogPath(
+            ClusterConstants.LOCAL_LOG_FILE, g_opts.user, "")
     # check if absolute path
     if (not os.path.isabs(g_opts.logFile)):
         GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"] % "log")
@@ -259,7 +263,7 @@ if __name__ == '__main__':
         initGlobal()
     except Exception as e:
         # Modify the file's owner
-        DefaultValue.modifyFileOwner(g_opts.user, g_opts.logFile)
+        FileUtil.modifyFileOwner(g_opts.user, g_opts.logFile)
         GaussLog.exitWithError(str(e))
 
     try:
@@ -269,7 +273,7 @@ if __name__ == '__main__':
         g_logger.closeLog()
     except Exception as e:
         # Modify the file's owner
-        DefaultValue.modifyFileOwner(g_opts.user, g_logger.logFile)
+        FileUtil.modifyFileOwner(g_opts.user, g_logger.logFile)
         g_logger.logExit(str(e))
 
     sys.exit(0)

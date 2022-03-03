@@ -20,13 +20,12 @@ import subprocess
 import time
 import timeit
 import json
-import re
 import csv
 import traceback
 import copy
-import random
 
 from datetime import datetime, timedelta
+
 from gspylib.common.Common import DefaultValue, ClusterCommand, \
     ClusterInstanceConfig
 from gspylib.common.DbClusterInfo import instanceInfo, \
@@ -34,14 +33,22 @@ from gspylib.common.DbClusterInfo import instanceInfo, \
 from gspylib.common.OMCommand import OMCommand
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.threads.SshTool import SshTool
-from gspylib.common.VersionInfo import VersionInfo
 from gspylib.common.DbClusterStatus import DbClusterStatus
-from gspylib.os.gsplatform import g_Platform
 from gspylib.os.gsfile import g_file
-from gspylib.os.gsOSlib import g_OSlib
 from gspylib.inspection.common import SharedFuncs
+from gspylib.component.CM.CM_OLAP.CM_OLAP import CM_OLAP
 from impl.upgrade.UpgradeConst import GreyUpgradeStep
-import impl.upgrade.UpgradeConst as Const
+import impl.upgrade.UpgradeConst as const
+from base_utils.executor.cmd_executor import CmdExecutor
+from base_utils.executor.local_remote_cmd import LocalRemoteCmd
+from base_utils.os.cmd_util import CmdUtil
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from domain_utils.cluster_file.package_info import PackageInfo
+from domain_utils.cluster_file.version_info import VersionInfo
+from domain_utils.sql_handler.sql_result import SqlResult
+from base_utils.os.net_util import NetUtil
 
 
 class OldVersionModules():
@@ -100,19 +107,19 @@ class UpgradeImpl:
         #                     4          1
         #########################################
         if not succeed:
-            if action == Const.ACTION_AUTO_ROLLBACK:
+            if action == const.ACTION_AUTO_ROLLBACK:
                 retCode = 3
             else:
                 retCode = 1
-        elif action in [Const.ACTION_SMALL_UPGRADE,
-                        Const.ACTION_LARGE_UPGRADE,
-                        Const.ACTION_INPLACE_UPGRADE]:
+        elif action in [const.ACTION_SMALL_UPGRADE,
+                        const.ACTION_LARGE_UPGRADE,
+                        const.ACTION_INPLACE_UPGRADE]:
             retCode = 0
-        elif action == Const.ACTION_AUTO_ROLLBACK:
+        elif action == const.ACTION_AUTO_ROLLBACK:
             retCode = 2
-        elif action == Const.ACTION_CHOSE_STRATEGY:
+        elif action == const.ACTION_CHOSE_STRATEGY:
             retCode = 4
-        elif action == Const.ACTION_COMMIT_UPGRADE:
+        elif action == const.ACTION_COMMIT_UPGRADE:
             retCode = 5
         else:
             retCode = 1
@@ -150,14 +157,6 @@ class UpgradeImpl:
             dbNode.setDnDetailNum()
         #self.context.clusterInfo.setClusterDnCount()
 
-    def checkExistsProcess(self, greyNodeNames):
-        """
-        function: check exists process
-        input  : greyNodeNames
-        output : NA
-        """
-        pass
-
     def removeOmRollbackProgressFile(self):
         """
         function: remove om rollback process file
@@ -169,12 +168,10 @@ class UpgradeImpl:
         fileName = os.path.join(self.context.tmpDir,
                                 ".upgrade_task_om_rollback_result")
         cmd = "(if [ -f '%s' ];then rm -f '%s';fi)" % (fileName, fileName)
-        DefaultValue.execCommandWithMode(cmd,
-                                         "remove om rollback "
-                                         "record progress file",
-                                         self.context.sshTool,
-                                         self.context.isSingle,
-                                         self.context.mpprcFile)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle,
+                                        self.context.mpprcFile)
 
     def initOmRollbackProgressFile(self):
         """
@@ -207,7 +204,7 @@ class UpgradeImpl:
         # we will check if we need to rollback
         action = self.context.action
         # upgrade backup path
-        self.context.tmpDir = DefaultValue.getTmpDirFromEnv(self.context.user)
+        self.context.tmpDir = EnvUtil.getTmpDirFromEnv(self.context.user)
         if self.context.tmpDir == "":
             raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$PGHOST")
         self.context.upgradeBackupPath = \
@@ -220,39 +217,39 @@ class UpgradeImpl:
             # 4. get upgrade type
             # After choseStrategy, it will assign action to self.context.action
             # to do full-upgrade or binary-upgrade
-            if self.context.action == Const.ACTION_AUTO_UPGRADE:
+            if self.context.action == const.ACTION_AUTO_UPGRADE:
                 self.context.action = self.choseStrategy()
                 self.context.logger.debug(
                     "%s execution takes %s steps in total" % (
-                        Const.GS_UPGRADECTL, ClusterCommand.countTotalSteps(
-                            Const.GS_UPGRADECTL, self.context.action)))
+                        const.GS_UPGRADECTL, ClusterCommand.countTotalSteps(
+                            const.GS_UPGRADECTL, self.context.action)))
                 # If get upgrade strategy failed,
                 # then try to get rollback strategy.
                 # Set strategyFlag as True to check
                 # upgrade parameter is correct or not
-                if self.context.action in [Const.ACTION_LARGE_UPGRADE,
-                                           Const.ACTION_SMALL_UPGRADE]:
+                if self.context.action in [const.ACTION_LARGE_UPGRADE,
+                                           const.ACTION_SMALL_UPGRADE]:
                     self.doGreyBinaryUpgrade()
                 else:
                     self.doInplaceBinaryUpgrade()
             # After choseStrategy, it will assign action to self.context.action
-            elif self.context.action == Const.ACTION_AUTO_ROLLBACK:
+            elif self.context.action == const.ACTION_AUTO_ROLLBACK:
                 # because if we rollback with auto rollback,
                 # we will rollback all the nodes,
                 # but if we rollback under upgrade,
                 # we will only rollback specified nodes
                 self.context.action = self.choseStrategy()
                 self.context.rollback = True
-                if self.context.action == Const.ACTION_INPLACE_UPGRADE:
-                    self.exitWithRetCode(Const.ACTION_AUTO_ROLLBACK,
+                if self.context.action == const.ACTION_INPLACE_UPGRADE:
+                    self.exitWithRetCode(const.ACTION_AUTO_ROLLBACK,
                                          self.doInplaceBinaryRollback())
                 else:
-                    self.exitWithRetCode(Const.ACTION_AUTO_ROLLBACK,
+                    self.exitWithRetCode(const.ACTION_AUTO_ROLLBACK,
                                          self.doGreyBinaryRollback(
-                                             Const.ACTION_AUTO_ROLLBACK))
-            elif self.context.action == Const.ACTION_COMMIT_UPGRADE:
+                                             const.ACTION_AUTO_ROLLBACK))
+            elif self.context.action == const.ACTION_COMMIT_UPGRADE:
                 self.context.action = self.choseStrategy()
-                if self.context.action == Const.ACTION_INPLACE_UPGRADE:
+                if self.context.action == const.ACTION_INPLACE_UPGRADE:
                     self.doInplaceCommitUpgrade()
                 else:
                     self.doGreyCommitUpgrade()
@@ -264,7 +261,7 @@ class UpgradeImpl:
                 self.context.sshTool = SshTool(
                     self.context.clusterNodes, self.context.logger,
                     DefaultValue.TIMEOUT_PSSH_BINARY_UPGRADE)
-            if action == Const.ACTION_AUTO_ROLLBACK and \
+            if action == const.ACTION_AUTO_ROLLBACK and \
                     self.checkBakPathNotExists():
                 self.context.logger.log("No need to rollback.")
                 self.exitWithRetCode(action, True)
@@ -279,6 +276,7 @@ class UpgradeImpl:
         """
         self.checkReadOnly()
         if self.context.is_grey_upgrade:
+            self.getOneDNInst(checkNormal=True)
             self.checkUpgradeMode()
 
     def checkReadOnly(self):
@@ -290,16 +288,16 @@ class UpgradeImpl:
         try:
             self.context.logger.debug("Check if in read only mode.")
             greyUpgradeFlagFile = os.path.join(self.context.upgradeBackupPath,
-                                               Const.GREY_UPGRADE_STEP_FILE)
+                                               const.GREY_UPGRADE_STEP_FILE)
             # only used under grey upgrade, grey upgrade commit or grey upgrade
             #  rollback if under grey upgrade, the flag file
             # greyUpgradeFlagFile has not been created
             # so we use is_inplace_upgrade to judge the mode
-            if (self.context.action == Const.ACTION_AUTO_UPGRADE and
+            if (self.context.action == const.ACTION_AUTO_UPGRADE and
                     not self.context.is_inplace_upgrade or
                     (os.path.isfile(greyUpgradeFlagFile) and
-                     self.context.action in [Const.ACTION_AUTO_ROLLBACK,
-                                             Const.ACTION_COMMIT_UPGRADE])):
+                     self.context.action in [const.ACTION_AUTO_ROLLBACK,
+                                             const.ACTION_COMMIT_UPGRADE])):
                 if self.unSetClusterReadOnlyMode() != 0:
                     raise Exception("NOTICE: "
                                     + ErrorCode.GAUSS_529["GAUSS_52907"])
@@ -312,8 +310,8 @@ class UpgradeImpl:
         if not, we set it to 0
         """
         tempPath = self.context.upgradeBackupPath
-        filePath = os.path.join(tempPath, Const.INPLACE_UPGRADE_STEP_FILE)
-        if self.context.action == Const.ACTION_AUTO_UPGRADE \
+        filePath = os.path.join(tempPath, const.INPLACE_UPGRADE_STEP_FILE)
+        if self.context.action == const.ACTION_AUTO_UPGRADE \
                 and not os.path.exists(filePath):
             try:
                 self.setUpgradeMode(0)
@@ -357,20 +355,20 @@ class UpgradeImpl:
         try:
             self.context.action = self.choseStrategy()
             # we only support binary-upgrade.
-            if self.context.action in [Const.ACTION_SMALL_UPGRADE,
-                                       Const.ACTION_LARGE_UPGRADE]:
-                self.exitWithRetCode(Const.ACTION_CHOSE_STRATEGY,
+            if self.context.action in [const.ACTION_SMALL_UPGRADE,
+                                       const.ACTION_LARGE_UPGRADE]:
+                self.exitWithRetCode(const.ACTION_CHOSE_STRATEGY,
                                      True,
                                      "Upgrade strategy: %s."
                                      % self.context.action)
             # Use inplace upgrade under special case
             else:
-                self.exitWithRetCode(Const.ACTION_CHOSE_STRATEGY,
+                self.exitWithRetCode(const.ACTION_CHOSE_STRATEGY,
                                      True,
                                      "Upgrade strategy: %s."
                                      % self.context.action)
         except Exception as e:
-            self.exitWithRetCode(Const.ACTION_CHOSE_STRATEGY, False, str(e))
+            self.exitWithRetCode(const.ACTION_CHOSE_STRATEGY, False, str(e))
         self.context.logger.debug("Successfully got the upgrade strategy.")
 
     def choseStrategy(self):
@@ -385,7 +383,7 @@ class UpgradeImpl:
             newVersionFile = VersionInfo.get_version_file()
             newClusterVersion, newClusterNumber, newCommitId = \
                 VersionInfo.get_version_info(newVersionFile)
-            gaussHome = DefaultValue.getInstallDir(self.context.user)
+            gaussHome = ClusterDir.getInstallDir(self.context.user)
             if gaussHome == "":
                 raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"]
                                 % "$GAUSSHOME")
@@ -395,7 +393,7 @@ class UpgradeImpl:
             # new app dir should exist after preinstall,
             # then we can use chose strategy
             if not os.path.exists(newPath):
-                if self.context.action != Const.ACTION_AUTO_ROLLBACK:
+                if self.context.action != const.ACTION_AUTO_ROLLBACK:
                     raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"]
                                     % newPath)
             self.context.logger.debug(
@@ -404,7 +402,7 @@ class UpgradeImpl:
 
             # get the old cluster info, if binary_upgrade does not exists,
             # try to copy from other nodes
-            oldPath = self.getClusterAppPath(Const.OLD)
+            oldPath = self.getClusterAppPath(const.OLD)
             if oldPath == "":
                 self.context.logger.debug("Cannot get the old install "
                                           "path from table and file.")
@@ -457,9 +455,9 @@ class UpgradeImpl:
                                 % newClusterNumber)
             elif float(newClusterNumber) == float(oldClusterNumber):
                 if self.context.is_inplace_upgrade:
-                    upgradeAction = Const.ACTION_INPLACE_UPGRADE
+                    upgradeAction = const.ACTION_INPLACE_UPGRADE
                 else:
-                    upgradeAction = Const.ACTION_SMALL_UPGRADE
+                    upgradeAction = const.ACTION_SMALL_UPGRADE
             else:
                 if int(float(newClusterNumber)) > int(float(oldClusterNumber)):
                     raise Exception(ErrorCode.GAUSS_529["GAUSS_52904"]
@@ -469,10 +467,10 @@ class UpgradeImpl:
                       > (float(oldClusterNumber) -
                          int(float(oldClusterNumber)))):
                     if self.context.is_inplace_upgrade:
-                        upgradeAction = Const.ACTION_INPLACE_UPGRADE
+                        upgradeAction = const.ACTION_INPLACE_UPGRADE
                         self.isLargeInplaceUpgrade = True
                     else:
-                        upgradeAction = Const.ACTION_LARGE_UPGRADE
+                        upgradeAction = const.ACTION_LARGE_UPGRADE
                 else:
                     raise Exception(ErrorCode.GAUSS_516["GAUSS_51629"]
                                     % newClusterNumber)
@@ -497,14 +495,14 @@ class UpgradeImpl:
         :return:
         """
         try:
-            if self.context.action == Const.ACTION_AUTO_ROLLBACK or \
-                    self.context.action == Const.ACTION_COMMIT_UPGRADE:
+            if self.context.action == const.ACTION_AUTO_ROLLBACK or \
+                    self.context.action == const.ACTION_COMMIT_UPGRADE:
                 inplaceUpgradeFlagFile = os.path.join(
                     self.context.upgradeBackupPath,
-                    Const.INPLACE_UPGRADE_FLAG_FILE)
+                    const.INPLACE_UPGRADE_FLAG_FILE)
                 grayUpgradeFlagFile = os.path.join(
                     self.context.upgradeBackupPath,
-                    Const.GREY_UPGRADE_STEP_FILE)
+                    const.GREY_UPGRADE_STEP_FILE)
                 self.context.is_inplace_upgrade = False
                 # we do rollback by the backup directory
                 if os.path.isfile(inplaceUpgradeFlagFile):
@@ -514,10 +512,10 @@ class UpgradeImpl:
                 if os.path.isfile(grayUpgradeFlagFile):
                     self.context.logger.debug("grey upgrade flag exists, "
                                               "use grey rollback or commit.")
-                    self.context.isGreyUpgrade = True
+                    self.context.is_grey_upgrade = True
                 if not (self.context.is_inplace_upgrade or
-                        self.context.isGreyUpgrade):
-                    if self.context.action == Const.ACTION_AUTO_ROLLBACK \
+                        self.context.is_grey_upgrade):
+                    if self.context.action == const.ACTION_AUTO_ROLLBACK \
                             and not self.checkBakPathNotExists():
                         self.cleanBinaryUpgradeBakFiles(True)
                     exitMsg = "No need to {0}".format(self.context.action)
@@ -533,9 +531,9 @@ class UpgradeImpl:
         under grey upgrade, if under inplace upgrade, we will
         rollback first, under grey upgrade, we will upgrade again
         """
-        if self.context.action == Const.ACTION_AUTO_UPGRADE:
+        if self.context.action == const.ACTION_AUTO_UPGRADE:
             stepFile = os.path.join(self.context.upgradeBackupPath,
-                                    Const.GREY_UPGRADE_STEP_FILE)
+                                    const.GREY_UPGRADE_STEP_FILE)
             cmd = "if [ -f '%s' ]; then echo 'True';" \
                   " else echo 'False'; fi" % stepFile
             (resultMap, outputCollect) = \
@@ -548,7 +546,7 @@ class UpgradeImpl:
                 # so cannot do grey upgrade now
                 if outputCollect.find('True') >= 0:
                     ermsg = ErrorCode.GAUSS_502["GAUSS_50200"] \
-                            % Const.GREY_UPGRADE_STEP_FILE \
+                            % const.GREY_UPGRADE_STEP_FILE \
                             + "In grey upgrade process, " \
                               "cannot do inplace upgrade!"
                     raise Exception(str(ermsg))
@@ -565,8 +563,8 @@ class UpgradeImpl:
                 #  --force to forceRollback
                 self.checkBakPathAndTable(outputCollect)
                 self.checkNewCommitid(newCommitId)
-        elif self.context.action == Const.ACTION_AUTO_ROLLBACK or \
-                self.context.action == Const.ACTION_COMMIT_UPGRADE:
+        elif self.context.action == const.ACTION_AUTO_ROLLBACK or \
+                self.context.action == const.ACTION_COMMIT_UPGRADE:
             self.checkNewCommitid(newCommitId)
 
     def checkBakPathAndTable(self, outputCollect):
@@ -580,7 +578,7 @@ class UpgradeImpl:
         :return:
         """
         # no need to check and drop schema under force upgrade
-        if not self.existTable(Const.RECORD_NODE_STEP):
+        if not self.existTable(const.RECORD_NODE_STEP):
             return
         output = outputCollect.split('\n')
         output = output[:-1]
@@ -601,7 +599,7 @@ class UpgradeImpl:
         :param newCommitId: version.cfg line 3
         :return: NA
         """
-        newPath = self.getClusterAppPath(Const.NEW)
+        newPath = self.getClusterAppPath(const.NEW)
         if newPath != "":
             LastNewCommitId = newPath[-8:]
             # When repeatedly run gs_upgradectl script,
@@ -610,88 +608,64 @@ class UpgradeImpl:
             if newCommitId != LastNewCommitId:
                 raise Exception(ErrorCode.GAUSS_529["GAUSS_52935"])
 
-    def checkOldClusterVersion(self, gaussdbPath, oldClusterVersionFile):
-        """
-        check old cluster version
-        input : gaussdbPath, oldClusterVersionFile
-        output:
-            1. (0,"V100R00XCXX")
-            2. (999,"NAC00Version")
-            3. (1, errorMsg)
-        otherwise raise exception
-        """
-        if os.path.isfile(oldClusterVersionFile):
-            cmd = "cat %s" % oldClusterVersionFile
-        else:
-            gaussdbFile = "%s/gaussdb" % gaussdbPath
-            if not os.path.exists(gaussdbFile):
-                self.context.logger.debug("The %s does not exist."
-                                          " Cannot obtain old cluster"
-                                          " version." % gaussdbFile)
-                return 1, " The %s does not exist. Cannot " \
-                          "obtain old cluster version" % gaussdbFile
-            if not os.path.isfile(gaussdbFile):
-                self.context.logger.debug("The %s is not a file. "
-                                          "Cannot obtain old cluster"
-                                          " version." % gaussdbFile)
-                return 1, " The %s is not a file. Cannot " \
-                          "obtain old cluster version" % gaussdbFile
-            # get old cluster version by gaussdb
-            # the information of gaussdb like this:
-            #    gaussdb Gauss200 V100R00XCXX build xxxx
-            #    compiled at xxxx-xx-xx xx:xx:xx
-            cmd = "export LD_LIBRARY_PATH=%s/lib:$LD_LIBRARY_PATH;%s " \
-                  "--version" % (os.path.dirname(gaussdbPath), gaussdbFile)
-
-        self.context.logger.debug("Command for getting old"
-                                  " cluster version:%s" % cmd)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status == 0 and re.compile(r'V[0-9]{3}R[0-9]{3}C[0-9]{2}'
-                                      ).search(str(output)) is not None:
-            return 0, re.compile(
-                r'V[0-9]{3}R[0-9]{3}C[0-9]{2}').search(str(output)).group()
-        else:
-            self.context.logger.debug("Failed to obtain old cluster"
-                                      " version. Error: \n%s" % str(output))
-            return 999, "NAC00Version"
-
-    def setGUCValue(self, gucKey, gucValue, actionType="reload"):
+    def setGUCValue(self, guc_key, guc_value, action_type="reload"):
         """
         function: do gs_guc
         input : gucKey - parameter name
                 gucValue - parameter value
                 actionType - guc action type(set/reload). default is 'reload'
+                onlySetCn - whether only set CN instance. default is False
         """
-        userProfile = DefaultValue.getMpprcFile()
-        if gucValue != "":
-            gucStr = "%s='%s'" % (gucKey, gucValue)
+        tmp_file = ""
+        if guc_value != "":
+            guc_str = "%s='%s'" % (guc_key, guc_value)
         else:
-            gucStr = "%s" % gucKey
-
-        cmd = "source %s ;" % userProfile
-        cmd += "gs_guc %s -N all -I all -c \"%s\"" % (actionType, gucStr)
-        self.context.logger.debug("Command for setting "
-                                  "GUC parameter %s: %s" % (gucKey, cmd))
-        (status, output) = DefaultValue.retryGetstatusoutput(cmd)
-        return status, output
+            guc_str = "%s" % guc_key
+        try:
+            self.context.logger.debug("Start to set GUC value %s." % guc_str)
+            cmd = "%s -t %s -U %s --upgrade_bak_path=%s --guc_string=\"%s\" -l %s --setType=%s" % \
+                  (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+                   const.ACTION_SET_GUC_VALUE,
+                   self.context.user,
+                   self.context.upgradeBackupPath,
+                   guc_str,
+                   self.context.localLog,
+                   action_type)
+            if action_type == "reload":
+                tmp_file = os.path.join(EnvUtil.getTmpDirFromEnv(self.context.user),
+                                       const.TMP_DYNAMIC_DN_INFO)
+                self.generateDynamicInfoFile(tmp_file)
+            self.context.logger.debug("Cmd for setting parameter: %s." % cmd)
+            host_list = copy.deepcopy(self.context.clusterNodes)
+            self.context.execCommandInSpecialNode(cmd, host_list)
+            self.context.logger.debug("Successfully set guc value.")
+        except Exception as er:
+            if self.context.forceRollback:
+                self.context.logger.debug("WARNING: failed to set value %s." % guc_str)
+            else:
+                raise Exception(str(er))
+        finally:
+            if os.path.exists(tmp_file):
+                delete_cmd = "(if [ -f '%s' ]; then rm -f '%s'; fi) " % \
+                              (tmp_file, tmp_file)
+                host_list = copy.deepcopy(self.context.clusterNodes)
+                self.context.execCommandInSpecialNode(delete_cmd, host_list)
 
     def setClusterReadOnlyMode(self):
         """
-        function: set cluster read only mode
-        input  : NA
-        output : int
+        function: Set the cluster read-only mode
+        input : NA
+        output: 0  successfully
+                1  failed
         """
-        self.context.logger.debug("Setting up the cluster read-only mode.")
-        (status, output) = self.setGUCValue("default_transaction_read_only",
-                                            "true")
-        if status == 0:
-            self.context.logger.debug("successfully set the "
-                                      "cluster read-only mode.")
+        try:
+            self.context.logger.debug("Setting up the cluster read-only mode.")
+            self.setGUCValue("default_transaction_read_only", "true")
+            self.context.logger.debug("successfully set the cluster read-only mode.")
             return 0
-        else:
-            self.context.logger.debug(
-                "Failed to set default_transaction_read_only parameter."
-                + " Error: \n%s" % str(output))
+        except Exception:
+            self.context.logger.debug("WARNING: Failed to set default_transaction_read_only "
+                                      "parameter.")
             return 1
 
     def unSetClusterReadOnlyMode(self):
@@ -701,18 +675,14 @@ class UpgradeImpl:
         output: 0  successfully
                 1  failed
         """
-        self.context.logger.debug("Canceling the cluster read-only mode.")
-        # un set cluster read only mode
-        (status, output) = self.setGUCValue("default_transaction_read_only",
-                                            "false")
-        if status == 0:
-            self.context.logger.debug("Successfully cancelled the"
-                                      " cluster read-only mode.")
+        try:
+            self.context.logger.debug("Canceling the cluster read-only mode.")
+            self.setGUCValue("default_transaction_read_only", "false")
+            self.context.logger.debug("Successfully cancelled the cluster read-only mode.")
             return 0
-        else:
-            self.context.logger.debug(
-                "Failed to set default_transaction_read_only parameter."
-                + " Error: \n%s" % str(output))
+        except Exception:
+            self.context.logger.debug("WARNING: Failed to set default_transaction_read_only "
+                                      "parameter.")
             return 1
 
     def stopCluster(self):
@@ -726,10 +696,10 @@ class UpgradeImpl:
         cmd = "%s -U %s -R %s -t %s" % (
             OMCommand.getLocalScript("Local_StopInstance"),
             self.context.user, self.context.clusterInfo.appPath,
-            Const.UPGRADE_TIMEOUT_CLUSTER_STOP)
+            const.UPGRADE_TIMEOUT_CLUSTER_STOP)
         self.context.logger.debug("Command for stop cluster: %s" % cmd)
-        DefaultValue.execCommandWithMode(
-            cmd, "Stop cluster", self.context.sshTool,
+        CmdExecutor.execCommandWithMode(
+            cmd, self.context.sshTool,
             self.context.isSingle or self.context.localMode,
             self.context.mpprcFile)
         self.context.logger.debug("Successfully stopped cluster.")
@@ -747,14 +717,14 @@ class UpgradeImpl:
             cmd = "%s -U %s -R %s -t %s --cluster_number=%s" % (
                 OMCommand.getLocalScript("Local_StartInstance"),
                 self.context.user, self.context.clusterInfo.appPath,
-                Const.UPGRADE_TIMEOUT_CLUSTER_START, number)
+                const.UPGRADE_TIMEOUT_CLUSTER_START, number)
         else:
             cmd = "%s -U %s -R %s -t %s" % (
                 OMCommand.getLocalScript("Local_StartInstance"),
                 self.context.user, self.context.clusterInfo.appPath,
-                Const.UPGRADE_TIMEOUT_CLUSTER_START)
-        DefaultValue.execCommandWithMode(
-            cmd, "Start cluster", self.context.sshTool,
+                const.UPGRADE_TIMEOUT_CLUSTER_START)
+        CmdExecutor.execCommandWithMode(
+            cmd, self.context.sshTool,
             self.context.isSingle or self.context.localMode,
             self.context.mpprcFile)
         self.context.logger.log("Successfully started cluster.")
@@ -772,11 +742,10 @@ class UpgradeImpl:
         try:
             cmd = "(if [ -d '%s' ]; then touch '%s'; fi) " % (
                 self.context.upgradeBackupPath, commitFlagFile)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "create commit flag file",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
         except Exception as e:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50206"]
                             % ("commit flag file: %s" % str(e)))
@@ -812,16 +781,16 @@ class UpgradeImpl:
 
             inplace_upgrade_flag_file = "%s/inplace_upgrade_flag" % \
                                         self.context.upgradeBackupPath
-            g_file.createFile(inplace_upgrade_flag_file)
-            g_file.writeFile(inplace_upgrade_flag_file,
+            FileUtil.createFile(inplace_upgrade_flag_file)
+            FileUtil.writeFile(inplace_upgrade_flag_file,
                              ["newClusterNumber:%s" % newClusterNumber], 'a')
-            g_file.writeFile(inplace_upgrade_flag_file,
+            FileUtil.writeFile(inplace_upgrade_flag_file,
                              ["oldClusterNumber:%s" % oldClusterNumber], 'a')
             if (not self.context.isSingle):
                 self.context.sshTool.scpFiles(inplace_upgrade_flag_file,
                                               self.context.upgradeBackupPath)
             if float(self.context.oldClusterNumber) <= float(
-                    Const.UPGRADE_VERSION_64bit_xid) < \
+                    const.UPGRADE_VERSION_64bit_xid) < \
                     float(self.context.newClusterNumber):
                 self.__upgrade_across_64bit_xid = True
 
@@ -830,48 +799,84 @@ class UpgradeImpl:
         except Exception as e:
             raise Exception(str(e))
 
-    def setUpgradeMode(self, mode):
+    def setUpgradeFromParam(self, cluster_version_number, is_check=True):
+        """
+        function: set upgrade_from parameter
+        Input : oldClusterNumber
+        output : NA
+        """
+        if not DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) > 0:
+            self.context.logger.debug("No need to set cm parameter.")
+            return
+        self.context.logger.debug("Set upgrade_from guc parameter.")
+        working_grand_version = int(float(cluster_version_number) * 1000)
+        cmd = "gs_guc set -Z cmagent -N all -I all -c 'upgrade_from=%s'" % working_grand_version
+        self.context.logger.debug("setting cmagent parameter: %s." % cmd)
+        try:
+            (status, output) = CmdUtil.retryGetstatusoutput(cmd)
+            if status != 0:
+                self.context.logger.debug("Set upgrade_from failed. "
+                                          "cmd:%s\nOutput:%s" % (cmd, str(output)))
+                raise Exception(
+                    ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + "Error: \n%s" % str(output))
+            if is_check:
+                gucStr = "%s:%s" % ("upgrade_from", str(working_grand_version).strip())
+                self.checkParam(gucStr, True)
+            self.context.logger.debug("Successfully set cmagent parameter "
+                                      "upgrade_from=%s." % working_grand_version)
+        except Exception as er:
+            if self.context.action == const.ACTION_INPLACE_UPGRADE or \
+                    not self.context.forceRollback:
+                raise Exception(str(er))
+            self.context.logger.log("NOTICE: Failed to set upgrade_from, "
+                                    "please set it manually with command: \n%s" % str(cmd))
+
+    def setUpgradeMode(self, mode, set_type="reload"):
         """
         function: set upgrade_mode parameter
-        Input : mode
+        Input : upgrade_mode
         output : NA
         """
         try:
-            self.setUpgradeModeGuc(mode)
-        except Exception as e:
-            if self.context.action == Const.ACTION_INPLACE_UPGRADE or \
+            self.setUpgradeModeGuc(mode, set_type)
+        except Exception as er:
+            if self.context.action != const.ACTION_INPLACE_UPGRADE and \
                     not self.context.forceRollback:
-                raise Exception(str(e))
+                raise Exception(str(er))
             try:
                 self.setUpgradeModeGuc(mode, "set")
-            except Exception as e:
-                self.context.logger.log("Failed to set upgrade_mode,"
-                                        " please set it manually.")
+            except Exception as _:
+                self.context.logger.log("NOTICE: Failed to set upgrade_mode to {0}, "
+                                        "please set it manually.".format(mode))
 
-    def setUpgradeModeGuc(self, mode, setType="reload"):
+    def setUpgradeModeGuc(self, mode, set_type="reload"):
         """
         function: set upgrade mode guc
         input  : mode, setType
         output : NA
         """
         self.context.logger.debug("Set upgrade_mode guc parameter.")
-        cmd = "gs_guc %s -I all -c 'upgrade_mode=%d'" % (
-            setType, mode)
+        cmd = "gs_guc %s -Z datanode -I all -c 'upgrade_mode=%d'" % (set_type, mode)
         self.context.logger.debug("Command for setting database"
                                   " node parameter: %s." % cmd)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            self.context.logger.debug("Set upgrade_mode parameter "
-                                      "failed. cmd:%s\nOutput:%s"
-                                      % (cmd, str(output)))
-            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                            + "Error: \n%s" % str(output))
-        gucStr = "upgrade_mode:%d" % mode
-        self.checkParam(gucStr)
+        retry_count = 0
+        while retry_count < 5:
+            try:
+                CmdExecutor.execCommandWithMode(cmd,
+                                                self.context.sshTool)
+                break
+            except Exception as _:
+                retry_count += 1
+                if retry_count < 5:
+                    time.sleep(5)
+                    continue
+
+        guc_str = "upgrade_mode:%d" % mode
+        self.checkParam(guc_str)
         self.context.logger.debug("Successfully set "
                                   "upgrade_mode to %d." % mode)
 
-    def checkParam(self, gucStr):
+    def checkParam(self, gucStr, fromFile=False):
         """
         function: check the cmagent guc value
         Input : gucStr the guc key:value string
@@ -881,20 +886,21 @@ class UpgradeImpl:
         try:
             # send cmd to that node and exec
             cmd = "%s -t %s -U %s --upgrade_bak_path=%s" \
-                  " --guc_string=%s -l %s" % \
+                  " --guc_string=\"%s\" -l %s" % \
                   (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                   Const.ACTION_CHECK_GUC,
+                   const.ACTION_CHECK_GUC,
                    self.context.user,
                    self.context.upgradeBackupPath,
                    gucStr,
                    self.context.localLog)
+            if fromFile:
+                cmd += " --fromFile"
             self.context.logger.debug("Command for checking"
                                       " parameter: %s." % cmd)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "check GUC value",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
             self.context.logger.debug("Successfully checked guc value.")
         except Exception as e:
             raise Exception(str(e))
@@ -905,17 +911,7 @@ class UpgradeImpl:
         input  : numOne, numTwo
         output : True/False
         """
-        if float(numOne) - float(numTwo) > float(Const.DELTA_NUM):
-            return True
-        return False
-
-    def floatLessThan(self, numOne, numTwo):
-        """
-        function: float less than
-        input: numOne, numTwo
-        output: True/False
-        """
-        if float(numOne) - float(numTwo) < float(-Const.DELTA_NUM):
+        if float(numOne) - float(numTwo) > float(const.DELTA_NUM):
             return True
         return False
 
@@ -925,8 +921,8 @@ class UpgradeImpl:
         input: numOne, numTwo
         output: True/False
         """
-        if float(-Const.DELTA_NUM) < (float(numOne) - float(numTwo)) \
-                < float(Const.DELTA_NUM):
+        if float(-const.DELTA_NUM) < (float(numOne) - float(numTwo)) \
+                < float(const.DELTA_NUM):
             return True
         return False
 
@@ -947,11 +943,8 @@ class UpgradeImpl:
         inplace upgrade or grey large upgrade
         input : NA
         """
-        (status, output) = self.setGUCValue("vacuum_defer_cleanup_age",
-                                            "100000", "reload")
-        if status != 0:
-            raise Exception(ErrorCode.GAUSS_500["GAUSS_50007"] % "GUC" +
-                            " Error: \n%s" % str(output))
+        self.setGUCValue("vacuum_defer_cleanup_age", "100000", "reload")
+
 
     def doGreyBinaryUpgrade(self):
         """
@@ -975,7 +968,7 @@ class UpgradeImpl:
             # 5. before do grey binary upgrade, we must make sure the
             # cluster is Normal and the database could be
             # connected, if not, exit.
-            (status, output) = self.doHealthCheck(Const.OPTION_PRECHECK)
+            (status, output) = self.doHealthCheck(const.OPTION_PRECHECK)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51601"] %
                                 "cluster" + "Detail: " + output)
@@ -998,7 +991,7 @@ class UpgradeImpl:
         if not upgradeAgain:
             try:
                 if not self.doGreyBinaryRollback():
-                    self.exitWithRetCode(Const.ACTION_AUTO_ROLLBACK, False)
+                    self.exitWithRetCode(const.ACTION_AUTO_ROLLBACK, False)
                 self.removeOmRollbackProgressFile()
                 self.context.logger.log(
                     "The directory %s will be deleted after commit-upgrade, "
@@ -1025,7 +1018,7 @@ class UpgradeImpl:
                 # we can not recognize if it really cannot
                 # find the column, or just because the old version. So we
                 # will update the catalog in the old version
-                if self.context.action == Const.ACTION_LARGE_UPGRADE:
+                if self.context.action == const.ACTION_LARGE_UPGRADE:
                     self.updateCatalog()
                 self.recordNodeStep(GreyUpgradeStep.STEP_SWITCH_NEW_BIN)
 
@@ -1063,7 +1056,7 @@ class UpgradeImpl:
                 self.greySyncGuc()
                 self.greyUpgradeSyncOldConfigToNew()
                 # 11. switch the cluster version to new version
-                self.switchBin(Const.NEW)
+                self.switchBin(const.NEW)
                 self.setNewVersionGuc()
                 self.recordNodeStep(GreyUpgradeStep.STEP_UPGRADE_PROCESS)
             if currentStep < GreyUpgradeStep.STEP_UPDATE_POST_CATALOG:
@@ -1084,13 +1077,13 @@ class UpgradeImpl:
 
         try:
             # 13. check the cluster status, the cluster status can be degraded
-            (status, output) = self.doHealthCheck(Const.OPTION_POSTCHECK)
+            (status, output) = self.doHealthCheck(const.OPTION_POSTCHECK)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51601"] %
                                 "cluster" + output)
             if self.isNodeSpecifyStep(GreyUpgradeStep.STEP_UPDATE_POST_CATALOG):
                 # 14. exec post upgrade script
-                if self.context.action == Const.ACTION_LARGE_UPGRADE:
+                if self.context.action == const.ACTION_LARGE_UPGRADE:
                     self.waitClusterForNormal()
                     self.prepareSql("rollback-post")
                     self.execRollbackUpgradedCatalog(scriptType="rollback-post")
@@ -1123,7 +1116,7 @@ class UpgradeImpl:
         """
         try:
             stepFile = os.path.join(self.context.upgradeBackupPath,
-                                    Const.GREY_UPGRADE_STEP_FILE)
+                                    const.GREY_UPGRADE_STEP_FILE)
             self.context.logger.debug(
                 "trying to get one node step in file %s" % stepFile)
             with open(stepFile, 'r') as csvfile:
@@ -1146,13 +1139,13 @@ class UpgradeImpl:
         """
         cmd = "%s -t %s -U %s --upgrade_bak_path=%s -l %s" % \
               (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-               Const.ACTION_GREY_SYNC_GUC,
+               const.ACTION_GREY_SYNC_GUC,
                self.context.user,
                self.context.upgradeBackupPath,
                self.context.localLog)
         self.context.logger.debug("Command for sync GUC in upgrade: %s" % cmd)
         hostList = copy.deepcopy(self.context.nodeNames)
-        self.context.sshTool.executeCommand(cmd, "", hostList=hostList)
+        self.context.sshTool.executeCommand(cmd, hostList=hostList)
         self.context.logger.debug("Successfully sync guc.")
 
     def greyUpgradeSyncOldConfigToNew(self):
@@ -1175,7 +1168,7 @@ class UpgradeImpl:
             cmd = "%s -t %s -U %s -V %d --old_cluster_app_path=%s " \
                   "--new_cluster_app_path=%s -l %s" % \
                   (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                   Const.ACTION_GREY_UPGRADE_CONFIG_SYNC,
+                   const.ACTION_GREY_UPGRADE_CONFIG_SYNC,
                    self.context.user,
                    int(float(self.context.oldClusterNumber) * 1000),
                    self.context.oldClusterAppPath,
@@ -1184,14 +1177,14 @@ class UpgradeImpl:
             self.context.logger.debug("Command for syncing config files: %s"
                                       % cmd)
             hostList = copy.deepcopy(self.context.nodeNames)
-            self.context.sshTool.executeCommand(cmd, "", hostList=hostList)
+            self.context.sshTool.executeCommand(cmd, hostList=hostList)
 
             # change the owner of application
             cmd = "chown -R %s:%s '%s'" % \
                   (self.context.user, self.context.group,
                    self.context.newClusterAppPath)
             hostList = copy.deepcopy(self.context.nodeNames)
-            self.context.sshTool.executeCommand(cmd, "", hostList=hostList)
+            self.context.sshTool.executeCommand(cmd, hostList=hostList)
         except Exception as e:
             raise Exception(str(e) + " Failed to sync configuration.")
         self.context.logger.log("Successfully synced cluster configuration.")
@@ -1256,7 +1249,7 @@ class UpgradeImpl:
         cmd = "%s -t %s -U %s -V %d --old_cluster_app_path=%s " \
               "--new_cluster_app_path=%s -X '%s' -l %s" % \
               (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-               Const.ACTION_SWITCH_DN,
+               const.ACTION_SWITCH_DN,
                self.context.user,
                int(float(self.context.oldClusterNumber) * 1000),
                self.context.oldClusterAppPath,
@@ -1271,7 +1264,7 @@ class UpgradeImpl:
         self.context.logger.debug(
             "Command for switching DN processes: %s" % cmd)
         hostList = copy.deepcopy(self.context.nodeNames)
-        self.context.sshTool.executeCommand(cmd, "", hostList=hostList)
+        self.context.sshTool.executeCommand(cmd, hostList=hostList)
         start_cluster_time = timeit.default_timer()
         self.greyStartCluster()
         end_cluster_time = timeit.default_timer() - start_cluster_time
@@ -1318,7 +1311,7 @@ class UpgradeImpl:
                     "check if all the nodes step is %s" % step)
                 nodes = copy.deepcopy(self.context.clusterNodes)
             stepFile = os.path.join(self.context.upgradeBackupPath,
-                                    Const.GREY_UPGRADE_STEP_FILE)
+                                    const.GREY_UPGRADE_STEP_FILE)
             if not os.path.isfile(stepFile):
                 self.context.logger.debug(
                     "no step file, which means nodes %s step is same" % nodes)
@@ -1357,12 +1350,12 @@ class UpgradeImpl:
             execHosts = [self.dnInst.hostname]
             cmd = "%s -t %s -U %s --upgrade_bak_path=%s -l %s" % \
                   (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                   Const.ACTION_GET_LSN_INFO,
+                   const.ACTION_GET_LSN_INFO,
                    self.context.user,
                    self.context.upgradeBackupPath,
                    self.context.localLog)
             self.context.logger.debug("Command for geting lsn info: %s." % cmd)
-            self.context.sshTool.executeCommand(cmd, "", hostList=execHosts)
+            self.context.sshTool.executeCommand(cmd, hostList=execHosts)
             self.context.logger.debug(
                 "Successfully get lsn info in instanse node.")
         except Exception as e:
@@ -1398,7 +1391,7 @@ class UpgradeImpl:
         """
         try:
             stepFile = os.path.join(self.context.upgradeBackupPath,
-                                    Const.GREY_UPGRADE_STEP_FILE)
+                                    const.GREY_UPGRADE_STEP_FILE)
             self.context.logger.debug(
                 "trying to get upgraded nodes from %s" % (stepFile))
             if not os.path.isfile(stepFile):
@@ -1428,10 +1421,10 @@ class UpgradeImpl:
                   "pg_catalog.pg_namespace n " \
                   "where n.nspname = '%s' AND relname = '%s' " \
                   "AND c.relnamespace = n.oid;" % (
-                  Const.UPGRADE_SCHEMA, relname)
+                const.UPGRADE_SCHEMA, relname)
             self.context.logger.debug("Sql to query if has the table: %s" % sql)
             (status, output) = self.execSqlCommandInPrimaryDN(sql)
-            if status != 0 or ClusterCommand.findErrorInSql(output):
+            if status != 0 or SqlResult.findErrorInSql(output):
                 raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] %
                                 sql + " Error: \n%s" % str(output))
             if output == '0':
@@ -1441,22 +1434,6 @@ class UpgradeImpl:
             return True
         except Exception as e:
             raise Exception(str(e))
-
-    def findOneMatchedCombin(self, clusterNodes):
-        """
-        function: if the node number is less than const.COMBIN_NUM, we will
-        try all possiblity combination to get one
-        matched combination, otherwise, we will use a strategy to find the
-        node with less instance(cms, gtm, etc.)
-        input : check the score or return the first match combination
-        output: one match best node
-        """
-        combinNodes = clusterNodes
-        # combin is node name list
-        randomNodes = random.sample(combinNodes, self.context.nodesNum)
-        self.context.logger.log("Not match the condition, "
-                                "choose nodes %s" % randomNodes)
-        return randomNodes
 
     def canUpgradeAgain(self):
         """
@@ -1510,11 +1487,11 @@ class UpgradeImpl:
 
     def initNodeStepInCsv(self):
         bakStepFile = os.path.join(self.context.upgradeBackupPath,
-                                   Const.GREY_UPGRADE_STEP_FILE + "_bak")
+                                   const.GREY_UPGRADE_STEP_FILE + "_bak")
         self.context.logger.debug("Create and init the file %s." % bakStepFile)
-        g_file.createFile(bakStepFile, True, DefaultValue.KEY_FILE_MODE)
+        FileUtil.createFile(bakStepFile, True, DefaultValue.KEY_FILE_MODE)
         header = ["node_host", "upgrade_action", "step"]
-        g_file.createFileInSafeMode(bakStepFile)
+        FileUtil.createFileInSafeMode(bakStepFile)
         writeInfo = []
         for dbNode in self.context.clusterInfo.dbNodes:
             writeInfo.append([('%s' % dbNode.name),
@@ -1525,8 +1502,8 @@ class UpgradeImpl:
             writer.writerow(header)
             writer.writerows(writeInfo)
         finalStepFile = os.path.join(self.context.upgradeBackupPath,
-                                     Const.GREY_UPGRADE_STEP_FILE)
-        g_file.rename(bakStepFile, finalStepFile)
+                                     const.GREY_UPGRADE_STEP_FILE)
+        FileUtil.rename(bakStepFile, finalStepFile)
         # so if we can get the step file, we can get the step information
         self.context.logger.debug("Rename the file %s to %s." % (
             bakStepFile, finalStepFile))
@@ -1536,10 +1513,10 @@ class UpgradeImpl:
 
     def initUpgradeProcessStatus(self):
         stepFile = os.path.join(self.context.upgradeBackupPath,
-                                Const.INPLACE_UPGRADE_STEP_FILE)
+                                const.INPLACE_UPGRADE_STEP_FILE)
         self.context.logger.debug("Create and init the file %s" % stepFile)
-        g_file.removeFile(stepFile, "python")
-        g_file.createFile(stepFile, True, DefaultValue.KEY_FILE_MODE)
+        FileUtil.removeFile(stepFile, "python")
+        FileUtil.createFile(stepFile, True, DefaultValue.KEY_FILE_MODE)
         self.recordNodeStepInplace(self.context.action,
                                    GreyUpgradeStep.STEP_INIT_STATUS)
         self.context.logger.debug("Successfully inited the file %s "
@@ -1580,10 +1557,10 @@ class UpgradeImpl:
             nodes = []
         self.context.logger.debug("Record node step %s in file" % str(step))
         stepFile = os.path.join(self.context.upgradeBackupPath,
-                                Const.GREY_UPGRADE_STEP_FILE)
+                                const.GREY_UPGRADE_STEP_FILE)
         stepTempFile = os.path.join(self.context.upgradeBackupPath,
                                     "upgrade_step_temp.csv")
-        g_file.createFileInSafeMode(stepTempFile)
+        FileUtil.createFileInSafeMode(stepTempFile)
         with open(stepFile, 'r') as csvfile, \
                 open(stepTempFile, 'w') as tempfile:
             header = ["node_host", "upgrade_action", "step"]
@@ -1607,9 +1584,9 @@ class UpgradeImpl:
                                       row['upgrade_action'], str(step)])
             writer.writerows(writeInfo)
 
-        g_file.removeFile(stepFile)
-        g_file.rename(stepTempFile, stepFile)
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE, stepFile)
+        FileUtil.removeFile(stepFile)
+        FileUtil.rename(stepTempFile, stepFile)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, stepFile)
         # distribute the node step file to each node
         self.distributeFile(stepFile)
 
@@ -1623,38 +1600,38 @@ class UpgradeImpl:
         self.distributeXml()
         # 2. check whether we should do rollback or not.
         if not self.doInplaceBinaryRollback():
-            self.exitWithRetCode(Const.ACTION_AUTO_ROLLBACK, False)
+            self.exitWithRetCode(const.ACTION_AUTO_ROLLBACK, False)
         try:
             self.checkUpgrade()
 
             # 3. before do binary upgrade, we must make sure the cluster is
             # Normal and the database could be connected
             #    if not, exit.
-            self.startCluster()
+            self.start_strategy(is_final=False)
 
             # uninstall kerberos if has already installed
-            pghost_path = DefaultValue.getEnvironmentParameterValue(
+            pghost_path = EnvUtil.getEnvironmentParameterValue(
                 'PGHOST', self.context.user)
             kerberosflagfile = "%s/kerberos_upgrade_flag" % pghost_path
             if os.path.exists(kerberosflagfile):
-                self.stopCluster()
+                self.stop_strategy(is_final=False)
                 self.context.logger.log("Starting uninstall Kerberos.",
                                         "addStep")
                 cmd = "source %s && " % self.context.userProfile
                 cmd += "%s -m uninstall -U %s" % (OMCommand.getLocalScript(
                     "Local_Kerberos"), self.context.user)
-                self.context.sshTool.executeCommand(cmd, "")
+                self.context.sshTool.executeCommand(cmd)
                 self.context.logger.log("Successfully uninstall Kerberos.")
-                self.startCluster()
+                self.start_strategy(is_final=False)
             if self.unSetClusterReadOnlyMode() != 0:
                 raise Exception("NOTICE: "
                                 + ErrorCode.GAUSS_529["GAUSS_52907"])
-            self.recordNodeStepInplace(Const.ACTION_INPLACE_UPGRADE,
-                                       Const.BINARY_UPGRADE_STEP_INIT_STATUS)
+            self.recordNodeStepInplace(const.ACTION_INPLACE_UPGRADE,
+                                       const.BINARY_UPGRADE_STEP_INIT_STATUS)
 
-            (status, output) = self.doHealthCheck(Const.OPTION_PRECHECK)
+            (status, output) = self.doHealthCheck(const.OPTION_PRECHECK)
             if status != 0:
-                self.exitWithRetCode(Const.ACTION_INPLACE_UPGRADE, False,
+                self.exitWithRetCode(const.ACTION_INPLACE_UPGRADE, False,
                                      ErrorCode.GAUSS_516["GAUSS_51601"]
                                      % "cluster" + output)
             self.getOneDNInst()
@@ -1685,11 +1662,11 @@ class UpgradeImpl:
                 self.HASyncReplayCheck()
                 self.backupOldClusterDBAndRelInfo()
             # 8. stop old cluster
-            self.recordNodeStepInplace(Const.ACTION_INPLACE_UPGRADE,
-                                       Const.BINARY_UPGRADE_STEP_STOP_NODE)
+            self.recordNodeStepInplace(const.ACTION_INPLACE_UPGRADE,
+                                       const.BINARY_UPGRADE_STEP_STOP_NODE)
             self.context.logger.debug("Start to stop all instances"
                                       " on the node.", "addStep")
-            self.stopCluster()
+            self.stop_strategy(is_final=False)
             self.context.logger.debug("Successfully stop all"
                                       " instances on the node.", "constant")
             # 9. back cluster config. including this:
@@ -1703,14 +1680,14 @@ class UpgradeImpl:
             #    gds files
             #    physical catalog files if performing inplace upgrade
             self.recordNodeStepInplace(
-                Const.ACTION_INPLACE_UPGRADE,
-                Const.BINARY_UPGRADE_STEP_BACKUP_VERSION)
+                const.ACTION_INPLACE_UPGRADE,
+                const.BINARY_UPGRADE_STEP_BACKUP_VERSION)
             self.backupClusterConfig()
 
             # 10. Upgrade application on node
             #     install new bin file
-            self.recordNodeStepInplace(Const.ACTION_INPLACE_UPGRADE,
-                                       Const.BINARY_UPGRADE_STEP_UPGRADE_APP)
+            self.recordNodeStepInplace(const.ACTION_INPLACE_UPGRADE,
+                                       const.BINARY_UPGRADE_STEP_UPGRADE_APP)
             self.installNewBin()
 
             # 11. restore the cluster config. including this:
@@ -1718,7 +1695,7 @@ class UpgradeImpl:
             #    cluster_dynamic_config
             #    etc/gscgroup_xxx.cfg
             #    lib/postgresql/pg_plugin
-            #    server.key.cipher 
+            #    server.key.cipher
             #    server.key.rand
             #    Data Studio lib files
             #    gds files
@@ -1727,7 +1704,7 @@ class UpgradeImpl:
             self.restoreClusterConfig()
             self.syncNewGUC()
             # unset cluster readonly
-            self.startCluster()
+            self.start_strategy(is_final=False)
             if self.unSetClusterReadOnlyMode() != 0:
                 raise Exception("NOTICE: "
                                 + ErrorCode.GAUSS_529["GAUSS_52907"])
@@ -1739,15 +1716,15 @@ class UpgradeImpl:
                 self.refresh_dynamic_config_file()
                 self.context.logger.debug(
                     "Successfully refresh dynamic config file")
-            self.stopCluster()
+            self.stop_strategy(is_final=False)
             if os.path.exists(dynamicConfigFile) \
                     and self.isLargeInplaceUpgrade:
                 self.restore_dynamic_config_file()
             # 12. modify GUC parameter unix_socket_directory
             self.modifySocketDir()
             # 13. start new cluster
-            self.recordNodeStepInplace(Const.ACTION_INPLACE_UPGRADE,
-                                       Const.BINARY_UPGRADE_STEP_START_NODE)
+            self.recordNodeStepInplace(const.ACTION_INPLACE_UPGRADE,
+                                       const.BINARY_UPGRADE_STEP_START_NODE)
             self.context.logger.debug("Start to start all instances"
                                       " on the node.", "addStep")
 
@@ -1757,16 +1734,20 @@ class UpgradeImpl:
                 self.touchRollbackCatalogFlag()
                 self.updateCatalog()
             self.CopyCerts()
-            self.context.createGrpcCa()
+            if DefaultValue.is_create_grpc(self.context.logger, self.context.oldClusterAppPath):
+                self.context.createGrpcCa()
             self.context.logger.debug("Successfully createGrpcCa.")
 
-            self.switchBin(Const.NEW)
-            self.startCluster()
+            # stop cluster for switch new bin
+            self.stop_strategy(is_final=False)
+            self.switchBin(const.NEW)
+            # create CA for CM
+            self.create_ca_for_cm()
+            self.start_strategy(is_final=False)
             if self.isLargeInplaceUpgrade:
                 self.modifyPgProcIndex()
                 self.context.logger.debug("Start to exec post upgrade script")
-                self.doUpgradeCatalog(self.context.oldClusterNumber,
-                                      postUpgrade=True)
+                self.doUpgradeCatalog(postUpgrade=True)
                 self.context.logger.debug(
                     "Successfully exec post upgrade script")
             self.context.logger.debug("Successfully start all "
@@ -1774,23 +1755,23 @@ class UpgradeImpl:
             if self.setClusterReadOnlyMode() != 0:
                 raise Exception(ErrorCode.GAUSS_529["GAUSS_52908"])
             # 14. check the cluster status
-            (status, output) = self.doHealthCheck(Const.OPTION_POSTCHECK)
+            (status, output) = self.doHealthCheck(const.OPTION_POSTCHECK)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51601"]
                                 % "cluster" + output)
 
             # 15. record precommit step status
-            self.recordNodeStepInplace(Const.ACTION_INPLACE_UPGRADE,
-                                       Const.BINARY_UPGRADE_STEP_PRE_COMMIT)
+            self.recordNodeStepInplace(const.ACTION_INPLACE_UPGRADE,
+                                       const.BINARY_UPGRADE_STEP_PRE_COMMIT)
             self.printPrecommitBanner()
         except Exception as e:
             self.context.logger.error(str(e))
             self.context.logger.log("Binary upgrade failed. Rollback"
                                     " to the original cluster.")
             # do rollback
-            self.exitWithRetCode(Const.ACTION_AUTO_ROLLBACK,
+            self.exitWithRetCode(const.ACTION_AUTO_ROLLBACK,
                                  self.doInplaceBinaryRollback())
-        self.exitWithRetCode(Const.ACTION_INPLACE_UPGRADE, True)
+        self.exitWithRetCode(const.ACTION_INPLACE_UPGRADE, True)
 
     def doInplaceCommitUpgrade(self):
         """
@@ -1804,25 +1785,33 @@ class UpgradeImpl:
         input : NA
         output: NA
         """
-        if self.getNodeStepInplace() != Const.BINARY_UPGRADE_STEP_PRE_COMMIT:
+        self.context.logger.log("NOTICE: Start to commit binary upgrade.")
+        self.context.logger.log("Start to check whether can be committed.", "addStep")
+        if self.getNodeStepInplace() != const.BINARY_UPGRADE_STEP_PRE_COMMIT:
             raise Exception(ErrorCode.GAUSS_529["GAUSS_52916"]
                             + " Please check if previous upgrade"
                               " operation was successful or if"
                               " upgrade has already been committed.")
+        self.context.logger.log("Can be committed.", "constant")
+        self.context.logger.log("Start to set commit flag.", "addStep")
         # create commit flag file
         self.createCommitFlagFile()
+        self.context.logger.log("Set commit flag succeeded.", "constant")
+        self.context.logger.log("Start to do operations that cannot be rollback.", "addStep")
 
         # variable to indicate whether we should keep step file
         # and cleanup list file for re-entry
         cleanUpSuccess = True
 
         # drop table and index after large upgrade
-        if self.isLargeInplaceUpgrade:
-            if self.check_upgrade_mode():
-                self.drop_table_or_index()
+        if self.isLargeInplaceUpgrade and self.check_upgrade_mode():
+            self.drop_table_or_index()
         # 1.unset read-only
         if self.isLargeInplaceUpgrade:
+            self.setUpgradeFromParam(const.UPGRADE_UNSET_NUM)
+            self.reloadCmAgent()
             self.setUpgradeMode(0)
+
         if self.unSetClusterReadOnlyMode() != 0:
             self.context.logger.log("NOTICE: "
                                     + ErrorCode.GAUSS_529["GAUSS_52907"])
@@ -1832,6 +1821,8 @@ class UpgradeImpl:
         # 2. drop old PMK schema
         # we sleep 10 seconds first because DB might be updating
         # ha status after unsetting read-only
+        self.context.logger.log("Cancel the upgrade status succeeded.", "constant")
+        self.context.logger.log("Start to clean temp files for upgrade.", "addStep")
         time.sleep(10)
         # 3. clean backup catalog physical files if doing inplace upgrade
         if self.cleanBackupedCatalogPhysicalFiles() != 0:
@@ -1840,30 +1831,29 @@ class UpgradeImpl:
                 % self.context.upgradeBackupPath)
 
         if not cleanUpSuccess:
-            self.context.logger.log("NOTICE: Cleanup is incomplete during"
-                                    " commit. Please re-commit upgrade once"
-                                    " again or cleanup manually")
-            self.exitWithRetCode(Const.ACTION_INPLACE_UPGRADE, False)
+            self.context.logger.log("NOTICE: Cleanup is incomplete during commit. "
+                                    "Please re-commit upgrade once again or cleanup manually")
         else:
             # 8. clean up other upgrade tmp files
             # and uninstall inplace upgrade support functions
-            self.cleanInstallPath(Const.OLD)
+            self.cleanInstallPath(const.OLD)
             self.cleanBinaryUpgradeBakFiles()
             if self.isLargeInplaceUpgrade:
-                self.stopCluster()
-                self.startCluster()
+                self.stop_strategy(is_final=False)
+                self.start_strategy(is_final=False)
 
             # install Kerberos
             self.install_kerberos()
-            self.context.logger.log("Commit binary upgrade succeeded.")
-            self.exitWithRetCode(Const.ACTION_INPLACE_UPGRADE, True)
+            self.context.logger.log("Clean temp files for upgrade succeeded.", "constant")
+            self.context.logger.log("NOTICE: Commit binary upgrade succeeded.")
+        self.exitWithRetCode(const.ACTION_INPLACE_UPGRADE, cleanUpSuccess)
 
     def install_kerberos(self):
         """
         install kerberos after upgrade
         :return:NA
         """
-        pghost_path = DefaultValue.getEnvironmentParameterValue(
+        pghost_path = EnvUtil.getEnvironmentParameterValue(
             'PGHOST', self.context.user)
         kerberosflagfile = "%s/kerberos_upgrade_flag" % pghost_path
         if os.path.exists(kerberosflagfile):
@@ -1873,7 +1863,7 @@ class UpgradeImpl:
             cmd += "%s -m install -U %s --krb-server" % (
                 OMCommand.getLocalScript("Local_Kerberos"),
                 self.context.user)
-            (status, output) = DefaultValue.retryGetstatusoutput(cmd, 3, 5)
+            (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
                                 "Command:%s. Error:\n%s" % (cmd, output))
@@ -1881,11 +1871,11 @@ class UpgradeImpl:
             cmd += "%s -m install -U %s --krb-client " % (
             OMCommand.getLocalScript("Local_Kerberos"), self.context.user)
             self.context.sshTool.executeCommand(
-                cmd, "", hostList=self.context.clusterNodes)
+                cmd, hostList=self.context.clusterNodes)
             self.context.logger.log("Successfully install Kerberos.")
             cmd = "source %s && gs_om -t start" % self.context.userProfile
             (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0 and not self.context.ignoreInstance:
+            if status != 0:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
                                 "Command:%s. Error:\n%s" % (cmd, output))
             os.remove(kerberosflagfile)
@@ -1909,22 +1899,21 @@ class UpgradeImpl:
         cmd = "%s -t %s -U %s -V %d --upgrade_bak_path=%s " \
               "--old_cluster_app_path=%s --new_cluster_app_path=%s " \
               "-l %s" % (
-                  OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                  Const.ACTION_RESTORE_DYNAMIC_CONFIG_FILE,
-                  self.context.user,
-                  int(float(self.context.oldClusterNumber) * 1000),
-                  self.context.upgradeBackupPath,
-                  self.context.oldClusterAppPath,
-                  self.context.newClusterAppPath,
-                  self.context.localLog)
+            OMCommand.getLocalScript("Local_Upgrade_Utility"),
+            const.ACTION_RESTORE_DYNAMIC_CONFIG_FILE,
+            self.context.user,
+            int(float(self.context.oldClusterNumber) * 1000),
+            self.context.upgradeBackupPath,
+            self.context.oldClusterAppPath,
+            self.context.newClusterAppPath,
+            self.context.localLog)
 
         self.context.logger.debug("Command for restoring "
                                   "config files: %s" % cmd)
-        DefaultValue.execCommandWithMode(cmd,
-                                         "restore config files",
-                                         self.context.sshTool,
-                                         self.context.isSingle,
-                                         self.context.mpprcFile)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle,
+                                        self.context.mpprcFile)
 
     def cleanCsvFile(self):
         """
@@ -1942,9 +1931,9 @@ class UpgradeImpl:
             new_pg_proc_csv_path = \
                 '%s/pg_copydir/new_tbl_pg_proc_oids.csv' % dndir
             if os.path.exists(pg_proc_csv_path):
-                g_file.removeFile(pg_proc_csv_path)
+                FileUtil.removeFile(pg_proc_csv_path)
             if os.path.exists(new_pg_proc_csv_path):
-                g_file.removeFile(new_pg_proc_csv_path)
+                FileUtil.removeFile(new_pg_proc_csv_path)
 
     def check_upgrade_mode(self):
         """
@@ -1974,20 +1963,20 @@ class UpgradeImpl:
             if self.isLargeInplaceUpgrade:
                 self.context.logger.log("Clean up backup catalog files.")
                 # send cmd to all node and exec
-                cmd = "%s -t %s -U %s --upgrade_bak_path=%s -l %s" % \
+                cmd = "%s -t %s -U %s --upgrade_bak_path=%s -X '%s' -l %s" % \
                       (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                       Const.ACTION_CLEAN_OLD_CLUSTER_CATALOG_PHYSICAL_FILES,
+                       const.ACTION_CLEAN_OLD_CLUSTER_CATALOG_PHYSICAL_FILES,
                        self.context.user,
                        self.context.upgradeBackupPath,
+                       self.context.xmlFile,
                        self.context.localLog)
                 if isRollBack:
                     cmd += " --rollback --oldcluster_num='%s'" % \
                            self.context.oldClusterNumber
                 self.context.logger.debug(
                     "Command for cleaning up physical catalog files: %s." % cmd)
-                DefaultValue.execCommandWithMode(
+                CmdExecutor.execCommandWithMode(
                     cmd,
-                    "clean backuped physical files of catalog objects",
                     self.context.sshTool,
                     self.context.isSingle,
                     self.context.userProfile)
@@ -2064,9 +2053,9 @@ class UpgradeImpl:
             self.context.logger.debug(
                 "The list of logical cluster names: %s." % lcgroupnames)
             # create the file
-            g_file.createFile(lcgroupfile)
-            g_file.changeOwner(self.context.user, lcgroupfile)
-            g_file.changeMode(DefaultValue.KEY_FILE_MODE, lcgroupfile)
+            FileUtil.createFile(lcgroupfile)
+            FileUtil.changeOwner(self.context.user, lcgroupfile)
+            FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, lcgroupfile)
             # write result to file
             with open(lcgroupfile, "w") as fp_json:
                 json.dump({"lcgroupnamelist": lcgroupnames}, fp_json)
@@ -2079,11 +2068,10 @@ class UpgradeImpl:
         except Exception as e:
             cmd = "(if [ -f '%s' ]; then rm -f '%s'; fi)" % (
                 lcgroupfile, lcgroupfile)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "clean lcgroup name list file",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.userProfile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.userProfile)
             raise Exception(str(e))
 
     def prepareUpgradeSqlFolder(self):
@@ -2095,24 +2083,23 @@ class UpgradeImpl:
         output: NA
         """
         self.context.logger.debug("Preparing upgrade sql folder.")
-        if self.context.action == Const.ACTION_INPLACE_UPGRADE:
-            hostName = DefaultValue.GetHostIpOrName()
+        if self.context.action == const.ACTION_INPLACE_UPGRADE:
+            hostName = NetUtil.GetHostIpOrName()
             hosts = [hostName]
         else:
             hosts = self.context.clusterNodes
         cmd = "%s -t %s -U %s --upgrade_bak_path=%s -X %s -l %s" % \
               (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-               Const.ACTION_UPGRADE_SQL_FOLDER,
+               const.ACTION_UPGRADE_SQL_FOLDER,
                self.context.user,
                self.context.upgradeBackupPath,
                self.context.xmlFile,
                self.context.localLog)
-        DefaultValue.execCommandWithMode(cmd,
-                                         "prepare upgrade_sql",
-                                         self.context.sshTool,
-                                         self.context.isSingle,
-                                         self.context.userProfile,
-                                         hosts)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle,
+                                        self.context.userProfile,
+                                        hosts)
 
     def HASyncReplayCheck(self):
         """
@@ -2260,8 +2247,8 @@ class UpgradeImpl:
         input : NA
         output: NA
         """
-        tmpFile = os.path.join(DefaultValue.getTmpDirFromEnv(
-            self.context.user), Const.TMP_DYNAMIC_DN_INFO)
+        tmpFile = os.path.join(EnvUtil.getTmpDirFromEnv(
+            self.context.user), const.TMP_DYNAMIC_DN_INFO)
         try:
             self.context.logger.debug("Start to backup old cluster database"
                                       " and relation information.")
@@ -2271,7 +2258,7 @@ class UpgradeImpl:
             cmd = "rm -rf '%s' && mkdir '%s' -m '%s' " % \
                   (backup_path, backup_path, DefaultValue.KEY_DIRECTORY_MODE)
             hostList = copy.deepcopy(self.context.clusterNodes)
-            self.context.sshTool.executeCommand(cmd, "", hostList=hostList)
+            self.context.sshTool.executeCommand(cmd, hostList=hostList)
             # prepare dynamic cluster info file in every node
             self.generateDynamicInfoFile(tmpFile)
             # get dn primary hosts
@@ -2279,16 +2266,17 @@ class UpgradeImpl:
             execHosts = list(set(dnPrimaryNodes))
 
             # send cmd to all node and exec
-            cmd = "%s -t %s -U %s --upgrade_bak_path=%s -l %s" % \
+            cmd = "%s -t %s -U %s --upgrade_bak_path=%s -X '%s' -l %s" % \
                   (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                   Const.ACTION_BACKUP_OLD_CLUSTER_DB_AND_REL,
+                   const.ACTION_BACKUP_OLD_CLUSTER_DB_AND_REL,
                    self.context.user,
                    self.context.upgradeBackupPath,
+                   self.context.xmlFile,
                    self.context.localLog)
             self.context.logger.debug(
                 "Command for backing up old cluster database and "
                 "relation information: %s." % cmd)
-            self.context.sshTool.executeCommand(cmd, "", hostList=execHosts)
+            self.context.sshTool.executeCommand(cmd, hostList=execHosts)
             self.context.logger.debug("Backing up information of all nodes.")
             self.context.logger.debug("Successfully backed up old cluster "
                                       "database and relation information")
@@ -2300,7 +2288,7 @@ class UpgradeImpl:
                             (tmpFile, tmpFile)
                 hostList = copy.deepcopy(self.context.clusterNodes)
                 self.context.sshTool.executeCommand(
-                    deleteCmd, "", hostList=hostList)
+                    deleteCmd, hostList=hostList)
 
     def generateDynamicInfoFile(self, tmpFile):
         """
@@ -2310,8 +2298,7 @@ class UpgradeImpl:
         self.context.logger.debug(
             "Start to generate dynamic info file and send to every node.")
         try:
-            cmd = ClusterCommand.getQueryStatusCmd(
-                self.context.user, outFile=tmpFile)
+            cmd = ClusterCommand.getQueryStatusCmd("", outFile=tmpFile)
             SharedFuncs.runShellCmd(cmd, self.context.user,
                                     self.context.userProfile)
             if not os.path.exists(tmpFile):
@@ -2334,8 +2321,8 @@ class UpgradeImpl:
         try:
             self.context.logger.debug(
                 "Start to get primary dn list from dynamic file.")
-            tmpFile = os.path.join(DefaultValue.getTmpDirFromEnv(
-                self.context.user), Const.TMP_DYNAMIC_DN_INFO)
+            tmpFile = os.path.join(EnvUtil.getTmpDirFromEnv(
+                self.context.user), const.TMP_DYNAMIC_DN_INFO)
             if not os.path.exists(tmpFile):
                 raise Exception(ErrorCode.GAUSS_529["GAUSS_50201"] % tmpFile)
             dynamicClusterStatus = DbClusterStatus()
@@ -2365,11 +2352,10 @@ class UpgradeImpl:
         # during rollback, if init flag file has not been touched,
         # we do not need to do catalog rollback.
         cmd = "touch '%s/touch_init_flag'" % self.context.upgradeBackupPath
-        DefaultValue.execCommandWithMode(cmd,
-                                         "create init flag file",
-                                         self.context.sshTool,
-                                         self.context.isSingle,
-                                         self.context.userProfile)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle,
+                                        self.context.userProfile)
 
     def updateCatalog(self):
         """
@@ -2385,12 +2371,12 @@ class UpgradeImpl:
             self.prepareSql("upgrade")
             self.prepareSql("rollback-post")
             self.prepareSql("rollback")
-            self.doUpgradeCatalog(self.context.oldClusterNumber)
+            self.doUpgradeCatalog()
         except Exception as e:
             raise Exception(
                 "Failed to execute update sql file. Error: %s" % str(e))
 
-    def doUpgradeCatalog(self, oldClusterNumber, postUpgrade=False):
+    def doUpgradeCatalog(self, postUpgrade=False):
         """
         function: update catalog to new version
                   1.set upgrade_from param
@@ -2403,31 +2389,34 @@ class UpgradeImpl:
         Input: oldClusterNumber
         output : NA
         """
+        self.context.logger.debug("Start upgrade catalog.")
         try:
-            if self.context.action == Const.ACTION_INPLACE_UPGRADE:
-                if not postUpgrade:
-                    self.startCluster()
-                    self.setUpgradeMode(1)
+            if not postUpgrade:
+                self.context.logger.debug("Not post upgrade.")
+                self.setUpgradeFromParam(self.context.oldClusterNumber)
+                if self.context.action == const.ACTION_INPLACE_UPGRADE:
+                    self.setUpgradeMode(1, "set")
+                    self.start_strategy(is_final=False)
                     self.touchInitFile()
-            elif not postUpgrade:
-                # the guc parameter upgrade_from need to restart
-                # cmagent to take effect
-                self.setUpgradeMode(2)
-                # kill snapshot thread in kernel
-                self.context.killKernalSnapshotThread(self.dnInst)
-            # if we use --force to forceRollback last time,
-            # it may has remaining last catalog
-            if postUpgrade:
-                self.waitClusterForNormal()
-                self.execRollbackUpgradedCatalog(scriptType="rollback-post")
-                self.execRollbackUpgradedCatalog(scriptType="upgrade-post")
-            else:
+                else:
+                    # the guc parameter upgrade_from need to restart cmagent to take effect
+                    self.setUpgradeMode(2)
+                    self.reloadCmAgent()
+                    # kill snapshot thread in kernel
+                    self.context.killKernalSnapshotThread(self.dnInst)
+
                 self.execRollbackUpgradedCatalog(scriptType="rollback")
                 self.execRollbackUpgradedCatalog(scriptType="upgrade")
                 self.pgxcNodeUpdateLocalhost("upgrade")
+            else:
+                self.context.logger.debug("Post upgrade.")
+                self.waitClusterForNormal()
+                self.execRollbackUpgradedCatalog(scriptType="rollback-post")
+                self.execRollbackUpgradedCatalog(scriptType="upgrade-post")
+
             self.getLsnInfo()
             if self.context.action == \
-                    Const.ACTION_INPLACE_UPGRADE and not postUpgrade and not \
+                    const.ACTION_INPLACE_UPGRADE and not postUpgrade and not \
                     int(float(self.context.newClusterNumber) * 1000) > 92298:
                 self.updatePgproc()
         except Exception as e:
@@ -2445,13 +2434,13 @@ class UpgradeImpl:
         # send cmd to all node and exec
         cmd = "%s -t %s -U %s -R '%s' -l %s" % (
             OMCommand.getLocalScript("Local_Upgrade_Utility"),
-            Const.ACTION_CREATE_NEW_CSV_FILE,
+            const.ACTION_CREATE_NEW_CSV_FILE,
             self.context.user,
             self.context.tmpDir,
             self.context.localLog)
         self.context.logger.debug(
             "Command for create new csv file: %s." % cmd)
-        self.context.sshTool.executeCommand(cmd, "", hostList=execHosts)
+        self.context.sshTool.executeCommand(cmd, hostList=execHosts)
         self.context.logger.debug(
             "Successfully created new csv file.")
         # select all databases
@@ -2468,14 +2457,12 @@ class UpgradeImpl:
         #  file path and pg_proc_temp_oids file path
         cmd = "%s -t %s -U %s -R '%s' -l %s" % (
             OMCommand.getLocalScript("Local_Upgrade_Utility"),
-            Const.ACTION_CREATE_PG_PROC_MAPPING_FILE,
+            const.ACTION_CREATE_PG_PROC_MAPPING_FILE,
             self.context.user,
             self.context.tmpDir,
             self.context.localLog)
-        DefaultValue.execCommandWithMode(
+        CmdExecutor.execCommandWithMode(
             cmd,
-            "create file to save mapping between pg_proc file path and "
-            "pg_proc_temp_oids file path",
             self.context.sshTool,
             self.context.isSingle,
             self.context.userProfile)
@@ -2483,65 +2470,22 @@ class UpgradeImpl:
             "Successfully created file to save mapping between pg_proc file "
             "path and pg_proc_temp_oids file path.")
         # stop cluster
-        self.stopCluster()
+        self.stop_strategy()
         # replace pg_proc data file by pg_proc_temp data file
         # send cmd to all node and exec
         cmd = "%s -t %s -U %s -R '%s' -l %s" % (
             OMCommand.getLocalScript("Local_Upgrade_Utility"),
-            Const.ACTION_REPLACE_PG_PROC_FILES,
+            const.ACTION_REPLACE_PG_PROC_FILES,
             self.context.user,
             self.context.tmpDir,
             self.context.localLog)
-        DefaultValue.execCommandWithMode(
+        CmdExecutor.execCommandWithMode(
             cmd,
-            "replace pg_proc data file by pg_proc_temp data files",
             self.context.sshTool,
             self.context.isSingle,
             self.context.userProfile)
         self.context.logger.debug(
             "Successfully replaced pg_proc data files.")
-
-    def copy_and_modify_tableinfo_to_csv(self, old_csv_path, new_csv_path):
-        """
-        1. copy pg_proc info to csv file
-        2. modify csv file
-        3. create new table and get info by csv file
-        :return:
-        """
-        sql =\
-            """copy pg_proc( proname, pronamespace, proowner, prolang, 
-            procost, prorows, provariadic, protransform, prosecdef, 
-            proleakproof, proisstrict, proretset, provolatile, pronargs, 
-            pronargdefaults, prorettype, proargtypes, proallargtypes, 
-            proargmodes, proargnames, proargdefaults, prosrc, probin, 
-            proconfig, proacl, prodefaultargpos, fencedmode, proshippable, 
-            propackage,prokind) WITH OIDS to '%s' delimiter ',' 
-            csv header;""" % old_csv_path
-        (status, output) = ClusterCommand.remoteSQLCommand(
-            sql, self.context.user,
-            self.dnInst.hostname, self.dnInst.port, False,
-            DefaultValue.DEFAULT_DB_NAME, IsInplaceUpgrade=True)
-        if status != 0:
-            raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
-                            " Error: \n%s" % str(output))
-        pg_proc_csv_reader = csv.reader(open(old_csv_path, 'r'))
-        pg_proc_csv_data = list(pg_proc_csv_reader)
-        header = pg_proc_csv_data[0]
-        header.insert(header.index('protransform') + 1, 'proisagg')
-        header.insert(header.index('protransform') + 2, 'proiswindow')
-        new_pg_proc_csv_data = []
-        new_pg_proc_csv_data.append(header)
-        pg_proc_data_info = pg_proc_csv_data[1:]
-        for i in range(2):
-            for info in pg_proc_data_info:
-                info.insert(header.index('protransform') + 2, 'True')
-        for info in pg_proc_data_info:
-            new_pg_proc_csv_data.append(info)
-        f = open(new_csv_path, 'w')
-        new_pg_proc_csv_writer = csv.writer(f)
-        for info in new_pg_proc_csv_data:
-            new_pg_proc_csv_writer.writerow(info)
-        f.close()
 
     def createPgprocTempOids(self, new_pg_proc_csv_path, database_list):
         """
@@ -2675,7 +2619,7 @@ class UpgradeImpl:
                 self.context.logger.debug("Scp {0} file to nodes {1}".format(
                     check_upgrade_sql, dnNodeName))
                 if not self.context.isSingle:
-                    g_OSlib.scpFile(dnNodeName, check_upgrade_sql,
+                    LocalRemoteCmd.scpFile(dnNodeName, check_upgrade_sql,
                                     self.context.upgradeBackupPath)
             if not os.path.isfile(maindb_sql):
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50210"] % maindb_sql)
@@ -2683,9 +2627,9 @@ class UpgradeImpl:
                 raise Exception(
                     ErrorCode.GAUSS_502["GAUSS_50210"] % otherdb_sql)
             if (not self.context.isSingle):
-                g_OSlib.scpFile(dnNodeName, maindb_sql,
+                LocalRemoteCmd.scpFile(dnNodeName, maindb_sql,
                                 self.context.upgradeBackupPath)
-                g_OSlib.scpFile(dnNodeName, otherdb_sql,
+                LocalRemoteCmd.scpFile(dnNodeName, otherdb_sql,
                                 self.context.upgradeBackupPath)
                 self.context.logger.debug(
                     "Scp {0} file and {1} file to nodes {2}".format(
@@ -2693,19 +2637,18 @@ class UpgradeImpl:
             # send cmd to that node and exec
             cmd = "%s -t %s -U %s --upgrade_bak_path=%s --script_type=%s -l " \
                   "%s" % (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                   Const.ACTION_UPDATE_CATALOG,
-                   self.context.user,
-                   self.context.upgradeBackupPath,
-                   scriptType,
-                   self.context.localLog)
+                          const.ACTION_UPDATE_CATALOG,
+                          self.context.user,
+                          self.context.upgradeBackupPath,
+                          scriptType,
+                          self.context.localLog)
             self.context.logger.debug(
                 "Command for executing {0} catalog.".format(scriptType))
-            DefaultValue.execCommandWithMode(cmd,
-                                             "{0} catalog".format(scriptType),
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.userProfile,
-                                             [dnNodeName])
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.userProfile,
+                                            [dnNodeName])
             self.context.logger.debug(
                 "Successfully {0} catalog.".format(scriptType))
         except Exception as e:
@@ -2731,7 +2674,7 @@ class UpgradeImpl:
             for dbNode in self.context.clusterInfo.dbNodes:
                 for dn in dbNode.datanodes:
                     sql = "START TRANSACTION;"
-                    sql += "SET %s = on;" % Const.ON_INPLACE_UPGRADE
+                    sql += "SET %s = on;" % const.ON_INPLACE_UPGRADE
                     if mode == "upgrade":
                         sql += "UPDATE PGXC_NODE SET node_host = '%s', " \
                                "node_host1 = '%s' WHERE node_host = " \
@@ -2779,15 +2722,14 @@ class UpgradeImpl:
                 # send cmd to all node and exec
                 cmd = "%s -t %s -U %s --upgrade_bak_path=%s -l %s" % \
                       (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                       Const.ACTION_TOUCH_INIT_FILE,
+                       const.ACTION_TOUCH_INIT_FILE,
                        self.context.user,
                        self.context.upgradeBackupPath,
                        self.context.localLog)
-                DefaultValue.execCommandWithMode(cmd,
-                                                 "create upgrade init file",
-                                                 self.context.sshTool,
-                                                 self.context.isSingle,
-                                                 self.context.userProfile)
+                CmdExecutor.execCommandWithMode(cmd,
+                                                self.context.sshTool,
+                                                self.context.isSingle,
+                                                self.context.userProfile)
                 self.context.logger.debug(
                     "Successfully created upgrade init file.")
         except Exception as e:
@@ -2862,8 +2804,8 @@ class UpgradeImpl:
             self.context.logger.debug("Preparing [%s]." % filePath)
             writeFile = "%s/%s" % (self.context.upgradeBackupPath,
                                    executeFileName)
-            g_file.createFile(writeFile)
-            g_file.writeFile(writeFile, header, 'w')
+            FileUtil.createFile(writeFile)
+            FileUtil.writeFile(writeFile, header, 'w')
 
             with open(writeFile, 'a') as sqlFile:
                 for each_file in fileNameList:
@@ -2874,7 +2816,7 @@ class UpgradeImpl:
                         for line in fp:
                             sqlFile.write(line)
                     sqlFile.write(os.linesep)
-            g_file.writeFile(writeFile, ["COMMIT;"], 'a')
+            FileUtil.writeFile(writeFile, ["COMMIT;"], 'a')
             self.context.logger.debug(
                 "Success to together {0} file".format(writeFile))
             if not os.path.isfile(writeFile):
@@ -2882,6 +2824,118 @@ class UpgradeImpl:
         except Exception as e:
             raise Exception("Failed to write {0} sql file. ERROR: {1}".format(
                 writeFile, str(e)))
+
+    def om_stop_cluster(self):
+        """
+        Stop cluster with gs_om
+        """
+        cmd = "source %s ;gs_om -t stop" % self.context.userProfile
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51610"] % "cluster" +
+                            "Output: %s" % output)
+        self.context.logger.log("Stop cluster with gs_om successfully.")
+
+    def om_start_cluster(self):
+        """
+        Start Cluster with om
+        """
+        cmd = "source %s ;gs_om -t start" % self.context.userProfile
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51607"] % "cluster" +
+                            "Output: %s" % output)
+        self.context.logger.debug("Start cluster with gs_om successfully.")
+
+    def get_cms_num(self, cluster_config_file):
+        """
+        Get cm_server num from static config file
+        """
+        cluster_info = dbClusterInfo()
+        cluster_info.initFromStaticConfig(self.context.user, cluster_config_file)
+        return DefaultValue.get_cm_server_num_from_static(cluster_info)
+
+    def _get_strategy_with_cm_num(self, old_cm_num, new_cm_num):
+        """
+        Get strategy with CM server instance number
+        """
+        if new_cm_num == 0 and old_cm_num == 0:
+            self.context.logger.debug("No CM instance exists in the new and old clusters.")
+            return 0
+        if new_cm_num > 0 and old_cm_num == 0:
+            self.context.logger.debug("The new cluster has a CM components "
+                                      "but the old cluster does not have a CM components.")
+            return 1
+        if new_cm_num > 0 and old_cm_num > 0:
+            self.context.logger.debug("CM components has in origin cluster.")
+            return 2
+        else:
+            return -1
+
+
+    def get_upgrade_cm_strategy(self):
+        """
+        Get strategy for start cluster
+        """
+        old_cluster_config_file = \
+            os.path.realpath(os.path.join(self.context.oldClusterAppPath,
+                                          "bin", "cluster_static_config"))
+        new_cluster_config_file = \
+            os.path.realpath(os.path.join(self.context.newClusterAppPath,
+                                          "bin", "cluster_static_config"))
+
+        if not os.path.isfile(new_cluster_config_file):
+            self.context.logger.debug("Start cluster with om tool, "
+                                      "[{0}]".format(new_cluster_config_file))
+            if os.path.isfile(old_cluster_config_file):
+                if self.get_cms_num(old_cluster_config_file) == 0:
+                    return 0
+                else:
+                    return 2
+            return -1
+
+        new_cm_num = self.get_cms_num(new_cluster_config_file)
+
+        if not os.path.isfile(old_cluster_config_file):
+            self.context.logger.debug("Not exist old static_config_file "
+                                      "[{0}]".format(old_cluster_config_file))
+            if new_cm_num == 0:
+                return 0
+            else:
+                return 2
+
+        old_cm_num = self.get_cms_num(old_cluster_config_file)
+        return self._get_strategy_with_cm_num(old_cm_num, new_cm_num)
+
+    def start_strategy(self, is_final=True):
+        """
+        Start cluster
+        """
+        cm_strategy = self.get_upgrade_cm_strategy()
+        if cm_strategy == 0:
+            self.startCluster()
+        if cm_strategy == 1:
+            if is_final:
+                self.om_start_cluster()
+            else:
+                self.startCluster()
+        else:
+            self.om_start_cluster()
+
+    def stop_strategy(self, is_final=True):
+        """
+        Start cluster
+        """
+        cm_strategy = self.get_upgrade_cm_strategy()
+        if cm_strategy == 0:
+            self.stopCluster()
+        if cm_strategy == 1:
+            if is_final:
+                self.om_stop_cluster()
+            else:
+                self.stopCluster()
+        else:
+            self.om_stop_cluster()
 
     def modifyPgProcIndex(self):
         """
@@ -2926,9 +2980,9 @@ class UpgradeImpl:
                 raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
                                 " Error: \n%s" % str(output))
         # stop cluster
-        self.stopCluster()
+        self.stop_strategy()
         # start cluster
-        self.startCluster()
+        self.start_strategy()
         self.context.logger.debug("Successfully modified pg_proc index.")
 
     def setNewVersionGuc(self):
@@ -2949,13 +3003,13 @@ class UpgradeImpl:
         :return: NA
         """
         stepFile = os.path.join(self.context.upgradeBackupPath,
-                                Const.GREY_UPGRADE_STEP_FILE)
+                                const.GREY_UPGRADE_STEP_FILE)
         self.context.logger.debug("Get the action from file %s." % stepFile)
         if not (os.path.exists(stepFile) or os.path.isfile(stepFile)):
             self.context.logger.debug("Step file does not exists or not file,"
                                       " cannot get action from it. "
                                       "Set it to large upgrade.")
-            self.context.action = Const.ACTION_LARGE_UPGRADE
+            self.context.action = const.ACTION_LARGE_UPGRADE
             return
         with open(stepFile, 'r') as csvfile:
             reader = csv.DictReader(csvfile)
@@ -2965,7 +3019,7 @@ class UpgradeImpl:
         self.context.logger.debug("Set the action to %s"
                                   % self.context.action)
 
-    def getClusterAppPath(self, mode=Const.OLD):
+    def getClusterAppPath(self, mode=const.OLD):
         """
         if cannot get path from table, try to get from the backup file
         :param mode:
@@ -2975,17 +3029,17 @@ class UpgradeImpl:
         path = self.getClusterAppPathFromFile(mode)
         return path
 
-    def getClusterAppPathFromFile(self, mode=Const.OLD):
+    def getClusterAppPathFromFile(self, mode=const.OLD):
         """
         get the app path from backup dir, mode is new or old,
         :param mode: 'old', 'new'
         :return: the real path of appPath
         """
         dirFile = "%s/%s" % (self.context.upgradeBackupPath,
-                             Const.RECORD_UPGRADE_DIR)
+                             const.RECORD_UPGRADE_DIR)
         self.context.logger.debug("Get the %s app path from file %s"
                                   % (mode, dirFile))
-        if mode not in [Const.OLD, Const.NEW]:
+        if mode not in [const.OLD, const.NEW]:
             raise Exception(traceback.format_exc())
         if not os.path.exists(dirFile):
             self.context.logger.debug(ErrorCode.GAUSS_502["GAUSS_50201"]
@@ -3015,18 +3069,18 @@ class UpgradeImpl:
                 if not os.path.exists(self.context.upgradeBackupPath):
                     self.context.logger.debug("Create directory %s."
                                               % self.context.tmpDir)
-                    g_file.createDirectory(
+                    FileUtil.createDirectory(
                         self.context.upgradeBackupPath, True,
                         DefaultValue.KEY_DIRECTORY_MODE)
                 self.context.logger.debug("Copy the directory %s from node %s."
                                           % (self.context.upgradeBackupPath,
                                              copyNode))
-                cmd = g_Platform.getRemoteCopyCmd(
+                cmd = LocalRemoteCmd.getRemoteCopyCmd(
                     self.context.upgradeBackupPath, self.context.tmpDir,
                     str(copyNode), False, 'directory')
                 self.context.logger.debug("Command for copying "
                                           "directory: %s" % cmd)
-                DefaultValue.execCommandLocally(cmd)
+                CmdExecutor.execCommandLocally(cmd)
             else:
                 # binary_upgrade exists, but no step file
                 return ""
@@ -3036,7 +3090,7 @@ class UpgradeImpl:
             retLines = fp.readlines()
         if len(retLines) != 2:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50222"] % dirFile)
-        if mode == Const.OLD:
+        if mode == const.OLD:
             path = retLines[0].strip()
         else:
             path = retLines[1].strip()
@@ -3044,12 +3098,12 @@ class UpgradeImpl:
         # otherwise the file is damaged accidentally
         DefaultValue.checkPathVaild(path)
         if not os.path.exists(path):
-            if mode == Const.NEW and \
-                    self.context.action == Const.ACTION_AUTO_ROLLBACK:
+            if mode == const.NEW and \
+                    self.context.action == const.ACTION_AUTO_ROLLBACK:
                 self.context.logger.debug("Under rollback, the new "
                                           "cluster app path does not exists.")
-            elif mode == Const.OLD and \
-                    self.context.action == Const.ACTION_COMMIT_UPGRADE:
+            elif mode == const.OLD and \
+                    self.context.action == const.ACTION_COMMIT_UPGRADE:
                 self.context.logger.debug("Under commit, no need to "
                                           "check the old path exists.")
             else:
@@ -3085,7 +3139,7 @@ class UpgradeImpl:
         output: NA
         """
         try:
-            (status, output) = self.doHealthCheck(Const.OPTION_POSTCHECK)
+            (status, output) = self.doHealthCheck(const.OPTION_POSTCHECK)
             if status != 0:
                 raise Exception(
                     "NOTICE: " + ErrorCode.GAUSS_516[
@@ -3098,25 +3152,26 @@ class UpgradeImpl:
                     GreyUpgradeStep.STEP_BEGIN_COMMIT)):
                 raise Exception(ErrorCode.GAUSS_529["GAUSS_52916"])
             # for the reenter commit, the schema may have been deleted
-            if self.existTable(Const.RECORD_NODE_STEP):
+            if self.existTable(const.RECORD_NODE_STEP):
                 self.recordNodeStep(GreyUpgradeStep.STEP_BEGIN_COMMIT)
             self.setActionFile()
-            # self.restoreOriginalState()
-            if self.context.action == Const.ACTION_LARGE_UPGRADE:
+            if self.context.action == const.ACTION_LARGE_UPGRADE:
+                self.setUpgradeFromParam(const.UPGRADE_UNSET_NUM)
+                self.reloadCmAgent()
                 self.setUpgradeMode(0)
             time.sleep(10)
             if self.dropPMKSchema() != 0:
                 raise Exception(ErrorCode.GAUSS_529["GAUSS_52917"])
 
             self.clearOtherToolPackage()
-            self.cleanInstallPath(Const.OLD)
+            self.cleanInstallPath(const.OLD)
             self.dropSupportSchema()
             self.cleanBinaryUpgradeBakFiles()
             self.cleanConfBakOld()
             self.context.logger.log("Commit upgrade succeeded.")
         except Exception as e:
-            self.exitWithRetCode(Const.ACTION_COMMIT_UPGRADE, False, str(e))
-        self.exitWithRetCode(Const.ACTION_COMMIT_UPGRADE, True)
+            self.exitWithRetCode(const.ACTION_COMMIT_UPGRADE, False, str(e))
+        self.exitWithRetCode(const.ACTION_COMMIT_UPGRADE, True)
 
     def dropPMKSchema(self):
         """
@@ -3132,7 +3187,7 @@ class UpgradeImpl:
             retry_times = 0
             while True:
                 (status, output) = self.execSqlCommandInPrimaryDN(sql)
-                if status != 0 or ClusterCommand.findErrorInSql(output):
+                if status != 0 or SqlResult.findErrorInSql(output):
                     if retry_times < 12:
                         self.context.logger.debug(
                             "ERROR: Failed to DROP SCHEMA pmk for the %d time."
@@ -3166,11 +3221,11 @@ class UpgradeImpl:
         try:
             cmd = "%s -t %s -U %s -l %s" % \
                   (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                   Const.ACTION_CLEAN_CONF_BAK_OLD,
+                   const.ACTION_CLEAN_CONF_BAK_OLD,
                    self.context.user,
                    self.context.localLog)
             hostList = copy.deepcopy(self.context.nodeNames)
-            self.context.sshTool.executeCommand(cmd, "", hostList=hostList)
+            self.context.sshTool.executeCommand(cmd, hostList=hostList)
         except Exception as e:
             raise Exception(str(e))
         self.context.logger.debug(
@@ -3191,7 +3246,7 @@ class UpgradeImpl:
         # we can only read the step from file
         try:
             self.distributeXml()
-            if action == Const.ACTION_AUTO_ROLLBACK:
+            if action == const.ACTION_AUTO_ROLLBACK:
                 self.clearOtherToolPackage(action)
             try:
                 self.getOneDNInst(True)
@@ -3222,7 +3277,7 @@ class UpgradeImpl:
             # if under upgrade continue mode, it will do upgrade not rollback,
             #  it can enter the upgrade process
             # when the binary_upgrade bak dir has some files
-            if maxStep == Const.BINARY_UPGRADE_NO_NEED_ROLLBACK:
+            if maxStep == const.BINARY_UPGRADE_NO_NEED_ROLLBACK:
                 self.cleanBinaryUpgradeBakFiles(True)
                 self.context.logger.log("No need to rollback.")
                 return True
@@ -3246,7 +3301,7 @@ class UpgradeImpl:
                     "Record the step %d to mark it has leaved pre-commit"
                     " status." % GreyUpgradeStep.STEP_UPDATE_POST_CATALOG)
                 try:
-                    if self.context.action == Const.ACTION_LARGE_UPGRADE\
+                    if self.context.action == const.ACTION_LARGE_UPGRADE\
                             and \
                             self.isNodeSpecifyStep(
                                 GreyUpgradeStep.STEP_UPDATE_POST_CATALOG):
@@ -3269,21 +3324,22 @@ class UpgradeImpl:
 
             if maxStep >= GreyUpgradeStep.STEP_SWITCH_NEW_BIN:
                 self.greyRestoreConfig()
-                self.switchBin(Const.OLD)
+                self.clean_cm_instance()
+                self.switchBin(const.OLD)
                 self.greyRestoreGuc()
                 if needSwitchProcess:
                     self.rollbackHotpatch()
                     self.switchExistsProcess(True)
                 self.recordNodeStep(GreyUpgradeStep.STEP_UPDATE_CATALOG)
             if maxStep >= GreyUpgradeStep.STEP_UPDATE_CATALOG and\
-                    self.context.action == Const.ACTION_LARGE_UPGRADE:
+                    self.context.action == const.ACTION_LARGE_UPGRADE:
                 self.rollbackCatalog()
                 self.recordNodeStep(GreyUpgradeStep.STEP_INIT_STATUS)
 
             if maxStep >= GreyUpgradeStep.STEP_INIT_STATUS:
                 # clean on all the node, because the binary_upgrade temp
                 #  dir will create in every node
-                self.cleanInstallPath(Const.NEW)
+                self.cleanInstallPath(const.NEW)
                 self.dropSupportSchema()
                 self.initOmRollbackProgressFile()
                 self.cleanBinaryUpgradeBakFiles(True)
@@ -3297,9 +3353,9 @@ class UpgradeImpl:
 
     def setReadStepFromFile(self):
         readFromFileFlag = os.path.join(self.context.upgradeBackupPath,
-                                        Const.READ_STEP_FROM_FILE_FLAG)
+                                        const.READ_STEP_FROM_FILE_FLAG)
         self.context.logger.debug("Under force rollback mode.")
-        g_file.createFile(readFromFileFlag, True, DefaultValue.KEY_FILE_MODE)
+        FileUtil.createFile(readFromFileFlag, True, DefaultValue.KEY_FILE_MODE)
         self.distributeFile(readFromFileFlag)
         self.context.logger.debug("Create file %s. " % readFromFileFlag +
                                   "Only read step from file.")
@@ -3316,7 +3372,7 @@ class UpgradeImpl:
             self.context.logger.debug("Directory %s does not exist. "
                                       "Only clean remaining files and schema."
                                       % self.context.upgradeBackupPath)
-            return Const.BINARY_UPGRADE_NO_NEED_ROLLBACK
+            return const.BINARY_UPGRADE_NO_NEED_ROLLBACK
         if not os.path.isdir(self.context.upgradeBackupPath):
             raise Exception(ErrorCode.GAUSS_513["GAUSS_50211"] %
                             self.context.upgradeBackupPath)
@@ -3326,16 +3382,16 @@ class UpgradeImpl:
         if not fileList:
             return GreyUpgradeStep.STEP_INIT_STATUS
         stepFile = os.path.join(self.context.upgradeBackupPath,
-                                Const.GREY_UPGRADE_STEP_FILE)
+                                const.GREY_UPGRADE_STEP_FILE)
         if not os.path.exists(stepFile):
             self.context.logger.debug(
                 "No need to rollback. File %s does not exist." % stepFile)
-            return Const.BINARY_UPGRADE_NO_NEED_ROLLBACK
+            return const.BINARY_UPGRADE_NO_NEED_ROLLBACK
 
         self.context.logger.debug("Get the node step from file %s." % stepFile)
         with open(stepFile, 'r') as csvfile:
             reader = csv.DictReader(csvfile)
-            maxStep = Const.INVALID_UPRADE_STEP
+            maxStep = const.INVALID_UPRADE_STEP
             for row in reader:
                 self.checkStep(row['step'])
                 maxStep = max(int(row['step']), maxStep)
@@ -3373,7 +3429,7 @@ class UpgradeImpl:
             self.context.logger.debug(
                 "Exec sql result is, status:{0}, output is {1}".format(
                     status, output))
-            if status != 0 or ClusterCommand.findErrorInSql(output):
+            if status != 0 or SqlResult.findErrorInSql(output):
                 count += 1
                 continue
             else:
@@ -3390,7 +3446,7 @@ class UpgradeImpl:
         try:
             self.context.logger.debug("Check the action in file.")
             stepFile = os.path.join(self.context.upgradeBackupPath,
-                                    Const.GREY_UPGRADE_STEP_FILE)
+                                    const.GREY_UPGRADE_STEP_FILE)
             if not os.path.isfile(stepFile):
                 self.context.logger.debug(
                     ErrorCode.GAUSS_502["GAUSS_50201"] % (stepFile))
@@ -3421,7 +3477,7 @@ class UpgradeImpl:
         get nodes with the given step from file upgrade_step.csv
         """
         stepFile = os.path.join(self.context.upgradeBackupPath,
-                                Const.GREY_UPGRADE_STEP_FILE)
+                                const.GREY_UPGRADE_STEP_FILE)
         self.context.logger.debug("Get the node step from file %s." % stepFile)
         nodes = []
         with open(stepFile, 'r') as csvfile:
@@ -3447,7 +3503,7 @@ class UpgradeImpl:
         cmd = "%s -t %s -U %s --old_cluster_app_path=%s " \
               "--new_cluster_app_path=%s -l %s" % (
             OMCommand.getLocalScript("Local_Upgrade_Utility"),
-            Const.ACTION_GREY_RESTORE_CONFIG,
+            const.ACTION_GREY_RESTORE_CONFIG,
             self.context.user,
             self.context.oldClusterAppPath,
             self.context.newClusterAppPath,
@@ -3456,7 +3512,7 @@ class UpgradeImpl:
             cmd += " --force"
         self.context.logger.debug("Command for restoring config: %s" % cmd)
         rollbackList = copy.deepcopy(self.context.clusterNodes)
-        self.context.sshTool.executeCommand(cmd, "", hostList=rollbackList)
+        self.context.sshTool.executeCommand(cmd, hostList=rollbackList)
         self.context.logger.debug("Successfully restore config.")
 
     def greyRestoreGuc(self):
@@ -3466,7 +3522,7 @@ class UpgradeImpl:
         """
         cmd = "%s -t %s -U %s --old_cluster_app_path=%s -X %s -l %s" % \
               (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-               Const.ACTION_GREY_RESTORE_GUC,
+               const.ACTION_GREY_RESTORE_GUC,
                self.context.user,
                self.context.oldClusterAppPath,
                self.context.xmlFile,
@@ -3475,31 +3531,31 @@ class UpgradeImpl:
             cmd += " --force"
         self.context.logger.debug("Command for restoring GUC: %s" % cmd)
         rollbackList = copy.deepcopy(self.context.clusterNodes)
-        self.context.sshTool.executeCommand(cmd, "", hostList=rollbackList)
+        self.context.sshTool.executeCommand(cmd, hostList=rollbackList)
         self.context.logger.debug("Successfully restore guc.")
 
     def dropSupportSchema(self):
         self.context.logger.debug("Drop schema.")
-        sql = "DROP SCHEMA IF EXISTS %s CASCADE;" % Const.UPGRADE_SCHEMA
+        sql = "DROP SCHEMA IF EXISTS %s CASCADE;" % const.UPGRADE_SCHEMA
         retryTime = 0
         try:
             while retryTime < 5:
                 (status, output) = self.execSqlCommandInPrimaryDN(sql)
-                if status != 0 or ClusterCommand.findErrorInSql(output):
+                if status != 0 or SqlResult.findErrorInSql(output):
                     retryTime += 1
                     self.context.logger.debug(
                         "Failed to execute SQL: %s. Error: \n%s. retry" % (
                             sql, str(output)))
                 else:
                     break
-            if status != 0 or ClusterCommand.findErrorInSql(output):
+            if status != 0 or SqlResult.findErrorInSql(output):
                 self.context.logger.debug(
                     "Failed to execute SQL: %s. Error: \n%s" % (
                         sql, str(output)))
                 raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
                                 " Please drop manually with this command.")
             self.context.logger.debug("Successfully drop schema %s cascade." %
-                                      Const.UPGRADE_SCHEMA)
+                                      const.UPGRADE_SCHEMA)
         except Exception as e:
             if self.context.forceRollback:
                 self.context.logger.log(
@@ -3517,30 +3573,29 @@ class UpgradeImpl:
         """
         self.context.logger.log("Performing inplace rollback.")
         # step flag
-        # Const.BINARY_UPGRADE_NO_NEED_ROLLBACK value is -2
-        # Const.INVALID_UPRADE_STEP value is -1
-        # Const.BINARY_UPGRADE_STEP_INIT_STATUS value is 0
-        # Const.BINARY_UPGRADE_STEP_BACKUP_STATUS value is 1
-        # Const.BINARY_UPGRADE_STEP_STOP_NODE value is 2
-        # Const.BINARY_UPGRADE_STEP_BACKUP_VERSION value is 3
-        # Const.BINARY_UPGRADE_STEP_UPGRADE_APP value is 4
-        # Const.BINARY_UPGRADE_STEP_START_NODE value is 5
-        # Const.BINARY_UPGRADE_STEP_PRE_COMMIT value is 6
+        # const.BINARY_UPGRADE_NO_NEED_ROLLBACK value is -2
+        # const.INVALID_UPRADE_STEP value is -1
+        # const.BINARY_UPGRADE_STEP_INIT_STATUS value is 0
+        # const.BINARY_UPGRADE_STEP_STOP_NODE value is 2
+        # const.BINARY_UPGRADE_STEP_BACKUP_VERSION value is 3
+        # const.BINARY_UPGRADE_STEP_UPGRADE_APP value is 4
+        # const.BINARY_UPGRADE_STEP_START_NODE value is 5
+        # const.BINARY_UPGRADE_STEP_PRE_COMMIT value is 6
         self.distributeXml()
         step = self.getNodeStepInplace()
-        if step == Const.BINARY_UPGRADE_NO_NEED_ROLLBACK:
+        if step == const.BINARY_UPGRADE_NO_NEED_ROLLBACK:
             self.context.logger.log("Rollback succeeded.")
             return True
 
         # if step <= -1, it means the step file is broken, exit.
-        if step <= Const.INVALID_UPRADE_STEP:
+        if step <= const.INVALID_UPRADE_STEP:
             self.context.logger.debug("Invalid upgrade step: %s." % str(step))
             return False
 
-        # if step value is Const.BINARY_UPGRADE_STEP_PRE_COMMIT
+        # if step value is const.BINARY_UPGRADE_STEP_PRE_COMMIT
         # and find commit flag file,
         # means user has commit upgrade, then can not do rollback
-        if step == Const.BINARY_UPGRADE_STEP_PRE_COMMIT:
+        if step == const.BINARY_UPGRADE_STEP_PRE_COMMIT:
             if not self.checkCommitFlagFile():
                 self.context.logger.log(
                     "Upgrade has already been committed, "
@@ -3549,22 +3604,23 @@ class UpgradeImpl:
 
         try:
             self.checkStaticConfig()
-            self.startCluster()
+            self.start_strategy()
             # Mark that we leave pre commit status,
             # so that if we fail at the first few steps,
             # we won't be allowed to commit upgrade any more.
-            if step == Const.BINARY_UPGRADE_STEP_PRE_COMMIT:
+            if step == const.BINARY_UPGRADE_STEP_PRE_COMMIT:
                 self.recordNodeStepInplace(
-                    Const.ACTION_INPLACE_UPGRADE,
-                    Const.BINARY_UPGRADE_STEP_START_NODE)
+                    const.ACTION_INPLACE_UPGRADE,
+                    const.BINARY_UPGRADE_STEP_START_NODE)
 
-            if step >= Const.BINARY_UPGRADE_STEP_START_NODE:
+            if step >= const.BINARY_UPGRADE_STEP_START_NODE:
                 # drop table and index after large upgrade
                 if self.isLargeInplaceUpgrade:
                     if self.check_upgrade_mode():
                         self.drop_table_or_index()
                 self.restoreClusterConfig(True)
-                self.switchBin(Const.OLD)
+                self.clean_cm_instance()
+                self.switchBin(const.OLD)
                 if self.isLargeInplaceUpgrade:
                     touchInitFlagFile = os.path.join(
                         self.context.upgradeBackupPath, "touch_init_flag")
@@ -3574,36 +3630,37 @@ class UpgradeImpl:
                     else:
                         self.setUpgradeMode(0)
                 else:
-                    self.stopCluster()
+                    self.setUpgradeFromParam(const.UPGRADE_UNSET_NUM)
+                    self.stop_strategy()
                 self.recordNodeStepInplace(
-                    Const.ACTION_INPLACE_UPGRADE,
-                    Const.BINARY_UPGRADE_STEP_UPGRADE_APP)
+                    const.ACTION_INPLACE_UPGRADE,
+                    const.BINARY_UPGRADE_STEP_UPGRADE_APP)
 
-            if step >= Const.BINARY_UPGRADE_STEP_UPGRADE_APP:
+            if step >= const.BINARY_UPGRADE_STEP_UPGRADE_APP:
                 self.restoreNodeVersion()
                 self.restoreClusterConfig(True)
                 self.recordNodeStepInplace(
-                    Const.ACTION_INPLACE_UPGRADE,
-                    Const.BINARY_UPGRADE_STEP_BACKUP_VERSION)
+                    const.ACTION_INPLACE_UPGRADE,
+                    const.BINARY_UPGRADE_STEP_BACKUP_VERSION)
 
-            if step >= Const.BINARY_UPGRADE_STEP_BACKUP_VERSION:
+            if step >= const.BINARY_UPGRADE_STEP_BACKUP_VERSION:
                 self.cleanBackupedCatalogPhysicalFiles(True)
                 self.recordNodeStepInplace(
-                    Const.ACTION_INPLACE_UPGRADE,
-                    Const.BINARY_UPGRADE_STEP_STOP_NODE)
+                    const.ACTION_INPLACE_UPGRADE,
+                    const.BINARY_UPGRADE_STEP_STOP_NODE)
 
-            if step >= Const.BINARY_UPGRADE_STEP_STOP_NODE:
-                self.startCluster()
+            if step >= const.BINARY_UPGRADE_STEP_STOP_NODE:
+                self.start_strategy()
                 self.recordNodeStepInplace(
-                    Const.ACTION_INPLACE_UPGRADE,
-                    Const.BINARY_UPGRADE_STEP_INIT_STATUS)
+                    const.ACTION_INPLACE_UPGRADE,
+                    const.BINARY_UPGRADE_STEP_INIT_STATUS)
 
-            if step >= Const.BINARY_UPGRADE_STEP_INIT_STATUS:
+            if step >= const.BINARY_UPGRADE_STEP_INIT_STATUS:
                 if self.unSetClusterReadOnlyMode() != 0:
                     raise Exception("NOTICE: " +
                                     ErrorCode.GAUSS_529["GAUSS_52907"])
                 self.cleanBinaryUpgradeBakFiles(True)
-                self.cleanInstallPath(Const.NEW)
+                self.cleanInstallPath(const.NEW)
                 # install kerberos
                 self.install_kerberos()
         except Exception as e:
@@ -3624,7 +3681,7 @@ class UpgradeImpl:
             sql, self.context.user,
             self.dnInst.hostname, self.dnInst.port, False,
             eachdb, IsInplaceUpgrade=True)
-        if status != 0 or ClusterCommand.findErrorInSql(output):
+        if status != 0 or SqlResult.findErrorInSql(output):
             raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
                             " Error: \n%s" % str(output))
         if output == '0':
@@ -3700,7 +3757,7 @@ class UpgradeImpl:
         output: NA
         """
         try:
-            if self.context.action == Const.ACTION_INPLACE_UPGRADE and int(
+            if self.context.action == const.ACTION_INPLACE_UPGRADE and int(
                     float(self.context.oldClusterNumber) * 1000) <= 93000:
                 raise Exception("For this old version %s, we only support "
                                 "physical rollback." % str(
@@ -3711,7 +3768,7 @@ class UpgradeImpl:
             self.doRollbackCatalog()
             self.context.logger.log("Successfully Rollbacked catalog.")
         except Exception as e:
-            if self.context.action == Const.ACTION_INPLACE_UPGRADE:
+            if self.context.action == const.ACTION_INPLACE_UPGRADE:
                 self.context.logger.debug(
                     "Failed to perform rollback operation by rolling "
                     "back SQL files:\n%s" % str(e))
@@ -3740,16 +3797,23 @@ class UpgradeImpl:
         input : NA
         output: NA
         """
-        if self.context.action == Const.ACTION_INPLACE_UPGRADE:
-            self.startCluster()
+        if self.context.action == const.ACTION_INPLACE_UPGRADE:
+            self.start_strategy(is_final=False)
+            self.setUpgradeFromParam(self.context.oldClusterNumber)
             self.setUpgradeMode(1)
         else:
+            self.setUpgradeFromParam(self.context.oldClusterNumber)
             self.setUpgradeMode(2)
-        self.execRollbackUpgradedCatalog(scriptType="rollback")
+        self.reloadCmAgent()
+        self.execRollbackUpgradedCatalog()
         self.pgxcNodeUpdateLocalhost("rollback")
-        if self.context.action == Const.ACTION_INPLACE_UPGRADE:
-            self.stopCluster()
+        self.setUpgradeFromParam(const.UPGRADE_UNSET_NUM)
         self.setUpgradeMode(0)
+        if self.context.action == const.ACTION_INPLACE_UPGRADE:
+            self.stop_strategy(is_final=False)
+        else:
+            self.reloadCmAgent()
+
 
     def doPhysicalRollbackCatalog(self):
         """
@@ -3761,9 +3825,10 @@ class UpgradeImpl:
         output: NA
         """
         try:
-            self.startCluster()
+            self.start_strategy(is_final=False)
+            self.setUpgradeFromParam(const.UPGRADE_UNSET_NUM)
             self.setUpgradeMode(0)
-            self.stopCluster()
+            self.stop_strategy(is_final=False)
             self.execPhysicalRollbackUpgradedCatalog()
         except Exception as e:
             raise Exception(str(e))
@@ -3781,18 +3846,18 @@ class UpgradeImpl:
                     "Start to restore physical catalog files.")
                 # send cmd to all node and exec
                 cmd = "%s -t %s -U %s --upgrade_bak_path=%s " \
-                      "--oldcluster_num='%s' -l %s" % \
+                      "--oldcluster_num='%s' -X '%s' -l %s" % \
                       (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                       Const.ACTION_RESTORE_OLD_CLUSTER_CATALOG_PHYSICAL_FILES,
+                       const.ACTION_RESTORE_OLD_CLUSTER_CATALOG_PHYSICAL_FILES,
                        self.context.user,
                        self.context.upgradeBackupPath,
                        self.context.oldClusterNumber,
+                       self.context.xmlFile,
                        self.context.localLog)
                 self.context.logger.debug(
                     "Command for restoring physical catalog files: %s." % cmd)
-                DefaultValue.execCommandWithMode(
+                CmdExecutor.execCommandWithMode(
                     cmd,
-                    "restore physical files of catalog objects",
                     self.context.sshTool,
                     self.context.isSingle,
                     self.context.userProfile)
@@ -3808,7 +3873,7 @@ class UpgradeImpl:
         output : NA
         """
         header = ["START TRANSACTION;"]
-        header.append("SET %s = on;" % Const.ON_INPLACE_UPGRADE)
+        header.append("SET %s = on;" % const.ON_INPLACE_UPGRADE)
         header.append("SET search_path = 'pg_catalog';")
         header.append("SET local client_min_messages = NOTICE;")
         header.append("SET local log_min_messages = NOTICE;")
@@ -3843,7 +3908,7 @@ class UpgradeImpl:
 
     def initClusterInfo(self, dbClusterInfoPath):
         """
-        function: init the cluster 
+        function: init the cluster
         input : dbClusterInfoPath
         output: dbClusterInfo
         """
@@ -3851,6 +3916,14 @@ class UpgradeImpl:
         fileDir = os.path.dirname(os.path.realpath(dbClusterInfoPath))
         sys.path.insert(0, fileDir)
         # init cluster information
+        gp_home = ClusterDir.getClusterToolPath(self.context.user)
+        gauss_home = ClusterDir.getInstallDir(self.context.user)
+        gp_home_version = os.path.join(gp_home, "script", "gspylib", "common", "VersionInfo.py")
+        gauss_home_version = os.path.join(gauss_home, "bin", "script",
+                                          "gspylib", "common", "VersionInfo.py")
+        if not os.path.isfile(gp_home_version) and os.path.isfile(gauss_home_version):
+            FileUtil.cpFile(gauss_home_version, gp_home_version)
+
         clusterInfoModules.oldDbClusterInfoModule = __import__('DbClusterInfo')
         sys.path.remove(fileDir)
         return clusterInfoModules.oldDbClusterInfoModule.dbClusterInfo()
@@ -3880,7 +3953,7 @@ class UpgradeImpl:
         output: NA
         """
         gaussHome = \
-            DefaultValue.getEnvironmentParameterValue("GAUSSHOME",
+            EnvUtil.getEnvironmentParameterValue("GAUSSHOME",
                                                       self.context.user)
         # $GAUSSHOME must has available value.
         if gaussHome == "":
@@ -3890,7 +3963,7 @@ class UpgradeImpl:
             "%s/bin/script/gspylib/common/DbClusterInfo.py" % gaussHome
         commonStaticConfigFile = "%s/bin/cluster_static_config" % gaussHome
         try:
-            if self.context.action == Const.ACTION_INPLACE_UPGRADE:
+            if self.context.action == const.ACTION_INPLACE_UPGRADE:
 
                 # get DbClusterInfo.py and cluster_static_config both of backup
                 # path and install path
@@ -3947,7 +4020,7 @@ class UpgradeImpl:
                                     "static config file")
 
                 # get the accurate logPath
-                logPathWithUser = DefaultValue.getEnv("GAUSSLOG")
+                logPathWithUser = EnvUtil.getEnv("GAUSSLOG")
                 DefaultValue.checkPathVaild(logPathWithUser)
                 splitMark = "/%s" % self.context.user
                 self.context.oldClusterInfo.logPath = \
@@ -3987,7 +4060,7 @@ class UpgradeImpl:
                     self.verifyClusterConfigInfo(self.context.clusterInfo,
                                                  self.context.oldClusterInfo)
                     # after doing verifyClusterConfigInfo(),
-                    # the clusterInfo and oldClusterInfo are be changed, 
+                    # the clusterInfo and oldClusterInfo are be changed,
                     # so we should do init it again
                     self.context.clusterInfo = dbClusterInfo()
                     try:
@@ -4013,8 +4086,8 @@ class UpgradeImpl:
                                 raise Exception(str(e))
                 else:
                     self.context.clusterInfo = self.context.oldClusterInfo
-            elif (self.context.action == Const.ACTION_CHOSE_STRATEGY
-                  or self.context.action == Const.ACTION_COMMIT_UPGRADE):
+            elif (self.context.action == const.ACTION_CHOSE_STRATEGY
+                  or self.context.action == const.ACTION_COMMIT_UPGRADE):
                 # after switch to new bin, the gausshome points to newversion,
                 # so the oldClusterNumber is same with
                 # newClusterNumber, the oldClusterInfo is same with new
@@ -4065,8 +4138,8 @@ class UpgradeImpl:
                         raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] %
                                         "static config file")
             elif (self.context.action in
-                  [Const.ACTION_SMALL_UPGRADE, Const.ACTION_AUTO_UPGRADE,
-                   Const.ACTION_LARGE_UPGRADE, Const.ACTION_AUTO_ROLLBACK]):
+                  [const.ACTION_SMALL_UPGRADE, const.ACTION_AUTO_UPGRADE,
+                   const.ACTION_LARGE_UPGRADE, const.ACTION_AUTO_ROLLBACK]):
                 # 1. get new cluster info
                 self.context.clusterInfo = dbClusterInfo()
                 self.context.clusterInfo.initFromXml(self.context.xmlFile)
@@ -4120,7 +4193,7 @@ class UpgradeImpl:
                 # choseStrategy
                 self.context.clusterInfo.initFromXml(self.context.xmlFile)
                 if self.context.is_inplace_upgrade or \
-                        self.context.action == Const.ACTION_AUTO_ROLLBACK:
+                        self.context.action == const.ACTION_AUTO_ROLLBACK:
                     self.getOneDNInst()
                 self.context.logger.debug("Successfully init cluster config.")
             else:
@@ -4133,17 +4206,17 @@ class UpgradeImpl:
             xmlfile = os.path.join(os.path.dirname(self.context.userProfile),
                                    DefaultValue.FI_KRB_XML)
             if os.path.exists(xmlfile) and \
-                    self.context.action == Const.ACTION_AUTO_UPGRADE \
+                    self.context.action == const.ACTION_AUTO_UPGRADE \
                     and self.context.is_grey_upgrade:
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50200"] % "kerberos")
             if os.path.exists(xmlfile) and self.context.is_inplace_upgrade:
-                pghost_path = DefaultValue.getEnvironmentParameterValue(
+                pghost_path = EnvUtil.getEnvironmentParameterValue(
                     'PGHOST', self.context.user)
                 destfile = "%s/krb5.conf" % os.path.dirname(
                     self.context.userProfile)
                 kerberosflagfile = "%s/kerberos_upgrade_flag" % pghost_path
                 cmd = "cp -rf %s %s " % (destfile, kerberosflagfile)
-                (status, output) = DefaultValue.retryGetstatusoutput(cmd, 3, 5)
+                (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
                 if status != 0:
                     raise Exception(
                         ErrorCode.GAUSS_502["GAUSS_50206"] % kerberosflagfile
@@ -4187,7 +4260,7 @@ class UpgradeImpl:
                                               " no need to check dn status.")
                 else:
                     clusterStatus = \
-                        OMCommand.getClusterStatus(self.context.user)
+                        OMCommand.getClusterStatus()
                     if clusterStatus is None:
                         raise Exception(ErrorCode.GAUSS_516["GAUSS_51600"])
                     clusterInfo = dbClusterInfo()
@@ -4324,7 +4397,7 @@ class UpgradeImpl:
         try:
 
             hosts = self.context.clusterInfo.getClusterNodeNames()
-            hosts.remove(DefaultValue.GetHostIpOrName())
+            hosts.remove(NetUtil.GetHostIpOrName())
 
             # Send xml file to every host
             DefaultValue.distributeXmlConfFile(self.context.sshTool,
@@ -4348,7 +4421,7 @@ class UpgradeImpl:
             # record step info on local node
 
             tempPath = self.context.upgradeBackupPath
-            filePath = os.path.join(tempPath, Const.INPLACE_UPGRADE_STEP_FILE)
+            filePath = os.path.join(tempPath, const.INPLACE_UPGRADE_STEP_FILE)
             cmd = "echo \"%s:%d\" > %s" % (action, step, filePath)
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0:
@@ -4372,7 +4445,7 @@ class UpgradeImpl:
         self.context.logger.debug("Distribute the file %s" % step_file)
         # send the file to each node
         hosts = self.context.clusterInfo.getClusterNodeNames()
-        hosts.remove(DefaultValue.GetHostIpOrName())
+        hosts.remove(NetUtil.GetHostIpOrName())
         if not self.context.isSingle:
             stepDir = os.path.normpath(os.path.dirname(step_file))
             self.context.sshTool.scpFiles(step_file, stepDir, hosts)
@@ -4388,14 +4461,14 @@ class UpgradeImpl:
         try:
             tempPath = self.context.upgradeBackupPath
             # get file path and check file exists
-            filePath = os.path.join(tempPath, Const.INPLACE_UPGRADE_STEP_FILE)
+            filePath = os.path.join(tempPath, const.INPLACE_UPGRADE_STEP_FILE)
             if not os.path.exists(filePath):
                 self.context.logger.debug("The cluster status is Normal. "
                                           "No need to rollback.")
-                return Const.BINARY_UPGRADE_NO_NEED_ROLLBACK
+                return const.BINARY_UPGRADE_NO_NEED_ROLLBACK
 
             # read and check record format
-            stepInfo = g_file.readFile(filePath)[0]
+            stepInfo = FileUtil.readFile(filePath)[0]
             stepList = stepInfo.split(":")
             if len(stepList) != 2:
                 raise Exception(ErrorCode.GAUSS_500["GAUSS_50004"] % filePath)
@@ -4411,13 +4484,13 @@ class UpgradeImpl:
                                 (self.context.action, recordType))
             # if record value is not digit, exit.
             if not recordStep.isdigit() or int(recordStep) > \
-                    Const.BINARY_UPGRADE_STEP_PRE_COMMIT or \
-                    int(recordStep) < Const.INVALID_UPRADE_STEP:
+                    const.BINARY_UPGRADE_STEP_PRE_COMMIT or \
+                    int(recordStep) < const.INVALID_UPRADE_STEP:
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51633"] %
                                 recordStep)
         except Exception as e:
             self.context.logger.error(str(e))
-            return Const.INVALID_UPRADE_STEP
+            return const.INVALID_UPRADE_STEP
         self.context.logger.debug("The rollback step is %s" % recordStep)
         return int(recordStep)
 
@@ -4429,7 +4502,7 @@ class UpgradeImpl:
         """
         if not step.isdigit() or \
                 int(step) > GreyUpgradeStep.STEP_BEGIN_COMMIT or \
-                int(step) < Const.INVALID_UPRADE_STEP:
+                int(step) < const.INVALID_UPRADE_STEP:
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51633"] % str(step))
 
     ##########################################################################
@@ -4453,22 +4526,21 @@ class UpgradeImpl:
                    self.context.xmlFile)
             self.context.logger.debug("Command for checking upgrade "
                                       "environment: %s." % cmd)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "check upgrade environment",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
         except Exception as e:
             self.context.logger.log("Failed to check upgrade environment.",
                                     "constant")
             raise Exception(str(e))
         if not self.context.forceRollback:
             if self.context.oldClusterNumber >= \
-                    Const.ENABLE_STREAM_REPLICATION_VERSION:
+                    const.ENABLE_STREAM_REPLICATION_VERSION:
                 self.check_gucval_is_inval_given(
-                    Const.ENABLE_STREAM_REPLICATION_NAME, Const.VALUE_ON)
+                    const.ENABLE_STREAM_REPLICATION_NAME, const.VALUE_ON)
         try:
-            if self.context.action == Const.ACTION_INPLACE_UPGRADE:
+            if self.context.action == const.ACTION_INPLACE_UPGRADE:
                 self.context.logger.log(
                     "Successfully checked upgrade environment.", "constant")
                 return
@@ -4506,7 +4578,7 @@ class UpgradeImpl:
         self.context.logger.debug("Check the amount of cluster version.")
         failedHost = []
         failMsg = ""
-        gaussHome = DefaultValue.getInstallDir(self.context.user)
+        gaussHome = ClusterDir.getInstallDir(self.context.user)
         # $GAUSSHOME must has available value.
         if gaussHome == "":
             raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$GAUSSHOME")
@@ -4554,11 +4626,11 @@ class UpgradeImpl:
         :return:
         """
         stepFile = os.path.join(
-            self.context.upgradeBackupPath, Const.GREY_UPGRADE_STEP_FILE)
+            self.context.upgradeBackupPath, const.GREY_UPGRADE_STEP_FILE)
         if not os.path.isfile(stepFile):
             self.context.logger.debug(
                 "File %s does not exists. No need to check." %
-                Const.GREY_UPGRADE_STEP_FILE)
+                const.GREY_UPGRADE_STEP_FILE)
             return
         grey_node_names = self.getUpgradedNodeNames()
         if grey_node_names:
@@ -4569,11 +4641,11 @@ class UpgradeImpl:
     def checkOptionH(self):
         self.checkNodeNames()
         stepFile = os.path.join(
-            self.context.upgradeBackupPath, Const.GREY_UPGRADE_STEP_FILE)
+            self.context.upgradeBackupPath, const.GREY_UPGRADE_STEP_FILE)
         if not os.path.isfile(stepFile):
             self.context.logger.debug(
                 "File %s does not exists. No need to check." %
-                Const.GREY_UPGRADE_STEP_FILE)
+                const.GREY_UPGRADE_STEP_FILE)
             return
         if not self.isNodesSameStep(self.context.nodeNames):
             raise Exception(ErrorCode.GAUSS_529["GAUSS_52909"])
@@ -4636,7 +4708,7 @@ class UpgradeImpl:
         """
         try:
             stepFile = os.path.join(
-                self.context.upgradeBackupPath, Const.GREY_UPGRADE_STEP_FILE)
+                self.context.upgradeBackupPath, const.GREY_UPGRADE_STEP_FILE)
             self.context.logger.debug("trying to get nodes that step is "
                                       "less than %s from %s" % (step, stepFile))
             if not os.path.isfile(stepFile):
@@ -4657,7 +4729,7 @@ class UpgradeImpl:
 
     def checkOptionContinue(self):
         stepFile = os.path.join(
-            self.context.upgradeBackupPath, Const.GREY_UPGRADE_STEP_FILE)
+            self.context.upgradeBackupPath, const.GREY_UPGRADE_STEP_FILE)
         if not os.path.isfile(stepFile):
             raise Exception(ErrorCode.GAUSS_529["GAUSS_52920"] +
                             "Need to upgrade some nodes first.")
@@ -4670,7 +4742,7 @@ class UpgradeImpl:
             self.printPrecommitBanner()
             self.context.logger.debug(
                 "The node host in table %s.%s is equal to cluster nodes."
-                % (Const.UPGRADE_SCHEMA, Const.RECORD_NODE_STEP))
+                % (const.UPGRADE_SCHEMA, const.RECORD_NODE_STEP))
             raise Exception(ErrorCode.GAUSS_529["GAUSS_52913"])
         if not self.checkVersion(self.newCommitId, greyNodeNames):
             raise Exception(
@@ -4679,11 +4751,11 @@ class UpgradeImpl:
 
     def checkOptionG(self):
         stepFile = os.path.join(
-            self.context.upgradeBackupPath, Const.GREY_UPGRADE_STEP_FILE)
+            self.context.upgradeBackupPath, const.GREY_UPGRADE_STEP_FILE)
         if not os.path.isfile(stepFile):
             self.context.logger.debug(
                 "File %s does not exists. No need to check." %
-                Const.GREY_UPGRADE_STEP_FILE)
+                const.GREY_UPGRADE_STEP_FILE)
             return
         # -g only support 2 loops to upgrade, if has node upgrade,
         # cannot use -g to upgrade other nodes
@@ -4708,7 +4780,7 @@ class UpgradeImpl:
         #    cluster_dynamic_config
         #    etc/gscgroup_xxx.cfg
         #    lib/postgresql/pg_plugin
-        #    server.key.cipher 
+        #    server.key.cipher
         #    server.key.rand
         #    datasource.key.cipher
         #    datasource.key.rand
@@ -4731,18 +4803,17 @@ class UpgradeImpl:
             # send cmd to all node and exec
             cmd = "%s -t %s -U %s -V %d --upgrade_bak_path=%s -l %s" % \
                   (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                   Const.ACTION_BACKUP_CONFIG,
+                   const.ACTION_BACKUP_CONFIG,
                    self.context.user,
                    int(float(self.context.oldClusterNumber) * 1000),
                    self.context.upgradeBackupPath,
                    self.context.localLog)
             self.context.logger.debug("Command for backing up cluster "
                                       "configuration: %s" % cmd)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "backup config files",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
 
             # backup hotpatch info file
             self.backupHotpatch()
@@ -4757,17 +4828,16 @@ class UpgradeImpl:
             # backup DS libs and gds file
             cmd = "%s -t %s -U %s --upgrade_bak_path=%s -l %s" % \
                   (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                   Const.ACTION_INPLACE_BACKUP,
+                   const.ACTION_INPLACE_BACKUP,
                    self.context.user,
                    self.context.upgradeBackupPath,
                    self.context.localLog)
             self.context.logger.debug(
                 "Command for backing up gds file: %s" % cmd)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "backup DS libs and gds file",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.userProfile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.userProfile)
         except Exception as e:
             raise Exception(str(e))
 
@@ -4788,18 +4858,18 @@ class UpgradeImpl:
         try:
             # send cmd to all node and exec
             cmd = "%s -t %s -U %s --upgrade_bak_path=%s " \
-                  "--oldcluster_num='%s' -l %s" % \
+                  "--oldcluster_num='%s' -X '%s' -l %s" % \
                   (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                   Const.ACTION_BACKUP_OLD_CLUSTER_CATALOG_PHYSICAL_FILES,
+                   const.ACTION_BACKUP_OLD_CLUSTER_CATALOG_PHYSICAL_FILES,
                    self.context.user,
                    self.context.upgradeBackupPath,
                    self.context.oldClusterNumber,
+                   self.context.xmlFile,
                    self.context.localLog)
             self.context.logger.debug("Command for backing up physical files "
                                       "of catalg objects: %s" % cmd)
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "backup  physical files of catalg objects",
                 self.context.sshTool,
                 self.context.isSingle,
                 self.context.userProfile)
@@ -4821,67 +4891,23 @@ class UpgradeImpl:
             cmd = "%s -t %s -U %s --upgrade_bak_path=%s " \
                   "--new_cluster_app_path=%s -l %s" % \
                   (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                   Const.ACTION_SYNC_CONFIG,
+                   const.ACTION_SYNC_CONFIG,
                    self.context.user,
                    self.context.upgradeBackupPath,
                    self.context.newClusterAppPath,
                    self.context.localLog,)
             self.context.logger.debug(
                 "Command for synchronizing new guc: %s" % cmd)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "sync new guc",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
         except Exception as e:
             self.context.logger.debug("Failed to synchronize new guc.",
                                       "constant")
             raise Exception(str(e))
         self.context.logger.debug("Successfully synchronized new guc.",
                                   "constant")
-
-    def cleanExtensionFiles(self):
-        """
-        function: clean extension library and config files
-        input: NA
-        output: 0 / 1
-        """
-        try:
-            # clean extension library and config files
-            hadoop_odbc_connector = "%s/lib/postgresql/" \
-                                    "hadoop_odbc_connector.so" % \
-                                    self.context.oldClusterInfo.appPath
-            extension_config01 = "%s/share/postgresql/extension/" \
-                                 "hadoop_odbc_connector--1.0.sql" % \
-                                 self.context.oldClusterInfo.appPath
-            extension_config02 = "%s/share/postgresql/extension/" \
-                                 "hadoop_odbc_connector.control" % \
-                                 self.context.oldClusterInfo.appPath
-            extension_config03 = "%s/share/postgresql/extension/hadoop_odbc_" \
-                                 "connector--unpackaged--1.0.sql" % \
-                                 self.context.oldClusterInfo.appPath
-
-            cmd = "(if [ -f '%s' ];then rm -f '%s';fi)" % \
-                  (hadoop_odbc_connector, hadoop_odbc_connector)
-            cmd += " && (if [ -f '%s' ];then rm -f '%s';fi)" % \
-                   (extension_config01, extension_config01)
-            cmd += " && (if [ -f '%s' ];then rm -f '%s';fi)" % \
-                   (extension_config02, extension_config02)
-            cmd += " && (if [ -f '%s' ];then rm -f '%s';fi)" % \
-                   (extension_config03, extension_config03)
-            self.context.logger.debug("Command for cleaning extension "
-                                      "library and config files: %s" % cmd)
-            DefaultValue.execCommandWithMode(
-                cmd, "clean extension library and config files",
-                self.context.sshTool, self.context.isSingle,
-                self.context.mpprcFile)
-            self.context.logger.debug("Command for cleaning extension "
-                                      "library and config files: %s" % cmd)
-            return 0
-        except Exception as e:
-            self.context.logger.debug("Fail to clean extension library and "
-                                      "config files.output:%s" % str(e))
-            return 1
 
     def waitClusterForNormal(self, waitTimeOut=300):
         """
@@ -4921,24 +4947,58 @@ class UpgradeImpl:
             self.context.logger.debug(checkResult)
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51607"] % "cluster")
 
-    def getLcgroupnameList(self, jsonFile):
+    def create_ca_for_cm(self):
         """
-        function: get Lc group name list
-        input: jsonFile
-        output: []
+        Create CM CA file
         """
-        para = {}
-        lcgroupnamelist = []
+        if self.get_upgrade_cm_strategy() != 1:
+            self.context.logger.debug("No need to create CA for CM.")
+            return
+
+        new_cluster_config_file = \
+            os.path.realpath(os.path.join(self.context.newClusterAppPath,
+                                          "bin", "cluster_static_config"))
+        self.context.logger.debug("Start create CA for CM.")
+        new_cluster_info = dbClusterInfo()
+        new_cluster_info.initFromStaticConfig(self.context.user,
+                                              new_cluster_config_file)
+        local_node = [node for node in new_cluster_info.dbNodes
+                      if node.name == NetUtil.GetHostIpOrName()][0]
+        agent_component = CM_OLAP()
+        agent_component.instInfo = local_node.cmagents[0]
+        agent_component.logger = self.context.logger
+        agent_component.binPath = os.path.realpath(os.path.join(self.context.newClusterAppPath,
+                                                                "bin"))
+        agent_component.create_cm_ca(self.context.sshTool)
+        self.context.logger.debug("Create CA for CM successfully.")
+
+    def reloadCmAgent(self):
+        """
+        Run the 'kill -1' command to make the parameters of all cmagent instances take effect.
+        :return:
+        """
+        if not DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) > 0:
+            self.context.logger.debug("No need to reload cm configuration.")
+            return
+        self.context.logger.debug("Start to reload cmagent")
+        cmd = "%s -t %s -U %s --upgrade_bak_path=%s -l %s" % \
+              (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+               const.ACTION_RELOAD_CMAGENT,
+               self.context.user,
+               self.context.upgradeBackupPath,
+               self.context.localLog)
+        self.context.logger.debug("reloading all cmagent process: %s" % cmd)
         try:
-            with open(jsonFile, "r") as fp_json:
-                para = json.load(fp_json)
-        except Exception as e:
-            raise Exception(str(e))
-        if (para):
-            lcgroupnamelist = para['lcgroupnamelist']
-            while '' in lcgroupnamelist:
-                lcgroupnamelist.remove('')
-        return lcgroupnamelist
+            hostList = copy.deepcopy(self.context.clusterNodes)
+            self.context.execCommandInSpecialNode(cmd, hostList)
+            # wait the cluster be normal
+            self.waitClusterNormalDegrade()
+            self.context.logger.debug("Success to reload cmagent")
+        except Exception as er:
+            if self.context.action == const.ACTION_INPLACE_UPGRADE or not \
+                    self.context.forceRollback:
+                raise Exception(str(er))
+            self.context.logger.debug("Failed to reload cm agent. Warning:{0}".format(str(er)))
 
     def restoreClusterConfig(self, isRollBack=False):
         """
@@ -4950,7 +5010,7 @@ class UpgradeImpl:
         #    cluster_dynamic_config
         #    etc/gscgroup_xxx.cfg
         #    lib/postgresql/pg_plugin
-        #    server.key.cipher 
+        #    server.key.cipher
         #    server.key.rand
         #    datasource.key.cipher
         #    datasource.key.rand
@@ -4977,7 +5037,7 @@ class UpgradeImpl:
                       "--old_cluster_app_path=%s --new_cluster_app_path=%s " \
                       "-l %s" % (
                     OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                    Const.ACTION_RESTORE_CONFIG,
+                    const.ACTION_RESTORE_CONFIG,
                     self.context.user,
                     int(float(self.context.oldClusterNumber) * 1000),
                     self.context.upgradeBackupPath,
@@ -4987,24 +5047,22 @@ class UpgradeImpl:
 
                 self.context.logger.debug("Command for restoring "
                                           "config files: %s" % cmd)
-                DefaultValue.execCommandWithMode(cmd,
-                                                 "restore config files",
-                                                 self.context.sshTool,
-                                                 self.context.isSingle,
-                                                 self.context.mpprcFile)
+                CmdExecutor.execCommandWithMode(cmd,
+                                                self.context.sshTool,
+                                                self.context.isSingle,
+                                                self.context.mpprcFile)
                 if self.isLargeInplaceUpgrade:
                     # backup DS libs and gds file
                     cmd = "%s -t %s -U %s --upgrade_bak_path=%s -l %s" % \
                           (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                           Const.ACTION_INPLACE_BACKUP,
+                           const.ACTION_INPLACE_BACKUP,
                            self.context.user,
                            self.context.upgradeBackupPath,
                            self.context.localLog)
                     self.context.logger.debug(
                         "Command for restoreing DS libs and gds file: %s" % cmd)
-                    DefaultValue.execCommandWithMode(
+                    CmdExecutor.execCommandWithMode(
                         cmd,
-                        "restore DS libs and gds file",
                         self.context.sshTool,
                         self.context.isSingle,
                         self.context.userProfile)
@@ -5012,8 +5070,8 @@ class UpgradeImpl:
                 cmd = "chown -R %s:%s '%s'" % \
                       (self.context.user, self.context.group,
                        self.context.newClusterAppPath)
-                DefaultValue.execCommandWithMode(
-                    cmd, "change the owner of application",
+                CmdExecutor.execCommandWithMode(
+                    cmd,
                     self.context.sshTool, self.context.isSingle,
                     self.context.mpprcFile)
         except Exception as e:
@@ -5041,11 +5099,10 @@ class UpgradeImpl:
                   "%s/cluster_static_config %s/bin;fi)" % \
                   (staticConfigPath, self.context.upgradeBackupPath,
                    self.context.oldClusterAppPath)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "restore static configuration",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
         except Exception as e:
             raise Exception(str(e))
         self.context.logger.log("Successfully checked static "
@@ -5068,11 +5125,10 @@ class UpgradeImpl:
                                           self.context.userProfile)
             self.context.logger.debug(
                 "Command for backing up environment file: %s" % cmd)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "back up environment variables",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
 
             # back up application and configuration
             cmd = "%s -U %s -P %s -p -b -l %s" % \
@@ -5080,8 +5136,8 @@ class UpgradeImpl:
                    self.context.upgradeBackupPath, self.context.localLog)
             self.context.logger.debug(
                 "Command for backing up application: %s" % cmd)
-            DefaultValue.execCommandWithMode(
-                cmd, "back up application and configuration",
+            CmdExecutor.execCommandWithMode(
+                cmd,
                 self.context.sshTool, self.context.isSingle,
                 self.context.mpprcFile)
 
@@ -5090,11 +5146,10 @@ class UpgradeImpl:
             delCmd = g_file.SHELL_CMD_DICT["deleteDir"] % \
                      (self.context.tmpDir, os.path.join(self.context.tmpDir,
                                                         'backupTemp_*'))
-            DefaultValue.execCommandWithMode(delCmd,
-                                             "delete binary backup directory",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            CmdExecutor.execCommandWithMode(delCmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
             raise Exception(str(e))
 
         self.context.logger.log("Successfully backed up current "
@@ -5118,11 +5173,10 @@ class UpgradeImpl:
                    self.context.localLog)
             self.context.logger.debug("Command for restoring "
                                       "old version: %s" % cmd)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "restore old version",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
 
             # restore environment variables
             cmd = "(if [ -f '%s'_gauss ];then mv '%s'_gauss '%s';fi)" % \
@@ -5130,11 +5184,10 @@ class UpgradeImpl:
                    self.context.userProfile)
             self.context.logger.debug("Command for restoring environment file:"
                                       " %s" % cmd)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "restore environment variables",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
         except Exception as e:
             raise Exception(str(e))
 
@@ -5150,14 +5203,9 @@ class UpgradeImpl:
         self.context.logger.log("Modifying the socket path.", "addStep")
         try:
             # modifying the socket path for all CN/DN instance
-            (status, output) = self.setGUCValue(
-                "unix_socket_directory",
-                DefaultValue.getTmpDirAppendMppdb(self.context.user), "set")
-            if (status != 0):
-                raise Exception(ErrorCode.GAUSS_500["GAUSS_50007"] % "GUC" +
-                                " Error: \n%s" % str(output))
+            self.setGUCValue("unix_socket_directory",
+                             DefaultValue.getTmpDirAppendMppdb(self.context.user), "set")
 
-            userProfile = DefaultValue.getMpprcFile()
         except Exception as e:
             raise Exception(str(e))
 
@@ -5201,8 +5249,8 @@ class UpgradeImpl:
                    "'%s/oldclusterinfo.json'; fi) &&" % \
                    (self.context.tmpDir, self.context.tmpDir)
             cmd += "(if [ -f '%s/%s' ]; then rm -f '%s/%s'; fi) &&" % \
-                   (self.context.tmpDir, Const.CLUSTER_CNSCONF_FILE,
-                    self.context.tmpDir, Const.CLUSTER_CNSCONF_FILE)
+                   (self.context.tmpDir, const.CLUSTER_CNSCONF_FILE,
+                    self.context.tmpDir, const.CLUSTER_CNSCONF_FILE)
             cmd += "(rm -f '%s'/gauss_crontab_file_*) &&" % self.context.tmpDir
             cmd += "(if [ -d '%s' ]; then rm -rf '%s'; fi) &&" % \
                    (self.context.upgradeBackupPath,
@@ -5212,11 +5260,10 @@ class UpgradeImpl:
                    (self.context.tmpDir, self.context.tmpDir)
             self.context.logger.debug("Command for clean "
                                       "backup files: %s" % cmd)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "clean backup files",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
 
         except Exception as e:
             raise Exception(str(e))
@@ -5257,9 +5304,9 @@ class UpgradeImpl:
         """
         #######################################################################
         # When do binary-upgrade:
-        #       Const.OPTION_PRECHECK        -> cluster Normal
+        #       const.OPTION_PRECHECK        -> cluster Normal
         #                              -> database can connec
-        #       Const.OPTION_POSTCHECK       -> cluster Normal
+        #       const.OPTION_POSTCHECK       -> cluster Normal
         #                              -> package version Normal
         #                              -> database can connec
         #######################################################################
@@ -5268,12 +5315,12 @@ class UpgradeImpl:
         status = 0
         output = ""
 
-        if (checkPosition == Const.OPTION_PRECHECK):
+        if (checkPosition == const.OPTION_PRECHECK):
             if (self.checkClusterStatus(checkPosition, True) != 0):
                 output += "\n    Cluster status does not match condition."
             if (self.checkConnection() != 0):
                 output += "\n    Database could not be connected."
-        elif (checkPosition == Const.OPTION_POSTCHECK):
+        elif (checkPosition == const.OPTION_POSTCHECK):
             if (self.checkClusterStatus(checkPosition) != 0):
                 output += "\n    Cluster status is Abnormal."
             if not self.checkVersion(
@@ -5312,7 +5359,7 @@ class UpgradeImpl:
             cmd = "source %s;%s -t %s -v %s -U %s -l %s" % \
                   (self.context.userProfile,
                    OMCommand.getLocalScript("Local_Check_Upgrade"),
-                   Const.ACTION_CHECK_VERSION,
+                   const.ACTION_CHECK_VERSION,
                    checkinfo,
                    self.context.user,
                    self.context.localLog)
@@ -5334,7 +5381,7 @@ class UpgradeImpl:
             self.context.logger.debug(str(e))
             return False
 
-    def checkClusterStatus(self, checkPosition=Const.OPTION_PRECHECK,
+    def checkClusterStatus(self, checkPosition=const.OPTION_PRECHECK,
                            doDetailCheck=False):
         """
         function: Check cluster status, if NORMAL, return 0, else return 1
@@ -5360,7 +5407,7 @@ class UpgradeImpl:
             "Cluster status information:\n%s" % output)
         if output.find("Normal") < 0:
             self.context.logger.debug("The cluster_state is Abnormal.")
-            if checkPosition == Const.OPTION_POSTCHECK:
+            if checkPosition == const.OPTION_POSTCHECK:
                 if output.find("Degraded") < 0:
                     self.context.logger.debug("The cluster_state is not "
                                               "Degraded under postcheck.")
@@ -5473,11 +5520,10 @@ class UpgradeImpl:
         cmd += " && (chmod %d -R %s)" % (DefaultValue.KEY_DIRECTORY_MODE,
                                          self.context.upgradeBackupPath)
         self.context.logger.debug("Command for creating directory: %s" % cmd)
-        DefaultValue.execCommandWithMode(cmd,
-                                         "create binary_upgrade path",
-                                         self.context.sshTool,
-                                         self.context.isSingle,
-                                         self.context.mpprcFile)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle,
+                                        self.context.mpprcFile)
 
     def recordDirFile(self):
         """
@@ -5489,9 +5535,9 @@ class UpgradeImpl:
                                   "old and new app directory.")
         # write the old cluster number and new cluster number into backup dir
         appDirRecord = os.path.join(self.context.upgradeBackupPath,
-                                    Const.RECORD_UPGRADE_DIR)
-        g_file.createFile(appDirRecord, True, DefaultValue.KEY_FILE_MODE)
-        g_file.writeFile(appDirRecord, [self.context.oldClusterAppPath,
+                                    const.RECORD_UPGRADE_DIR)
+        FileUtil.createFile(appDirRecord, True, DefaultValue.KEY_FILE_MODE)
+        FileUtil.writeFile(appDirRecord, [self.context.oldClusterAppPath,
                                         self.context.newClusterAppPath], 'w')
         self.distributeFile(appDirRecord)
         self.context.logger.debug("Successfully created the file to "
@@ -5512,13 +5558,12 @@ class UpgradeImpl:
               (versionFile, versionFile, bakVersionFile)
         cmd += " && (chmod %d %s)" % \
                (DefaultValue.KEY_FILE_MODE, bakVersionFile)
-        DefaultValue.execCommandWithMode(cmd,
-                                         "copy upgrade_version file",
-                                         self.context.sshTool,
-                                         self.context.isSingle,
-                                         self.context.mpprcFile)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle,
+                                        self.context.mpprcFile)
 
-    def cleanInstallPath(self, cleanNew=Const.NEW):
+    def cleanInstallPath(self, cleanNew=const.NEW):
         """
         function: after grey upgrade succeed, clean old install path
         input : cleanNew
@@ -5527,16 +5572,16 @@ class UpgradeImpl:
         self.context.logger.debug("Cleaning %s install path." % cleanNew,
                                   "addStep")
         # clean old install path
-        if cleanNew == Const.NEW:
+        if cleanNew == const.NEW:
             installPath = self.context.newClusterAppPath
-        elif cleanNew == Const.OLD:
+        elif cleanNew == const.OLD:
             installPath = self.context.oldClusterAppPath
         else:
             raise Exception(ErrorCode.GAUSS_529["GAUSS_52937"])
 
         cmd = "%s -t %s -U %s -R %s -l %s" % \
               (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-               Const.ACTION_CLEAN_INSTALL_PATH,
+               const.ACTION_CLEAN_INSTALL_PATH,
                self.context.user,
                installPath,
                self.context.localLog)
@@ -5544,11 +5589,10 @@ class UpgradeImpl:
             cmd += " --force"
         self.context.logger.debug("Command for clean %s install path: %s" %
                                   (cleanNew, cmd))
-        DefaultValue.execCommandWithMode(cmd,
-                                         "clean %s install path" % cleanNew,
-                                         self.context.sshTool,
-                                         self.context.isSingle,
-                                         self.context.mpprcFile)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle,
+                                        self.context.mpprcFile)
         self.context.logger.log("Successfully cleaned %s install path." %
                                 cleanNew, "constant")
 
@@ -5579,11 +5623,10 @@ class UpgradeImpl:
                    self.context.xmlFile)
             self.context.logger.debug(
                 "Command for installing new binary: %s." % cmd)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "install new application",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
             self.context.logger.debug(
                 "Successfully installed new binary files.")
         except Exception as e:
@@ -5601,16 +5644,15 @@ class UpgradeImpl:
             cmd = "%s -t %s -U %s --upgrade_bak_path=%s " \
                   "--new_cluster_app_path=%s -l %s" % \
                   (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                   Const.ACTION_BACKUP_HOTPATCH,
+                   const.ACTION_BACKUP_HOTPATCH,
                    self.context.user,
                    self.context.upgradeBackupPath,
                    self.context.newClusterAppPath,
                    self.context.localLog)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "backup hotpatch files",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
         except Exception as e:
             raise Exception(" Failed to backup hotpatch config file." + str(e))
         self.context.logger.log("Successfully backup hotpatch config file.")
@@ -5625,18 +5667,17 @@ class UpgradeImpl:
         try:
             cmd = "%s -t %s -U %s --upgrade_bak_path=%s -l %s -X '%s'" % \
                   (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                   Const.ACTION_ROLLBACK_HOTPATCH,
+                   const.ACTION_ROLLBACK_HOTPATCH,
                    self.context.user,
                    self.context.upgradeBackupPath,
                    self.context.localLog,
                    self.context.xmlFile)
             if self.context.forceRollback:
                 cmd += " --force"
-            DefaultValue.execCommandWithMode(cmd,
-                                             "rollback hotpatch",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
         except Exception as e:
             raise Exception(" Failed to rollback hotpatch config file."
                             + str(e))
@@ -5662,11 +5703,10 @@ class UpgradeImpl:
         self.context.logger.debug(
             "Execute command to backup the product version file and the "
             "license control file: %s" % cmd)
-        DefaultValue.execCommandWithMode(cmd,
-                                         "Backup old gaussdb.version file.",
-                                         self.context.sshTool,
-                                         self.context.isSingle,
-                                         self.context.mpprcFile)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle,
+                                        self.context.mpprcFile)
 
     def getTimeFormat(self, seconds):
         """
@@ -5700,17 +5740,16 @@ class UpgradeImpl:
             cmd = "%s -t %s -U %s --old_cluster_app_path=%s " \
                   "--new_cluster_app_path=%s -l %s" % \
                   (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                   Const.ACTION_COPY_CERTS,
+                   const.ACTION_COPY_CERTS,
                    self.context.user,
                    self.context.oldClusterAppPath,
                    self.context.newClusterAppPath,
                    self.context.localLog)
             self.context.logger.debug("Command for copy certs: '%s'." % cmd)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "Command for copy certs",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
 
         except Exception as e:
             self.context.logger.log("Failed to copy certs from %s to %s." %
@@ -5723,7 +5762,28 @@ class UpgradeImpl:
                                  self.context.newClusterAppPath),
                                 "constant")
 
-    def switchBin(self, switchTo=Const.OLD):
+    def clean_cm_instance(self):
+        """
+        Clean CM instance directory
+        """
+        self.context.logger.log("Start roll back CM instance.")
+        cm_strategy = self.get_upgrade_cm_strategy()
+        if cm_strategy == 1:
+            self.context.logger.debug("Rollback need clean cm directory")
+            cmd = "%s -t %s -l %s" % \
+                  (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+                   const.ACTION_CLEAN_CM,
+                   self.context.localLog)
+            self.context.logger.debug("Roll back CM install command: {0}".format(cmd))
+            self.context.sshTool.executeCommand(cmd, hostList=self.context.nodeNames)
+            self.context.logger.debug("Clean cm directory successfully.")
+        else:
+            self.context.logger.debug("No need clean CM instance directory.")
+
+
+
+
+    def switchBin(self, switchTo=const.OLD):
         """
         function: switch bin
         input  : switchTo
@@ -5734,10 +5794,10 @@ class UpgradeImpl:
         try:
             cmd = "%s -t %s -U %s -l %s" % \
                   (OMCommand.getLocalScript("Local_Upgrade_Utility"),
-                   Const.ACTION_SWITCH_BIN,
+                   const.ACTION_SWITCH_BIN,
                    self.context.user,
                    self.context.localLog)
-            if switchTo == Const.NEW:
+            if switchTo == const.NEW:
                 cmd += " -R '%s'" % self.context.newClusterAppPath
             else:
                 cmd += " -R '%s'" % self.context.oldClusterAppPath
@@ -5746,18 +5806,16 @@ class UpgradeImpl:
             self.context.logger.debug("Command for switching binary directory:"
                                       " '%s'." % cmd)
             if self.context.is_grey_upgrade:
-                DefaultValue.execCommandWithMode(cmd,
-                                                 "Switch the binary directory",
-                                                 self.context.sshTool,
-                                                 self.context.isSingle,
-                                                 self.context.mpprcFile,
-                                                 self.context.nodeNames)
+                CmdExecutor.execCommandWithMode(cmd,
+                                                self.context.sshTool,
+                                                self.context.isSingle,
+                                                self.context.mpprcFile,
+                                                self.context.nodeNames)
             else:
-                DefaultValue.execCommandWithMode(cmd,
-                                                 "Switch the binary directory",
-                                                 self.context.sshTool,
-                                                 self.context.isSingle,
-                                                 self.context.mpprcFile)
+                CmdExecutor.execCommandWithMode(cmd,
+                                                self.context.sshTool,
+                                                self.context.isSingle,
+                                                self.context.mpprcFile)
 
         except Exception as e:
             self.context.logger.log("Failed to switch symbolic link to %s "
@@ -5773,28 +5831,27 @@ class UpgradeImpl:
         input  : action
         output : NA
         """
-        if action == Const.ACTION_AUTO_ROLLBACK:
+        if action == const.ACTION_AUTO_ROLLBACK:
             self.context.logger.debug("clean other tool package files.")
         else:
             self.context.logger.debug(
                 "clean other tool package files.", "addStep")
         try:
-            commonPart = DefaultValue.get_package_back_name().rsplit("_", 1)[0]
+            commonPart = PackageInfo.get_package_back_name().rsplit("_", 1)[0]
             gphomePath = \
-                os.listdir(DefaultValue.getClusterToolPath(self.context.user))
+                os.listdir(ClusterDir.getClusterToolPath(self.context.user))
             commitId = self.newCommitId
-            if action == Const.ACTION_AUTO_ROLLBACK:
+            if action == const.ACTION_AUTO_ROLLBACK:
                 commitId = self.oldCommitId
             for filePath in gphomePath:
                 if commonPart in filePath and commitId not in filePath:
                     toDeleteFilePath = os.path.join(
-                        DefaultValue.getClusterToolPath(self.context.user),
+                        ClusterDir.getClusterToolPath(self.context.user),
                         filePath)
                     deleteCmd = "(if [ -f '%s' ]; then rm -rf '%s'; fi) " % \
                                   (toDeleteFilePath, toDeleteFilePath)
-                    DefaultValue.execCommandWithMode(
+                    CmdExecutor.execCommandWithMode(
                         deleteCmd,
-                        "clean tool package files",
                         self.context.sshTool,
                         self.context.isSingle,
                         self.context.mpprcFile)
@@ -5802,7 +5859,7 @@ class UpgradeImpl:
             self.context.logger.log(
                 "Failed to clean other tool package files.")
             raise Exception(str(e))
-        if action == Const.ACTION_AUTO_ROLLBACK:
+        if action == const.ACTION_AUTO_ROLLBACK:
             self.context.logger.debug(
                 "Success to clean other tool package files.")
         else:
@@ -5817,21 +5874,20 @@ class UpgradeImpl:
         """
         try:
             cmd = "(if [ ! -d '%s' ]; then mkdir -p '%s'; fi)" % \
-                  (DefaultValue.getClusterToolPath(self.context.user),
-                   DefaultValue.getClusterToolPath(self.context.user))
+                  (ClusterDir.getClusterToolPath(self.context.user),
+                   ClusterDir.getClusterToolPath(self.context.user))
             cmd += " && (chmod %d -R %s)" % \
                    (DefaultValue.KEY_DIRECTORY_MODE,
-                    DefaultValue.getClusterToolPath(self.context.user))
+                    ClusterDir.getClusterToolPath(self.context.user))
             self.context.logger.debug(
                 "Command for creating directory: %s" % cmd)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "create gphome path",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
             oldPackName = "%s-Package-bak_%s.tar.gz" % \
                           (VersionInfo.PRODUCT_NAME_PACKAGE, self.oldCommitId)
-            packFilePath = "%s/%s" % (DefaultValue.getClusterToolPath(
+            packFilePath = "%s/%s" % (ClusterDir.getClusterToolPath(
                 self.context.user), oldPackName)
             copyNode = ""
             cmd = "if [ -f '%s' ]; then echo 'GetFile'; " \
@@ -5853,14 +5909,14 @@ class UpgradeImpl:
                 for node in self.context.clusterNodes:
                     if status[node] == DefaultValue.SUCCESS:
                         if 'NoThisFile' in outputMap[node]:
-                            cmd = g_Platform.getRemoteCopyCmd(
+                            cmd = LocalRemoteCmd.getRemoteCopyCmd(
                                 packFilePath,
-                                DefaultValue.getClusterToolPath(
+                                ClusterDir.getClusterToolPath(
                                     self.context.user),
                                 str(copyNode), False, 'directory', node)
                             self.context.logger.debug(
                                 "Command for copying directory: %s" % cmd)
-                            DefaultValue.execCommandLocally(cmd)
+                            CmdExecutor.execCommandLocally(cmd)
             else:
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50210"] %
                                 packFilePath)

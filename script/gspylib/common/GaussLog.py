@@ -20,7 +20,6 @@
 #############################################################################
 import os
 import sys
-import time
 import datetime
 import subprocess
 import _thread as thread
@@ -34,10 +33,12 @@ import codecs
 
 sys.path.append(sys.path[0] + "/../../")
 
-from gspylib.os.gsfile import g_file
-from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.ErrorCode import OmError as _OmError
+from base_utils.os.file_util import FileUtil
+from base_utils.common.constantsbase import ConstantsBase
+from base_utils.security.sensitive_mask import SensitiveMask
+from domain_utils.domain_common.cluster_constants import ClusterConstants
 
 # import typing for comment.
 try:
@@ -110,17 +111,17 @@ class GaussLog:
             # check log path
             if (not os.path.exists(dirName)):
                 try:
-                    topDirPath = DefaultValue.getTopPathNotExist(dirName)
+                    topDirPath = FileUtil.getTopPathNotExist(dirName)
                     self.tmpFile = '%s/topDirPath.dat' % dirName
+                    if os.getuid() == 0:
+                        self.tmpFile = ClusterConstants.TOP_DIR_FILE
                     if (not os.path.isdir(dirName)):
                         os.makedirs(dirName,
-                                    DefaultValue.KEY_DIRECTORY_PERMISSION)
+                                    ConstantsBase.KEY_DIRECTORY_PERMISSION)
                 except Exception as e:
                     raise Exception(ErrorCode.GAUSS_502["GAUSS_50208"] %
                                     dirName + " Error:\n%s" % str(e))
-                cmd = "echo %s > '%s/topDirPath.dat' 2>/dev/null && chmod " \
-                      "600 '%s/topDirPath.dat'" % (
-                          topDirPath, dirName, dirName)
+                cmd = "echo %s > '%s' && chmod 600 '%s'" % (topDirPath, self.tmpFile, self.tmpFile)
                 (status, output) = subprocess.getstatusoutput(cmd)
                 if (status != 0):
                     raise Exception(ErrorCode.GAUSS_502["GAUSS_50206"]
@@ -172,16 +173,17 @@ class GaussLog:
                 if len(filenameList):
                     fileName = max(filenameList)
                     self.logFile = self.dir + "/" + fileName.strip()
-                    g_file.createFileInSafeMode(self.logFile)
+                    FileUtil.createFileInSafeMode(self.logFile)
+                    self.check_link()
                     self.fp = open(self.logFile, "a")
-                    DefaultValue.cleanTmpFile(logFileList)
+                    FileUtil.cleanTmpFile(logFileList)
                     return
 
-            DefaultValue.cleanTmpFile(logFileList)
+            FileUtil.cleanTmpFile(logFileList)
             # create new log file
             self.__openLogFile()
         except Exception as ex:
-            DefaultValue.cleanTmpFile(logFileList)
+            FileUtil.cleanTmpFile(logFileList)
             print(str(ex))
             sys.exit(1)
 
@@ -198,6 +200,15 @@ class GaussLog:
                 # change path owner later.
                 if os.access(self.tmpFile, os.R_OK | os.W_OK):
                     os.remove(self.tmpFile)
+
+    def check_link(self):
+        """
+        function: check log file is link
+        input : NA
+        output: list of
+        """
+        if os.path.islink(self.logFile):
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50206"] % self.logFile)
 
     def __openLogFile(self):
         """
@@ -224,6 +235,7 @@ class GaussLog:
                 if (count > retryTimes):
                     raise Exception(output)
             # open log file
+            self.check_link()
             self.fp = open(self.logFile, "a")
         except Exception as e:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50206"]
@@ -237,7 +249,7 @@ class GaussLog:
         """
         try:
             if (not os.path.exists(self.logFile)):
-                os.mknod(self.logFile, DefaultValue.KEY_FILE_PERMISSION)
+                os.mknod(self.logFile, ConstantsBase.KEY_FILE_PERMISSION)
             return (0, "")
         except Exception as e:
             return (1, str(e))
@@ -266,6 +278,8 @@ class GaussLog:
                 self.fp.close()
                 self.fp = None
         except Exception as ex:
+            if self.fp:
+                self.fp.close()
             raise Exception(str(ex))
 
     # print the flow message to console window and log file
@@ -284,8 +298,9 @@ class GaussLog:
         output:  NA
         """
         if (LOG_INFO >= self.expectLevel):
-            print(msg)
-            self.__writeLog("LOG", msg, stepFlag)
+            sanitized_msg = SensitiveMask.mask_pwd(msg)
+            print(sanitized_msg)
+            self.__writeLog("LOG", sanitized_msg, stepFlag)
 
     # print the flow message to log file only
     def debug(self, msg, stepFlag=""):
@@ -301,7 +316,8 @@ class GaussLog:
         output:  NA
         """
         if (LOG_DEBUG >= self.expectLevel):
-            self.__writeLog("DEBUG", msg, stepFlag)
+            sanitized_msg = SensitiveMask.mask_pwd(msg)
+            self.__writeLog("DEBUG", sanitized_msg, stepFlag)
 
     def warn(self, msg, stepFlag=""):
         """
@@ -316,8 +332,9 @@ class GaussLog:
         output:  NA
         """
         if (LOG_WARNING >= self.expectLevel):
-            print(msg)
-            self.__writeLog("WARNING", msg, stepFlag)
+            sanitized_msg = SensitiveMask.mask_pwd(msg)
+            print(sanitized_msg)
+            self.__writeLog("WARNING", sanitized_msg, stepFlag)
 
     # print the error message to console window and log file
     def error(self, msg):
@@ -327,8 +344,9 @@ class GaussLog:
         output: NA
         """
         if (LOG_ERROR >= self.expectLevel):
-            print(msg)
-            self.__writeLog("ERROR", msg)
+            sanitized_msg = SensitiveMask.mask_pwd(msg)
+            print(sanitized_msg)
+            self.__writeLog("ERROR", sanitized_msg)
 
     # print the error message to console window and log file,then exit
     def logExit(self, msg):
@@ -339,9 +357,10 @@ class GaussLog:
         output: NA
         """
         if (LOG_FATAL >= self.expectLevel):
-            print(msg)
+            sanitized_msg = SensitiveMask.mask_pwd(msg)
+            print(sanitized_msg)
             try:
-                self.__writeLog("ERROR", msg)
+                self.__writeLog("ERROR", sanitized_msg)
             except Exception as ex:
                 print(str(ex))
         self.closeLog()
@@ -375,8 +394,9 @@ class GaussLog:
                 self.__openLogFile()
             else:
                 LogPer = oct(os.stat(self.logFile).st_mode)[-3:]
+                self.check_link()
                 if (not LogPer == "600"):
-                    os.chmod(self.logFile, DefaultValue.KEY_FILE_PERMISSION)
+                    os.chmod(self.logFile, ConstantsBase.KEY_FILE_PERMISSION)
             # check if need switch to an new log file
             self.size = os.path.getsize(self.logFile)
             if (self.size >= MAXLOGFILESIZE and os.getuid() != 0):
@@ -762,16 +782,6 @@ class FormatColor(object):
 #
 # Progress logger config.
 #
-# Progress Handler Status.
-_PROGRESS_STATUS_START = "STARTING"
-_PROGRESS_STATUS_STOP = "STOPPING"
-_PROGRESS_STATUS_CHECK = "CHECKING"
-_PROGRESS_STATUS_PENDING = "PENDING"
-_PROGRESS_STATUS_SUCCESS = "SUCCESS"
-_PROGRESS_STATUS_FAILURE = "FAILURE"
-_PROGRESS_STATUS_PASSED = "PASSED"
-_PROGRESS_STATUS_CANCELED = "CANCELED"
-#
 # Progress Handler Color.
 #
 # The color of the status information.
@@ -1081,9 +1091,9 @@ class RotatingFileHandler(_handlers.RotatingFileHandler, object):
         try:
             if not os.path.exists(logDir):
                 # Create the log dir.
-                os.makedirs(logDir, DefaultValue.KEY_DIRECTORY_PERMISSION)
+                os.makedirs(logDir, ConstantsBase.KEY_DIRECTORY_PERMISSION)
         except OSError:
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50208"], logDir)
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50208"] % logDir)
 
         # Open the file.
         if self.encoding is None:
@@ -1137,12 +1147,12 @@ class RotatingFileHandler(_handlers.RotatingFileHandler, object):
             # Check whether the log file directory exist.
             if not os.path.exists(dirName):
                 # Create the log dir.
-                os.makedirs(dirName, DefaultValue.KEY_DIRECTORY_PERMISSION)
+                os.makedirs(dirName, ConstantsBase.KEY_DIRECTORY_PERMISSION)
                 # Save the real log file name.
                 self._currentFileName = getNewFileName(self.baseFilename)
                 return
         except OSError:
-            raise _OmError(ErrorCode.GAUSS_502["GAUSS_50208"], dirName)
+            raise _OmError(ErrorCode.GAUSS_502["GAUSS_50208"] % dirName)
 
         # Get the prefix and the suffix.
         prefix, suffix = os.path.splitext(os.path.basename(self.baseFilename))
@@ -1464,9 +1474,6 @@ class Logger(object):
     LOGGER_DEFAULT_STD_FORMAT = _LOGGER_DEFAULT_STD_FORMAT
     LOGGER_DEFAULT_FORMAT = "%(asctime)s %(module)s [%(levelname)s] %(" \
                             "message)s"
-    LOGGER_DEBUG_FORMAT = "%(asctime)s %(module)s - %(funcName)s - line %(" \
-                          "lineno)d [%(levelname)s]" \
-                          " %(message)s"
 
     def __init__(self):
         """
@@ -1597,80 +1604,6 @@ class Logger(object):
         logger.addHandler(file_handler)
 
     @staticmethod
-    def addFileErrorHandler(filename, fmt=None, date_fmt=None, mode='a',
-                            encoding=None, delay=False):
-        """
-
-        Add a file error-recording routine.
-
-        :param filename:    File path.
-        :param fmt:         Log formatting type.
-        :param date_fmt:    Date formatting type.
-        :param mode:        Open mode of file.
-        :param encoding:    Encoding format of file.
-        :param delay:       Whether to delay to open the file.
-
-        :type filename:     str
-        :type fmt:          str | None
-        :type date_fmt:     str | None
-        :type mode:         str
-        :type encoding:     str | None
-        :type delay:        bool
-        """
-        Logger.addFileHandler(filename, logLevel=Logger.ERROR, fmt=fmt,
-                              date_fmt=date_fmt, mode=mode,
-                              encoding=encoding, delay=delay)
-
-    @staticmethod
-    def addSyslogHandler(loglevel=DEBUG, address="/dev/log",
-                         facility=_handlers.SysLogHandler.LOG_USER,
-                         sockType=None, fmt=None, date_fmt=None):
-        """
-        Add a syslog recording routine.
-
-        :param loglevel:    Log level.
-        :param address:     The target address sent by syslog.
-            If address is specified as a string, a UNIX socket is used. To
-            log to a local syslogd,
-             "SysLogHandler(address="/dev/log")" can be used.
-            If address is specified as a tuple, a "sockType" socket is used.
-            To log to target host,
-             "SysLogHandler(address = (IP or hostname, port))" can be use.
-        :param facility:    Syslog facility names
-        :param sockType:    Socket type.
-            If address is specified as a string, this parameter is not used.
-            If address is specified as a tuple,  this parameter is default
-            to "socket.SOCK_DGRAM".
-        :param fmt:         Log formatting type.
-        :param date_fmt:    Date formatting type.
-
-        :type loglevel:     int
-        :type address:      str | tuple
-        :type facility:     str
-        :type sockType:     int
-        :type fmt:          str
-        :type date_fmt:     str
-        """
-        if fmt is None:
-            fmt = Logger.LOGGER_DEFAULT_FORMAT
-
-        # create a formatter.
-        formatter = logging.Formatter(fmt, date_fmt)
-
-        # create a syslog handler.
-        if sys.version_info >= (2, 7):
-            # noinspection PyArgumentList
-            syslog = _handlers.SysLogHandler(address, facility, sockType)
-        else:
-            syslog = _handlers.SysLogHandler(address, facility)
-        syslog.setLevel(loglevel)
-        syslog.setFormatter(formatter)
-
-        # add syslog handler to logger instance.
-        logger = Logger.getLogger()
-        logger.addHandler(syslog)
-
-    @staticmethod
     def getLogger():
         """
         Get the unique logger instance.
@@ -1746,106 +1679,3 @@ class Logger(object):
                 handler.registerStatus(status, color)
 
 
-class ProgressLogger(object):
-    """
-    Progress log printing decorator class.
-
-    Used to simplify progress log printing code.
-
-    This class is callable.
-    """
-    PROGRESS_STATUS_START = _PROGRESS_STATUS_START
-    PROGRESS_STATUS_STOP = _PROGRESS_STATUS_STOP
-    PROGRESS_STATUS_CHECK = _PROGRESS_STATUS_CHECK
-    PROGRESS_STATUS_PENDING = _PROGRESS_STATUS_PENDING
-    PROGRESS_STATUS_SUCCESS = _PROGRESS_STATUS_SUCCESS
-    PROGRESS_STATUS_FAILURE = _PROGRESS_STATUS_FAILURE
-    PROGRESS_STATUS_PASSED = _PROGRESS_STATUS_PASSED
-    PROGRESS_STATUS_CANCELED = _PROGRESS_STATUS_CANCELED
-
-    def __init__(self, message, status=None):
-        """
-        Init the progress log printing decorator class.
-
-        :param message: The log message.
-        :param status:  The progress status message.
-
-        :type message:  str
-        :type status:   List[str] | None
-        """
-        # Store the progress status message.
-        if status is None or len(status) <= 1:
-            self._status = [_PROGRESS_STATUS_START, _PROGRESS_STATUS_SUCCESS]
-        else:
-            self._status = status
-        # Store the log message.
-        self._message = message
-
-    def __call__(self, func):
-        """
-        Call the original function.
-
-        :param func:    The original function.
-        :type func:     function
-
-        :return:    Return the wrapper function.
-        :rtype:     function
-        """
-
-        def wrapper(*args, **kwargs):
-            """
-            Decorator function for wrapping log progress information.
-
-            :param args:    The additional parameters of the original function.
-            :param kwargs:  The additional parameters of the original function.
-
-            :type args:     *
-            :type kwargs:   *
-
-            :return:    Return the result of the original function.
-            :rtype:     *
-            """
-            # Get the logger.
-            logger = Logger.getLogger()
-
-            # Start the progress.
-            logger.start(self._message, self._status[0])
-
-            try:
-                # Call the function.
-                ret = func(*args, **kwargs)
-            except (SystemExit, KeyboardInterrupt):
-                logger.stop(self._message, _PROGRESS_STATUS_CANCELED)
-                raise
-            except BaseException:
-                logger.stop(self._message, _PROGRESS_STATUS_FAILURE)
-                raise
-
-            # End the progress.
-            logger.stop(self._message, self._status[1])
-            return ret
-
-        return wrapper
-
-    @staticmethod
-    def initProgressHandler():
-        """
-        Create a log progress routine for the logger and register
-         log progress status type.
-        """
-        # Add a new progress handler.
-        Logger.addProgressHandler()
-
-        # Register progress status that will be used in this program.
-        Logger.registerProgressStatus(_PROGRESS_STATUS_START,
-                                      PROGRESS_COLOR_BLUE)
-        Logger.registerProgressStatus(_PROGRESS_STATUS_SUCCESS,
-                                      PROGRESS_COLOR_GREEN)
-        Logger.registerProgressStatus(_PROGRESS_STATUS_FAILURE,
-                                      PROGRESS_COLOR_RED)
-        Logger.registerProgressStatus(_PROGRESS_STATUS_CHECK,
-                                      PROGRESS_COLOR_BLUE)
-        Logger.registerProgressStatus(_PROGRESS_STATUS_PASSED,
-                                      PROGRESS_COLOR_GREEN)
-        Logger.registerProgressStatus(_PROGRESS_STATUS_CANCELED,
-                                      PROGRESS_COLOR_YELLOW)

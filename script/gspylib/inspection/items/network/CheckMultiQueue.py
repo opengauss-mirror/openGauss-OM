@@ -14,16 +14,15 @@
 # MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------
-import os
 import subprocess
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.Common import DefaultValue
-from gspylib.os.gsnetwork import g_network
-from gspylib.os.gsfile import g_file
-from gspylib.os.gsplatform import findCmdInPath
+from base_utils.os.cmd_util import CmdUtil
+from base_utils.os.file_util import FileUtil
+from base_utils.os.net_util import NetUtil
 
 needRepairNetworkCardNum = []
 networkCardNums = []
@@ -49,7 +48,7 @@ class CheckMultiQueue(BaseItem):
         else:
             backIP = SharedFuncs.getIpByHostName(self.host)
         # Get the network card number
-        allNetworkInfo = g_network.getAllNetworkInfo()
+        allNetworkInfo = NetUtil.getAllNetworkInfo()
         for network in allNetworkInfo:
             if network.ipAddress == backIP:
                 networkNum = network.NICNum
@@ -63,7 +62,7 @@ class CheckMultiQueue(BaseItem):
             raise Exception(ErrorCode.GAUSS_506["GAUSS_50619"])
         if BondMode != "BondMode Null":
             bondFile = '/proc/net/bonding/%s' % networkNum
-            bondInfoList = g_file.readFile(bondFile, "Slave Interface")
+            bondInfoList = FileUtil.readFile(bondFile, "Slave Interface")
             for bondInfo in bondInfoList:
                 networkNum = bondInfo.split(':')[-1].strip()
                 networkCardNums.append(networkNum)
@@ -168,7 +167,7 @@ class CheckMultiQueue(BaseItem):
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0 and output.strip() == "0":
             subprocess.getstatusoutput("%s irqbalance" %
-                                       findCmdInPath("killall"))
+                                       CmdUtil.findCmdInPath("killall"))
         for networkCardNum in networkCardNums:
             cmd = "cat /proc/interrupts | grep '%s-' | wc -l" % networkCardNum
             (status, output) = subprocess.getstatusoutput(cmd)

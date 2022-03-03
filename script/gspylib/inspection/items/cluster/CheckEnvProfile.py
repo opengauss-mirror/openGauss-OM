@@ -15,12 +15,12 @@
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------
 import os
-from gspylib.common.Common import DefaultValue
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsfile import g_file
-from gspylib.common.VersionInfo import VersionInfo
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from domain_utils.cluster_file.version_info import VersionInfo
 
 g_envProfileDist = {}
 
@@ -34,7 +34,7 @@ class CheckEnvProfile(BaseItem):
         processEnvDist = {}
         # Get environment variables
         if (os.path.isfile("/proc/%s/environ" % ProcessNum)):
-            envInfoList = g_file.readFile("/proc/%s/environ" % ProcessNum)[
+            envInfoList = FileUtil.readFile("/proc/%s/environ" % ProcessNum)[
                 0].split('\0')
             for env in envInfoList:
                 envName = env.split('=')[0].strip()
@@ -81,9 +81,9 @@ class CheckEnvProfile(BaseItem):
         return abnormal_flag
 
     def doCheck(self):
-        g_envProfileDist["GAUSSHOME"] = DefaultValue.getEnv("GAUSSHOME")
-        g_envProfileDist["PATH"] = DefaultValue.getEnv("PATH")
-        g_envProfileDist["LD_LIBRARY_PATH"] = DefaultValue.getEnv(
+        g_envProfileDist["GAUSSHOME"] = EnvUtil.getEnv("GAUSSHOME")
+        g_envProfileDist["PATH"] = EnvUtil.getEnv("PATH")
+        g_envProfileDist["LD_LIBRARY_PATH"] = EnvUtil.getEnv(
             "LD_LIBRARY_PATH")
 
         self.result.val = ""

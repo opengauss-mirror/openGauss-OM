@@ -37,9 +37,12 @@ from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.threads.SshTool import SshTool
 from gspylib.common.ParameterParsecheck import Parameter
 from gspylib.common.ParallelBaseOM import ParallelBaseOM
-from gspylib.os.gsOSlib import g_OSlib
 from gspylib.os.gsfile import g_file
-from gspylib.common.VersionInfo import VersionInfo
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from domain_utils.cluster_file.version_info import VersionInfo
+from base_utils.os.user_util import UserUtil
+
 
 class ParallelSsh(ParallelBaseOM):
     """
@@ -103,7 +106,7 @@ General options:
         """
         try:
             # Get user information
-            self.user = g_OSlib.getUserInfo()["name"]
+            self.user = UserUtil.getUserInfo()["name"]
             self.clusterInfo = dbClusterInfo()
             self.clusterInfo.initFromStaticConfig(self.user)
 
@@ -142,9 +145,9 @@ General options:
             #############################################################
             # Create a temporary shell file
             cmdFile = "%s/ClusterCall_%d.sh"\
-                      % (DefaultValue.getTmpDirFromEnv(), os.getpid())
+                      % (EnvUtil.getTmpDirFromEnv(), os.getpid())
 
-            g_file.createFile(cmdFile, True, DefaultValue.FILE_MODE)
+            FileUtil.createFile(cmdFile, True, DefaultValue.FILE_MODE)
 
             # Writes the cmd command to the shell
             with open(cmdFile, "a") as fp:
@@ -155,7 +158,7 @@ General options:
                 fp.flush()
 
             ##############################################################
-            cmdDir = DefaultValue.getTmpDirFromEnv() + '/'
+            cmdDir = EnvUtil.getTmpDirFromEnv() + '/'
             # Distribute the shell file to the temporary directory
             # for each node
             self.sshTool.scpFiles(cmdFile, cmdDir)
@@ -187,12 +190,12 @@ General options:
             # Delete the temporary shell file at all nodes
             cmdFileRm = g_file.SHELL_CMD_DICT["deleteFile"]\
                         % (cmdFile, cmdFile)
-            self.sshTool.executeCommand(cmdFileRm, "remove files")
+            self.sshTool.executeCommand(cmdFileRm)
 
         except Exception as e:
             cmdFileRm = g_file.SHELL_CMD_DICT["deleteFile"]\
                         % (cmdFile, cmdFile)
-            self.sshTool.executeCommand(cmdFileRm, "remove files")
+            self.sshTool.executeCommand(cmdFileRm)
             GaussLog.exitWithError(str(e))
 
     def run(self):

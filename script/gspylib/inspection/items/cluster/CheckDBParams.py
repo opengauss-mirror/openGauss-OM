@@ -59,7 +59,7 @@ class CheckDBParams(BaseItem):
         primaryDNidList = []
         try:
             # Use cm_ctl to query the current node instance
-            cmd = ClusterCommand.getQueryStatusCmd(self.user, nodeInfo.name,
+            cmd = ClusterCommand.getQueryStatusCmd(nodeInfo.name,
                                                    tmpFile)
             SharedFuncs.runShellCmd(cmd, self.user, self.mpprcFile)
             # Match query results and cluster configuration

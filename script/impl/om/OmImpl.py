@@ -32,46 +32,17 @@ from gspylib.common.DbClusterStatus import DbClusterStatus
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.Common import DefaultValue, ClusterCommand
 from gspylib.common.OMCommand import OMCommand
-from gspylib.os.gsOSlib import g_OSlib
 from gspylib.os.gsfile import g_file
-from gspylib.os.gsplatform import g_Platform
+from base_utils.os.cmd_util import CmdUtil
+from base_utils.os.compress_util import CompressUtil
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from base_utils.os.net_util import NetUtil
+from base_utils.os.user_util import UserUtil
+from base_utils.common.constantsbase import ConstantsBase
 
 # Cert
 EMPTY_CERT = "emptyCert"
-EMPTY_FLAG = "emptyflag"
-
-# tmp file that storage change io information
-CHANGEIP_BACKUP_DIR = "%s/change_ip_bak" % DefaultValue.getTmpDirFromEnv()
-
-# EC odbc files
-ODBC_INI = "odbc.ini"
-ODBC_SYS_INI = "odbcsys"
-FC_CONF = "fc_conf/"
-
-# postgis lib file
-POSTGIS_FILE_LIST = ["lib/postgresql/postgis-[0-9]+.[0-9]+.so",
-                     "lib/libgeos_c.so.[0-9]+", "lib/libproj.so.[0-9]+",
-                     "lib/libjson-c.so.[0-9]+",
-                     "lib/libgeos-[0-9]+.[0-9]+.[0-9]+so",
-                     "lib/libgcc_s.so.[0-9]+",
-                     "lib/libstdc\+\+.so.[0-9]+",
-                     "share/postgresql/extension/postgis--[0-9]"
-                     "+.[0-9]+.[0-9]+.sql",
-                     "share/postgresql/extension/postgis.control",
-                     "bin/pgsql2shp", "bin/shp2pgsql"]
-
-# elastic group with node group name
-ELASTIC_GROUP = "elastic_group"
-
-# lib of sparkodbc
-LIB_SPARK = ["/usr/lib64/libboost_filesystem.so.1.55.0",
-             "/usr/lib64/libboost_system.so.1.55.0",
-             "/usr/lib64/libfb303.so", "/usr/lib64/libhiveclient.so",
-             "/usr/lib64/libhiveclient.so.1.0.0",
-             "/usr/lib64/libodbchive.so", "/usr/lib64/libodbchive.so.1.0.0",
-             "/usr/lib64/libsasl2.so.2",
-             "/usr/lib64/libsasl2.so.2.0.23", "/usr/lib64/libthrift-0.9.3.so",
-             "/usr/lib64/libsasl2.so.2.0.22"]
 
 
 ###########################################
@@ -108,14 +79,6 @@ class OmImpl:
         """
         pass
 
-    def doClusterStatus(self):
-        """
-        function: get cluster
-        input: NA
-        output: NA
-        """
-        pass
-
     def doStart(self):
         """
         function:Start cluster or node
@@ -141,7 +104,7 @@ class OmImpl:
         """
         try:
             # Create a temporary file to save cluster status
-            tmpDir = DefaultValue.getTmpDirFromEnv()
+            tmpDir = EnvUtil.getTmpDirFromEnv()
             tmpFile = os.path.join(tmpDir, "gauss_cluster_status.dat_" + \
                                    str(datetime.now().strftime(
                                        '%Y%m%d%H%M%S')) + "_" + str(
@@ -149,8 +112,7 @@ class OmImpl:
 
             # Perform the start operation
             # Writes the execution result to a temporary file
-            cmd = ClusterCommand.getQueryStatusCmd(self.context.g_opts.user,
-                                                   "", tmpFile, True)
+            cmd = ClusterCommand.getQueryStatusCmd("", tmpFile, True)
             (status, output) = subprocess.getstatusoutput(cmd)
             if (status != 0):
                 self.logger.debug("The cmd is %s " % cmd)
@@ -171,46 +133,80 @@ class OmImpl:
             else:
                 nodeStatus = clusterStatus.OM_NODE_STATUS_ABNORMAL
 
-            DefaultValue.cleanTmpFile(tmpFile)
+            FileUtil.cleanTmpFile(tmpFile)
             return nodeStatus
         except Exception as e:
-            DefaultValue.cleanTmpFile(tmpFile)
+            FileUtil.cleanTmpFile(tmpFile)
             self.logger.debug(
                 "Failed to get node status. Error: \n%s." % str(e))
             return "Abnormal"
 
-    def doStatus(self):
+    def getQueryStatusByCm(self, nodeId):
         """
-        function:Get the status of cluster or node
-        input:NA
-        output:NA
+        function: query status by cm
+        :param nodeId:
+        :return:
         """
-        hostName = DefaultValue.GetHostIpOrName()
-        sshtool = SshTool(self.context.clusterInfo.getClusterNodeNames(),timeout=self.time_out)
-        nodeId = 0
-        if (self.context.g_opts.nodeName != ""):
-            for dbnode in self.context.clusterInfo.dbNodes:
-                if dbnode.name == self.context.g_opts.nodeName:
-                    nodeId = dbnode.id
-            if (nodeId == 0):
-                raise Exception(
-                    ErrorCode.GAUSS_516["GAUSS_51619"]
-                    % self.context.g_opts.nodeName)
+        # Call cm_ctl to query the cluster status
+        get_cluster_status_cmd = ClusterCommand.getQueryStatusCmdForDisplay(
+                                nodeId,
+                                self.context.g_opts.outFile,
+                                self.context.clusterInfo.clusterType,
+                                self.context.g_opts.show_detail,
+                                self.context.g_opts.showAll)
+
+        if self.context.g_opts.outFile != "":
+            get_cluster_status_cmd += "&& chmod %s '%s'" % (
+            DefaultValue.KEY_FILE_MODE, self.context.g_opts.outFile)
+        # Call cm_ctl to query the cluster status
+        (status, output) = subprocess.getstatusoutput(get_cluster_status_cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_516[
+                                "GAUSS_51600"] + "\nCommand:%s\nError: \n%s" % (
+                                get_cluster_status_cmd, output))
+        node_status_line = ""
+        if self.context.g_opts.nodeName != "":
+            node_status = self.getNodeStatus(self.context.g_opts.nodeName)
+            node_status_line = "node_state                : %s\n\n" % node_status + \
+                    "-----------------------------------------------------------------------\n"
+
+        # Outputs the check result if no output file is specified
+        if self.context.g_opts.outFile == "":
+            self.logger.log(output)
+            if node_status_line:
+                self.logger.log(node_status_line)
+        else:
+            if node_status_line:
+                FileUtil.createFileInSafeMode(self.context.g_opts.outFile)
+                with open(self.context.g_opts.outFile, "a") as fp:
+                    fp.write(node_status_line)
+                    fp.write(os.linesep)
+                    fp.flush()
+                    fp.close()
+            self.logger.log("Status check is completed.")
+
+    def getQueryStatusWithoutCm(self, nodeId=0, sshtool=None, hostName=""):
+        """
+        function:query status without cm
+        :param nodeId:
+        :param sshtool:
+        :param hostName:
+        :return:
+        """
         cmd = queryCmd()
-        if (self.context.g_opts.outFile != ""):
+        if self.context.g_opts.outFile != "":
             cmd.outputFile = self.context.g_opts.outFile
         else:
             cmd.outputFile = self.logger.logFile
-        if (self.context.g_opts.show_detail):
-            if (
-                    self.context.clusterInfo.clusterType
+        if self.context.g_opts.show_detail:
+            if (self.context.clusterInfo.clusterType
                     == DefaultValue.CLUSTER_TYPE_SINGLE_PRIMARY_MULTI_STANDBY):
                 cmd.dataPathQuery = True
                 cmd.azNameQuery = True
             else:
                 cmd.dataPathQuery = True
         else:
-            if (nodeId > 0):
+            if nodeId > 0:
                 self.context.clusterInfo.queryNodeInfo(sshtool, hostName,
                                                        nodeId, cmd.outputFile)
                 return
@@ -219,19 +215,39 @@ class OmImpl:
                 self.context.clusterInfo.queryNodeInfo(sshtool, hostName,
                                                        nodeId, cmd.outputFile, az_name)
                 return
-            if (self.context.g_opts.showAll):
+            if self.context.g_opts.showAll:
                 self.context.clusterInfo.queryNodeInfo(sshtool, hostName,
                                                        nodeId, cmd.outputFile)
                 return
             cmd.clusterStateQuery = True
-
-
-        dbNums = len(self.context.clusterInfo.dbNodes)
-        sshtools = []
-        for _ in range(dbNums - 1):
-            sshtools.append(SshTool([], timeout=self.time_out))
-        self.context.clusterInfo.queryClsInfo(hostName, sshtools,
+        db_nums = len(self.context.clusterInfo.dbNodes)
+        ssh_tools = []
+        for _ in range(db_nums - 1):
+            ssh_tools.append(SshTool([], timeout=self.time_out))
+        self.context.clusterInfo.queryClsInfo(hostName, ssh_tools,
                                               self.context.mpprcFile, cmd)
+    def doStatus(self):
+        """
+        function:Get the status of cluster or node
+        input:NA
+        output:NA
+        """
+        host_name = NetUtil.GetHostIpOrName()
+        sshtool = SshTool(self.context.clusterInfo.getClusterNodeNames(), timeout=self.time_out)
+        node_id = 0
+        if self.context.g_opts.nodeName != "":
+            for db_node in self.context.clusterInfo.dbNodes:
+                if db_node.name == self.context.g_opts.nodeName:
+                    node_id = db_node.id
+            if node_id == 0:
+                raise Exception(
+                    ErrorCode.GAUSS_516["GAUSS_51619"]
+                    % self.context.g_opts.nodeName)
+        if not self.context.clusterInfo.hasNoCm():
+            self.getQueryStatusByCm(node_id)
+        else:
+            self.getQueryStatusWithoutCm(node_id, sshtool, host_name)
+        self.logger.debug("Successfully obtained the cluster status.")
 
     def change_cluster_info(self):
         temp_change_dic = {}
@@ -338,7 +354,7 @@ class OmImpl:
             self.logger.log(
                 "Distributing static configuration files to all nodes.")
             for dbNode in self.context.clusterInfo.dbNodes:
-                if (dbNode.name != DefaultValue.GetHostIpOrName()):
+                if (dbNode.name != NetUtil.GetHostIpOrName()):
                     cmd = \
                         "pscp -H %s '%s'/cluster_static_config_%s '%s'" \
                         "/bin/cluster_static_config" % (
@@ -361,7 +377,7 @@ class OmImpl:
                 "Successfully distributed static configuration files.")
 
         except Exception as e:
-            g_file.removeDirectory(tmpDirName)
+            FileUtil.removeDirectory(tmpDirName)
             raise Exception(str(e))
 
     ##########################################################################
@@ -377,7 +393,7 @@ class OmImpl:
             # Initialize the cluster information according to the xml file
             self.context.clusterInfo = dbClusterInfo()
             self.context.clusterInfo.initFromStaticConfig(
-                g_OSlib.getPathOwner(self.context.g_opts.certFile)[0])
+                UserUtil.getPathOwner(self.context.g_opts.certFile)[0])
             self.sshTool = SshTool(
                 self.context.clusterInfo.getClusterNodeNames(),
                 self.logger.logFile)
@@ -386,15 +402,15 @@ class OmImpl:
 
         try:
             self.logger.log("Starting ssl cert files replace.", "addStep")
-            tempDir = os.path.join(DefaultValue.getTmpDirFromEnv(),
+            tempDir = os.path.join(EnvUtil.getTmpDirFromEnv(),
                                    "tempCertDir")
 
             # unzip files to temp directory
             if (os.path.exists(tempDir)):
-                g_file.removeDirectory(tempDir)
-            g_file.createDirectory(tempDir, True,
+                FileUtil.removeDirectory(tempDir)
+            FileUtil.createDirectory(tempDir, True,
                                    DefaultValue.KEY_DIRECTORY_MODE)
-            g_file.decompressZipFiles(self.context.g_opts.certFile, tempDir)
+            CompressUtil.decompressZipFiles(self.context.g_opts.certFile, tempDir)
 
             realCertList = DefaultValue.CERT_FILES_LIST
             clientCertList = DefaultValue.CLIENT_CERT_LIST
@@ -424,12 +440,12 @@ class OmImpl:
             self.distributeDNCert(certList, dnDict)
 
             # clear temp directory
-            g_file.removeDirectory(tempDir)
+            FileUtil.removeDirectory(tempDir)
             if (not self.context.g_opts.localMode):
                 self.logger.log(
                     "Successfully distributed cert files on all nodes.")
         except Exception as e:
-            g_file.removeDirectory(tempDir)
+            FileUtil.removeDirectory(tempDir)
             raise Exception(str(e))
 
     def isDnEmpty(self, nodeName=""):
@@ -461,13 +477,13 @@ class OmImpl:
         tarBackupList = []
         if (self.context.g_opts.localMode):
             self.logger.debug("Backing up database node SSL cert files.")
-            nodeDnDir = allDnNodeDict[DefaultValue.GetHostIpOrName()]
+            nodeDnDir = allDnNodeDict[NetUtil.GetHostIpOrName()]
             backupFlagFile = os.path.join(nodeDnDir, "certFlag")
             if (os.path.isfile(backupFlagFile)):
                 self.logger.log("There is no need to backup ssl cert files.")
                 return
 
-            os.mknod(backupFlagFile, DefaultValue.KEY_FILE_PERMISSION)
+            os.mknod(backupFlagFile, ConstantsBase.KEY_FILE_PERMISSION)
             for certFile in backupList:
                 realCertFile = os.path.join(nodeDnDir, certFile)
                 if (os.path.isfile(realCertFile)):
@@ -475,15 +491,15 @@ class OmImpl:
 
             if (len(tarBackupList) == 0):
                 os.mknod(os.path.join(nodeDnDir, EMPTY_CERT))
-                cmd = " %s && " % g_Platform.getCdCmd(nodeDnDir)
-                cmd += g_Platform.getCompressFilesCmd(
+                cmd = " %s && " % CmdUtil.getCdCmd(nodeDnDir)
+                cmd += CompressUtil.getCompressFilesCmd(
                     DefaultValue.CERT_BACKUP_FILE, EMPTY_CERT)
             else:
-                cmd = " %s && " % g_Platform.getCdCmd(nodeDnDir)
+                cmd = " %s && " % CmdUtil.getCdCmd(nodeDnDir)
                 cmd += "tar -zcvf %s" % (DefaultValue.CERT_BACKUP_FILE)
                 for certFile in tarBackupList:
                     cmd += " %s" % certFile
-            (status, output) = DefaultValue.retryGetstatusoutput(cmd)
+            (status, output) = CmdUtil.retryGetstatusoutput(cmd)
             if (status != 0):
                 raise Exception(
                     ErrorCode.GAUSS_514["GAUSS_51400"]
@@ -517,7 +533,7 @@ class OmImpl:
                 "backupflagfile", backupFlagFile)
             sshcmd += " && " + g_file.SHELL_CMD_DICT["changeMode"] % (
                 DefaultValue.KEY_FILE_MODE, backupFlagFile)
-            self.sshTool.executeCommand(sshcmd, "Make a flag file of backup.",
+            self.sshTool.executeCommand(sshcmd,
                                         DefaultValue.SUCCESS, [node],
                                         self.context.g_opts.mpprcFile)
             for certFile in backupList:
@@ -530,21 +546,20 @@ class OmImpl:
                 # if no cert files,
                 # there will be create a file for '.tar' file.
                 if (len(tarBackupList) == 0):
-                    sshcmd = g_Platform.getCreateFileCmd(
+                    sshcmd = CmdUtil.getCreateFileCmd(
                         os.path.join(nodeDnDir, EMPTY_CERT))
                     self.sshTool.executeCommand(sshcmd,
-                                                "Backup empty cert file.",
                                                 DefaultValue.SUCCESS, [node],
                                                 self.context.g_opts.mpprcFile)
-                    sshcmd = " %s && " % g_Platform.getCdCmd(nodeDnDir)
-                    sshcmd += g_Platform.getCompressFilesCmd(
+                    sshcmd = " %s && " % CmdUtil.getCdCmd(nodeDnDir)
+                    sshcmd += CompressUtil.getCompressFilesCmd(
                         DefaultValue.CERT_BACKUP_FILE, EMPTY_CERT)
                 else:
-                    sshcmd = " %s && " % g_Platform.getCdCmd(nodeDnDir)
+                    sshcmd = " %s && " % CmdUtil.getCdCmd(nodeDnDir)
                     sshcmd += "tar -zcvf %s" % (DefaultValue.CERT_BACKUP_FILE)
                     for certDir in tarBackupList:
                         sshcmd += " %s" % certDir
-            self.sshTool.executeCommand(sshcmd, "Backup cert file.",
+            self.sshTool.executeCommand(sshcmd,
                                         DefaultValue.SUCCESS, [node],
                                         self.context.g_opts.mpprcFile)
             # Clear empty file
@@ -552,14 +567,14 @@ class OmImpl:
                 sshcmd = g_file.SHELL_CMD_DICT["deleteFile"] % (
                     os.path.join(nodeDnDir, EMPTY_CERT),
                     os.path.join(nodeDnDir, EMPTY_CERT))
-                self.sshTool.executeCommand(sshcmd, "Clear empty file.",
+                self.sshTool.executeCommand(sshcmd,
                                             DefaultValue.SUCCESS, [node],
                                             self.context.g_opts.mpprcFile)
             self.logger.log(
                 "Successfully backup SSL cert files on [%s]." % node)
             sshcmd = g_file.SHELL_CMD_DICT["changeMode"] % (
                 DefaultValue.KEY_FILE_MODE, backupTar)
-            self.sshTool.executeCommand(sshcmd, "Chmod back up cert",
+            self.sshTool.executeCommand(sshcmd,
                                         DefaultValue.SUCCESS, [node],
                                         self.context.g_opts.mpprcFile)
 
@@ -581,21 +596,21 @@ class OmImpl:
 
         temp = "tempDir"
         if self.context.g_opts.localMode:
-            if ((DefaultValue.GetHostIpOrName() in allDnNodeDict.keys()) and
+            if ((NetUtil.GetHostIpOrName() in allDnNodeDict.keys()) and
                     os.path.isfile(os.path.join(
-                        allDnNodeDict[DefaultValue.GetHostIpOrName()],
+                        allDnNodeDict[NetUtil.GetHostIpOrName()],
                         DefaultValue.CERT_BACKUP_FILE))):
 
-                localDnDir = allDnNodeDict[DefaultValue.GetHostIpOrName()]
+                localDnDir = allDnNodeDict[NetUtil.GetHostIpOrName()]
                 tempDir = os.path.join(localDnDir, temp)
                 if (os.path.exists(tempDir)):
-                    g_file.removeDirectory(tempDir)
-                os.mkdir(tempDir, DefaultValue.KEY_DIRECTORY_PERMISSION)
+                    FileUtil.removeDirectory(tempDir)
+                os.mkdir(tempDir, ConstantsBase.KEY_DIRECTORY_PERMISSION)
 
                 for certFile in backupList:
                     realCertFile = os.path.join(localDnDir, certFile)
                     if (os.path.exists(realCertFile)):
-                        g_file.moveFile(realCertFile, tempDir)
+                        FileUtil.moveFile(realCertFile, tempDir)
 
                 cmd = "cd '%s' && if [ -f '%s' ];then tar -zxvf %s;fi" % \
                       (localDnDir, DefaultValue.CERT_BACKUP_FILE,
@@ -612,7 +627,7 @@ class OmImpl:
 
                 # remove temp directory
                 if (os.path.exists(tempDir)):
-                    g_file.removeDirectory(tempDir)
+                    FileUtil.removeDirectory(tempDir)
 
                 # set guc option
                 if (os.path.isfile(
@@ -663,18 +678,17 @@ class OmImpl:
             sshcmd = "cd '%s' && if [ -d '%s' ];then rm -rf '%s'" \
                      " && mkdir '%s';else mkdir '%s';fi" % \
                      (allDnNodeDict[node], temp, temp, temp, temp)
-            self.sshTool.executeCommand(sshcmd, "Make temp directory.",
-                                        DefaultValue.SUCCESS, \
+            self.sshTool.executeCommand(sshcmd,
+                                        DefaultValue.SUCCESS,
                                         [node], self.context.g_opts.mpprcFile)
             for certFile in backupList:
                 realCertFile = os.path.join(allDnNodeDict[node], certFile)
-                sshcmd = " %s && " % g_Platform.getCdCmd(
+                sshcmd = " %s && " % CmdUtil.getCdCmd(
                     os.path.join(allDnNodeDict[node], temp))
                 sshcmd += g_file.SHELL_CMD_DICT["renameFile"] % (
                     realCertFile, realCertFile, "./")
                 self.sshTool.executeCommand(
                     sshcmd,
-                    "Backup cert files to temp directory.",
                     DefaultValue.SUCCESS,
                     [node],
                     self.context.g_opts.mpprcFile)
@@ -684,16 +698,14 @@ class OmImpl:
                      (allDnNodeDict[node], DefaultValue.CERT_BACKUP_FILE,
                       DefaultValue.CERT_BACKUP_FILE)
             self.sshTool.executeCommand(sshcmd,
-                                        "Unzip backup file.",
                                         DefaultValue.SUCCESS,
                                         [node],
                                         self.context.g_opts.mpprcFile)
 
             # 2-3.clear temp directory
-            sshcmd = " %s && " % g_Platform.getCdCmd(allDnNodeDict[node])
+            sshcmd = " %s && " % CmdUtil.getCdCmd(allDnNodeDict[node])
             sshcmd += g_file.SHELL_CMD_DICT["deleteDir"] % (temp, temp)
             self.sshTool.executeCommand(sshcmd,
-                                        "Clear backup cert files.",
                                         DefaultValue.SUCCESS,
                                         [node],
                                         self.context.g_opts.mpprcFile)
@@ -706,7 +718,7 @@ class OmImpl:
                 self.context.g_opts.mpprcFile)
             # exists 'sslcrl-file.crl' file ,config option of 'postgresql.conf'
             if (status):
-                if node == DefaultValue.GetHostIpOrName():
+                if node == NetUtil.GetHostIpOrName():
                     sshcmd = \
                         "gs_guc set -D %s " \
                         "-c \"ssl_crl_file='%s'\"" \
@@ -716,12 +728,11 @@ class OmImpl:
                              "-c \"ssl_crl_file=\\\\\\'%s\\\\\\'\"" \
                              % (allDnNodeDict[node], DefaultValue.SSL_CRL_FILE)
                 self.sshTool.executeCommand(sshcmd,
-                                            "Exist 'ssl_crl_file'",
                                             DefaultValue.SUCCESS,
                                             [node],
                                             self.context.g_opts.mpprcFile)
             else:
-                if (node == DefaultValue.GetHostIpOrName()):
+                if (node == NetUtil.GetHostIpOrName()):
                     sshcmd = "gs_guc set " \
                              "-D %s -c \"ssl_crl_file=''\"" % (
                                  allDnNodeDict[node])
@@ -730,7 +741,6 @@ class OmImpl:
                              "-D %s -c \"ssl_crl_file=\\\\\\'\\\\\\'\"" \
                              % (allDnNodeDict[node])
                 self.sshTool.executeCommand(sshcmd,
-                                            "No exist 'ssl_crl_file'",
                                             DefaultValue.SUCCESS,
                                             [node],
                                             self.context.g_opts.mpprcFile)
@@ -741,7 +751,6 @@ class OmImpl:
                     os.path.join(allDnNodeDict[node], EMPTY_CERT),
                     os.path.join(allDnNodeDict[node], EMPTY_CERT))
                 self.sshTool.executeCommand(sshcmd,
-                                            "Clear empty file.",
                                             DefaultValue.SUCCESS,
                                             [node],
                                             self.context.g_opts.mpprcFile)
@@ -772,7 +781,7 @@ class OmImpl:
         output: NA
         """
         tempDir = "tempCertDir"
-        gphost = DefaultValue.getTmpDirFromEnv()
+        gphost = EnvUtil.getTmpDirFromEnv()
         if dnDict is None:
             dnDict = {}
         dnName = dnDict.keys()
@@ -784,15 +793,15 @@ class OmImpl:
             certPathList.append(sslPath)
         # local mode
         if self.context.g_opts.localMode:
-            localDnDir = dnDict[DefaultValue.GetHostIpOrName()]
+            localDnDir = dnDict[NetUtil.GetHostIpOrName()]
             for num in range(len(certList)):
                 # distribute gsql SSL cert
                 if (os.path.isfile(os.path.join(localDnDir, certList[num]))):
                     os.remove(os.path.join(localDnDir, certList[num]))
                 if (os.path.isfile(certPathList[num])):
-                    g_file.cpFile(certPathList[num],
+                    FileUtil.cpFile(certPathList[num],
                                   os.path.join(localDnDir, certList[num]))
-                    g_file.changeMode(DefaultValue.KEY_FILE_MODE,
+                    FileUtil.changeMode(DefaultValue.KEY_FILE_MODE,
                                       os.path.join(localDnDir, certList[num]))
 
                     # remove 'sslcrl-file.crl' file
@@ -835,7 +844,6 @@ class OmImpl:
                     os.path.join(dnDict[node], certList[num]),
                     os.path.join(dnDict[node], certList[num]))
                 self.sshTool.executeCommand(sshcmd,
-                                            "Delete read only cert file.",
                                             DefaultValue.SUCCESS,
                                             [node],
                                             self.context.g_opts.mpprcFile)
@@ -851,13 +859,12 @@ class OmImpl:
                     DefaultValue.KEY_FILE_MODE,
                     os.path.join(dnDict[node], certList[num]))
                 self.sshTool.executeCommand(sshcmd,
-                                            "Change file permisstion.'",
                                             DefaultValue.SUCCESS,
                                             [node],
                                             self.context.g_opts.mpprcFile)
 
             if (DefaultValue.SSL_CRL_FILE in certList):
-                if (node == DefaultValue.GetHostIpOrName()):
+                if (node == NetUtil.GetHostIpOrName()):
                     sshcmd = "gs_guc set " \
                              "-D %s -c \"ssl_crl_file='%s'\"" \
                              % (dnDict[node], DefaultValue.SSL_CRL_FILE)
@@ -866,7 +873,6 @@ class OmImpl:
                              " -D %s -c \"ssl_crl_file=\\\\\\'%s\\\\\\'\"" \
                              % (dnDict[node], DefaultValue.SSL_CRL_FILE)
                 self.sshTool.executeCommand(sshcmd,
-                                            "Find 'ssl_crl_file'",
                                             DefaultValue.SUCCESS,
                                             [node],
                                             self.context.g_opts.mpprcFile)
@@ -877,11 +883,10 @@ class OmImpl:
                     os.path.join(dnDict[node], DefaultValue.SSL_CRL_FILE),
                     os.path.join(dnDict[node], DefaultValue.SSL_CRL_FILE))
                 self.sshTool.executeCommand(sshcmd,
-                                            "Find 'ssl_crl_file'",
                                             DefaultValue.SUCCESS,
                                             [node],
                                             self.context.g_opts.mpprcFile)
-                if (node == DefaultValue.GetHostIpOrName()):
+                if (node == NetUtil.GetHostIpOrName()):
                     sshcmd = "gs_guc set " \
                              "-D %s -c \"ssl_crl_file=\'\'\"" % (dnDict[node])
                 else:
@@ -890,7 +895,6 @@ class OmImpl:
                         "-D %s " \
                         "-c \"ssl_crl_file=\\\\\\'\\\\\\'\"" % (dnDict[node])
                 self.sshTool.executeCommand(sshcmd,
-                                            "Find 'ssl_crl_file'",
                                             DefaultValue.SUCCESS,
                                             [node],
                                             self.context.g_opts.mpprcFile)
@@ -899,7 +903,6 @@ class OmImpl:
                     os.path.join(dnDict[node], DefaultValue.SSL_CRL_FILE),
                     os.path.join(dnDict[node], DefaultValue.SSL_CRL_FILE))
                 self.sshTool.executeCommand(sshcmd,
-                                            "Delete read only cert file.",
                                             DefaultValue.SUCCESS,
                                             [node],
                                             self.context.g_opts.mpprcFile)
@@ -908,7 +911,6 @@ class OmImpl:
                 os.path.join(dnDict[node], "certFlag"),
                 os.path.join(dnDict[node], "certFlag"))
             self.sshTool.executeCommand(sshcmd,
-                                        "Delete backup flag file.",
                                         DefaultValue.SUCCESS,
                                         [node],
                                         self.context.g_opts.mpprcFile)
@@ -960,7 +962,7 @@ class OmImpl:
         """
         existNodes = []
         for nodeName in self.context.clusterInfo.getClusterNodeNames():
-            if (nodeName == DefaultValue.GetHostIpOrName()):
+            if (nodeName == NetUtil.GetHostIpOrName()):
                 continue
             if (self.sshTool.checkRemoteFileExist(nodeName, filepath, "")):
                 existNodes.append(nodeName)
@@ -977,23 +979,15 @@ class OmImpl:
         for fileName in fileList:
             fileName = os.path.join(filepath, fileName)
             # change the owner of files
-            g_file.changeOwner(self.context.g_opts.user, fileName)
+            FileUtil.changeOwner(self.context.g_opts.user, fileName)
             if (os.path.isfile(fileName)):
                 # change fileName permission
-                g_file.changeMode(DefaultValue.KEY_FILE_MODE, fileName)
+                FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, fileName)
             else:
                 # change directory permission
-                g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE, fileName,
+                FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, fileName,
                                   True)
                 self.recursivePath(fileName)
-
-    def checkNode(self):
-        """
-        function: check if the current node is to be uninstalled
-        input : NA
-        output: NA
-        """
-        pass
 
     def stopCluster(self):
         """

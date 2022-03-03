@@ -15,7 +15,6 @@
 # MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 # See the Mulan PSL v2 for more details.
 #############################################################################
-import sys
 
 
 class CheckException(Exception):
@@ -27,37 +26,12 @@ class CheckException(Exception):
         return "[%s]: ERROR: " % self.code + self.content
 
 
-class ParameterException(CheckException):
-    def __init__(self, content):
-        self.code = "GAUSS-53012"
-        self.content = "Errors occurred when parsing parameters: %s." % content
-
-
-class UnknownParameterException(CheckException):
-    def __init__(self, param):
-        self.code = "GAUSS-53013"
-        self.content = "Unknown parameters were set: %s." % param
-
-
-class EmptyParameterException(CheckException):
-    def __init__(self):
-        self.code = "GAUSS-53014"
-        self.content = "The parameters cannot be empty."
-
-
 class UseBothParameterException(CheckException):
     def __init__(self, params):
         self.code = "GAUSS-53015"
         self.content = \
             " The parameter '-%s' and '-%s' can not be used together." % (
                 params[0], params[1])
-
-
-class AvailableParameterException(CheckException):
-    def __init__(self, parent, subs):
-        self.code = "GAUSS-53016"
-        self.content = " The parameter '%s' were not available for '%s'." % (
-            ",".join(subs), parent)
 
 
 class SceneNotFoundException(CheckException):
@@ -169,12 +143,6 @@ class ContextLoadException(CheckException):
     def __init__(self, errors):
         self.code = "GAUSS-53031"
         self.content = "Loading context has errors: %s." % str(errors)
-
-
-class CheckErrorException(CheckException):
-    def __init__(self):
-        self.code = "GAUSS-53032"
-        self.content = "An internal error occurred during the checking process"
 
 
 class CheckNAException(CheckException):

@@ -26,17 +26,17 @@ import types
 import sys
 import re
 import pwd
-import xml.dom.minidom
-import xml.etree.cElementTree as ETree
-import json
-import socket
 import copy
 
 sys.path.append(os.path.split(os.path.realpath(__file__))[0] + "/../../")
-from gspylib.os.gsfile import g_file
 from gspylib.common.ErrorCode import ErrorCode
-from gspylib.common.VersionInfo import VersionInfo
 from gspylib.threads.parallelTool import parallelTool
+from domain_utils.cluster_file.cluster_config_file import ClusterConfigFile
+from base_utils.os.file_util import FileUtil
+from domain_utils.cluster_file.version_info import VersionInfo
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from base_utils.common.constantsbase import ConstantsBase
+from base_utils.os.env_util import EnvUtil
 
 ###########################
 # instance role 
@@ -67,15 +67,11 @@ BASE_ID_COORDINATOR = 5001
 BASE_ID_DATANODE = 6001
 BASE_ID_ETCD = 7001
 DIRECTORY_PERMISSION = 0o750
-KEY_FILE_PERMISSION = 0o600
 
 # For primary/standby instance When the ID > 7000 ,
 # the new id is start from 40001
 OLD_LAST_PRIMARYSTANDBY_BASEID_NUM = 7000
 NEW_FIRST_PRIMARYSTANDBY_BASEID_NUM = 40000
-# For salve instance When the ID > 5000 , the new id is start from 20001
-OLD_LAST_DUMMYNODE_BASEID_NUM = 5000
-NEW_FIRST_DUMMYNODE_BASEID_NUM = 20000
 
 # master instance default port
 MASTER_BASEPORT_CMS = 5000
@@ -93,8 +89,6 @@ STANDBY_BASEPORT_CMAGENT = 0
 STANDBY_BASEPORT_COO = 8500
 STANDBY_BASEPORT_DATA = 45000
 STANDBY_BASEPORT_ETCD = 2380
-# dummy standby instance default port
-DUMMY_STANDBY_BASEPORT_DATA = 50000
 
 ###########################
 # instance type. only for CN/DN 
@@ -112,27 +106,8 @@ CASCADE_STANDBY = 3
 ###########################
 # instance number
 ###########################
-# cm:cm_server, cm_agent
-MIRROR_COUNT_CMS = 2
-# gtm:gtm_server, gtm_agent
-MIRROR_COUNT_GTM = 2
-# ssd:ssd_server, ssd_agent
-MIRROR_COUNT_SSD = 2
-# minimum number of nodes
-MIRROR_COUNT_DATA = 3
-# etcd number >=3 and <= 7
-MIRROR_COUNT_ETCD_MIN = 3
-MIRROR_COUNT_ETCD_MAX = 7
-# max number of CN instance
-MIRROR_COUNT_CN_MAX = 16
-# max number of node
-MIRROR_COUNT_NODE_MAX = 1024
-# max number of DB instance(primary instance)
-MIRROR_COUNT_DN_MAX = 4096
-# min number of replication for CLUSTER_TYPE_SINGLE_PRIMARY_MULTI_STANDBY
-MIRROR_COUNT_REPLICATION_MIN = 2
 # max number of replicationfor CLUSTER_TYPE_SINGLE_PRIMARY_MULTI_STANDBY
-MIRROR_COUNT_REPLICATION_MAX = 8
+MIRROR_COUNT_REPLICATION_MAX = 9
 # max number of azPriority for CLUSTER_TYPE_SINGLE_PRIMARY_MULTI_STANDBY
 AZPRIORITY_MAX = 10
 # min number of azPriority for CLUSTER_TYPE_SINGLE_PRIMARY_MULTI_STANDBY
@@ -140,17 +115,12 @@ AZPRIORITY_MIN = 1
 # DB port set step size for CLUSTER_TYPE_SINGLE_PRIMARY_MULTI_STANDBY
 PORT_STEP_SIZE = 20
 
-MIRROR_ID_COO = -1
 MIRROR_ID_AGENT = -3
-MIRROR_ID_ETCD = -5
 
 # cluster type
 CLUSTER_TYPE_SINGLE = "single"
 CLUSTER_TYPE_SINGLE_PRIMARY_MULTI_STANDBY = "single-primary-multi-standby"
 CLUSTER_TYPE_SINGLE_INST = "single-inst"
-
-# env parameter
-ENV_CLUSTERCONFIG = "CLUSTERCONFIGFILE"
 
 # default config version, it is used by gs_upgrade
 BIN_CONFIG_VERSION = 2
@@ -171,132 +141,12 @@ SEPERATOR_LEN = 1
 IP_LEN = 16
 PORT_LEN = 10
 
-# GPHOME
-CLUSTER_TOOL_PATH = "/opt/huawei/wisequery"
-
-# key words for json configure file
-# Globalinfo
-JSON_GLOBALINFO = "Globalinfo"
-JSON_TOOL_PATH = "gaussdbToolPath"
-JSON_CLUSTER_NAME = "ClusterName"
-JSON_LOGPATH = "gaussdbLogPath"
-JSON_TMPPATH = "gaussdbTmpPath"
-JSON_MANAGER_PATH = "gaussdbManagerPath"
-JSON_APPPATH = "gaussdbAppPath"
-QUORUMMODE = "quorumMode"
-REPLICATIONCOUNT = "replicationCount"
-
-# keywords for layouts in json file
-JSON_LAYOUTS = "Layouts"
-JSON_AZNAME = "AZName"
-JSON_HOSTS = "Hosts"
-JSON_IP = "IP"
-JSON_CHANNEL_PORT = "channelPort"
-JSON_INSTANCES = "Instances"
-JSON_ID = "Id"
-JSON_SCRIPTS = "Scripts"
-JSON_CHECK = "check"
-JSON_FAILOVER = "failover"
-JSON_RESTART = "restart"
-JSON_START = "start"
-JSON_STOP = "stop"
-JSON_SWITCHOVER = "switchover"
-JSON_BUILD = "build"
-JSON_KILL = "kill"
-JSON_GETPASSWD = "getpasswd"
-JSON_CHECK_PGXC = "check_pgxc"
-JSON_CHECK_PGXC_GROUP = "check_pgxc_group"
-JSON_CREATE_PGXC_NODE = "create_pgxc_node"
-JSON_CREATE_PGXC_GROUP = "create_pgxc_group"
-JSON_CHECK_PGXC_GROUP_EXPAND = "check_pgxc_group_expand"
-JSON_UPDATE_PGXC_GROUP = "update_pgxc_group"
-CHANGE_PGXC_NODE = "change_pgxc_node"
-DELETE_PGXC_NODE = "delete_pgxc_node"
-JSON_EXEC_WITH_TRANSACTION = "execute_with_transaction"
-JSON_CHECK_SYNCHRONOUS_STANDY = "check_synchronous_standby"
-JSON_CHANGE_SYNCHRONOUS_STANDBY = "change_synchronous_standby"
-JSON_TYPE_NAME = "TypeName"
-JSON_ATTRIBUTES = "Attributes"
-JSON_DATA_DIR = "DataDir"
-JSON_GROUP = "Group"
-JSON_PORT = "Port"
-JSON_REPLPORT = "ReplPort"
-JSON_PEER_PORT = "PeerPort"
-JSON_CLIENT_PORT = "ClientPort"
-JSON_ETCD_DATA_DIR = "EtcdDataDir"
-JSON_ETCD_CLUSTER_NAME = "ClusterName"
-JSON_SCTP_PORT = "SctpPort"
-JSON_CONTROL_PORT = "ControlPort"
-# keywords for groups in json file
-JSON_GROUPS = "Groups"
-JSON_GROUP_TYPE = "GroupType"
-JSON_GROUP_ID = "GroupId"
-JSON_PARENT_NODE = "ParentNode"
-JSON_ROLE = "Role"
-
-# keywords for StaticConfig in json file
-JSON_STATIC_CONFIG = "StaticConfig"
-JSON_NUM_PRIMARYAZ = "NumPrimaryAZ"
-JSON_PRIMARY_AZ = "PrimaryAZ"
-JSON_SYNC_AZ = "SyncAZ"
-JSON_THIRDPART_AZ = "ThirdPartAZ"
-
-g_dom = None
 
 # The default network type is single plane
 g_networkType = 0
 
-# Oltp's inst type
-# etcd
-ETCD = 'etcd'
-# cm
-CLUSTER_MANAGER = 'cluster_manager'
-DN_ZENITH_ZPAXOS = "DN_ZENITH_ZPAXOS"
-DN_ZENITH_ZPAXOS_V2 = "DN_ZENITH_ZPAXOS_V2"
-DN_ZENITH_HA = "DN_ZENITH_HA"
-COORDINATOR = "coordinator"
-CN_ZENITH_ZSHARDING = "CN_ZENITH_ZSHARDING"
-GTS_ZENITH = "GTS_ZENITH"
-OLTP_DN_TYPES = [DN_ZENITH_ZPAXOS, DN_ZENITH_ZPAXOS_V2, DN_ZENITH_HA]
-OLTP_CN_TYPES = [CN_ZENITH_ZSHARDING]
-# TP AZ names
-azName1 = "AZ1"
-azName2 = "AZ2"
-azName3 = "AZ3"
-AZNMAE_LIST = [azName1, azName2, azName3]
-DN_ROLE_MAP = {"Primary": "P", "Standby": "S", "Normal": "P", "Secondary": "R"}
-
 # global param to cache gs_om query instance result.
 global_cls_query_rst = {}
-
-def InstanceIgnore_haPort(Object):
-    """
-    funciton : Analyze the current instance role:CN or CMAGENT.
-    input : Object
-    output : boolean
-    """
-    # we only support CN/cm_agent
-    if (
-            Object.instanceRole == INSTANCE_ROLE_COODINATOR or
-            Object.instanceRole == INSTANCE_ROLE_CMAGENT):
-        return True
-    else:
-        return False
-
-
-def InstanceIgnore_isMaster(Object):
-    """
-    funciton : Analyze the current instance role:GTM or DN.
-    input : Object
-    output : boolean
-    """
-    # we only support DN/gtm
-    if (
-            Object.instanceRole != INSTANCE_ROLE_GTM and Object.instanceRole
-            != INSTANCE_ROLE_DATANODE):
-        return True
-    else:
-        return False
 
 
 def ignoreCheck(Object, member, model):
@@ -420,13 +270,11 @@ def checkPathVaild(obtainpath):
     """
     PATH_CHECK_LIST = [" ", "|", ";", "&", "$", "<", ">", "`", "\\", "'", "\"",
                        "{", "}", "(", ")", "[", "]", "~", "*", "?", "!", "\n"]
-    if (obtainpath.strip() == ""):
+    if not obtainpath.strip():
         return
-    for rac in PATH_CHECK_LIST:
-        flag = obtainpath.find(rac)
-        if flag >= 0:
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] % obtainpath + \
-                            " There are illegal characters in the path.")
+    if any(ill_char in obtainpath for ill_char in PATH_CHECK_LIST):
+        raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] % obtainpath +
+                        " There are illegal characters in the path.")
 
 
 def obtainInstStr(objectList):
@@ -487,7 +335,7 @@ def compareObject(Object_A, Object_B, instName, tempbuffer=None, model=None,
     elif (isinstance(Object_A, list)):
         if (model == "manageCN"):
             if (len(Object_A) != len(Object_B)):
-                theSame, tempbuffer = checkObject(Object_A, Object_B, instName,
+                theSame, tempbuffer = checkObject(Object_A, Object_B,
                                                   tempbuffer, manageCNinfo)
                 if (not theSame):
                     return False, tempbuffer
@@ -522,8 +370,7 @@ def compareObject(Object_A, Object_B, instName, tempbuffer=None, model=None,
                     if (not result):
                         return False, tempbuffer
         else:
-            if (len(Object_A) != len(Object_B)):
-                instmap = {obtainInstStr(Object_A): obtainInstStr(Object_B)}
+            if len(Object_A) != len(Object_B):
                 tempbuffer.append(instName)
                 tempbuffer.append(obtainInstStr(Object_A))
                 tempbuffer.append(obtainInstStr(Object_B))
@@ -575,7 +422,7 @@ def compareObject(Object_A, Object_B, instName, tempbuffer=None, model=None,
     return True, tempbuffer
 
 
-def checkObject(Object_A, Object_B, instName, checkbuffer, manageCNinfo):
+def checkObject(Object_A, Object_B, checkbuffer, manageCNinfo):
     """
     """
     Join = []
@@ -646,125 +493,6 @@ def checkObject(Object_A, Object_B, instName, checkbuffer, manageCNinfo):
 ####################################################################
 
 xmlRootNode = None
-
-
-def checkXMLFile(xmlFile):
-    """
-    function : check XML contain DTDs
-    input : String
-    output : NA
-    """
-    # Check xml for security requirements
-    # if it have "<!DOCTYPE\s+note\s+SYSTEM", 
-    # exit and print "File have security risks."
-    try:
-        with open(xmlFile, "r", encoding='utf-8') as fb:
-            lines = fb.readlines()
-        for line in lines:
-            if re.findall("<!DOCTYPE\s+note\s+SYSTEM", line):
-                raise Exception("File have security risks.")
-    except Exception as e:
-        raise Exception(str(e))
-
-
-def initParserXMLFile(xmlFilePath):
-    """
-    function : Init parser xml file
-    input : String
-    output : Object
-    """
-    try:
-        # check xml for security requirements   
-        checkXMLFile(xmlFilePath)
-        # parse the xml by xml.etree.cElementTree
-        with open(xmlFilePath, 'r', encoding='utf-8') as fp:
-            xmlstr = fp.read()
-        rootNode = ETree.fromstring(xmlstr)
-    except Exception as e:
-        raise Exception(
-            ErrorCode.GAUSS_512["GAUSS_51236"] + " Error: \n%s." % str(e))
-    return rootNode
-
-
-def readOneClusterConfigItem(rootNode, paraName, inputElementName,
-                             nodeName=""):
-    """
-    function : Read one cluster configuration item
-    input : Object,String,String
-    output : String,String
-    """
-    # if read node level config item, should input node name
-    if (inputElementName.upper() == 'node'.upper() and nodeName == ""):
-        raise Exception(ErrorCode.GAUSS_512["GAUSS_51201"] + \
-                        " Need node name for node configuration level.")
-
-    ElementName = inputElementName.upper()
-    # get config path
-    configPath = os.environ.get('CLUSTERCONFIGFILE')
-    returnValue = ""
-    returnStatus = 2
-
-    if ElementName == 'cluster'.upper():
-        if not rootNode.findall('CLUSTER'):
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51200"] % ElementName)
-        element = rootNode.findall('CLUSTER')[0]
-        nodeArray = element.findall('PARAM')
-        (returnStatus, returnValue) = findParamInCluster(paraName, nodeArray)
-    elif ElementName == 'node'.upper():
-        ElementName = 'DEVICELIST'
-        if not rootNode.findall('DEVICELIST'):
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51200"] % ElementName)
-        DeviceArray = rootNode.findall('DEVICELIST')[0]
-        DeviceNode = DeviceArray.findall('DEVICE')
-        (returnStatus, returnValue) = findParamByName(nodeName, paraName,
-                                                      DeviceNode)
-    else:
-        raise Exception(ErrorCode.GAUSS_512["GAUSS_51200"] % ElementName)
-
-    return (returnStatus, returnValue)
-
-
-def findParamInCluster(paraName, nodeArray):
-    """
-    function : Find parameter in cluster
-    input : String,[]
-    output : String,String
-    """
-    returnValue = ""
-    returnStatus = 2
-    for node in nodeArray:
-        name = node.attrib['name']
-        if name == paraName:
-            returnStatus = 0
-            returnValue = str(node.attrib['value'])
-    return (returnStatus, returnValue)
-
-
-def findParamByName(nodeName, paraName, DeviceNode):
-    """
-    function : Find parameter by name
-    input : String,String,Object
-    output : String,String
-    """
-    returnValue = ""
-    returnStatus = 2
-    for dev in DeviceNode:
-        paramList = dev.findall('PARAM')
-        for param in paramList:
-            thisname = param.attrib['name']
-            if thisname == 'name':
-                value = param.attrib['value']
-                if nodeName == value:
-                    for param in paramList:
-                        name = param.attrib['name']
-                        if name == paraName:
-                            returnStatus = 0
-                            returnValue = str(param.attrib['value'].strip())
-                            if ((name.find("Dir") > 0 or name.find(
-                                    "dataNode") == 0) and returnValue != ""):
-                                returnValue = os.path.normpath(returnValue)
-    return (returnStatus, returnValue)
-
 
 ####################################################################
 
@@ -872,6 +600,8 @@ class instanceInfo():
         self.peerInstanceInfos = []
         self.syncNum = -1
         self.cascadeRole = "off"
+        # dcf_data_path
+        self.dcf_data_path = ""
 
     def __cmp__(self, target):
         """
@@ -1030,8 +760,7 @@ class dbNodeInfo():
     def appendInstance(self, instId, mirrorId, instRole, instanceType,
                        listenIps=None,
                        haIps=None, datadir="", ssddir="", level=1,
-                       clusterType=CLUSTER_TYPE_SINGLE_INST, xlogdir="",
-                       syncNum=-1):
+                       xlogdir="", syncNum=-1, dcf_data=""):
         """
         function : Classify the instance of cmserver/gtm
         input : int,int,String,String
@@ -1043,7 +772,6 @@ class dbNodeInfo():
                                         "conflicting." % datadir)
 
         dbInst = instanceInfo(instId, mirrorId)
-
         dbInst.hostname = self.name
         dbInst.datadir = os.path.realpath(datadir)
 
@@ -1092,6 +820,7 @@ class dbNodeInfo():
             dbInst.haPort = dbInst.port + 1
             dbInst.ssdDir = ssddir
             dbInst.syncNum = syncNum
+            dbInst.dcf_data_path = dcf_data
             self.datanodes.append(dbInst)
         # cm_agent
         elif (instRole == INSTANCE_ROLE_CMAGENT):
@@ -1143,9 +872,6 @@ class dbNodeInfo():
                 return False
 
         return True
-
-    def assignNewInstancePort(self, instList, instRole, instanceType):
-        return self.__assignNewInstancePort(instList, instRole, instanceType)
 
     def __assignNewInstancePort(self, instList, instRole, instanceType):
         """
@@ -1226,6 +952,10 @@ class dbClusterInfo():
         self.masterDnCount = 0
         self.standbyDnCount = 0
         self.dummyStandbyDnCount = 0
+        self.cm_state_list = list()
+        # add for dcf
+        self.enable_dcf = ""
+        self.dcf_config = ""
 
     def __str__(self):
         """
@@ -1242,45 +972,18 @@ class dbClusterInfo():
 
         return retStr
 
-    @staticmethod
-    def setDefaultXmlFile(xmlFile):
+    def check_conf_cm_state(self):
         """
-        function : Set the default xml file
-        input : String
-        output : NA
+        Save CM instance state
         """
-        if not os.path.exists(xmlFile):
-            raise Exception(
-                ErrorCode.GAUSS_502["GAUSS_50201"] % "XML configuration")
-
-        os.putenv(ENV_CLUSTERCONFIG, xmlFile)
-
-    @staticmethod
-    def readClusterHosts(xmlFile=""):
-        """
-        function : Read cluster node name from xml file
-        input : String
-        output : String
-        """
-        if (xmlFile != ""):
-            dbClusterInfo.setDefaultXmlFile(xmlFile)
-
-        # read cluster node name from xml file
-        (retStatus, retValue) = readOneClusterConfigItem(
-            initParserXMLFile(xmlFile), "nodeNames", "cluster")
-        if (retStatus != 0):
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"]
-                            % "node names" + " Error: \n%s" % retValue)
-        nodeNames = []
-        nodeNames_tmp = retValue.split(",")
-        for nodename in nodeNames_tmp:
-            nodeNames.append(nodename.strip())
-        if (len(nodeNames) == 0):
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % \
-                            "XML file" + " There is no nodes in cluster "
-                                         "configuration file.")
-
-        return nodeNames
+        if not self.cm_state_list:
+            return True
+        state_result = self.cm_state_list[0]
+        for state in self.cm_state_list[1:]:
+            state_result ^= state
+            if state_result:
+                return False
+        return True
 
     @staticmethod
     def readClustercorePath(xmlFile):
@@ -1289,10 +992,10 @@ class dbClusterInfo():
         input : String
         output : String
         """
-        dbClusterInfo.setDefaultXmlFile(xmlFile)
+        ClusterConfigFile.setDefaultXmlFile(xmlFile)
         # read corefile path from xml file
-        (retStatus, retValue) = readOneClusterConfigItem(
-            initParserXMLFile(xmlFile), "corePath", "cluster")
+        (retStatus, retValue) = ClusterConfigFile.readOneClusterConfigItem(
+            ClusterConfigFile.initParserXMLFile(xmlFile), "corePath", "cluster")
         if retStatus != 0:
             raise Exception(ErrorCode.GAUSS_512["GAUSS_51200"]
                             % "corePath" + " Error: \n%s" % retValue)
@@ -1300,67 +1003,6 @@ class dbClusterInfo():
         checkPathVaild(corepath)
         return corepath
 
-    @staticmethod
-    def readClusterAppPath(xmlFile):
-        """
-        function : Read the cluster's application path from xml file
-        input : String
-        output : String 
-        """
-        dbClusterInfo.setDefaultXmlFile(xmlFile)
-        # read the cluster's application path from xml file
-        (retStatus, retValue) = readOneClusterConfigItem(
-            initParserXMLFile(xmlFile), "gaussdbAppPath", "cluster")
-        if retStatus != 0:
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51200"]
-                            % "gaussdbAppPath" + " Error: \n%s" % retValue)
-
-        appPath = os.path.normpath(retValue)
-        checkPathVaild(appPath)
-        return appPath
-
-    @staticmethod
-    def readClusterTmpMppdbPath(user, xmlFile):
-        """
-        function : Read temporary mppdb path from xml file
-        input : String,String
-        output : String
-        """
-        dbClusterInfo.setDefaultXmlFile(xmlFile)
-        # read temporary mppdb path from xml file
-        (retStatus, retValue) = readOneClusterConfigItem(
-            initParserXMLFile(xmlFile), "tmpMppdbPath", "cluster")
-        if retStatus != 0:
-            (retToolPathStatus, retToolPathValue) = readOneClusterConfigItem(
-                initParserXMLFile(xmlFile), "gaussdbToolPath", "cluster")
-            if retToolPathStatus != 0:
-                retToolPathValue = CLUSTER_TOOL_PATH
-            retValue = os.path.join(retToolPathValue, "%s_mppdb" % user)
-
-        tmppath = os.path.normpath(retValue)
-        checkPathVaild(tmppath)
-        return tmppath
-
-    @staticmethod
-    def readClusterLogPath(xmlFile):
-        """
-        function : Read log path from xml file
-        input : String
-        output : NA
-        """
-        dbClusterInfo.setDefaultXmlFile(xmlFile)
-        # read log path from xml file
-        (retStatus, retValue) = readOneClusterConfigItem(
-            initParserXMLFile(xmlFile), "gaussdbLogPath", "cluster")
-        if retStatus == 0:
-            tmppath = os.path.normpath(retValue)
-            checkPathVaild(tmppath)
-            return tmppath
-        elif retStatus == 2:
-            return "/var/log/gaussdb"
-        else:
-            raise Exception(ErrorCode.GAUSS_500["GAUSS_51200"]
-                            % "gaussdbLogPath" + " Error: \n%s" % retValue)
 
     def initFromStaticConfig(self, user, static_config_file="",
                              isLCCluster=False, ignoreLocalEnv=False):
@@ -1379,42 +1021,6 @@ class dbClusterInfo():
         # read static_config_file 
         self.__readStaticConfigFile(staticConfigFile, user, isLCCluster,
                                     ignoreLocalEnv=ignoreLocalEnv)
-
-    def getClusterVersion(self, staticConfigFile):
-        """
-        function : get cluster version information
-                   from static configuration file
-        input : String
-        output : version
-        """
-        try:
-            with open(staticConfigFile, "rb") as fp:
-                info = fp.read(28)
-            (crc, lenth, version, currenttime, nodeNum,
-             localNodeId) = struct.unpack("=IIIqiI", info)
-        except Exception as e:
-            raise Exception(
-                ErrorCode.GAUSS_512["GAUSS_51236"] + " Error: \n%s." % str(e))
-
-        return version
-
-    def isMiniaturizedDeployment(self, cluster_version):
-        """
-        function: judge whether is the miniaturized deployment 
-        input : Int
-        output : bool value
-        """
-        if (cluster_version >= 101 and cluster_version <= 200):
-            return True
-        return False
-
-    def isSinglePrimaryMultiStandbyDeployment(self, cluster_version):
-        """
-        judge whether is the single primary multi standby deployment
-        """
-        if (cluster_version >= 201 and cluster_version <= 300):
-            return True
-        return False
 
     def queryNodeInfo(self, sshtool, localHostName, nodeId, fileName="", azName=""):
         """
@@ -1530,7 +1136,7 @@ class dbClusterInfo():
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51612"] % nodeId)
         self.__fprintContent(outText, fileName)
 
-    def printStaticConfig(self, user, fileName="", isLCCluster=False):
+    def printStaticConfig(self, fileName=""):
         """
         function : printStaticConfig
         input : String
@@ -2054,7 +1660,7 @@ class dbClusterInfo():
 
     def __fprintContent(self, content, fileName):
         if fileName != "":
-            g_file.createFileInSafeMode(fileName)
+            FileUtil.createFileInSafeMode(fileName)
             with open(fileName, "a") as fp:
                 fp.write(content)
                 fp.flush()
@@ -2082,6 +1688,8 @@ class dbClusterInfo():
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % \
                             ("installation path of designated user [%s]" %
                              user))
+
+        checkPathVaild(gaussHome)
         # if under upgrade, and use chose strategy, we may get a wrong path,
         # so we will use the realpath of gausshome
         commitid = VersionInfo.getCommitid()
@@ -2112,13 +1720,13 @@ class dbClusterInfo():
         output : String
         """
         # get mpprc file
-        mpprcFile = os.getenv('MPPDB_ENV_SEPARATE_PATH')
+        mpprcFile = EnvUtil.getEnvironmentParameterValue('MPPDB_ENV_SEPARATE_PATH', user)
         if mpprcFile is not None and mpprcFile != "":
             mpprcFile = mpprcFile.replace("\\", "\\\\").replace('"', '\\"\\"')
             checkPathVaild(mpprcFile)
             userProfile = mpprcFile
         else:
-            userProfile = "~/.bashrc"
+            userProfile = ClusterConstants.BASHRC
         # build shell command
         if (os.getuid() == 0):
             cmd = "su - %s -c 'source %s;echo $%s' 2>/dev/null" % (
@@ -2130,7 +1738,9 @@ class dbClusterInfo():
         if (status != 0):
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"]
                             % cmd + " Error: \n%s" % output)
-        return output.split("\n")[0]
+        env_path = output.split("\n")[0]
+        checkPathVaild(env_path)
+        return env_path
 
     def __getStatusByOM(self, user):
         """
@@ -2142,13 +1752,13 @@ class dbClusterInfo():
         output : String
         """
         # get mpprc file
-        mpprcFile = os.getenv('MPPDB_ENV_SEPARATE_PATH')
+        mpprcFile = EnvUtil.getEnvironmentParameterValue('MPPDB_ENV_SEPARATE_PATH', user)
         if mpprcFile is not None and mpprcFile != "":
             mpprcFile = mpprcFile.replace("\\", "\\\\").replace('"', '\\"\\"')
             checkPathVaild(mpprcFile)
             userProfile = mpprcFile
         else:
-            userProfile = "~/.bashrc"
+            userProfile = ClusterConstants.BASHRC
         # build shell command
         if os.getuid() == 0:
             cmd = "su - %s -c 'source %s;gs_om -t status --detail" % (
@@ -2159,7 +1769,7 @@ class dbClusterInfo():
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"]
                             % cmd + " Error: \n%s" % output)
-        return output.split("\n")
+        return [i for i in output.strip().split("\n") if i]
 
     def __readStaticConfigFile(self, staticConfigFile, user, isLCCluster=False,
                                ignoreLocalEnv=False):
@@ -2219,6 +1829,8 @@ class dbClusterInfo():
                 self.localNodeId = localNodeId
                 self.nodeCount = nodeNum
             except Exception as e:
+                if fp:
+                    fp.close()
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"]
                                 % staticConfigFile + " Error:\n" + str(e))
             if version <= 100:
@@ -2937,7 +2549,19 @@ class dbClusterInfo():
                                             maxDummyDNInstanceId
                                         maxDummyDNInstanceId += 1
 
-    def initFromXml(self, xmlFile, static_config_file="", mode="inherit"):
+    def __check_cms_config(self):
+        """
+        Check cm_server config
+        """
+        if self.cmscount > 0 and len(self.dbNodes) < 2:
+            raise Exception(ErrorCode.GAUSS_512["GAUSS_51236"] +
+                            "The cm_server instance can be "
+                            "configured only on three or more nodes.")
+        if 0 < self.cmscount < 2:
+            raise Exception(ErrorCode.GAUSS_512["GAUSS_51236"] +
+                            "At least three cm_server instances are required.")
+
+    def initFromXml(self, xmlFile):
         """
         function : Init cluster from xml config file
         input : file Object for OLAP
@@ -2954,21 +2578,20 @@ class dbClusterInfo():
 
         # Set the environment variable, then the readcluster command can
         # read from it.
-        os.putenv(ENV_CLUSTERCONFIG, xmlFile)
+        os.putenv(ClusterConstants.ENV_CLUSTERCONFIG, xmlFile)
         # parse xml file
         global xmlRootNode
         try:
-            xmlRootNode = initParserXMLFile(xmlFile)
+            xmlRootNode = ClusterConfigFile.initParserXMLFile(xmlFile)
         except Exception as e:
             raise Exception(ErrorCode.GAUSS_512["GAUSS_51234"]
                             % xmlFile + " Error:\n%s" % str(e))
 
         self.__readClusterGlobalInfo()
-        if "HOST_IP" in list(os.environ.keys()):
-            self.__readAgentConfigInfo()
         self.__readClusterNodeInfo()
         self.__checkAZForSingleInst()
         IpPort = self.__checkInstancePortandIP()
+        self.__check_cms_config()
         return IpPort
 
     def getClusterNodeNames(self):
@@ -2998,17 +2621,6 @@ class dbClusterInfo():
                 for dataNode in dbNode.datanodes:
                     return dataNode.instanceType
 
-    def getDataDir(self, nodeId=-1):
-        """
-        function: get the dataNode's data path
-        input: NA
-        output: NA
-        """
-        for dbNode in self.dbNodes:
-            if nodeId == dbNode.id:
-                for dataNode in dbNode.datanodes:
-                    return dataNode.datadir
-
     def getHostNameByNodeId(self, nodeId=-1):
         """
         function: get the dataNode's name by nodeId
@@ -3019,13 +2631,42 @@ class dbClusterInfo():
             if nodeId == dbNode.id:
                 return dbNode.name
 
-    def getClusterNewNodeNames(self):
+    def get_cluster_directory_dict(self):
         """
-        function : Get the cluster's node names.
+        function : Get cluster all directorys
         input : NA
-        output : NA
+        output : List
         """
-        return [dbNode.name for dbNode in self.newNodes]
+        cluster_dirs = dict()
+        cluster_dirs["appPath"] = [self.appPath]
+        cluster_dirs["logPath"] = [self.logPath]
+        # get cluster all directorys
+        for db_node in self.dbNodes:
+            # including cm_server, cm_agent, cn, dn, gtm, etcd, ssd
+            cn_dict =  dict(data_dir="", ssd="")
+            dn_dict = dict(data_dir=list(), ssd=list(), xlog_dir=list())
+            node_dict = dict(cm_server="", cm_agent="", cn=cn_dict,
+                             dn=dn_dict, gtm="", etcd="", ssd="")
+            if db_node.cmservers:
+                node_dict["cm_server"] = db_node.cmservers[0].datadir
+            if db_node.cmagents:
+                node_dict["cm_agent"] = db_node.cmagents[0].datadir
+            if db_node.gtms:
+                node_dict["gtm"] = db_node.gtms[0].datadir
+            if db_node.coordinators:
+                node_dict["cn"]["data_dir"] = db_node.coordinators[0].datadir
+                if db_node.coordinators[0].ssdDir:
+                    node_dict["cn"]["ssd"] = db_node.coordinators[0].ssdDir
+            for dbInst in db_node.datanodes:
+                node_dict["dn"]["data_dir"].append(dbInst.datadir)
+                node_dict["dn"]["xlog_dir"].append(dbInst.xlogdir)
+                if dbInst.ssdDir:
+                    node_dict["dn"]["ssd"].append(dbInst.ssdDir)
+            if db_node.etcds:
+                node_dict["etcd"] = db_node.etcds[0].datadir
+            cluster_dirs[db_node.name] = node_dict
+        return cluster_dirs
+
 
     def getClusterDirectorys(self, hostName="", ignore=True):
         """
@@ -3078,45 +2719,6 @@ class dbClusterInfo():
 
         return None
 
-    def getDbNodeByID(self, inputid):
-        """
-        function : Get node by id.
-        input : nodename
-        output : []
-        """
-        for dbNode in self.dbNodes:
-            if (dbNode.id == inputid):
-                return dbNode
-
-        return None
-
-    def getMirrorInstance(self, mirrorId):
-        """
-        function : Get primary instance and standby instance.
-        input : String
-        output : []
-        """
-        instances = []
-
-        for dbNode in self.dbNodes:
-            for inst in dbNode.cmservers:
-                if (inst.mirrorId == mirrorId):
-                    instances.append(inst)
-
-            for inst in dbNode.gtms:
-                if (inst.mirrorId == mirrorId):
-                    instances.append(inst)
-
-            for inst in dbNode.coordinators:
-                if (inst.mirrorId == mirrorId):
-                    instances.append(inst)
-
-            for inst in dbNode.datanodes:
-                if (inst.mirrorId == mirrorId):
-                    instances.append(inst)
-
-        return instances
-
     def getPeerInstance(self, dbInst):
         """  
         function : Get peer instance of specified instance.
@@ -3129,7 +2731,8 @@ class dbClusterInfo():
                 if (inst.mirrorId == dbInst.mirrorId and
                         inst.instanceId != dbInst.instanceId):
                     instances.append(inst)
-
+        if instances:
+            instances.sort(key=lambda inst: inst.instanceId)
         return instances
 
     def getClusterBackIps(self):
@@ -3305,25 +2908,28 @@ class dbClusterInfo():
                                 "The IP address is: %s." % ip + " Please "
                                                                 "check it.")
 
-    def __readAgentConfigInfo(self):
+    @staticmethod
+    def __read_and_check_config_item(root_node, para, root_type, error_ignore=False):
         """
-        Read agent config info from xml config's <CLUSTER> tag 
-        :return: NA
+        function : Read one cluster configuration item and check path valid
+        input : root_node: RootNode
+                para: param_name
+                root_type: clusterType or node
+                error_ignore: boolean
+        output : String
         """
-        # Read agent tag
-        (retStatus, retValue) = readOneClusterConfigItem(xmlRootNode,
-                                                         "agentToolPath",
-                                                         "CLUSTER")
-        if (retStatus == 0):
-            self.agentPath = retValue.strip()
-            checkPathVaild(self.agentPath)
+        status, output = ClusterConfigFile.readOneClusterConfigItem(
+            root_node, para, root_type)
+        if status != 0 and not error_ignore:
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % para + " Error: \n%s" % output)
+        if output.strip() and para in ["gaussdbAppPath", "gaussdbLogPath"]:
+            output = os.path.normpath(output.strip())
+        else:
+            output = output.strip()
 
-        (retStatus, retValue) = readOneClusterConfigItem(xmlRootNode,
-                                                         "agentLogPath",
-                                                         "CLUSTER")
-        if (retStatus == 0):
-            self.agentLogPath = retValue.strip()
-            checkPathVaild(self.agentLogPath)
+        if output:
+            checkPathVaild(output)
+        return output
 
     def __readClusterGlobalInfo(self):
         """
@@ -3335,68 +2941,55 @@ class dbClusterInfo():
         self.clusterType = CLUSTER_TYPE_SINGLE_INST
 
         # Read cluster name
-        (retStatus, retValue) = readOneClusterConfigItem(xmlRootNode,
-                                                         "clusterName",
-                                                         "cluster")
-        if (retStatus != 0):
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"]
-                            % "cluster name" + " Error: \n%s" % retValue)
-        self.name = retValue.strip()
-        checkPathVaild(self.name)
-
+        self.name = self.__read_and_check_config_item(xmlRootNode, "clusterName", "cluster")
         # Read application install path
-        (retStatus, retValue) = readOneClusterConfigItem(xmlRootNode,
-                                                         "gaussdbAppPath",
-                                                         "cluster")
-        if (retStatus != 0):
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % \
-                            "application installation path" + " Error: \n%s"
-                            % retValue)
-        self.appPath = os.path.normpath(retValue)
-        checkPathVaild(self.appPath)
-
+        self.appPath = self.__read_and_check_config_item(xmlRootNode, "gaussdbAppPath", "cluster")
         # Read application log path
-        (retStatus, retValue) = readOneClusterConfigItem(xmlRootNode,
-                                                         "gaussdbLogPath",
-                                                         "cluster")
-        if (retStatus == 0):
-            self.logPath = os.path.normpath(retValue)
-            checkPathVaild(self.logPath)
-        elif (retStatus == 2):
-            self.logPath = ""
-        else:
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % \
-                            "application log path" + " Error: \n%s" % retValue)
-        if (self.logPath == ""):
+        self.logPath = self.__read_and_check_config_item(xmlRootNode, "gaussdbLogPath",
+                                                         "cluster", error_ignore=True)
+        if not self.logPath:
             self.logPath = "/var/log/gaussdb"
-        if (not os.path.isabs(self.logPath)):
+        if not os.path.isabs(self.logPath):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50213"] % \
                             ("%s log path(%s)" % (
                                 VersionInfo.PRODUCT_NAME, self.logPath)))
+        # Read enable_dcf
+        ret_status, self.enable_dcf = ClusterConfigFile.readOneClusterConfigItem(xmlRootNode,
+                                                               "enable_dcf",
+                                                               "cluster")
+        if self.enable_dcf not in ['', 'on', 'off']:
+            raise Exception(ErrorCode.GAUSS_500["GAUSS_50011"] %
+                                ('enable_dcf', self.enable_dcf))
+        if self.enable_dcf == 'on':
+            (ret_status, ret_value) = ClusterConfigFile.readOneClusterConfigItem(
+                xmlRootNode, "dcf_config", "CLUSTER")
+            if ret_status == 0:
+                self.dcf_config = ret_value.strip()
+                if self.dcf_config.count('role') - self.dcf_config.count('PASSIVE') < 3:
+                    raise Exception(ErrorCode.GAUSS_500["GAUSS_50011"] %
+                                    ('dcf_config', self.dcf_config))
+            else:
+                raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] %
+                                'dcf_config' + " Error: \n%s" % ret_value)
 
         # Read network type
-        (retStatus, retValue) = readOneClusterConfigItem(xmlRootNode,
-                                                         "networkType",
-                                                         "cluster")
-        if (retStatus == 0):
-            if (retValue.isdigit() and int(retValue) in [0, 1]):
+        (retStatus, retValue) = ClusterConfigFile.readOneClusterConfigItem(
+            xmlRootNode, "networkType", "cluster")
+        if retStatus == 0:
+            if retValue.isdigit() and int(retValue) in [0, 1]:
                 g_networkType = int(retValue)
             else:
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % \
-                                "cluster network type" + " Error: \nThe "
-                                                         "parameter value "
-                                                         "must be 0 or 1.")
-        elif (retStatus == 2):
+                  "cluster network type" + " Error: \nThe parameter value must be 0 or 1.")
+        elif retStatus == 2:
             g_networkType = 0
         else:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % \
                             "cluster network type" + " Error: \n%s" % retValue)
 
-        if "HOST_IP" in list(os.environ.keys()):
-            (retStatus, retValue) = readOneClusterConfigItem(xmlRootNode,
-                                                             "corePath",
-                                                             "cluster")
-            self.corePath = retValue
+        if "HOST_IP" in os.environ.keys():
+            self.corePath = self.__read_and_check_config_item(xmlRootNode, "corePath",
+                                                              "cluster", True)
 
     def __getAllHostnamesFromDEVICELIST(self):
         """
@@ -3425,7 +3018,7 @@ class dbClusterInfo():
         output : NA
         """
         # read cluster node info.
-        (retStatus, retValue) = readOneClusterConfigItem(xmlRootNode,
+        (retStatus, retValue) = ClusterConfigFile.readOneClusterConfigItem(xmlRootNode,
                                                          "nodeNames",
                                                          "cluster")
         if (retStatus != 0):
@@ -3566,56 +3159,29 @@ class dbClusterInfo():
                         peerInsts[j].haPort = peerInsts[j].port + 1
                     i += 1
 
-    def __readExpandNodeInfo(self):
-        """ 
-        function : Read expand node info.
-        input : NA
-        output : NA
+    def set_cm_info_for_node(self, node, node_names):
         """
-        # read expand node info.
-        (retStatus, retValue) = readOneClusterConfigItem(xmlRootNode,
-                                                         "sqlExpandNames",
-                                                         "cluster")
-        if (retStatus != 0 or retValue.strip() == ""):
-            return
-        nodeNames = []
-        nodeNames_tmp = retValue.split(",")
-        for nodename in nodeNames_tmp:
-            nodeNames.append(nodename.strip())
-        if (len(nodeNames) == 0):
-            return
+        Set CM information for node
+        """
+        for node_name in node_names:
+            if node.cmDataDir.replace(" ", "").find("," + node_name.replace(" ", "") + ",") >= 0:
+                raise Exception(ErrorCode.GAUSS_512["GAUSS_51235"] %
+                                node.cmDataDir +
+                                " The cmDir only need one path while you configure "
+                                "it with primary and standby cmDir, "
+                                "please modify it and try again. "
+                                "You can examine the install guide "
+                                "for more information to configure xml file.")
 
-        for nodeName in nodeNames:
-            dbNode = self.getDbNodeByName(nodeName)
-            if (dbNode is not None):
-                self.newNodes.append(dbNode)
-            else:
-                raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"]
-                                % "expand nodes configuration" +
-                                " There is no node [%s] in cluster "
-                                "configuration file." % nodeName)
+        # Get base port
+        if node.cmsNum > 0:
+            node.masterBasePorts[INSTANCE_ROLE_CMSERVER] = \
+                self.__readNodeIntValue(node.name, "cmServerPortBase",
+                                        True, MASTER_BASEPORT_CMS)
+            if self.isSingleInstCluster():
+                node.standbyBasePorts[INSTANCE_ROLE_CMSERVER] = \
+                    node.masterBasePorts[INSTANCE_ROLE_CMSERVER]
 
-    def __readClusterRingsInfo(self):
-        """
-        function : Read cluster rings info.
-        input : NA
-        output : NA
-        """
-        # read cluster rings info.
-        (retStatus, retValue) = readOneClusterConfigItem(xmlRootNode,
-                                                         "clusterRings",
-                                                         "cluster")
-        if (retStatus != 0 or retValue.strip() == ""):
-            return
-        rings = retValue.split(";")
-        if (len(rings) == 0):
-            return
-        for ring in rings:
-            ring_tmp = []
-            ring_new = ring.strip().split(",")
-            for ring_one in ring_new:
-                ring_tmp.append(ring_one.strip())
-            self.clusterRings.append(ring_tmp)
 
     def __readNodeBasicInfo(self, dbNode, nodenames):
         """
@@ -3646,11 +3212,21 @@ class dbClusterInfo():
         # Get DB number
         dbNode.dataNum = self.__readNodeIntValue(dbNode.name, "dataNum", True,
                                                  0)
+        # read cm directory for server and agent
+        try:
+            dbNode.cmDataDir = self.__readNodeStrValue(dbNode.name, "cmDir")
+            self.cm_state_list.append(True)
+        except Exception as _:
+            self.cm_state_list.append(False)
+            if not self.check_conf_cm_state():
+                raise Exception(ErrorCode.GAUSS_512["GAUSS_51230"] %
+                                ("CM", "has same configure."))
+        if self.check_conf_cm_state():
+            self.set_cm_info_for_node(dbNode, nodenames)
 
         # check dataNum
-        if (dbNode.dataNum < 0):
-            raise Exception(
-                ErrorCode.GAUSS_512["GAUSS_51208"] % ("dn", dbNode.dataNum))
+        if dbNode.dataNum < 0:
+            raise Exception(ErrorCode.GAUSS_512["GAUSS_51208"] % ("dn", dbNode.dataNum))
 
         # Get base port
         if dbNode.dataNum > 0:
@@ -3666,16 +3242,16 @@ class dbClusterInfo():
         # Get az Priority
         dbNode.azPriority = self.__readNodeIntValue(dbNode.name, "azPriority",
                                                     True, 0)
-        #get cascadeRole
+        # get cascadeRole
         dbNode.cascadeRole = self.__readNodeStrValue(dbNode.name, "cascadeRole",
-                                                    True, "off")
+                                                     True, "off")
         if (dbNode.azPriority < AZPRIORITY_MIN or
                 dbNode.azPriority > AZPRIORITY_MAX):
             raise Exception(ErrorCode.GAUSS_532["GAUSS_53206"] % "azPriority")
 
-        if (dbNode.azName == ""):
+        if not dbNode.azName:
             raise Exception(ErrorCode.GAUSS_512["GAUSS_51212"] % ("azName"))
-        if (dbNode.azPriority < 1):
+        if dbNode.azPriority < 1:
             raise Exception(ErrorCode.GAUSS_512["GAUSS_51208"]
                             % ("azPriority", dbNode.azPriority))
 
@@ -3733,8 +3309,7 @@ class dbClusterInfo():
             instIndex = i * self.cmscount
             masterNode.appendInstance(instId, mirrorId, INSTANCE_ROLE_CMSERVER,
                                       MASTER_INSTANCE, cmsListenIps[instIndex],
-                                      cmsHaIps[instIndex], "", "", level,
-                                      clusterType=self.clusterType)
+                                      cmsHaIps[instIndex], "", "", level)
 
             for j in range(1, self.cmscount):
                 dbNode = self.getDbNodeByName(hostNames[j])
@@ -3749,8 +3324,7 @@ class dbClusterInfo():
                 dbNode.appendInstance(instId, mirrorId, INSTANCE_ROLE_CMSERVER,
                                       STANDBY_INSTANCE,
                                       cmsListenIps[instIndex],
-                                      cmsHaIps[instIndex], "", "", level,
-                                      clusterType=self.clusterType)
+                                      cmsHaIps[instIndex], "", "", level)
 
     def __getDataNodeCount(self, masterNode):
         """
@@ -3779,19 +3353,18 @@ class dbClusterInfo():
         dnListenIps = None
         dnHaIps = None
         mirror_count_data = self.__getDataNodeCount(masterNode)
-        if (masterNode.dataNum > 0):
+        if masterNode.dataNum > 0:
             dnListenIps = self.__readInstanceIps(masterNode.name,
                                                  "dataListenIp",
                                                  masterNode.dataNum *
-                                                 mirror_count_data,
-                                                 True)
+                                                 mirror_count_data)
             dnHaIps = self.__readInstanceIps(masterNode.name, "dataHaIp",
                                              masterNode.dataNum *
-                                             mirror_count_data,
-                                             True)
+                                             mirror_count_data)
 
         dnInfoLists = [[] for row in range(masterNode.dataNum)]
         xlogInfoLists = [[] for row in range(masterNode.dataNum)]
+        dcf_data_lists = [[] for row in range(masterNode.dataNum)]
         ssdInfoList = [[] for row in range(masterNode.dataNum)]
         syncNumList = [-1 for row in range(masterNode.dataNum)]
         totalDnInstanceNum = 0
@@ -3806,7 +3379,7 @@ class dbClusterInfo():
             for dnInfo in dnInfoList_tmp:
                 dnInfoList.append(dnInfo.strip())
             dnInfoListLen = len(dnInfoList)
-            if ((dnInfoListLen != 2 * mirror_count_data - 1)):
+            if dnInfoListLen != 2 * mirror_count_data - 1:
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % \
                                 ("database node configuration on host [%s]"
                                  % masterNode.name)
@@ -3833,10 +3406,10 @@ class dbClusterInfo():
             else:
                 xlogInfoListLen = len(xlogInfoList)
 
-            if (i == 0):
+            if i == 0:
                 has_xlog_path = xlogInfoListLen
 
-            if (xlogInfoListLen != has_xlog_path):
+            if xlogInfoListLen != has_xlog_path:
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % \
                                 ("database node configuration on host [%s]"
                                  % masterNode.name)
@@ -3851,10 +3424,22 @@ class dbClusterInfo():
                                 + " The information of [%s] is wrong."
                                 % xlogkey)
             xlogInfoLists[i].extend(xlogInfoList)
+            dcf_data_list = []
+            if self.enable_dcf == "on":
+                if self.cmscount < 3:
+                    raise Exception(ErrorCode.GAUSS_512["GAUSS_51236"] +
+                                    "At least three cm_server instances are required.")
+                for dcf_info in range(0, mirror_count_data * 2, 2):
+                    dcf_data_list.append(dnInfoList_tmp[dcf_info] + '/dcf_data')
+                dcf_data_lists[i].extend(dcf_data_list)
+            else:
+                dcf_data_list = ['' for i in range(mirror_count_data)]
 
             key = "ssdDNDir%d" % (i + 1)
             # ssd doesn't supply ,so set ssddir value to empty
             ssddirList = []
+            if self.enable_dcf == "":
+                i = 0
             ssdInfoList[i].extend(ssddirList)
 
             # dataNode syncNum
@@ -3871,32 +3456,32 @@ class dbClusterInfo():
                 syncNumList[i] = syncNum
 
         # check ip num
-        if (dnListenIps is not None and len(dnListenIps[0]) != 0):
+        if dnListenIps is not None and len(dnListenIps[0]) != 0:
             colNum = len(dnListenIps[0])
             rowNum = len(dnListenIps)
             for col in range(colNum):
                 ipNum = 0
                 for row in range(rowNum):
-                    if (dnListenIps[row][col] != ""):
+                    if dnListenIps[row][col] != "":
                         ipNum += 1
                     else:
                         break
-                if (ipNum != totalDnInstanceNum):
+                if ipNum != totalDnInstanceNum:
                     raise Exception(ErrorCode.GAUSS_516["GAUSS_51637"] % \
                                     ("IP number of dataListenIp",
                                      "instance number"))
 
-        if (dnHaIps is not None and len(dnHaIps[0]) != 0):
+        if dnHaIps is not None and len(dnHaIps[0]) != 0:
             colNum = len(dnHaIps[0])
             rowNum = len(dnHaIps)
             for col in range(colNum):
                 ipNum = 0
                 for row in range(rowNum):
-                    if (dnHaIps[row][col] != ""):
+                    if dnHaIps[row][col] != "":
                         ipNum += 1
                     else:
                         break
-                if (ipNum != totalDnInstanceNum):
+                if ipNum != totalDnInstanceNum:
                     raise Exception(ErrorCode.GAUSS_516["GAUSS_51637"] % \
                                     ("IP number of dataHaIps",
                                      "instance number"))
@@ -3910,22 +3495,31 @@ class dbClusterInfo():
             if xlogInfoListLen != 0:
                 xlogInfoList = xlogInfoLists[i]
             groupId = self.__assignNewGroupId()
-            if (len(ssdInfoList[i]) > 1):
+            if len(ssdInfoList[i]) > 1:
                 ssddirList = ssdInfoList[i]
             # master datanode
             instId = self.__assignNewInstanceId(INSTANCE_ROLE_DATANODE)
             # ssd doesn't supply ,this branch will not arrive when len(
             # ssdInfoList[i])  is 0
-            if (len(ssdInfoList[i]) > 1):
-                if (xlogInfoListLen == 0):
-                    masterNode.appendInstance(instId, groupId,
+            if len(ssdInfoList[i]) > 1:
+                if xlogInfoListLen == 0:
+                    if self.enable_dcf == "on":
+                        masterNode.appendInstance(instId, groupId,
                                               INSTANCE_ROLE_DATANODE,
                                               MASTER_INSTANCE,
                                               dnListenIps[instIndex],
                                               dnHaIps[instIndex],
                                               dnInfoList[0], ssddirList[0],
-                                              clusterType=self.clusterType,
-                                              syncNum=syncNumList[i])
+                                              syncNum=syncNumList[i],
+                                              dcf_data=dcf_data_list[0])
+                    else:
+                        masterNode.appendInstance(instId, groupId,
+                                                  INSTANCE_ROLE_DATANODE,
+                                                  MASTER_INSTANCE,
+                                                  dnListenIps[instIndex],
+                                                  dnHaIps[instIndex],
+                                                  dnInfoList[0], ssddirList[0],
+                                                  syncNum=syncNumList[i])
                 else:
                     masterNode.appendInstance(instId, groupId,
                                               INSTANCE_ROLE_DATANODE,
@@ -3933,19 +3527,27 @@ class dbClusterInfo():
                                               dnListenIps[instIndex],
                                               dnHaIps[instIndex],
                                               dnInfoList[0], ssddirList[0],
-                                              clusterType=self.clusterType,
                                               xlogdir=xlogInfoList[0],
                                               syncNum=syncNumList[i])
             else:
-                if (xlogInfoListLen == 0):
-                    masterNode.appendInstance(instId, groupId,
+                if xlogInfoListLen == 0:
+                    if self.enable_dcf == "on":
+                        masterNode.appendInstance(instId, groupId,
                                               INSTANCE_ROLE_DATANODE,
                                               MASTER_INSTANCE,
                                               dnListenIps[instIndex],
                                               dnHaIps[instIndex],
                                               dnInfoList[0],
-                                              clusterType=self.clusterType,
-                                              syncNum=syncNumList[i])
+                                              syncNum=syncNumList[i],
+                                              dcf_data=dcf_data_list[0])
+                    else:
+                        masterNode.appendInstance(instId, groupId,
+                                                  INSTANCE_ROLE_DATANODE,
+                                                  MASTER_INSTANCE,
+                                                  dnListenIps[instIndex],
+                                                  dnHaIps[instIndex],
+                                                  dnInfoList[0],
+                                                  syncNum=syncNumList[i])
                 else:
                     masterNode.appendInstance(instId, groupId,
                                               INSTANCE_ROLE_DATANODE,
@@ -3953,7 +3555,6 @@ class dbClusterInfo():
                                               dnListenIps[instIndex],
                                               dnHaIps[instIndex],
                                               dnInfoList[0],
-                                              clusterType=self.clusterType,
                                               xlogdir=xlogInfoList[0],
                                               syncNum=syncNumList[i])
 
@@ -3971,54 +3572,95 @@ class dbClusterInfo():
 
                 # ssd doesn't supply ,this branch will not arrive when len(
                 # ssdInfoList[i])  is 0
-                if (len(ssdInfoList[i]) > 1):
-                    if (xlogInfoListLen == 0):
-                        dbNode.appendInstance(instId, groupId,
+                if len(ssdInfoList[i]) > 1:
+                    if xlogInfoListLen == 0:
+                        if self.enable_dcf == "on":
+                            dbNode.appendInstance(instId, groupId,
                                               INSTANCE_ROLE_DATANODE,
                                               STANDBY_INSTANCE,
                                               dnListenIps[instIndex],
                                               dnHaIps[instIndex],
                                               dnInfoList[nodeLen * 2 + 2],
                                               ssddirList[nodeLen * 2 + 1],
-                                              clusterType=self.clusterType,
-                                              syncNum=syncNumList[i])
+                                              syncNum=syncNumList[i],
+                                              dcf_data=dcf_data_list[0])
+                        else:
+                            dbNode.appendInstance(instId, groupId,
+                                                  INSTANCE_ROLE_DATANODE,
+                                                  STANDBY_INSTANCE,
+                                                  dnListenIps[instIndex],
+                                                  dnHaIps[instIndex],
+                                                  dnInfoList[nodeLen * 2 + 2],
+                                                  ssddirList[nodeLen * 2 + 1],
+                                                  syncNum=syncNumList[i])
                     else:
-                        dbNode.appendInstance(instId, groupId,
+                        if self.enable_dcf == "on":
+                            dbNode.appendInstance(instId, groupId,
                                               INSTANCE_ROLE_DATANODE,
                                               STANDBY_INSTANCE,
                                               dnListenIps[instIndex],
                                               dnHaIps[instIndex],
                                               dnInfoList[nodeLen * 2 + 2],
                                               ssddirList[nodeLen * 2 + 1],
-                                              clusterType=self.clusterType,
-                                              xlogdir=xlogInfoList[
-                                                  nodeLen + 1],
-                                              syncNum=syncNumList[i])
+                                              xlogdir=xlogInfoList[nodeLen + 1],
+                                              syncNum=syncNumList[i],
+                                              dcf_data=dcf_data_list[0])
+                        else:
+                            dbNode.appendInstance(instId, groupId,
+                                                  INSTANCE_ROLE_DATANODE,
+                                                  STANDBY_INSTANCE,
+                                                  dnListenIps[instIndex],
+                                                  dnHaIps[instIndex],
+                                                  dnInfoList[nodeLen * 2 + 2],
+                                                  ssddirList[nodeLen * 2 + 1],
+                                                  xlogdir=xlogInfoList[nodeLen + 1],
+                                                  syncNum=syncNumList[i])
                 else:
-                    if (xlogInfoListLen == 0):
-                        dbNode.appendInstance(instId, groupId,
+                    if xlogInfoListLen == 0:
+                        if self.enable_dcf == "on":
+                            dbNode.appendInstance(instId, groupId,
                                               INSTANCE_ROLE_DATANODE,
                                               STANDBY_INSTANCE,
                                               dnListenIps[instIndex],
                                               dnHaIps[instIndex],
                                               dnInfoList[nodeLen * 2 + 2],
-                                              clusterType=self.clusterType,
-                                              syncNum=syncNumList[i])
+                                              syncNum=syncNumList[i],
+                                              dcf_data=dcf_data_list[0])
+                        else:
+                            dbNode.appendInstance(instId, groupId,
+                                                  INSTANCE_ROLE_DATANODE,
+                                                  STANDBY_INSTANCE,
+                                                  dnListenIps[instIndex],
+                                                  dnHaIps[instIndex],
+                                                  dnInfoList[nodeLen * 2 + 2],
+                                                  syncNum=syncNumList[i])
                     else:
-                        dbNode.appendInstance(instId, groupId,
+                        if self.enable_dcf == "on":
+                            dbNode.appendInstance(instId, groupId,
                                               INSTANCE_ROLE_DATANODE,
                                               STANDBY_INSTANCE,
                                               dnListenIps[instIndex],
                                               dnHaIps[instIndex],
                                               dnInfoList[nodeLen * 2 + 2],
-                                              clusterType=self.clusterType,
-                                              xlogdir=xlogInfoList[
-                                                  nodeLen + 1],
-                                              syncNum=syncNumList[i])
+                                              xlogdir=xlogInfoList[nodeLen + 1],
+                                              syncNum=syncNumList[i],
+                                              dcf_data=dcf_data_list[0])
+                        else:
+                            dbNode.appendInstance(instId, groupId,
+                                                  INSTANCE_ROLE_DATANODE,
+                                                  STANDBY_INSTANCE,
+                                                  dnListenIps[instIndex],
+                                                  dnHaIps[instIndex],
+                                                  dnInfoList[nodeLen * 2 + 2],
+                                                  xlogdir=xlogInfoList[nodeLen + 1],
+                                                  syncNum=syncNumList[i])
                 if dbNode.cascadeRole == "on":
-                    for inst in dbNode.datanodes:
-                        inst.instanceType = CASCADE_STANDBY
-
+                    if self.enable_dcf != "on":
+                        for inst in dbNode.datanodes:
+                            inst.instanceType = CASCADE_STANDBY
+                    else:
+                        raise Exception(ErrorCode.GAUSS_512["GAUSS_51244"] %
+                                        "In DCF mode cascadeRole")
                 instIndex += 1
 
         for inst in masterNode.datanodes:
@@ -4033,14 +3675,7 @@ class dbClusterInfo():
         agentIps = self.__readInstanceIps(dbNode.name, "cmAgentConnectIp", 1)
         instId = self.__assignNewInstanceId(INSTANCE_ROLE_CMAGENT)
         dbNode.appendInstance(instId, MIRROR_ID_AGENT, INSTANCE_ROLE_CMAGENT,
-                              INSTANCE_TYPE_UNDEFINED, agentIps[0], None, "",
-                              clusterType=self.clusterType)
-
-    def newInstanceId(self, instRole):
-        return self.__assignNewInstanceId(instRole)
-
-    def newMirrorId(self):
-        return self.__assignNewMirrorId()
+                              INSTANCE_TYPE_UNDEFINED, agentIps[0], None, "")
 
     def __assignNewInstanceId(self, instRole):
         """
@@ -4060,20 +3695,6 @@ class dbClusterInfo():
         else:
             self.__newInstanceId[instRole] += 1
         return newId
-
-    def __assignNewDummyInstanceId(self):
-        """   
-        function : Assign a new dummy standby instance id.
-        input : NA
-        output : NA
-        """
-        if (self.__newDummyStandbyId == OLD_LAST_DUMMYNODE_BASEID_NUM):
-            self.__newDummyStandbyId = self.__newDummyStandbyId + 1 + (
-                    NEW_FIRST_DUMMYNODE_BASEID_NUM -
-                    OLD_LAST_DUMMYNODE_BASEID_NUM)
-        else:
-            self.__newDummyStandbyId += 1
-        return self.__newDummyStandbyId
 
     def __assignNewMirrorId(self):
         """   
@@ -4163,7 +3784,7 @@ class dbClusterInfo():
         else:
             return True
 
-    def __readInstanceIps(self, nodeName, prefix, InstCount, isDataNode=False):
+    def __readInstanceIps(self, nodeName, prefix, InstCount):
         """  
         function :Read instance ips
         input : String,String,int
@@ -4211,7 +3832,7 @@ class dbClusterInfo():
         input : String,int
         output : defValue
         """
-        (retStatus, retValue) = readOneClusterConfigItem(xmlRootNode, key,
+        (retStatus, retValue) = ClusterConfigFile.readOneClusterConfigItem(xmlRootNode, key,
                                                          "node", nodeName)
         if (retStatus == 0):
             return str(retValue).strip()
@@ -4229,119 +3850,6 @@ class dbClusterInfo():
                             " Return status: %d. value: %s. Check whether "
                             "the dataNum is correct first."
                             % (retStatus, retValue))
-
-    def __checkVirtualIp(self, clusterVirtualIp, dbNode):
-        """
-        function : Check virtual ip
-        input : String,int
-        output : NA
-        """
-        allIps = dbNode.virtualIp[:]
-        allIps.extend(dbNode.backIps)
-        tempIps = []
-        for ip in allIps:
-            if (not self.__isIpValid(ip)):
-                raise Exception(ErrorCode.GAUSS_506["GAUSS_50603"] + \
-                                "The IP address is: %s" % ip + " Please "
-                                                               "check it.")
-            if ip in tempIps:
-                raise Exception(ErrorCode.GAUSS_512["GAUSS_51220"] % \
-                                ip + " Virtual IP(s) cannot be same as back "
-                                     "IP(s).")
-            tempIps.append(ip)
-
-        for ip in allIps:
-            if ip in clusterVirtualIp:
-                raise Exception(ErrorCode.GAUSS_512["GAUSS_51224"] % ip)
-        clusterVirtualIp.extend(allIps)
-
-        for dnInstance in dbNode.datanodes:
-            for dnIp in dnInstance.listenIps:
-                if (dnIp not in allIps):
-                    raise Exception(ErrorCode.GAUSS_512["GAUSS_51229"] % \
-                                    (dnIp, dbNode.name) + "Please check it.")
-
-    def checkDbNodes(self):
-        """
-        """
-        if (len(self.dbNodes) > MIRROR_COUNT_NODE_MAX):
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51230"] % \
-                            ("nodes",
-                             "be less than or equal to %s" %
-                             MIRROR_COUNT_NODE_MAX) + " Please set it.")
-
-    def checkCmsNumForMutilAZ(self, cmsNum):
-        """
-        """
-        if (cmsNum != 1):
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51230"] % \
-                            ("CMServer group",
-                             "equal to 1") + " Please set it.")
-
-    def checkGtmNumForMutilAZ(self, gtmNum):
-        """
-        """
-        if (gtmNum < 0):
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51230"] % \
-                            ("GTM", "be greater than 0") + " Please set it.")
-
-    def checkCooNumForMutilAZ(self, cooNum):
-        """
-        """
-        if (cooNum <= 0):
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51230"] % \
-                            ("CN", "be greater than 0") + " Please set it.")
-
-    def checkDataNumForMutilAZ(self, dataNum):
-        """
-        """
-        if (dataNum <= 0 or dataNum > MIRROR_COUNT_DN_MAX):
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51230"] % \
-                            ("DN",
-                             "be greater than 0 and less than or equal to "
-                             "%s" % MIRROR_COUNT_DN_MAX) + " Please set it.")
-
-    def checkEtcdNumForMutilAZ(self, etcdNum):
-        """
-        """
-        if (etcdNum > 0):
-            if (
-                    etcdNum < MIRROR_COUNT_ETCD_MIN or etcdNum >
-                    MIRROR_COUNT_ETCD_MAX):
-                raise Exception(ErrorCode.GAUSS_512["GAUSS_51230"] % \
-                                ("ETCD",
-                                 "be greater than 2 and less than 8")
-                                + " Please set it.")
-
-    ######################################################
-    def checkDnIp(self, networkSegment):
-        """
-        """
-        for dbNode in self.dbNodes:
-            if (dbNode.dataNum > 0):
-                for dn in dbNode.datanodes:
-                    if (dn.listenIps[0].split(".")[0] != networkSegment):
-                        raise Exception(ErrorCode.GAUSS_512["GAUSS_51220"]
-                                        % dn.listenIps[0]
-                                        + "\nAll datanodes are not on "
-                                          "the same network segment.")
-
-    def checkNewNodes(self):
-        """
-        """
-        if (len(self.dbNodes) - len(self.newNodes) <= 1):
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51231"]
-                            + " Please check the cluster configuration file.")
-        for dbNode in self.newNodes:
-            if (len(dbNode.cmservers) > 0 or len(dbNode.gtms) > 0 or
-                    len(dbNode.etcds) > 0):
-                raise Exception(
-                    ErrorCode.GAUSS_512["GAUSS_51215"] % dbNode.name + \
-                    " Please check the cluster configuration file.")
-            if (len(dbNode.coordinators) == 0 and len(dbNode.datanodes) == 0):
-                raise Exception(
-                    ErrorCode.GAUSS_512["GAUSS_51216"] % dbNode.name + \
-                    " Please check the cluster configuration file.")
 
     def __checkAZForSingleInst(self):
         """
@@ -4365,165 +3873,6 @@ class dbClusterInfo():
         if peerNum > 8:
             raise Exception(ErrorCode.GAUSS_512["GAUSS_51230"] % (
                 "database node standbys", "be less than 9") + " Please set it.")
-
-
-
-    def __checkAZNamesWithDNReplication(self):
-        """
-        function : check az names and DB replication
-        input : NA
-        output : NA
-        """
-        # AZ map: name to prioritys
-        azMap = {}
-        # Get DB standys num
-        peerNum = 0
-        for dbNode in self.dbNodes:
-            for inst in dbNode.datanodes:
-                if (inst.instanceType == MASTER_INSTANCE):
-                    peerInsts = self.getPeerInstance(inst)
-                    # The number of standbys for each DB instance must be
-                    # the same
-                    if (peerNum == 0):
-                        peerNum = len(peerInsts)
-                    elif (peerNum != len(peerInsts)):
-                        raise Exception(ErrorCode.GAUSS_532["GAUSS_53200"])
-
-        # Get AZ names in cluster
-        azNames = self.getazNames()
-        if (peerNum < 2 or peerNum > 7):
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51230"]
-                            % ("database node standbys",
-                               "be greater than 1 and less than 8")
-                            + " Please set it.")
-        # Check az names and DB replication
-        # When the number of standbys is less than 3, the AZ num must be 1
-        # When the number of standbys is equal 3, the AZ num must be 2 or 3
-        # When the number of standbys is equal 4, the AZ num must be 3
-        # When the number of standbys is greater than 1 and less than 8,
-        # the AZ num must be 3
-        if (len(azNames) != 1 and peerNum <= 2):
-            raise Exception(ErrorCode.GAUSS_532["GAUSS_53201"])
-        elif (len(azNames) == 1 and peerNum == 3):
-            raise Exception(ErrorCode.GAUSS_532["GAUSS_53201"])
-        elif (len(azNames) != 3 and peerNum == 4):
-            raise Exception(ErrorCode.GAUSS_532["GAUSS_53201"])
-        elif (len(azNames) != 3 and peerNum <= 7 and peerNum > 4):
-            raise Exception(ErrorCode.GAUSS_532["GAUSS_53201"])
-
-        # Check AZ replication
-        self.__checkAzInfoForSinglePrimaryMultiStandby(azNames)
-        # Check DB peerInsts num of configuration in each az zone
-        self.__checkAzSycNumforDnpeerInsts(azNames)
-
-    def __checkAzInfoForSinglePrimaryMultiStandby(self, azNames):
-        """
-        1.Check if AZ info with etcd number is set correctly.
-        2. Check if the azPriority value is set correctly.
-        return: NA
-        """
-        az1_etcd = 0
-        az2_etcd = 0
-        az3_etcd = 0
-        az1Priority_max = 0
-        az1Priority_min = 0
-        az2Priority_max = 0
-        az2Priority_min = 0
-        az3Priority_max = 0
-        az3Priority_min = 0
-        az1PriorityLst = []
-        az2PriorityLst = []
-        az3PriorityLst = []
-        syncAz = False
-        thirdPartAZ = False
-
-        for dbNode in self.dbNodes:
-            if dbNode.azName == azNames[0]:
-                az1_etcd += len(dbNode.etcds)
-                az1PriorityLst.append(dbNode.azPriority)
-            if len(azNames) > 1 and dbNode.azName == azNames[1]:
-                syncAz = True
-                az2_etcd += len(dbNode.etcds)
-                az2PriorityLst.append(dbNode.azPriority)
-            if len(azNames) > 2 and dbNode.azName == azNames[2]:
-                thirdPartAZ = True
-                az3_etcd += len(dbNode.etcds)
-                az3PriorityLst.append(dbNode.azPriority)
-
-        # In a primary multi-standby cluster, AZ1 has a higher priority than
-        # AZ2 and AZ2 has a higher priority than AZ3.
-        az1Priority_max = max(az1PriorityLst)
-        az1Priority_min = min(az1PriorityLst)
-
-        # Each AZ requires at least one or more ETCDs.
-        if (az1_etcd != 3 and not syncAz and not thirdPartAZ):
-            raise Exception(
-                ErrorCode.GAUSS_532["GAUSS_53203"] % "AZ1 must be 3")
-        if (syncAz):
-            if (az1_etcd < 2 or az2_etcd < 1):
-                raise Exception(ErrorCode.GAUSS_532["GAUSS_53203"] % \
-                                "AZ1 must be greater than 2 and the number "
-                                "of ETCD in AZ2 must be greater than 1")
-            # check az2 priority
-            az2Priority_max = max(az2PriorityLst)
-            az2Priority_min = min(az2PriorityLst)
-            if (az1Priority_max >= az2Priority_min):
-                raise Exception(ErrorCode.GAUSS_532["GAUSS_53205"]
-                                % (azNames[0], azNames[1]))
-        if (thirdPartAZ):
-            if (az1_etcd < 2 or az2_etcd < 2 or az3_etcd < 1):
-                raise Exception(ErrorCode.GAUSS_532["GAUSS_53203"] % \
-                                "%s and %s must be greater than 2 and the "
-                                "number of ETCD in %s must be greater than "
-                                "1" % (azNames[0], azNames[1], azNames[2]))
-            # check az3 priority
-            az3Priority_max = max(az3PriorityLst)
-            az3Priority_min = min(az3PriorityLst)
-            if (az2Priority_max >= az3Priority_min):
-                raise Exception(ErrorCode.GAUSS_532["GAUSS_53205"]
-                                % (azNames[1], azNames[2]))
-
-    def __checkAzSycNumforDnpeerInsts(self, azNames):
-        """
-        function : Check if AZ info with DB number is set correctly.
-        input : azName List sorted by azPriority
-        output NA
-        """
-        az1_datanode_num = 0
-        az2_datanode_num = 0
-        az3_datanode_num = 0
-        syncAz = False
-        thirdPartAZ = False
-
-        for dbNode in self.dbNodes:
-            if dbNode.azName == azNames[0]:
-                az1_datanode_num += len(dbNode.datanodes)
-            if len(azNames) > 1 and dbNode.azName == azNames[1]:
-                syncAz = True
-                az2_datanode_num += len(dbNode.datanodes)
-            if len(azNames) > 2 and dbNode.azName == azNames[2]:
-                thirdPartAZ = True
-                az3_datanode_num += len(dbNode.datanodes)
-
-        # Each AZ requires at least one or more ETCDs.
-        if (syncAz):
-            if az2_datanode_num != 0 and az1_datanode_num == 0:
-                errmsg = ErrorCode.GAUSS_532["GAUSS_53201"]
-                errmsg += " The datanodes num in highest priority az[%s] " \
-                          "should not be 0 " % azNames[0]
-                errmsg += "when there are database node instances in the" \
-                          " lowest priority az[%s] ." % azNames[1]
-                raise Exception(errmsg)
-        if (thirdPartAZ):
-            if az3_datanode_num != 0 and (
-                    az1_datanode_num == 0 or az2_datanode_num == 0):
-                errmsg = ErrorCode.GAUSS_532["GAUSS_53201"]
-                errmsg += " The datanodes num in one of first two " \
-                          "priorities az[%s,%s] with higher priorities" \
-                          " should not be 0 " % (azNames[0], azNames[1])
-                errmsg += "when there are database node instances in the" \
-                          " lowest priority az[%s] ." % azNames[-1]
-                raise Exception(errmsg)
 
     def __getDNPeerInstance(self, dbInst):
         """  
@@ -4566,6 +3915,8 @@ class dbClusterInfo():
         """
         fp = None
         number = None
+        if not self.dbNodes and dbNodes:
+            self.dbNodes = dbNodes
         if upgrade:
             staticConfigFilePath = os.path.split(filePath)[0]
             versionFile = os.path.join(
@@ -4575,7 +3926,7 @@ class dbClusterInfo():
         try:
             if (dbNodes is None):
                 dbNodes = self.dbNodes
-            g_file.createFileInSafeMode(filePath)
+            FileUtil.createFileInSafeMode(filePath)
             fp = open(filePath, "wb")
             # len
             info = struct.pack("I", 28)
@@ -4661,29 +4012,6 @@ class dbClusterInfo():
                 return struct.pack("I", crc) + info
         else:
             return struct.pack("I", crc) + info
-
-    def __packNodeInfoForLC(self, dbNode):
-        """ 
-        function : Pack the info of node for the logic cluster
-        input : []
-        output : String
-        """
-        # node id 
-        info = struct.pack("I", dbNode.id)
-        # node name
-        info += struct.pack("64s", dbNode.name.encode("utf-8"))
-        # backIp
-        info += self.__packIps(dbNode.backIps)
-        # sshIp
-        info += self.__packIps(dbNode.sshIps)
-        # dn
-        info += self.__packDataNode(dbNode)
-        # cancel save sctp begin/end port,need a placeholder
-        info += struct.pack("I", 0)
-        info += struct.pack("I", 0)
-        crc = binascii.crc32(info)
-
-        return struct.pack("I", crc) + info
 
     def __packEtcdInfo(self, dbNode):
         """  
@@ -5025,1052 +4353,8 @@ class dbClusterInfo():
 
         return info
 
-    def saveClusterLevelData(self, rootNode, user):
-        """
-        function : save cluster level data info.
-        input : documentElement, string
-        output : NA 
-        """
-        # Add XML comments
-        # Create a cluster-level information to add to the root node
-        clusterInfo = g_dom.createElement("CLUSTER")
-        rootNode.appendChild(clusterInfo)
-        clusterMap = {}
-        # get clusterInfo
-        clusterMap["clusterName"] = self.__getEnvironmentParameterValue(
-            "GS_CLUSTER_NAME", user)
-        clusterMap["nodeNames"] = ",".join(self.getClusterNodeNames())
-        clusterMap["gaussdbAppPath"] = self.appPath
-        clusterMap["gaussdbLogPath"] = self.logPath
-        clusterMap["gaussdbToolPath"] = self.__getEnvironmentParameterValue(
-            "GPHOME", user)
-        clusterMap["tmpMppdbPath"] = self.__getEnvironmentParameterValue(
-            "PGHOST", user)
-        if len(self.newNodes) > 0:
-            clusterMap["sqlExpandNames"] = ",".join(
-                [dbNode.name for dbNode in self.newNodes])
-        # save clusterInfo
-        for (key, value) in clusterMap.items():
-            clusterInfo.appendChild(self.saveOneClusterConfigItem(key, value))
-
-    def saveNodeLevelData(self, rootNode):
-        """
-        function : save node level data info.
-        input : documentElement 
-        output : NA 
-        """
-        # add node-level information
-        # Node deployment information on each server
-        devlistInfo = g_dom.createElement("DEVICELIST")
-        rootNode.appendChild(devlistInfo)
-        (cmInfoMap, gtmInfoMap) = self.getCmAndGtmInfo()
-        i = 100000
-        for dbNode in self.dbNodes:
-            i += 1
-            # Node deployment information on the dbNode
-            perDevInfo = g_dom.createElement("DEVICE")
-            perDevInfo.setAttribute("sn", "%d" % i)
-            devlistInfo.appendChild(perDevInfo)
-            # save name, backIp, sshIp on the dbNode
-            perDevInfo.appendChild(
-                self.saveOneClusterConfigItem("name", dbNode.name))
-            self.saveIPsItem(perDevInfo, "backIp", dbNode.backIps)
-            self.saveIPsItem(perDevInfo, "sshIp", dbNode.sshIps)
-
-            # save CM info
-            self.saveCmsInfo(perDevInfo, dbNode, cmInfoMap)
-            # save GTM info
-
-            self.savegGtmsInfo(perDevInfo, dbNode, gtmInfoMap)
-            # save CN info
-
-            self.saveCnInfo(perDevInfo, dbNode)
-            # save ETCD info
-
-            self.saveEtcdInfo(perDevInfo, dbNode)
-            # save DB info
-            self.saveDnInfo(perDevInfo, dbNode)
-
-    def saveCmsInfo(self, devInfo, dbNode, cmInfoMap):
-        """
-        function : get GTM instance info.
-        input : NA 
-        output : NA 
-        """
-        # CM deployment information
-        cms_num = len(dbNode.cmservers)
-        # Save the CM main information on the CM master node
-        if cms_num > 0 and dbNode.cmservers[0].instanceType == MASTER_INSTANCE:
-            for key in list(cmInfoMap.keys()):
-                # if key is ip info, Has been saved in IP way
-                if key in ("cmServerListenIp", "cmServerHaIp"):
-                    self.saveIPsItem(devInfo, key, cmInfoMap[key])
-                else:
-                    devInfo.appendChild(
-                        self.saveOneClusterConfigItem(key, cmInfoMap[key]))
-        else:
-            # Save the cmsNum,cmDir,cmServerPortBase,cmServerPortStandby of
-            # CM information on the other node
-            devInfo.appendChild(self.saveOneClusterConfigItem("cmsNum", "0"))
-            for key in ("cmDir", "cmServerPortBase", "cmServerPortStandby"):
-                devInfo.appendChild(
-                    self.saveOneClusterConfigItem(key, cmInfoMap[key]))
-
-    def savegGtmsInfo(self, devInfo, dbNode, gtmInfoMap):
-        """
-        function : get GTM instance info.
-        input : NA 
-        output : NA 
-        """
-        # GTM deployment information
-        gtm_num = len(dbNode.gtms)
-        # Save the gtm main information on the gtm master node
-        if gtm_num > 0 and dbNode.gtms[0].instanceType == MASTER_INSTANCE:
-            for key in list(gtmInfoMap.keys()):
-                if key in ("gtmListenIp", "gtmHaIp"):
-                    # if key is ip info, Has been saved in IP way
-                    self.saveIPsItem(devInfo, key, gtmInfoMap[key])
-                else:
-                    devInfo.appendChild(
-                        self.saveOneClusterConfigItem(key, gtmInfoMap[key]))
-        else:
-            # Save the gtmNum,gtmPortBase,gtmPortStandby of gtm information
-            # on the other node
-            devInfo.appendChild(self.saveOneClusterConfigItem("gtmNum", "0"))
-            for key in ("gtmPortBase", "gtmPortStandby"):
-                devInfo.appendChild(
-                    self.saveOneClusterConfigItem(key, gtmInfoMap[key]))
-
-    def saveCnInfo(self, devInfo, dbNode):
-        """
-        function : get CN instance info.
-        input : NA 
-        output : NA 
-        """
-        if len(dbNode.coordinators) == 0:
-            return
-        # CN deployment information
-        # get CN instance
-        cnInst = dbNode.coordinators[0]
-        cnInfoMap = {}
-        # get CN instance element
-        cnInfoMap["cooNum"] = '1'
-        cnInfoMap["cooPortBase"] = str(cnInst.port)
-        cnInfoMap["cooDir1"] = cnInst.datadir
-        # save CN instance element
-        for key in ["cooNum", "cooPortBase", "cooDir1"]:
-            devInfo.appendChild(
-                self.saveOneClusterConfigItem(key, cnInfoMap[key]))
-        # If listenIp is the same as backIp, no listenIp is generated
-        if dbNode.backIps != cnInst.listenIps:
-            self.saveIPsItem(devInfo, "cooListenIp", cnInst.listenIps)
-
-    def saveEtcdInfo(self, devInfo, dbNode):
-        """
-        function : get ETCD instance info.
-        input : NA 
-        output : NA 
-        """
-        if len(dbNode.etcds) == 0:
-            return
-        # ETCD deployment information
-        # get etcd instance
-        etcdInst = dbNode.etcds[0]
-        etcdInfoMap = {}
-        # get etcd instance element
-        etcdInfoMap["etcdNum"] = '1'
-        etcdInfoMap["etcdListenPort"] = str(etcdInst.port)
-        etcdInfoMap["etcdHaPort"] = str(etcdInst.haPort)
-        etcdInfoMap["etcdDir1"] = etcdInst.datadir
-        # save etcd instance element
-        for key in ["etcdNum", "etcdListenPort", "etcdHaPort", "etcdDir1"]:
-            devInfo.appendChild(self.saveOneClusterConfigItem(key,
-                                                              etcdInfoMap[
-                                                                  key]))
-        # If listenIp is the same as backIp, no listenIp is generated
-        if dbNode.backIps != etcdInst.listenIps:
-            self.saveIPsItem(devInfo, "etcdListenIp", etcdInst.listenIps)
-        # If haIp is the same as backIp, no haIp is generated
-        if dbNode.backIps != etcdInst.haIps:
-            self.saveIPsItem(devInfo, "etcdHaIp", etcdInst.haIps)
-
-    def saveDnInfo(self, devInfo, dbNode):
-        """
-        function : get DN instance info.
-        input : NA 
-        output : NA 
-        """
-        if len(dbNode.datanodes) == 0:
-            return
-        # get DN deployment information
-        dnInfoMap = {}
-        dnInfoMap["dataNum"] = str(dbNode.dataNum)
-        i = 0
-        totalListenIps = {}
-        totalHaIps = {}
-        flag_j1 = 0
-        flag_j2 = 0
-        isDnPortBase = True
-        isDnPortStandby = True
-        isDnPortDummyStandby = True
-        for dnInst in dbNode.datanodes:
-            # get the first standby DN instance port on the current node
-            if (dnInst.instanceType == STANDBY_INSTANCE and isDnPortStandby):
-                dnInfoMap["dataPortStandby"] = str(dnInst.port)
-                isDnPortStandby = False
-            # get the first dummy standby DN instance port on the current node
-            if (dnInst.instanceType == DUMMY_STANDBY_INSTANCE and
-                    isDnPortDummyStandby):
-                dnInfoMap["dataPortDummyStandby"] = str(dnInst.port)
-                isDnPortDummyStandby = False
-
-            if (dnInst.instanceType == MASTER_INSTANCE):
-                # get the first base DN instance port on the current node
-                if (isDnPortBase):
-                    dnInfoMap["dataPortBase"] = str(dnInst.port)
-                    isDnPortBase = False
-                i += 1
-                # get the peer instances of the master DN
-                instances = self.getPeerInstance(dnInst)
-                for inst in instances:
-                    if (inst.instanceType == STANDBY_INSTANCE):
-                        standby_inst = inst
-                    elif (inst.instanceType == DUMMY_STANDBY_INSTANCE):
-                        dummy_inst = inst
-                dnInfoMap["dataNode%d" % i] = "%s,%s,%s,%s,%s" \
-                                              % (dnInst.datadir,
-                                                 standby_inst.hostname,
-                                                 standby_inst.datadir,
-                                                 dummy_inst.hostname,
-                                                 dummy_inst.datadir)
-                standby_node = self.getDbNodeByName(standby_inst.hostname)
-                dummy_node = self.getDbNodeByName(dummy_inst.hostname)
-                # Get DN listen IP and ha IP
-                for j1 in range(len(dnInst.listenIps)):
-                    # listen IP is not generated based on the default only
-                    # need backUp
-                    if dnInst.listenIps[j1] != dbNode.backIps[0] or \
-                            standby_inst.listenIps[j1] != \
-                            standby_node.backIps[0] or \
-                            dummy_inst.listenIps[j1] != dummy_node.backIps[0]:
-                        # single DN configure multiple listene IP
-                        if flag_j1 == 0:
-                            totalListenIps[j1] = ("%s,%s,%s" % (
-                                dnInst.listenIps[j1],
-                                standby_inst.listenIps[j1],
-                                dummy_inst.listenIps[j1]))
-                            flag_j1 += 1
-                        else:
-                            totalListenIps[j1] += (",%s,%s,%s" % (
-                                dnInst.listenIps[j1],
-                                standby_inst.listenIps[j1],
-                                dummy_inst.listenIps[j1]))
-                for j2 in range(len(dnInst.haIps)):
-                    if dnInst.haIps[j2] != dbNode.backIps[0] or \
-                            standby_inst.haIps[j2] != standby_node.backIps[0] \
-                            or dummy_inst.haIps[j2] != dummy_node.backIps[0]:
-                        if flag_j2 == 0:
-                            totalHaIps[j2] = ("%s,%s,%s" % (
-                                dnInst.haIps[j2], standby_inst.haIps[j2],
-                                dummy_inst.haIps[j2]))
-                            flag_j2 += 1
-                        else:
-                            totalHaIps[j2] += ("%s,%s,%s" % (
-                                dnInst.haIps[j2], standby_inst.haIps[j2],
-                                dummy_inst.haIps[j2]))
-        for key in ["dataNum", "dataPortBase", "dataPortStandby",
-                    "dataPortDummyStandby"]:
-            devInfo.appendChild(
-                self.saveOneClusterConfigItem(key, dnInfoMap[key]))
-        self.saveIPsItem(devInfo, "dataListenIp",
-                         list(totalListenIps.values()))
-        self.saveIPsItem(devInfo, "dataHaIp", list(totalHaIps.values()))
-        for key in list(dnInfoMap.keys()):
-            if key not in ["dataNum", "dataPortBase", "dataPortStandby",
-                           "dataPortDummyStandby"]:
-                devInfo.appendChild(
-                    self.saveOneClusterConfigItem(key, dnInfoMap[key]))
-
-    def getCmAndGtmInfo(self):
-        """
-        function : get gtm and cm instance info.
-        input : NA 
-        output :(MapData, MapData)
-        """
-        cmInfoMap = {}
-        gtmInfoMap = {}
-        for dbNode in self.dbNodes:
-
-            if len(dbNode.cmservers) > 0:
-                cmsInst = dbNode.cmservers[0]
-                if cmsInst.instanceType == MASTER_INSTANCE:
-                    instances = self.getPeerInstance(cmsInst)
-                    cmPeerInst = instances[0]
-                    cmInfoMap["cmsNum"] = '1'
-                    cmInfoMap["cmDir"] = dbNode.cmDataDir
-                    cmInfoMap["cmServerPortBase"] = str(cmsInst.port)
-                    cmInfoMap["cmServerPortStandby"] = str(cmPeerInst.port)
-                    cmInfoMap["cmServerRelation"] = "%s,%s" % (
-                        cmsInst.hostname, cmPeerInst.hostname)
-                    cmInfoMap["cmServerlevel"] = str(cmsInst.level)
-                    cmInfoMap["cmServerListenIp"] = self.getIpList(
-                        cmsInst.listenIps, cmPeerInst.listenIps,
-                        dbNode.backIps[0])
-                    cmInfoMap["cmServerHaIp"] = self.getIpList(
-                        cmsInst.haIps, cmPeerInst.haIps, dbNode.backIps[0])
-            if len(dbNode.gtms) > 0:
-                gtmInst = dbNode.gtms[0]
-                if gtmInst.instanceType == MASTER_INSTANCE:
-                    gtmPeerInst = self.getPeerInstance(gtmInst)[0]
-                    gtmInfoMap["gtmNum"] = '1'
-                    gtmInfoMap["gtmDir1"] = "%s,%s,%s" % (
-                        gtmInst.datadir, gtmPeerInst.hostname,
-                        gtmPeerInst.datadir)
-                    gtmInfoMap["gtmPortBase"] = str(gtmInst.port)
-                    gtmInfoMap["gtmPortStandby"] = str(gtmPeerInst.port)
-                    gtmInfoMap["gtmRelation"] = "%s,%s" % (
-                        gtmInst.hostname, gtmPeerInst.hostname)
-                    gtmInfoMap["gtmListenIp"] = self.getIpList(
-                        gtmInst.listenIps, gtmPeerInst.listenIps,
-                        dbNode.backIps[0])
-                    gtmInfoMap["gtmHaIp"] = self.getIpList(gtmInst.haIps,
-                                                           gtmPeerInst.haIps,
-                                                           dbNode.backIps[0])
-
-        return (cmInfoMap, gtmInfoMap)
-
-    def getIpList(self, masterInstIps, standbyInstIps, nodeBackIp):
-        """
-        function : get ip data from master, standby instance of gtm and cm.
-        input : ips
-        output : ipList
-        """
-        ipList = []
-        for i in range(len(masterInstIps)):
-            if masterInstIps[i] != nodeBackIp:
-                ipList.append("%s,%s" % (masterInstIps[i], standbyInstIps[i]))
-        return ipList
-
-    def saveIPsItem(self, devInfo, ipType, ips):
-        """
-        function : save IP type data to XML parameter 
-        input : ips
-        output : NA
-        """
-        for i in range(len(ips)):
-            devInfo.appendChild(
-                self.saveOneClusterConfigItem("%s%d" % (ipType, i + 1),
-                                              ips[i]))
-
-    def saveOneClusterConfigItem(self, paramName, paramValue):
-        """
-        function : save param info and return it 
-        input : paraName, paraValue
-        output : Element object
-        """
-        paramInfo = g_dom.createElement("PARAM")
-        paramInfo.setAttribute("name", paramName)
-        paramInfo.setAttribute("value", paramValue)
-        return paramInfo
-
-    def listToCSV(self, obj):
-        """
-        convert a list (like IPs) to comma-sep string for XML
-        """
-        return ','.join(map(str, obj))
-
-    def __writeWithIndent(self, fp, line, indent):
-        """
-        write the XML content with indentation
-        """
-        fp.write('%s%s\n' % (' ' * indent * 2, line))
-
-    def generateXMLFromStaticConfigFile(self, user, static_config_file,
-                                        xmlFilePath, version=201,
-                                        newNodeNames=None):
-        """
-        function : Generate cluster installation XML from static
-        configuration file
-        input : String,String,String
-        output : Cluster installation XML file
-        """
-        fp = None
-        indent = 0
-        if newNodeNames is None:
-            newNodeNames = []
-
-        # Write XML header
-        ## file permission added to make it with 600
-        fp = os.fdopen(os.open(xmlFilePath, os.O_WRONLY | os.O_CREAT,
-                               KEY_FILE_PERMISSION), "w")
-        self.__writeWithIndent(fp, '<?xml version="1.0" encoding="UTF-8"?>',
-                               indent)
-
-        # Get cluster info from ClusterStatic
-        if (static_config_file is not None):
-            # get cluster version
-            cluster_version = self.getClusterVersion(static_config_file)
-            self.initFromStaticConfig(user, static_config_file)
-        else:
-            cluster_version = version
-        # Cluster header
-        indent += 1
-        self.__writeWithIndent(fp, '<ROOT>', indent)
-        self.__writeWithIndent(fp, '<CLUSTER>', indent)
-        indent += 1
-        self.__writeWithIndent(fp,
-                               '<PARAM name="clusterName" value="%s" />' %
-                               self.name,
-                               indent)
-
-        nodeList = self.getClusterNodeNames()
-        nodeNames = ''
-        for item in nodeList:
-            nodeNames += str(item) + ","
-        nodeNames = nodeNames[:-1]
-        backIps = ",".join([node.backIps[0] for node in self.dbNodes])
-        self.__writeWithIndent(fp,
-                               '<PARAM name="nodeNames" value="%s" />' %
-                               nodeNames,
-                               indent)
-        self.__writeWithIndent(fp,
-                               '<PARAM name="gaussdbAppPath" value="%s" />'
-                               % self.appPath,
-                               indent)
-        self.__writeWithIndent(fp,
-                               '<PARAM name="gaussdbLogPath" value="%s" />'
-                               % self.logPath,
-                               indent)
-        self.__writeWithIndent(fp,
-                               '<PARAM name="tmpMppdbPath" value="%s" />' %
-                               self.tmpPath,
-                               indent)
-        self.__writeWithIndent(fp,
-                               '<PARAM name="gaussdbToolPath" value="%s" />'
-                               % self.toolPath,
-                               indent)
-        self.__writeWithIndent(fp,
-                               '<PARAM name="backIp1s" value="%s" />' %
-                               backIps,
-                               indent)
-        if newNodeNames:
-            self.__writeWithIndent(fp,
-                                   '<PARAM name="sqlExpandNames" value="%s" '
-                                   '/>' % ','.join(
-                                       newNodeNames), indent)
-        if self.isMiniaturizedDeployment(cluster_version):
-            self.__writeWithIndent(fp, '<PARAM name="clusterType" value'
-                                       '="single" />', indent)
-        elif self.isSinglePrimaryMultiStandbyDeployment(cluster_version):
-            self.__writeWithIndent(fp,
-                                   '<PARAM name="clusterType" '
-                                   'value="single-primary-multi-standby" />',
-                                   indent)
-        indent -= 1
-        self.__writeWithIndent(fp, '</CLUSTER>', indent)
-        self.__writeWithIndent(fp, '<DEVICELIST>', indent)
-
-        # <DEVICELIST>
-        ctr = 1000001
-        # For each node
-        for local_dbn in self.dbNodes:
-            # Device beginning
-            self.__writeWithIndent(fp, '<DEVICE sn="%s">' % (str(ctr)), indent)
-
-            indent += 1
-            self.__writeWithIndent(fp, '<PARAM name="name" value="%s" />' % (
-                local_dbn.name), indent)
-            if self.isSinglePrimaryMultiStandbyDeployment(cluster_version):
-                self.__writeWithIndent(fp,
-                                       '<PARAM name="azName" value="%s" />' % (
-                                           local_dbn.azName), indent)
-                self.__writeWithIndent(fp,
-                                       '<PARAM name="azPriority" value="%s" '
-                                       '/>' % (
-                                           local_dbn.azPriority), indent)
-            self.__writeWithIndent(fp,
-                                   '<PARAM name="backIp1" value="%s" />' % (
-                                       self.listToCSV(local_dbn.backIps)),
-                                   indent)
-            self.__writeWithIndent(fp, '<PARAM name="sshIp1" value="%s" />' % (
-                self.listToCSV(local_dbn.sshIps)), indent)
-            self.__writeWithIndent(fp, '<PARAM name="cmDir" value="%s" />' % (
-                local_dbn.cmDataDir), indent)
-            if not self.isMiniaturizedDeployment(
-                    cluster_version) and local_dbn.virtualIp:
-                self.__writeWithIndent(fp,
-                                       '<PARAM name="virtualIp" value="%s" />'
-                                       % (self.listToCSV(local_dbn.virtualIp)),
-                                       indent)
-
-            if not self.isMiniaturizedDeployment(cluster_version):
-                # ETCD beginning
-                if (local_dbn.etcdNum > 0):
-                    # Common part
-                    self.__writeWithIndent(fp, '<!-- etcd-->', indent)
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="etcdNum" value="%d" '
-                                           '/>' % (
-                                               local_dbn.etcdNum), indent)
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="etcdListenPort" '
-                                           'value="%d" />'
-                                           % (local_dbn.etcds[0].port), indent)
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="etcdHaPort" '
-                                           'value="%d" />'
-                                           % (local_dbn.etcds[0].haPort),
-                                           indent)
-
-                    # Repeated part
-                    i = 1
-                    for etcdInst in local_dbn.etcds:
-                        self.__writeWithIndent(fp, '<PARAM name="etcdDir%d" '
-                                                   'value="%s" />'
-                                               % (i, etcdInst.datadir),
-                                               indent)
-                        self.__writeWithIndent(fp,
-                                               '<PARAM name="etcdListenIp%d" '
-                                               'value="%s" />' % (
-                                                   i, self.listToCSV(
-                                                       etcdInst.listenIps)),
-                                               indent)
-                        self.__writeWithIndent(fp,
-                                               '<PARAM name="etcdHaIp%d" '
-                                               'value="%s" />' %
-                                               (i,
-                                                self.listToCSV(
-                                                    etcdInst.haIps)),
-                                               indent)
-                        i += 1
-                # ETCD ending
-
-            # CM beginning
-            if len(local_dbn.cmservers) > 0 and \
-                    local_dbn.cmservers[0].instanceType == MASTER_INSTANCE:
-                try:
-                    cmsInst = local_dbn.cmservers[0]
-                    self.__writeWithIndent(fp,
-                                           '<!--  cm (configuration '
-                                           'manager)-->',
-                                           indent)
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="cmsNum" value="%d" '
-                                           '/>'
-                                           % (local_dbn.cmsNum), indent)
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="cmServerPortBase" '
-                                           'value="%d" />'
-                                           % (cmsInst.port), indent)
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="cmServerlevel" '
-                                           'value="%d" />'
-                                           % (cmsInst.level), indent)
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="cmDir" value="%s" '
-                                           '/>' % (local_dbn.cmDataDir),
-                                           indent)
-                    if not self.isMiniaturizedDeployment(cluster_version):
-                        peerInst_listenIps = ''
-                        peerInst_haIps = ''
-                        peerInst_hostname = ''
-                        peerInst_port = 0
-                        masterInst = None
-                        for peerInst in self.getPeerInstance(cmsInst):
-                            peerInst_listenIps = peerInst_listenIps + \
-                                                 peerInst.listenIps[0] + ','
-                            peerInst_haIps = peerInst_haIps \
-                                             + peerInst.haIps[0] + ','
-                            peerInst_port = peerInst.port
-                            peerInst_hostname = peerInst_hostname + \
-                                                peerInst.hostname + ','
-                            if peerInst.instanceType == MASTER_INSTANCE:
-                                masterInst = peerInst
-
-                        if cmsInst.instanceType == STANDBY_INSTANCE:
-                            peerInst_listenIps = ''
-                            peerInst_haIps = ''
-                            for secPeerInst in self.getPeerInstance(
-                                    masterInst):
-                                peerInst_listenIps = peerInst_listenIps + \
-                                                     secPeerInst.listenIps[0] \
-                                                     + ','
-                                peerInst_haIps = peerInst_haIps + \
-                                                 secPeerInst.haIps[0] + ','
-                        else:
-                            masterInst = cmsInst
-
-                        self.__writeWithIndent(
-                            fp, '<PARAM name="cmServerListenIp1"'
-                                ' value="%s,%s" />'
-                                % (masterInst.listenIps[0],
-                                   peerInst_listenIps[:-1]), indent)
-                        self.__writeWithIndent(
-                            fp, '<PARAM name="cmServerRelation"'
-                                ' value="%s,%s" />'
-                                % (cmsInst.hostname,
-                                   peerInst_hostname[:-1]), indent)
-                    else:
-                        self.__writeWithIndent(
-                            fp, '<PARAM name="cmServerListenIp1"'
-                                ' value="%s" />'
-                                % (cmsInst.listenIps[0]), indent)
-                except IndexError:
-                    # No CM in this instance - make blank entry...
-                    self.__writeWithIndent(
-                        fp, '<!--  cm (configuration manager)-->', indent)
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="cmsNum" value="0" />',
-                                           indent)
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="cmServerPortBase" '
-                                           'value="%d" />'
-                                           % (MASTER_BASEPORT_CMS), indent)
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="cmServerListenIp1"'
-                                           ' value="" />', indent)
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="cmServerlevel" '
-                                           'value="1" />', indent)
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="cmDir" value="%s" />'
-                                           % (local_dbn.cmDataDir), indent)
-                    if not self.isMiniaturizedDeployment(cluster_version):
-                        self.__writeWithIndent(
-                            fp, '<PARAM name="cmServerPortStandby"'
-                                ' value="%d" />' % (STANDBY_BASEPORT_CMS),
-                            indent)
-                        self.__writeWithIndent(
-                            fp, '<PARAM name="cmServerRelation" value'
-                                '="%s,%s" />' % (local_dbn.name,
-                                                 local_dbn.name), indent)
-            # CM ending
-
-            # gtm beginning
-            if len(local_dbn.gtms) > 0 and local_dbn.gtms[0].instanceType == \
-                    MASTER_INSTANCE:
-                try:
-                    gtmInst = local_dbn.gtms[0]
-                    self.__writeWithIndent(fp, '<!--  gtm (global transaction '
-                                               'manager)-->', indent)
-                    self.__writeWithIndent(fp, '<PARAM name="gtmNum" '
-                                               'value="%d" />'
-                                           % (local_dbn.gtmNum), indent)
-                    self.__writeWithIndent(fp, '<PARAM name="gtmPortBase" '
-                                               'value="%d" />'
-                                           % (gtmInst.port), indent)
-                    # No GTM in this instance - make blank entry...
-                    if not self.isMiniaturizedDeployment(cluster_version):
-                        peerInst_listenIps = ''
-                        peerInst_haIps = ''
-                        peerInst_hostname = ''
-                        peerInst_hostname_datadir = ''
-                        for peerInst in self.getPeerInstance(gtmInst):
-                            peerInst_listenIps = peerInst_listenIps + \
-                                                 peerInst.listenIps[0] + ','
-                            peerInst_haIps = peerInst_haIps \
-                                             + peerInst.haIps[0] + ','
-                            peerInst_port = peerInst.port
-                            peerInst_hostname = peerInst_hostname + \
-                                                peerInst.hostname + ','
-                            peerInst_hostname_datadir = \
-                                peerInst_hostname_datadir + peerInst.hostname \
-                                + ',' + peerInst.datadir + ','
-                        if not self.isSinglePrimaryMultiStandbyDeployment(
-                                cluster_version):
-                            self.__writeWithIndent(
-                                fp, '<PARAM name="gtmPortStandby" value='
-                                    '"%d" />' % (peerInst_port), indent)
-                            self.__writeWithIndent(fp,
-                                                   '<PARAM name="gtmHaPort"'
-                                                   ' value="%d" />'
-                                                   % (gtmInst.haPort), indent)
-                        self.__writeWithIndent(fp,
-                                               '<PARAM name="gtmListenIp1" '
-                                               'value="%s,%s" />'
-                                               % (gtmInst.listenIps[0],
-                                                  peerInst_listenIps[:-1]),
-                                               indent)
-                        self.__writeWithIndent(fp,
-                                               '<PARAM name="gtmHaIp1"'
-                                               ' value="%s,%s" />'
-                                               % (gtmInst.haIps[0],
-                                                  peerInst_haIps[:-1]), indent)
-                        self.__writeWithIndent(fp,
-                                               '<PARAM name="gtmDir1"'
-                                               ' value="%s,%s" />'
-                                               % (gtmInst.datadir,
-                                                  peerInst_hostname_datadir[:-1]),
-                                               indent)
-                        self.__writeWithIndent(fp,
-                                               '<PARAM name="gtmRelation"'
-                                               ' value="%s,%s" />'
-                                               % (gtmInst.hostname,
-                                                  peerInst_hostname[:-1]),
-                                               indent)
-                    else:
-                        self.__writeWithIndent(fp,
-                                               '<PARAM name="gtmListenIp1"'
-                                               ' value="%s" />'
-                                               % (gtmInst.listenIps[0]),
-                                               indent)
-                        self.__writeWithIndent(fp,
-                                               '<PARAM name="gtmDir1"'
-                                               ' value="%s" />'
-                                               % (gtmInst.datadir), indent)
-                except IndexError:
-                    self.__writeWithIndent(fp,
-                                           '<!--  gtm (global transaction'
-                                           ' manager)-->', indent)
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="gtmNum" value="0" />',
-                                           indent)
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="gtmPortBase" '
-                                           'value="%d" />'
-                                           % (MASTER_BASEPORT_GTM), indent)
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="gtmListenIp1" '
-                                           'value="" />', indent)
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="gtmDir1" value="" />',
-                                           indent)
-                    if not self.isMiniaturizedDeployment(cluster_version):
-                        if not self.isSinglePrimaryMultiStandbyDeployment(
-                                cluster_version):
-                            self.__writeWithIndent(
-                                fp, '<PARAM name="gtmPortStandby" value='
-                                    '"%d" />' % (STANDBY_BASEPORT_GTM), indent)
-                            self.__writeWithIndent(fp,
-                                                   '<PARAM name="gtmHaPort"'
-                                                   ' value="" />', indent)
-                        self.__writeWithIndent(fp,
-                                               '<PARAM name="gtmHaIp1"'
-                                               ' value="" />', indent)
-                        self.__writeWithIndent(fp,
-                                               '<PARAM name="gtmRelation"'
-                                               ' value="%s,%s" />'
-                                               % (local_dbn.name,
-                                                  local_dbn.name), indent)
-            # gtm ending
-
-            # cn beginning
-            if (local_dbn.cooNum > 0):
-                for cooInst in local_dbn.coordinators:
-                    self.__writeWithIndent(fp, '<!--  cn (co-ordinator)-->',
-                                           indent)
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="cooNum" value="%d" />'
-                                           % (local_dbn.cooNum), indent)
-                    self.__writeWithIndent(fp, '<PARAM name="cooPortBase" '
-                                               'value="%d" />'
-                                           % (cooInst.port), indent)
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="cooListenIp1" '
-                                           'value="%s" />'
-                                           % (self.listToCSV(
-                                               cooInst.listenIps)), indent)
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="cooDir1" '
-                                           'value="%s" />' % (cooInst.datadir),
-                                           indent)
-                    if not self.isMiniaturizedDeployment(cluster_version):
-                        self.__writeWithIndent(fp, '<PARAM name="ssdCNDir1"'
-                                                   ' value="" />', indent)
-            # cn ending
-
-            # dn beginning
-            if (local_dbn.dataNum > 0 and local_dbn.datanodes[
-                0].instanceType == MASTER_INSTANCE):
-                # Find master DN
-                dnList = [dn for dn in local_dbn.datanodes if
-                          dn.instanceRole == INSTANCE_ROLE_DATANODE and
-                          dn.instanceType == MASTER_INSTANCE]
-                if len(dnList) == 0:
-                    # No master DN found in this node, so skip...
-                    indent -= 1
-                    self.__writeWithIndent(fp, '</DEVICE>', indent)
-                    ctr += 1
-                    continue
-                # Find min MasterDN port value
-                dnPort = dnList[0].port
-                for dn in dnList:
-                    if dnPort > dn.port:
-                        dnPort = dn.port
-
-                if not self.isMiniaturizedDeployment(cluster_version) and not \
-                        self.isSinglePrimaryMultiStandbyDeployment(
-                            cluster_version):
-                    # Find min StandbyDN port and IP value - need to optimize
-                    snList = [sn for sn in local_dbn.datanodes if
-                              sn.instanceRole == INSTANCE_ROLE_DATANODE and
-                              sn.instanceType == STANDBY_INSTANCE]
-                    snPort = snList[0].port
-                    for sn in snList:
-                        if snPort > sn.port:
-                            snPort = sn.port
-
-                    # Find min MasterDN port value - need to optimize
-                    dsnList = [dsn for dsn in local_dbn.datanodes if
-                               dsn.instanceRole == INSTANCE_ROLE_DATANODE and
-                               dsn.instanceType == DUMMY_STANDBY_INSTANCE]
-                    dsnPort = dsnList[0].port
-                    for dsn in dsnList:
-                        if dsnPort > dsn.port:
-                            dsnPort = dsn.port
-
-                if self.isSinglePrimaryMultiStandbyDeployment(cluster_version):
-                    # Find min StandbyDN port and IP value - need to optimize
-                    snList = [sn for sn in local_dbn.datanodes if
-                              sn.instanceRole == INSTANCE_ROLE_DATANODE and
-                              sn.instanceType == STANDBY_INSTANCE]
-                    if snList:
-                        snPort = snList[0].port
-                        for sn in snList:
-                            if snPort > sn.port:
-                                snPort = sn.port
-                # DN common part (1/3)
-                self.__writeWithIndent(fp, '<!--  dn (data-node)-->', indent)
-                self.__writeWithIndent(fp,
-                                       '<PARAM name="dataNum" value="%d" />'
-                                       % (local_dbn.dataNum), indent)
-                self.__writeWithIndent(fp,
-                                       '<PARAM name="dataPortBase" '
-                                       'value="%d" />' % (dnPort), indent)
-                if not self.isMiniaturizedDeployment(cluster_version) and \
-                        not self.isSinglePrimaryMultiStandbyDeployment(
-                            cluster_version):
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="dataPortStandby"'
-                                           ' value="%s" />' % (snPort), indent)
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="dataPortDummyStandby"'
-                                           ' value="%s" />' % (dsnPort),
-                                           indent)
-
-                i = 1
-                dnInst = None
-                for dnInst in dnList:
-                    if not self.isMiniaturizedDeployment(cluster_version):
-                        # Find SNs
-                        instances = self.getPeerInstance(dnInst)
-                        snList = [sn for sn in instances if
-                                  sn.instanceRole == INSTANCE_ROLE_DATANODE and
-                                  sn.instanceType == STANDBY_INSTANCE]
-                        snListenIP = ''
-                        snHaIP = ''
-                        snHostNm = ''
-                        snDir = ''
-                        sn_HostNm_Dir = ''
-                        sn_Xlog_Dir = ''
-                        if len(snList) == 0:
-                            # Will it ever come here - can be removed???
-                            print("<<DEBUG>> No SN found for DN(%s)" % (
-                                dnInst.name))
-                        else:
-                            for sn in snList:
-                                snListenIP = snListenIP + sn.listenIps[0] + ','
-                                snHostNm = snHostNm + sn.hostname + ','
-                                snDir = snDir + sn.datadir + ','
-                                sn_HostNm_Dir = sn_HostNm_Dir + sn.hostname \
-                                                + ',' + sn.datadir + ','
-                                sn_Xlog_Dir = sn_Xlog_Dir + sn.xlogdir + ','
-                                snHaIP = snHaIP + sn.haIps[0] + ','
-
-                    # Once only per Host, the ListenIP entry needs to
-                    # be written. Part (2/3)
-                    if i == 1:
-                        if self.isMiniaturizedDeployment(cluster_version):
-                            self.__writeWithIndent(fp,
-                                                   '<PARAM name="dataListenIp"'
-                                                   ' value="%s,%s" />' % (
-                                                       dnInst.listenIps[0],
-                                                       dnInst.listenIps[0]),
-                                                   indent)
-                        elif self.isSinglePrimaryMultiStandbyDeployment(
-                                cluster_version):
-                            self.__writeWithIndent(
-                                fp, '<PARAM name="dataListenIp1" value='
-                                    '"%s,%s" />' % (dnInst.listenIps[0],
-                                                    snListenIP[:-1]), indent)
-                            self.__writeWithIndent(fp,
-                                                   '<PARAM name="dataHaIp1"'
-                                                   ' value="%s,%s" />'
-                                                   % (dnInst.listenIps[0],
-                                                      snHaIP[:-1]), indent)
-                        else:
-                            self.__writeWithIndent(fp,
-                                                   '<PARAM name="dataListenIp"'
-                                                   ' value="%s,%s" />'
-                                                   % (dnInst.listenIps[0],
-                                                      snListenIP[:-1]), indent)
-                    # Find DSNs
-                    if not self.isMiniaturizedDeployment(cluster_version) and \
-                            not self.isSinglePrimaryMultiStandbyDeployment(
-                                cluster_version):
-                        instances = self.getPeerInstance(dnInst)
-                        dsnList = [dsn for dsn in instances if
-                                   dsn.instanceRole == INSTANCE_ROLE_DATANODE
-                                   and dsn.instanceType ==
-                                   DUMMY_STANDBY_INSTANCE]
-                        if len(dsnList) == 0:
-                            # Will it ever come here - can be removed???
-                            print("<<DEBUG>> No DSN found for DN(%s)" % (
-                                dnInst.name))
-                            dsnHostNm = ''
-                            dsnDir = ''
-                        else:
-                            dsnHostNm = dsnList[0].hostname
-                            dsnDir = dsnList[0].datadir
-                    # DN repeated part (3/3)
-                    if self.isMiniaturizedDeployment(cluster_version):
-                        self.__writeWithIndent(fp,
-                                               '<PARAM name="dataNode%d"'
-                                               ' value="%s" />'
-                                               % (i, dnInst.datadir), indent)
-                    elif self.isSinglePrimaryMultiStandbyDeployment(
-                            cluster_version):
-                        self.__writeWithIndent(fp,
-                                               '<PARAM name="dataNode%d"'
-                                               ' value="%s,%s" />'
-                                               % (i, dnInst.datadir,
-                                                  sn_HostNm_Dir[:-1]), indent)
-                        if dnInst.xlogdir != '':
-                            self.__writeWithIndent(fp,
-                                                   '<PARAM '
-                                                   'name="dataNodeXlogPath%d" '
-                                                   'value="%s,%s" />'
-                                                   % (i, dnInst.xlogdir,
-                                                      sn_Xlog_Dir[:-1]),
-                                                   indent)
-                    else:
-                        self.__writeWithIndent(fp,
-                                               '<PARAM name="dataNode%d"'
-                                               ' value="%s,%s,%s,%s,%s" />'
-                                               % (i, dnInst.datadir,
-                                                  snHostNm[:-1], snDir[:-1],
-                                                  dsnHostNm, dsnDir), indent)
-                        if dnInst.xlogdir != '':
-                            self.__writeWithIndent(fp,
-                                                   '<PARAM '
-                                                   'name="dataNodeXlogPath%d" '
-                                                   'value="%s,%s" />'
-                                                   % (i, dnInst.xlogdir,
-                                                      sn_Xlog_Dir[:-1]),
-                                                   indent)
-                        self.__writeWithIndent(fp,
-                                               '<PARAM name="ssdDNDir%d"'
-                                               ' value="" />'
-                                               % (i), indent)
-                    i += 1
-                if not self.isMiniaturizedDeployment(cluster_version):
-                    self.__writeWithIndent(fp,
-                                           '<PARAM name="cmAgentConnectIp"'
-                                           ' value="%s" />'
-                                           % (dnInst.listenIps[0]), indent)
-            # dn ending
-
-            # Device ending
-            indent -= 1
-            self.__writeWithIndent(fp, '</DEVICE>', indent)
-            ctr += 1
-        self.__writeWithIndent(fp, '</DEVICELIST>', indent)
-        self.__writeWithIndent(fp, '</ROOT>', indent)
-        fp.close()
-
-    def __getInstsInNode(self, nodeName):
-        """
-        function: get instance in specified node
-        input: node name
-        output: instances list
-        """
-        for node in self.dbNodes:
-            if node.name == nodeName:
-                insts = node.etcds + node.cmservers + node.datanodes \
-                        + node.coordinators + node.gtses
-                return insts
-        return []
-
-    def __getAllInsts(self):
-        """
-        function: get all instances
-        input: NA
-        output: all instances list
-        """
-        insts = []
-        for node in self.dbNodes:
-            insts += node.etcds + node.cmservers + node.datanodes \
-                     + node.coordinators + node.gtses
-        return insts
-
-    def getInstances(self, nodeName=""):
-        """
-        function: get instances in the cluster, if nodeName is specified,
-                  return the instances in the ndoe
-        input: node name
-        output: all instances
-        """
-        if nodeName:
-            insts = self.__getInstsInNode(nodeName)
-        else:
-            insts = self.__getAllInsts()
-        return insts
-
     def isSingleInstCluster(self):
-        return (self.clusterType == CLUSTER_TYPE_SINGLE_INST)
-
-    def getEtcdAddress(self):
-        """
-        function: get etcd address
-        input: NA
-        output: etcd address
-        """
-        etcds = []
-        etcdAddress = ""
-        for node in self.dbNodes:
-            etcds += node.etcds
-        for etcd in etcds:
-            etcdAddress += "https://%s:%s," % (
-                etcd.listenIps[0], etcd.clientPort)
-        return etcdAddress.strip(",")
-
-    def mergeClusterInfo(self, oldClusterInfo, newClusterInfo):
-        """
-        function: get etcd address
-        input: NA
-        output: etcd address
-        """
-        # should not modify newClusterInfo, so deepcopy
-        tmpClusterInfo = copy.deepcopy(newClusterInfo)
-
-        # name/clusterName are different between old and new cluster.
-        # clusterType/appPath/logPath/toolPath/tmpPath are same between old
-        # and new cluster.
-        self.name = tmpClusterInfo.name
-        self.clusterName = tmpClusterInfo.clusterName
-        self.clusterType = tmpClusterInfo.clusterType
-        self.appPath = tmpClusterInfo.appPath
-        self.logPath = tmpClusterInfo.logPath
-        self.toolPath = tmpClusterInfo.toolPath
-        self.tmpPath = tmpClusterInfo.tmpPath
-
-        # get max nodeId of old cluster.
-        maxNodeId = max(
-            [int(oldNode.id) for oldNode in oldClusterInfo.dbNodes])
-        maxNodeId += 1
-
-        for dbNode in tmpClusterInfo.dbNodes:
-            # CMS/GTM/ETCD will be dropped in merged cluster.
-            dbNode.cmservers = []
-            dbNode.gtms = []
-            dbNode.etcds = []
-
-            # nodeId will append to old cluster.
-            dbNode.id = maxNodeId
-            maxNodeId += 1
-
-        self.dbNodes = oldClusterInfo.dbNodes + tmpClusterInfo.dbNodes
-        self.newNodes = tmpClusterInfo.dbNodes
+        return self.clusterType == CLUSTER_TYPE_SINGLE_INST
 
     def isSingleNode(self):
         return (self.__getDnInstanceNum() <= 1)
@@ -6097,7 +4381,7 @@ class dbClusterInfo():
                                 "The cmd is %s" % cmd)
         fp = None
         try:
-            g_file.createFileInSafeMode(dynamicConfigFile)
+            FileUtil.createFileInSafeMode(dynamicConfigFile)
             fp = open(dynamicConfigFile, "wb")
             # len
             info = struct.pack("I", 24)
@@ -6127,7 +4411,7 @@ class dbClusterInfo():
                 fp.write(info)
             fp.flush()
             fp.close()
-            os.chmod(dynamicConfigFile, KEY_FILE_PERMISSION)
+            os.chmod(dynamicConfigFile, ConstantsBase.KEY_FILE_PERMISSION)
         except Exception as e:
             if fp:
                 fp.close()
@@ -6159,6 +4443,9 @@ class dbClusterInfo():
         output_list = self.__getStatusByOM(user)
         output_num = 0
         pattern = re.compile("(\d+) (.*) (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}) (.*)")
+        if not self.hasNoCm():
+            output_list = [i for i in output_list if i]
+            output_list = output_list[-1].split('|')
         for contont in output_list:
             if pattern.search(contont):
                 output_num += 1
@@ -6441,3 +4728,10 @@ class dbClusterInfo():
             dnInst.datadir = datadir.decode().strip('\x00')
             dbNode.datanodes.append(dnInst)
         return (dbNode, materDnNum)
+
+    def hasNoCm(self):
+        """
+        function:check whether cm exist
+        :return:True or False
+        """
+        return self.cmscount < 1

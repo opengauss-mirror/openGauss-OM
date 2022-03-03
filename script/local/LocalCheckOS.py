@@ -32,13 +32,18 @@ localDirPath = os.path.dirname(os.path.realpath(__file__))
 
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.ParameterParsecheck import Parameter
-from gspylib.os.gsOSlib import g_OSlib
-from gspylib.os.gsplatform import g_Platform, findCmdInPath
+from os_platform.UserPlatform import g_Platform
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.Common import DefaultValue
-from gspylib.common.VersionInfo import VersionInfo
 from gspylib.common.ErrorCode import ErrorCode
+from base_utils.os.cmd_util import CmdUtil
+from domain_utils.cluster_file.config_param import ConfigParam
+from base_utils.os.disk_util import DiskUtil
+from domain_utils.cluster_file.version_info import VersionInfo
+from base_utils.os.net_util import NetUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from os_platform.linux_distro import LinuxDistro
 
 sys.path.insert(0, localDirPath + "/../../lib")
 import psutil
@@ -196,7 +201,7 @@ def collectBlockdev():
     devices = list()
     try:
         # If the directory of '/' is disk array, all disk prereads will be set
-        devlist = DefaultValue.getDevices()
+        devlist = DiskUtil.getDevices()
         cmd = "mount | awk '{if( $3==\"/\" ) print $1}' |" \
               " sed 's/\/dev\///' | sed 's/[0-9]//'"
         (status, output) = subprocess.getstatusoutput(cmd)
@@ -357,7 +362,7 @@ def collectplatformInfo():
     output : Instantion
     """
     data = platformInfo()
-    distname, version, idnum = g_Platform.dist()
+    distname, version, idnum = LinuxDistro.linux_distribution()
     bits, linkage = platform.architecture()
 
     data.distname = distname
@@ -415,7 +420,7 @@ def collectIOschedulers():
     data = ioschedulers()
     devices = set()
     try:
-        files = DefaultValue.getDevices()
+        files = DiskUtil.getDevices()
         for f in files:
             fname = "/sys/block/%s/queue/scheduler" % f
             words = fname.split("/")
@@ -576,154 +581,6 @@ def collectLogicalBlock():
             data.errormsg += e.__str__()
 
     return result
-
-
-###########################################################################
-# removeComments : delete the line which start with "#"
-###########################################################################
-def removeComments(line):
-    """
-    function : Remove Comments
-    input  : String
-    output : String
-    """
-    words = line.split("#")
-    if len(words) < 2:
-        return line
-    return words[0]
-
-
-###########################################################################
-# sysctl parameter
-###########################################################################
-class sysctl:
-    """
-    Class: sysctl
-    """
-
-    def __init__(self):
-        """
-        function : Init class sysctl
-        input  : NA
-        output : NA
-        """
-        # dictionary of values
-        self.variables = dict()
-        self.errormsg = None
-
-
-def collectSysctl():
-    """
-    function : Collector Sysctl
-    input  : NA
-    output : instantion
-    """
-    data = sysctl()
-    try:
-        # enforce sysctl kernel value
-        cmd = "sysctl -p"
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            g_logger.debug("Warning: Failed to enforce sysctl kernel value"
-                           " before checking/setting sysctl "
-                           "parameter.Commands: %s. Error:\n%s."
-                           % (cmd, output))
-
-        with open("/etc/sysctl.conf", "r") as f:
-            for line in f:
-                line = removeComments(line)
-                words = line.split("=")
-                if len(words) != 2:
-                    continue
-
-                key = words[0].strip()
-                value = words[1].strip()
-                data.variables[key] = ' '.join(value.split())
-
-    except Exception as e:
-        data.errormsg = e.__str__()
-
-    return data
-
-
-###########################################################################
-# limits configure:
-###########################################################################
-class limitsconf:
-    """
-    Class: limitsconf
-    """
-
-    def __init__(self):
-        """
-        function : Init class limitsconf
-        input  : NA
-        output : NA
-        """
-        self.lines = list()
-        self.errormsg = None
-
-    def __str__(self):
-        """
-        function : Convert to a string
-        input  : NA
-        output : String
-        """
-        output = ""
-        for line in self.lines:
-            output = "%s\n%s" % (output, line)
-        return output
-
-
-class limitsconf_entry:
-    """
-    Class: limitsconf_entry
-    """
-
-    def __init__(self, domain, typename, item, value):
-        """
-        function : Init class limitsconf_entry
-        input  : String, String, String, String
-        output : NA
-        """
-        self.domain = domain
-        self.type = typename
-        self.item = item
-        self.value = value
-
-    def __str__(self):
-        """
-        function : Merged into a string
-        input  : NA
-        output : String
-        """
-        return "%s %s %s %s" % (self.domain, self.type, self.item, self.value)
-
-
-def collectLimits():
-    """
-    function : collect Limits
-    input  : NA
-    output : instantion
-    """
-    data = limitsconf()
-    try:
-        with open("/etc/security/limits.conf", "r") as f:
-            for line in f:
-                line = removeComments(line)
-                words = line.split()
-                if len(words) != 4:
-                    continue
-                domain = words[0].strip()
-                typename = words[1].strip()
-                item = words[2].strip()
-                value = words[3].strip()
-                data.lines.append(limitsconf_entry(
-                    domain, typename, item, value))
-    except Exception as e:
-        data.errormsg = e.__str__()
-
-    return data
 
 
 ###########################################################################
@@ -946,7 +803,7 @@ def CheckNetWorkBonding(serviceIP, bondMode=False):
     input  : String, bool
     output : List
     """
-    networkCardNum = DefaultValue.getNICNum(serviceIP)
+    networkCardNum = NetUtil.getNICNum(serviceIP)
     NetWorkConfFile = DefaultValue.getNetWorkConfFile(networkCardNum)
     if (NetWorkConfFile.find("No such file or directory") >= 0
             and DefaultValue.checkDockerEnv()):
@@ -969,7 +826,7 @@ def CheckNetWorkBonding(serviceIP, bondMode=False):
         else:
             g_logger.log("BondMode Null")
     else:
-        flag = DefaultValue.getNetWorkBondFlag(networkCardNum)[0]
+        flag = NetUtil.getNetWorkBondFlag(networkCardNum)[0]
         if flag:
             if os.path.exists(bondingConfFile):
                 networkCardNumList = networkCardNumList + \
@@ -1213,7 +1070,7 @@ def CheckNetWorkCardInfo(data):
                              " network '%s' '%s' value[%s:%s]"
                              " is different from the other node [%s:%s]"
                              % (data.netNum, k,
-                                DefaultValue.GetHostIpOrName(),
+                                NetUtil.GetHostIpOrName(),
                                 value, g_opts.hostname, g_opts.mtuValue))
             elif (int(value) != int(expectMTUValue)):
                 g_logger.log("        Warning reason: network '%s' '%s'"
@@ -1321,7 +1178,7 @@ def CheckNetWorkCardInterrupt(data, isSetting=False):
                                  " affinitization. Please stop the irqbalance"
                                  " service and/or execute 'killall"
                                  " irqbalance'.")
-                    killcmd = "%s irqbalance" % findCmdInPath("killall")
+                    killcmd = "%s irqbalance" % CmdUtil.findCmdInPath("killall")
                     (status, output) = subprocess.getstatusoutput(killcmd)
                     if status != 0:
                         g_logger.log("Failed to execute killall irqbalance")
@@ -1387,9 +1244,9 @@ def CheckNetWorkCardPara(serviceIP, isSetting=False):
     dirName = os.path.dirname(os.path.realpath(__file__))
     configFile = "%s/../gspylib/etc/conf/check_list.conf" % dirName
     checkList = ['mtu', 'rx', 'tx']
-    netParameterList = DefaultValue.getConfigFilePara(configFile,
-                                                      '/sbin/ifconfig',
-                                                      checkList)
+    netParameterList = ConfigParam.getConfigFilePara(configFile,
+                                                     '/sbin/ifconfig',
+                                                     checkList)
     if (('mtu' in list(netParameterList.keys())) and
             (netParameterList['mtu'].strip() != '')):
         expectMTUValue = netParameterList['mtu'].strip()
@@ -1530,7 +1387,7 @@ def collectfirewall():
     output : Instantion
     """
     data = firewall()
-    distname = g_Platform.dist()[0]
+    distname = LinuxDistro.linux_distribution()[0]
     if distname in ("redhat", "centos", "euleros", "openEuler"):
         data.distname = distname.upper()
         if g_Platform.isPlatFormEulerOSOrRHEL7X():
@@ -1698,7 +1555,7 @@ def CheckIOSchedulers(isSetting=False):
     """
     # The IO Schedulers in ubuntu system is default value,
     # so that it cannot be modified
-    distname, version = g_Platform.dist()[0:2]
+    distname, version = LinuxDistro.linux_distribution()[0:2]
     if distname == "debian" and version == "buster/sid":
         return
     data = collectIOschedulers()
@@ -1790,7 +1647,7 @@ def CheckAsyIOrequests(isSetting=False):
     dnnum = 0
     instancenum = 0
 
-    hostname = DefaultValue.GetHostIpOrName()
+    hostname = NetUtil.GetHostIpOrName()
     dbnode = g_clusterInfo.getDbNodeByName(hostname)
     for i in dbnode.coordinators:
         if i.datadir != "":
@@ -2037,48 +1894,6 @@ def CheckMemInfo():
 
 
 #############################################################################
-def getClusterUser():
-    """
-    function: Check user information
-    input : NA
-    output: NA
-    """
-    # get user and group
-    gphome = DefaultValue.getPathFileOfENV("GPHOME")
-    if not os.path.exists(gphome):
-        raise Exception(ErrorCode.GAUSS_518["GAUSS_51805"] % "GPHOME")
-    user = g_OSlib.getPathOwner(gphome)[0]
-    return user
-
-
-#############################################################################
-def getFactorsFromDB(cmd):
-    """
-    function: get factors from db
-    input : cmd
-    output: USE_LARGE_PAGES,TEMP_BUFFER_SIZE,DATA_BUFFER_SIZE,SHARED_POOL_SIZE
-    """
-    (status, output) = subprocess.getstatusoutput(cmd)
-
-    if (status != 0):
-        raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % cmd +
-                        " Error: \n%s" % str(output))
-    elif cmd.find("zsql") > -1:
-        result = output.split(os.linesep)[7].split()[1].strip()
-    else:
-        result = output.split('\n')[2].split('|')[1].strip()
-    # Just get the value of TEMP_BUFFER_SIZE, DATA_BUFFER_SIZE,
-    # SHARED_POOL_SIZE and USE_LARGE_PAGES
-    if (result not in ('TRUE', 'ONLY', 'FALSE')):
-        if (str(result[len(result) - 1]) in ('G' or 'g')):
-            result = int(result[:-1]) * 1024
-        else:
-            result = int(result[:-1])
-
-    return result
-
-
-#############################################################################
 class CmdOptions():
     """
     Class: CmdOptions
@@ -2219,7 +2034,7 @@ def checkParameter():
 
     if (g_opts.logFile == ""):
         dirName = os.path.dirname(os.path.realpath(__file__))
-        g_opts.logFile = os.path.join(dirName, DefaultValue.LOCAL_LOG_FILE)
+        g_opts.logFile = os.path.join(dirName, ClusterConstants.LOCAL_LOG_FILE)
 
 
 def getLocalIPAddr():
@@ -2235,7 +2050,7 @@ def getLocalIPAddr():
         return Ips
 
     for node in g_clusterInfo.dbNodes:
-        if (node.name == DefaultValue.GetHostIpOrName()):
+        if (node.name == NetUtil.GetHostIpOrName()):
             Ips.append(node.backIps[0])
 
     return Ips

@@ -116,7 +116,7 @@ class CheckMaxProcMemory(BaseItem):
             if not Instance:
                 continue
             sqlcmd = "select pg_sleep(1);"
-            output = SharedFuncs.runSqlCmd(sqlcmd, self.user, "",
+            SharedFuncs.runSqlCmd(sqlcmd, self.user, "",
                                            Instance.port, self.tmpPath,
                                            'postgres',
                                            self.mpprcFile)

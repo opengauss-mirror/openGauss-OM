@@ -55,4 +55,8 @@ class PostUninstallImplOLAP(PostUninstallImpl):
         self.clean_host = GaussPost.clean_host
         self.sshpwd = GaussPost.sshpwd
         self.userHome = GaussPost.userHome
+        self.isSingle = GaussPost.isSingle
+        self.rootPasswd = GaussPost.rootPasswd
+        self.ips = GaussPost.ips
+        self.root_ssh_agent_flag = GaussPost.root_ssh_agent_flag
 

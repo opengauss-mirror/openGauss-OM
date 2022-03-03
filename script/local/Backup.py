@@ -23,6 +23,7 @@ import getopt
 import os
 import sys
 
+
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.GaussLog import GaussLog
@@ -30,8 +31,17 @@ from gspylib.common.Common import DefaultValue
 from gspylib.common.ParameterParsecheck import Parameter
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.LocalBaseOM import LocalBaseOM
-from gspylib.os.gsOSlib import g_OSlib
 from gspylib.os.gsfile import g_file
+from base_utils.executor.local_remote_cmd import LocalRemoteCmd
+from base_utils.os.cmd_util import CmdUtil
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from base_utils.os.net_util import NetUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from base_utils.common.constantsbase import ConstantsBase
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
 #######################################################################
 # GLOBAL VARIABLES
@@ -42,7 +52,7 @@ POSTGRESQL_CONF = "postgresql.conf"
 POSTGRESQL_HBA_CONF = "pg_hba.conf"
 CM_SERVER_CONF = "cm_server.conf"
 CM_AGENT_CONF = "cm_agent.conf"
-HOSTNAME = DefaultValue.GetHostIpOrName()
+HOSTNAME = NetUtil.GetHostIpOrName()
 
 g_clusterUser = ""
 g_ignoreMiss = False
@@ -124,7 +134,7 @@ class LocalBackup(LocalBaseOM):
             self.readConfigInfo()
         except Exception as e:
             self.logger.debug(str(e))
-            gaussHome = DefaultValue.getInstallDir(self.user)
+            gaussHome = ClusterDir.getInstallDir(self.user)
             try:
                 g_oldVersionModules = OldVersionModules()
                 if (os.path.exists(
@@ -191,7 +201,7 @@ class LocalBackup(LocalBaseOM):
         try:
             if (not os.path.exists(self.tmpBackupDir)):
                 os.makedirs(self.tmpBackupDir,
-                            DefaultValue.KEY_DIRECTORY_PERMISSION)
+                            ConstantsBase.KEY_DIRECTORY_PERMISSION)
             needSize = DefaultValue.APP_DISK_SIZE
             vfs = os.statvfs(self.tmpBackupDir)
             availableSize = vfs.f_bavail * vfs.f_bsize // (1024 * 1024)
@@ -207,7 +217,7 @@ class LocalBackup(LocalBaseOM):
             try:
                 if (not os.path.exists(self.backupDir)):
                     os.makedirs(self.backupDir,
-                                DefaultValue.KEY_DIRECTORY_PERMISSION)
+                                ConstantsBase.KEY_DIRECTORY_PERMISSION)
             except Exception as e:
                 raise Exception(
                     ErrorCode.GAUSS_502["GAUSS_50208"] % self.backupDir
@@ -255,24 +265,24 @@ class LocalBackup(LocalBaseOM):
                             "The temporary directory "
                             "is not empty.\n%s\nRemove all files silently."
                             % file_list)
-                        g_file.cleanDirectoryContent(temp_dir)
+                        FileUtil.cleanDirectoryContent(temp_dir)
                 else:
                     os.makedirs(temp_dir,
-                                DefaultValue.KEY_DIRECTORY_PERMISSION)
+                                ConstantsBase.KEY_DIRECTORY_PERMISSION)
 
                 self.logger.debug("Creating hostname file.")
                 hostnameFile = os.path.join(temp_dir, self.hostnameFileName)
                 self.logger.debug(
                     "Register hostname file path: %s." % hostnameFile)
-                g_file.createFileInSafeMode(hostnameFile)
+                FileUtil.createFileInSafeMode(hostnameFile)
                 with open(hostnameFile, "w") as self.__hostnameFile:
-                    hostName = DefaultValue.GetHostIpOrName()
+                    hostName = NetUtil.GetHostIpOrName()
                     self.__hostnameFile.write("%s" % hostName)
                     self.logger.debug("Flush hostname file.")
                     self.__hostnameFile.flush()
                 self.__hostnameFile = None
 
-                os.chmod(hostnameFile, DefaultValue.KEY_FILE_PERMISSION)
+                os.chmod(hostnameFile, ConstantsBase.KEY_FILE_PERMISSION)
 
                 self.logger.debug("Collecting parameter files.")
                 for inst in self.dbNodeInfo.datanodes:
@@ -283,9 +293,9 @@ class LocalBackup(LocalBaseOM):
                 self.__tarDir(temp_dir, self.paraTarName, True)
 
                 self.logger.debug("Removing temporary directory.")
-                g_file.removeDirectory(temp_dir)
+                FileUtil.removeDirectory(temp_dir)
             except Exception as e:
-                g_file.removeDirectory(temp_dir)
+                FileUtil.removeDirectory(temp_dir)
                 raise Exception(str(e))
 
             self.logger.log("Successfully backed up parameter files.")
@@ -352,7 +362,7 @@ class LocalBackup(LocalBaseOM):
 
         for key in paraFileList:
             backupFileName = "%d_%s" % (inst.instanceId, key)
-            g_file.cpFile(paraFileList[key],
+            FileUtil.cpFile(paraFileList[key],
                           os.path.join(temp_dir, backupFileName))
 
     def __tarDir(self, targetDir, tarFileName, backParameter=False):
@@ -367,7 +377,7 @@ class LocalBackup(LocalBaseOM):
         path = os.path.realpath(os.path.join(targetDir, ".."))
         cmd = g_file.SHELL_CMD_DICT["compressTarFile"] % (
             path, tarName, tarDir, DefaultValue.KEY_FILE_MODE, tarName)
-        (status, output) = DefaultValue.retryGetstatusoutput(cmd)
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd)
         if (status != 0):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50227"] % (
                     "directory [%s] to [%s]" % \
@@ -377,8 +387,8 @@ class LocalBackup(LocalBaseOM):
             # Only parameter backup
             # send  backup file which is compressed  to the node
             # that is currently performing the backup
-            if backParameter and self.nodeName != g_OSlib.getHostName():
-                g_OSlib.scpFile(self.nodeName, tarName, self.tmpBackupDir)
+            if backParameter and self.nodeName != NetUtil.getHostName():
+                LocalRemoteCmd.scpFile(self.nodeName, tarName, self.tmpBackupDir)
 
 
 ##############################################################################
@@ -420,19 +430,6 @@ def checkUserParameter():
     """
     if (g_clusterUser == ""):
         GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % 'U' + ".")
-
-
-def checkLogFile(logFile):
-    """
-    function: check log file
-    input : NA
-    output: NA
-    """
-    if (logFile == ""):
-        logFile = DefaultValue.getOMLogPath(DefaultValue.LOCAL_LOG_FILE,
-                                            g_clusterUser, "", "")
-    if (not os.path.isabs(logFile)):
-        GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"] % "log")
 
 
 def checkBackupPara(backupPara, backupBin):
@@ -513,15 +510,16 @@ def main():
         Parameter.checkParaVaild(key, value)
 
     if (g_ignoreMiss):
-        gaussHome = DefaultValue.getEnv("GAUSSHOME")
+        gaussHome = EnvUtil.getEnv("GAUSSHOME")
         if not gaussHome:
             return
 
     # check if user exist and is the right user
     checkUserParameter()
-    DefaultValue.checkUser(g_clusterUser, False)
+    ClusterUser.checkUser(g_clusterUser, False)
     # check log file
-    checkLogFile(logFile)
+    logFile = ClusterLog.checkLogFile(logFile, g_clusterUser, "",
+                                      ClusterConstants.LOCAL_LOG_FILE)
     # check backupPara and backupBin
     checkBackupPara(backupPara, backupBin)
     # check tmpBackupDir

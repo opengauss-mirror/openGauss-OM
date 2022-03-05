@@ -21,28 +21,25 @@ import os
 import pwd
 import time
 import re
-import multiprocessing
-from datetime import datetime, timedelta
 from gspylib.common.Common import DefaultValue
-from gspylib.common.VersionInfo import VersionInfo
 from gspylib.common.ErrorCode import ErrorCode
-from multiprocessing.pool import ThreadPool
-from gspylib.os.gsfile import g_file
-from gspylib.os.gsfile import g_Platform
-from gspylib.os.gsnetwork import g_network
-from gspylib.inspection.common.Exception import TrustException, \
-    ShellCommandException, SshCommandException, SQLCommandException
+from os_platform.UserPlatform import g_Platform
+from gspylib.inspection.common.Exception import ShellCommandException,\
+    SshCommandException, SQLCommandException
+from base_utils.os.file_util import FileUtil
+from domain_utils.cluster_file.version_info import VersionInfo
+from domain_utils.sql_handler.sql_file import SqlFile
+from base_utils.os.net_util import NetUtil
+from os_platform.linux_distro import LinuxDistro
+from base_diff.sql_commands import SqlCommands
 
 localPath = os.path.dirname(__file__)
 sys.path.insert(0, localPath + "/../lib")
 
 FILE_MODE = 640
-FILE_WRITE_MODE = 220
 DIRECTORY_MODE = 750
 KEY_FILE_MODE = 600
 KEY_DIRECTORY_MODE = 700
-MAX_FILE_NODE = 755
-MAX_DIRECTORY_NODE = 755
 INIT_FILE_SUSE = "/etc/init.d/boot.local"
 INIT_FILE_REDHAT = "/etc/rc.d/rc.local"
 
@@ -86,7 +83,7 @@ def runSshCmd(cmd, host, user="", mpprcFile="", timeout=""):
     # but SuSE executes when using ssh to remotely execute commands
     # Some environment variables are written in /etc/profile
     # when there is no separation of environment variables
-    if (host == DefaultValue.GetHostIpOrName()):
+    if (host == NetUtil.GetHostIpOrName()):
         sshCmd = cmd
     else:
         sshCmd = "pssh -s -H %s %s 'source /etc/profile 2>/dev/null;%s'" % (
@@ -185,78 +182,6 @@ def verifyPasswd(host, user, pswd=None):
         ssh.close()
 
 
-def cleanOutput(output):
-    """
-    function: run ssh cmd
-        clean warning or password message
-    input  : output
-    output : str
-    """
-    lines = output.splitlines()
-    if (len(lines) == 0):
-        return ''
-    idx = 1
-    for line in lines:
-        if (line.lower().find('password:') != -1):
-            break
-        idx += 1
-    return output if idx == len(lines) + 1 else "\n".join(lines[idx:])
-
-
-def runSqlCmdWithTimeOut(sql, user, host, port, tmpPath, database="postgres",
-                         mpprcFile="", needmpara=False, timeout=60):
-    """
-    function: run sql cmd with timeout
-    input  : sql, user, host, port, tmpPath, database
-            mpprcFile, needmpara, timeou
-    output : str
-    """
-    infoList = [
-        [sql, user, host, port, tmpPath, database, mpprcFile, needmpara]]
-    endTime = datetime.now() + timedelta(seconds=timeout)
-    pool = ThreadPool(1)
-    result = pool.map_async(executeSql, infoList)
-    while datetime.now() < endTime:
-        if (result._ready):
-            pool.close()
-            if (result._value[0] == "NO RESULT"):
-                return ""
-            elif (result._value[0].startswith("ERROR")):
-                raise SQLCommandException(sql, result._value[0])
-            else:
-                return result._value[0]
-        else:
-            time.sleep(1)
-    pool.close()
-    raise SQLCommandException(
-        sql,
-        "Running timeout, exceed the limit %s seconds" % timeout)
-
-
-def executeSql(paraList):
-    """
-    function: execute sql
-    input  : NA
-    output : NA
-    """
-    sql = paraList[0]
-    user = paraList[1]
-    host = paraList[2]
-    port = paraList[3]
-    tmpPath = paraList[4]
-    database = paraList[5]
-    mpprcFile = paraList[6]
-    needmpara = paraList[7]
-    try:
-        output = runSqlCmd(sql, user, host, port, tmpPath, database, mpprcFile,
-                           needmpara)
-        if (not output):
-            output = "NO RESULT"
-    except Exception as e:
-        output = "ERROR:%s" % (str(e))
-    return output
-
-
 def runSqlCmd(sql, user, host, port, tmpPath, database="postgres",
               mpprcFile="", maintenance=False):
     """
@@ -283,7 +208,7 @@ def runSqlCmd(sql, user, host, port, tmpPath, database="postgres",
     # create an empty sql query file
     try:
         cmd = "touch %s && chmod %s %s" % \
-              (sqlFile, DefaultValue.MAX_DIRECTORY_MODE, sqlFile)
+              (sqlFile, DefaultValue.KEY_FILE_MODE, sqlFile)
         runShellCmd(cmd, user, mpprcFile)
     except ShellCommandException as e:
         raise SQLCommandException(sql,
@@ -306,10 +231,11 @@ def runSqlCmd(sql, user, host, port, tmpPath, database="postgres",
         hostPara = (
                     "-h %s" % host) \
             if host != "" and host != "localhost" \
-               and host != DefaultValue.GetHostIpOrName() else ""
+               and host != NetUtil.GetHostIpOrName() else ""
         # build shell command
-        cmd = "gsql %s -p %s -d %s -f %s --output %s -t -A -X" % (
-        hostPara, port, database, sqlFile, queryResultFile)
+        gsql_cmd = SqlCommands.getSQLCommand(port, database)
+        gsql_cmd += " %s" % hostPara
+        cmd = "%s -f %s --output %s -t -A -X" % (gsql_cmd, sqlFile, queryResultFile)
         if (maintenance):
             cmd += ' -m'
         # Environment variables separation
@@ -317,7 +243,7 @@ def runSqlCmd(sql, user, host, port, tmpPath, database="postgres",
             cmd = "source '%s' && " % mpprcFile + cmd
         # Execute the shell command
         output = runShellCmd(cmd, user)
-        if findErrorInSqlFile(sqlFile, output):
+        if SqlFile.findErrorInSqlFile(sqlFile, output):
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
                             + "Error:\n%s" % output)
 
@@ -362,7 +288,7 @@ def runSqlSimplely(sql, user, host, port, tmpPath, database="postgres",
     # create an empty sql query file
     try:
         cmd = "touch %s && chmod %s %s" % \
-              (sqlFile, DefaultValue.MAX_DIRECTORY_MODE, sqlFile)
+              (sqlFile, DefaultValue.KEY_FILE_MODE, sqlFile)
         runShellCmd(cmd, user, mpprcFile)
     except ShellCommandException as e:
         raise SQLCommandException(sql, "create sql query file failed.")
@@ -396,7 +322,7 @@ def runSqlSimplely(sql, user, host, port, tmpPath, database="postgres",
             cmd = "source '%s' && " % mpprcFile + cmd
         # Execute the shell command
         output = runShellCmd(cmd, user)
-        if findErrorInSqlFile(sqlFile, output):
+        if SqlFile.findErrorInSqlFile(sqlFile, output):
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
                             + "Error:\n%s" % output)
 
@@ -415,26 +341,6 @@ def runSqlSimplely(sql, user, host, port, tmpPath, database="postgres",
     return output
 
 
-def findErrorInSqlFile(sqlFile, output):
-    """
-    function : Find error in the sql file
-    input : String,String
-    output : String
-    """
-    GSQL_BIN_FILE = "gsql"
-    # init flag
-    ERROR_MSG_FLAG = "(ERROR|FATAL|PANIC)"
-    GSQL_ERROR_PATTERN = "^%s:%s:(\d*): %s:.*" % (
-    GSQL_BIN_FILE, sqlFile, ERROR_MSG_FLAG)
-    pattern = re.compile(GSQL_ERROR_PATTERN)
-    for line in output.split("\n"):
-        line = line.strip()
-        result = pattern.match(line)
-        if (result is not None):
-            return True
-    return False
-
-
 def cleanFile(fileName, hostname=""):
     """
     function : remove file
@@ -451,14 +357,14 @@ def cleanFile(fileName, hostname=""):
     if hostname == "":
         (status, output) = subprocess.getstatusoutput(cmd)
         if (status != 0):
-            raise Exception(ErrorCode.GAUSS_502["GAUSS-50207"] % "file"
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50207"] % "file"
                             + " Error: \n%s." % output
                             + "The cmd is %s " % cmd)
     else:
         sshCmd = "pssh -s -H %s '%s'" % (hostname, cmd)
         (status, output) = subprocess.getstatusoutput(sshCmd)
         if (status != 0):
-            raise Exception(ErrorCode.GAUSS_502["GAUSS-50207"] % "file"
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50207"] % "file"
                             + " Error: \n%s." % output
                             + "The cmd is %s " % sshCmd)
 
@@ -489,33 +395,22 @@ def getVersion():
     return ("%s %s" % (sys.argv[0].split("/")[-1], VersionInfo.COMMON_VERSION))
 
 
-def createFolder(folderName, path, permission=DIRECTORY_MODE, user=""):
-    # Folder path
-    folderName = os.path.join(path, folderName)
-    # Create a folder
-    g_file.createDirectory(folderName, True, permission)
-    # change owner
-    if (user):
-        g_file.changeOwner(user, folderName)
-    return folderName
-
-
 def createFile(fileName, path, permission=FILE_MODE, user=""):
     # file path
     fileName = os.path.join(path, fileName)
     # Create a file
-    g_file.createFile(fileName, True, permission)
+    FileUtil.createFile(fileName, True, permission)
     # change owner
     if (user):
-        g_file.changeOwner(user, fileName)
+        FileUtil.changeOwner(user, fileName)
     return fileName
 
 
 def chmodFile(fileName, permission=FILE_MODE, user=""):
     # Modify the file permissions
-    g_file.changeMode(permission, fileName)
+    FileUtil.changeMode(permission, fileName)
     if (user):
-        g_file.changeOwner(user, fileName)
+        FileUtil.changeOwner(user, fileName)
 
 
 def writeFile(fileName, content, path, permission=FILE_MODE, user=""):
@@ -526,16 +421,16 @@ def writeFile(fileName, content, path, permission=FILE_MODE, user=""):
     """
     filePath = os.path.join(path, fileName)
     # Create a file
-    g_file.createFile(filePath, True, permission)
+    FileUtil.createFile(filePath, True, permission)
     # Modify the file permissions
     if (user):
-        g_file.changeOwner(user, filePath)
-    g_file.writeFile(filePath, [content])
+        FileUtil.changeOwner(user, filePath)
+    FileUtil.writeFile(filePath, [content])
 
 
 def readFile(fileName):
     # Get the contents of the file
-    text = g_file.readFile(fileName)
+    text = FileUtil.readFile(fileName)
     return "\n".join(text)
 
 
@@ -587,7 +482,7 @@ def receiveFile(fileName, host, user, path, passwd=None):
         if "HOST_IP" not in list(os.environ.keys()):
             host = "%s@%s" % (user, host)
         cmd = "pssh -s -H %s 'pscp -H %s %s %s' " % (
-        host, DefaultValue.GetHostIpOrName(), fileName, path)
+        host, NetUtil.GetHostIpOrName(), fileName, path)
         if (os.getuid() == 0):
             cmd = "su - %s -c \"%s\"" % (user, cmd)
         runShellCmd(cmd)
@@ -595,29 +490,6 @@ def receiveFile(fileName, host, user, path, passwd=None):
 
 def getCurrentUser():
     return pwd.getpwuid(os.getuid())[0]
-
-
-def verifyTrust(hosts, user):
-    """
-    function: Ensure the proper password-less access to the remote host.
-    input : hostname
-    output: True/False
-    """
-    try:
-        pool = ThreadPool(multiprocessing.cpu_count())
-        params = zip(hosts, [user, ])
-        results = pool.map(lambda x: checkAuthentication(x[0], x[1]), params)
-        pool.close()
-        pool.join()
-        hostnames = ""
-        for (key, value) in results:
-            if (not key):
-                hostnames = hostnames + ',' + value
-        if (hostnames != ""):
-            raise TrustException(hostnames)
-    except Exception:
-        raise TrustException(",".join(hosts))
-    return True
 
 
 def checkAuthentication(host, user):
@@ -707,9 +579,9 @@ def is_local_node(host):
     input  : NA
     output : NA
     """
-    if (host == DefaultValue.GetHostIpOrName()):
+    if (host == NetUtil.GetHostIpOrName()):
         return True
-    allNetworkInfo = g_network.getAllNetworkIp()
+    allNetworkInfo = NetUtil.getAllNetworkIp()
     for network in allNetworkInfo:
         if (host == network.ipAddress):
             return True
@@ -758,7 +630,7 @@ def isSupportSystemOs():
     input  : NA
     output : NA
     """
-    osName = g_Platform.dist()[0]
+    osName = LinuxDistro.linux_distribution()[0]
     if osName in ["redhat", "centos", "euleros", "openEuler"]:
         return True
     else:
@@ -804,7 +676,7 @@ def getIpByHostName(host):
     input  : NA
     output : NA
     """
-    ipList = g_file.readFile("/etc/hosts", host)
+    ipList = FileUtil.readFile("/etc/hosts", host)
 
     pattern = re.compile(
         r'^[1-9 \t].*%s[ \t]*#Gauss.* IP Hosts Mapping' % host)
@@ -823,29 +695,6 @@ def getIpByHostName(host):
     # Replace host with the IP address.
     hostIp = host
     return hostIp
-
-
-def isBond(netWorkNum):
-    """
-    function: check whether is or not bond
-    input  : NA
-    output : NA
-    """
-    bondingConfFile = "/proc/net/bonding/%s" % netWorkNum
-    if g_Platform.isPlatFormEulerOSOrRHEL7X():
-        cmd = "/sbin/ifconfig %s " \
-              "| grep -E '\<ether\>' | awk  -F ' ' '{print $2}'" % netWorkNum
-    else:
-        cmd = "/sbin/ifconfig %s " \
-              "| grep -E '\<HWaddr\>' | awk  -F ' ' '{print $NF}'" % netWorkNum
-    MacAddr = runShellCmd(cmd)
-    cmd = "/sbin/ifconfig -a | grep '\<%s\>' | wc -l" % MacAddr
-    output = runShellCmd(cmd)
-    MacAddrNum = int(output)
-    if (MacAddrNum > 2 and os.path.exists(bondingConfFile)):
-        return True
-    else:
-        return False
 
 
 def getNetWorkConfFile(networkCardNum):
@@ -929,7 +778,7 @@ def getOSInitFile():
     input : NA
     output : String
     """
-    distname = g_Platform.dist()[0]
+    distname = LinuxDistro.linux_distribution()[0]
     systemd_system_dir = "/usr/lib/systemd/system/"
     systemd_system_file = "/usr/lib/systemd/system/gs-OS-set.service"
     # OS init file
@@ -951,7 +800,7 @@ def getOSInitFile():
         if (not os.path.exists(initSystemFile)):
             cmd = "mkdir -p '%s'" % os.path.dirname(initSystemFile)
             runShellCmd(cmd)
-            g_file.createFileInSafeMode(initSystemFile)
+            FileUtil.createFileInSafeMode(initSystemFile)
             with open(initSystemFile, "w") as fp:
                 fp.write("#!/bin/bash\n")
         cmd = "chmod %s '%s'" % (DefaultValue.KEY_FILE_MODE, initSystemFile)

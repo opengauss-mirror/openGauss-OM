@@ -21,26 +21,22 @@
 #############################################################################
 import getopt
 import os
-import time
 import sys
 
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
-from gspylib.common.Common import DefaultValue, ClusterInstanceConfig
+from gspylib.common.Common import ClusterInstanceConfig
 from gspylib.common.ParameterParsecheck import Parameter
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.LocalBaseOM import LocalBaseOM
 from gspylib.threads.parallelTool import parallelTool
-from gspylib.os.gsOSlib import g_OSlib
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
 ########################################################################
-INSTANCE_TYPE_UNDEFINED = -1
-MASTER_INSTANCE = 0
-STANDBY_INSTANCE = 1
-DUMMY_STANDBY_INSTANCE = 2
 TYPE_DATADIR = "data-dir"
 TYPE_LOCKFILE = "lock-file"
-TIME_INIERVAL = 3
 
 ########################################################################
 # Global variables define
@@ -148,7 +144,7 @@ def checkParameter():
     if (g_opts.user == ""):
         GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % 'U' + ".")
     try:
-        DefaultValue.checkUser(g_opts.user, False)
+        ClusterUser.checkUser(g_opts.user, False)
     except Exception as e:
         GaussLog.exitWithError(str(e))
 
@@ -159,8 +155,8 @@ def checkParameter():
         g_opts.cleanType = [TYPE_DATADIR, TYPE_LOCKFILE]
 
     if (g_opts.logFile == ""):
-        g_opts.logFile = DefaultValue.getOMLogPath(
-            DefaultValue.LOCAL_LOG_FILE, g_opts.user, "", "")
+        g_opts.logFile = ClusterLog.getOMLogPath(
+            ClusterConstants.LOCAL_LOG_FILE, g_opts.user, "", "")
 
 
 class CleanInstance(LocalBaseOM):
@@ -174,6 +170,7 @@ class CleanInstance(LocalBaseOM):
         input : logFile, user, clusterConf, dwsMode
         output: NA
         """
+
         LocalBaseOM.__init__(self, logFile, user, clusterConf, dwsMode)
         if (self.clusterConfig == ""):
             # Read config from static config file
@@ -203,7 +200,10 @@ class CleanInstance(LocalBaseOM):
         output: NA
         """
         self.logger.log("Cleaning instance.")
-        compentsList = []
+        compent_list = [[cm_inst] for cm_inst in self.cmCons
+                        if not ((g_opts.inputDir) and (cm_inst.instInfo.datadir
+                                                   not in g_opts.Instancedirs) and
+                        (cm_inst.instInfo.ssdDir not in g_opts.Instancedirs))]
 
         for compent in self.dnCons:
             if ((g_opts.inputDir) and
@@ -214,16 +214,16 @@ class CleanInstance(LocalBaseOM):
             nodename = ClusterInstanceConfig. \
                 setReplConninfoForSinglePrimaryMultiStandbyCluster(
                     compent.instInfo, peerInsts, self.clusterInfo)[1]
-            comList = []
-            comList.append(compent)
-            comList.append(nodename)
-            compentsList.append(comList)
+            com_list = list()
+            com_list.append(compent)
+            com_list.append(nodename)
+            compent_list.append(com_list)
 
-        if (len(compentsList) != 0):
+        if compent_list:
             try:
                 self.logger.debug("Deleting instances.")
                 parallelTool.parallelExecute(self.uninstallCompent,
-                                             compentsList)
+                                             compent_list)
             except Exception as e:
                 raise Exception(str(e))
             self.logger.log("Successfully cleaned instances.")
@@ -242,25 +242,6 @@ class CleanInstance(LocalBaseOM):
             compentEle[0].uninstall()
         if len(compentEle) == 2:
             compentEle[0].uninstall(compentEle[1])
-
-    def killProcess(self):
-        """
-        function: kill process for cleaning instance data.
-        input : NA
-        output: NA
-        """
-        pidList = g_OSlib.getProcess("gs_initdb")
-        if len(pidList) == 0:
-            return
-        self.logger.debug("Initdb process exists.")
-        g_OSlib.killProcessByProcName("gs_initdb")
-        while (True):
-            pidList = g_OSlib.getProcess("gs_initdb")
-            if len(pidList) != 0:
-                time.sleep(TIME_INIERVAL)
-            else:
-                self.logger.debug("Initdb process is deleted.")
-                break
 
 
 if __name__ == '__main__':

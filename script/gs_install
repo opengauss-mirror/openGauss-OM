@@ -34,13 +34,16 @@ if not os.environ.get('LD_LIBRARY_PATH').startswith(ld_path):
 sys.path.append(sys.path[0])
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.Common import DefaultValue, ClusterCommand
-from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.ParallelBaseOM import ParallelBaseOM
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.ParameterParsecheck import Parameter
-from gspylib.os.gsOSlib import g_OSlib
 from impl.install.OLAP.InstallImplOLAP import InstallImplOLAP
-
+from domain_utils.cluster_file.cluster_config_file import ClusterConfigFile
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.net_util import NetUtil
+from base_utils.os.user_util import UserUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
 # exit code
 EXEC_SUCCESS = 0
 ROLLBACK_FAILED = 3
@@ -62,6 +65,7 @@ class Install(ParallelBaseOM):
         self.alarm_component = ""
         self.dbInitParam = []
         self.dataGucParam = []
+        self.cm_server_guc_param = []
         self.action = "gs_install"
         self.initStep = "Init Install"
 
@@ -111,7 +115,7 @@ General options:
                              DefaultValue.TIMEOUT_PSSH_INSTALL)
             if (len(self.clusterInfo.getClusterNodeNames()) == 1 and
                     self.clusterInfo.getClusterNodeNames()[0]
-                    == DefaultValue.GetHostIpOrName()):
+                    == NetUtil.GetHostIpOrName()):
                 self.isSingle = True
                 self.localMode = True
         except Exception as e:
@@ -198,6 +202,10 @@ General options:
         if (ParaDict.__contains__("dbInitParams")):
             self.dbInitParam = ParaDict.get("dbInitParams")
             self.checkParaList(self.dbInitParam)
+        # parameter --cmserver-guc
+        if "cmServerGucParams" in ParaDict:
+            self.cm_server_guc_param = ParaDict.get("cmServerGucParams")
+            self.checkParaList(self.cm_server_guc_param)
         # parameter --dn-guc
         if (ParaDict.__contains__("dataGucParams")):
             self.dataGucParam = ParaDict.get("dataGucParams")
@@ -213,29 +221,15 @@ General options:
         """
         """
         # get user info
-        self.user = g_OSlib.getUserInfo()['name']
+        self.user = UserUtil.getUserInfo()['name']
         # get the group info
-        self.group = g_OSlib.getUserInfo()['g_name']
+        self.group = UserUtil.getUserInfo()['g_name']
         # check the user and group
         if (self.user == "" or self.group == ""):
             raise Exception(ErrorCode.GAUSS_503["GAUSS_50308"])
         if (self.user == "root" or self.group == "root"):
             raise Exception(ErrorCode.GAUSS_501["GAUSS_50105"])
 
-    def checkConfigFile(self):
-        """
-        """
-        if (self.xmlFile == ""):
-            # there is no -X parameter
-            raise Exception(ErrorCode.GAUSS_500["GAUSS_50001"] % 'X'
-                            + ' for the installation.')
-        if (not os.path.exists(self.xmlFile)):
-            # -X parameter value is not exists
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % self.xmlFile)
-        if (not os.path.isabs(self.xmlFile)):
-            # -X parameter value is not absolute path
-            raise Exception(
-                ErrorCode.GAUSS_502["GAUSS_50213"] % "configuration file")
 
     def checkDNPara(self):
         """
@@ -258,15 +252,6 @@ General options:
             raise Exception(
                 ErrorCode.GAUSS_502["GAUSS_50213"] % "alarm component")
 
-    def checkLogFile(self):
-        """
-        """
-        if (self.logFile == ""):
-            # if -l parameter is null
-            self.logFile = DefaultValue.getOMLogPath(
-                DefaultValue.DEPLOY_LOG_FILE, self.user, "", self.xmlFile)
-        if (not os.path.isabs(self.logFile)):
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50213"] % "log")
 
     def checkParameter(self):
         """
@@ -277,15 +262,16 @@ General options:
         # check required parameters
         self.checkUser()
         # check mpprc file path
-        self.mpprcFile = DefaultValue.getMpprcFile()
+        self.mpprcFile = EnvUtil.getMpprcFile()
         # check config file
-        self.checkConfigFile()
+        ClusterConfigFile.checkConfigFile(self.xmlFile)
         # check unsupported -D parameter
         self.checkDNPara()
         # check alarm component
         self.checkAlarm()
         # check logFile
-        self.checkLogFile()
+        self.logFile = ClusterLog.checkLogFile(self.logFile, self.user, self.xmlFile,
+                                               ClusterConstants.DEPLOY_LOG_FILE)
 
 
 if __name__ == '__main__':
@@ -314,4 +300,4 @@ if __name__ == '__main__':
     except Exception as e:
         GaussLog.exitWithError(str(e))
     finally:
-        DefaultValue.setActionFlagFile("gs_install", None, False)
+        DefaultValue.setActionFlagFile("gs_install", False)

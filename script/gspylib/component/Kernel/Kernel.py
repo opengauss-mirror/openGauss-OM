@@ -18,22 +18,18 @@
 import sys
 import os
 import subprocess
-import grp
-import pwd
-import base64
 import re
-import time
 
 sys.path.append(sys.path[0] + "/../../../")
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.GaussLog import GaussLog
 from gspylib.component.BaseComponent import BaseComponent
-from gspylib.os.gsfile import g_file
 from gspylib.common.Common import DefaultValue
-from gspylib.threads.parallelTool import parallelTool, CommandThread
-from gspylib.os.gsfile import g_file, g_Platform
+from base_utils.os.cmd_util import CmdUtil
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
-RETRY_COUNT = 3
 MAX_PARA_NUMBER = 1000
 
 
@@ -48,7 +44,7 @@ class Kernel(BaseComponent):
         super(Kernel, self).__init__()
         # init paramter schemaCoordinatorFile,
         # schemaJobFile and schemaDatanodeFile
-        tmpDir = DefaultValue.getTmpDirFromEnv()
+        tmpDir = EnvUtil.getTmpDirFromEnv()
         self.schemaCoordinatorFile = "%s/%s" % (
             tmpDir, DefaultValue.SCHEMA_COORDINATOR)
         self.coordinatorJobDataFile = "%s/%s" % (
@@ -90,7 +86,7 @@ class Kernel(BaseComponent):
         if security_mode == "on":
             cmd += " -o \'--securitymode\'"
         configFile = "%s/postgresql.conf" % self.instInfo.datadir
-        output = g_file.readFile(configFile, "logging_collector")
+        output = FileUtil.readFile(configFile, "logging_collector")
         value = None
         for line in output:
             line = line.split('#')[0].strip()
@@ -142,16 +138,6 @@ class Kernel(BaseComponent):
         pidFile = "%s/postmaster.pid" % self.instInfo.datadir
         return os.path.isfile(pidFile)
 
-    def query(self):
-        """
-        """
-        cmd = "%s/gs_ctl query -D %s" % (self.binPath, self.instInfo.datadir)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if (status != 0):
-            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
-                            " Error: \n%s " % output)
-        return (status, output)
-
     def build(self, buidMode="full", standByBuildTimeout=300):
         """
         """
@@ -167,16 +153,6 @@ class Kernel(BaseComponent):
         """
         cmd = "%s/gs_ctl build -D %s -M cascade_standby -b %s -r %d " % (
             self.binPath, self.instInfo.datadir, buidMode, standByBuildTimeout)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if (status != 0):
-            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
-                            " Error: \n%s " % output)
-
-    def queryBuild(self):
-        """
-        """
-        cmd = "%s/gs_ctl querybuild -D %s" % (self.binPath,
-                                              self.instInfo.datadir)
         (status, output) = subprocess.getstatusoutput(cmd)
         if (status != 0):
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
@@ -240,7 +216,7 @@ class Kernel(BaseComponent):
         """
         fileList = []
         # the static file must be exists
-        tmpDir = os.path.realpath(DefaultValue.getTmpDirFromEnv())
+        tmpDir = os.path.realpath(EnvUtil.getTmpDirFromEnv())
 
         pgsql = ".s.PGSQL.%d" % self.instInfo.port
         pgsqlLock = ".s.PGSQL.%d.lock" % self.instInfo.port
@@ -251,12 +227,12 @@ class Kernel(BaseComponent):
     def removeSocketFile(self, fileName):
         """
         """
-        g_file.removeFile(fileName, "shell")
+        FileUtil.removeFile(fileName, "shell")
 
     def removeTbsDir(self, tbsDir):
         """
         """
-        g_file.removeDirectory(tbsDir)
+        FileUtil.removeDirectory(tbsDir)
 
     def cleanDir(self, instDir):
         """
@@ -275,19 +251,18 @@ class Kernel(BaseComponent):
             if (os.path.exists(pglDir) and len(os.listdir(pglDir)) == 0):
                 isPglDirEmpty = True
             if (len(dataDir) == 0 or isPglDirEmpty):
-                g_file.cleanDirectoryContent(instDir)
+                FileUtil.cleanDirectoryContent(instDir)
         else:
             for info in dataDir:
                 if (str(info) == "pg_location"):
                     resultMount = []
-                    resultFile = []
                     resultDir = []
                     pglDir = '%s/pg_location' % instDir
 
                     # delete all files in the mount point
                     cmd = "%s | %s '%s' | %s '{printf $3}'" % \
-                          (g_Platform.getMountCmd(), g_Platform.getGrepCmd(),
-                           pglDir, g_Platform.getAwkCmd())
+                          (CmdUtil.getMountCmd(), CmdUtil.getGrepCmd(),
+                           pglDir, CmdUtil.getAwkCmd())
                     (status, outputMount) = subprocess.getstatusoutput(cmd)
                     if (status != 0):
                         raise Exception(ErrorCode.GAUSS_502["GAUSS_50207"] %
@@ -298,9 +273,9 @@ class Kernel(BaseComponent):
                         if (len(outputMount) > 0):
                             resultMount = str(outputMount).split()
                             for infoMount in resultMount:
-                                g_file.cleanDirectoryContent(infoMount)
+                                FileUtil.cleanDirectoryContent(infoMount)
                         else:
-                            g_file.cleanDirectoryContent(instDir)
+                            FileUtil.cleanDirectoryContent(instDir)
                             continue
 
                     # delete file in the pg_location directory
@@ -312,7 +287,7 @@ class Kernel(BaseComponent):
                         raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
                                         cmd + " Error: \n%s " % output)
 
-                    outputFile = g_file.findFile(".", "f", "type")
+                    outputFile = FileUtil.findFile(".", "f", "type")
                     if (len(outputFile) > 0):
                         for infoFile in outputFile:
                             tmpinfoFile = pglDir + infoFile[1:]
@@ -320,7 +295,7 @@ class Kernel(BaseComponent):
                                 if (tmpinfoFile.find(infoMount) < 0 and
                                         infoMount.find(tmpinfoFile) < 0):
                                     realFile = "'%s/%s'" % (pglDir, infoFile)
-                                    g_file.removeFile(realFile, "shell")
+                                    FileUtil.removeFile(realFile, "shell")
 
                     # delete directory in the pg_location directory
                     cmd = "if [ -d '%s' ]; then cd '%s' && find -type d; fi" \
@@ -332,7 +307,7 @@ class Kernel(BaseComponent):
                                         instDir + " Error:\n%s." %
                                         str(outputDir) + "The cmd is %s" % cmd)
                     else:
-                        resultDir = g_file.findFile(".", "d", "type")
+                        resultDir = FileUtil.findFile(".", "d", "type")
                         resultDir.remove(".")
                         if (len(resultDir) > 0):
                             for infoDir in resultDir:
@@ -342,7 +317,7 @@ class Kernel(BaseComponent):
                                             infoMount.find(tmpinfoDir) < 0):
                                         realPath = "'%s/%s'" % (
                                         pglDir, infoDir)
-                                        g_file.removeDirectory(realPath)
+                                        FileUtil.removeDirectory(realPath)
             cmd = "if [ -d '%s' ];then cd '%s' && find . ! -name " \
                   "'pg_location' " \
                   "! -name '..' ! -name '.' -print0 |xargs -r -0 -n100 rm " \
@@ -375,7 +350,8 @@ class Kernel(BaseComponent):
             try:
                 self.logger.debug("Deleting instances tablespace directories.")
                 for tbsDir in tbsDirList:
-                    self.removeTbsDir(tbsDir)
+                    if DefaultValue.non_root_owner(tbsDir):
+                        self.removeTbsDir(tbsDir)
             except Exception as e:
                 raise Exception(str(e))
             self.logger.log("Successfully cleaned instance tablespace.")
@@ -383,7 +359,8 @@ class Kernel(BaseComponent):
         if (len(self.instInfo.datadir) != 0):
             try:
                 self.logger.debug("Deleting instances directories.")
-                self.cleanDir(self.instInfo.datadir)
+                if DefaultValue.non_root_owner(self.instInfo.datadir):
+                    self.cleanDir(self.instInfo.datadir)
             except Exception as e:
                 raise Exception(str(e))
             self.logger.log("Successfully cleaned instances.")
@@ -391,7 +368,8 @@ class Kernel(BaseComponent):
         if (len(self.instInfo.xlogdir) != 0):
             try:
                 self.logger.debug("Deleting instances xlog directories.")
-                self.cleanDir(self.instInfo.xlogdir)
+                if DefaultValue.non_root_owner(self.instInfo.xlogdir):
+                    self.cleanDir(self.instInfo.xlogdir)
             except Exception as e:
                 raise Exception(str(e))
             self.logger.log("Successfully cleaned instances.")
@@ -400,7 +378,8 @@ class Kernel(BaseComponent):
             try:
                 self.logger.debug("Deleting socket files.")
                 for socketFile in socketFiles:
-                    self.removeSocketFile(socketFile)
+                    if DefaultValue.non_root_owner(socketFile):
+                        self.removeSocketFile(socketFile)
             except Exception as e:
                 raise Exception(str(e))
             self.logger.log("Successfully cleaned socket files.")
@@ -412,7 +391,7 @@ class Kernel(BaseComponent):
         output: tempCommonDict
         """
         tempCommonDict = {}
-        tmpDir = DefaultValue.getTmpDirFromEnv()
+        tmpDir = EnvUtil.getTmpDirFromEnv()
         tempCommonDict["unix_socket_directory"] = "'%s'" % tmpDir
         tempCommonDict["unix_socket_permissions"] = "0700"
         tempCommonDict["log_file_mode"] = "0600"
@@ -447,7 +426,8 @@ class Kernel(BaseComponent):
 
         cmd = "%s/gs_guc %s -D %s %s " % (self.binPath, action,
                                           self.instInfo.datadir, GUCParasStr)
-        (status, output) = DefaultValue.retryGetstatusoutput(cmd, 3, 3)
+        self.logger.debug("gs_guc command is: {0}".format(cmd))
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 3)
         if (status != 0):
             raise Exception(ErrorCode.GAUSS_500["GAUSS_50007"] % "GUC" +
                             " Command: %s. Error:\n%s" % (cmd, output))
@@ -456,21 +436,24 @@ class Kernel(BaseComponent):
         """
         """
         i = 0
-        GUCParasStr = ""
-        GUCParasStrList = []
+        guc_paras_str = ""
+        guc_paras_str_list = []
         if paraDict is None:
             paraDict = {}
         for paras in paraDict:
             i += 1
-            GUCParasStr += " -c \"%s=%s\" " % (paras, paraDict[paras])
+            value = str(paraDict[paras])
+            if (paras.startswith('dcf') and paras.endswith(('path', 'config'))):
+                value = "'%s'" % value
+            guc_paras_str += " -c \"%s=%s\" " % (paras, value)
             if (i % MAX_PARA_NUMBER == 0):
-                GUCParasStrList.append(GUCParasStr)
+                guc_paras_str_list.append(guc_paras_str)
                 i = 0
-                GUCParasStr = ""
-        if (GUCParasStr != ""):
-            GUCParasStrList.append(GUCParasStr)
+                guc_paras_str = ""
+        if guc_paras_str != "":
+            guc_paras_str_list.append(guc_paras_str)
 
-        for parasStr in GUCParasStrList:
+        for parasStr in guc_paras_str_list:
             self.doGUCConfig(setMode, parasStr, False)
 
     def removeIpInfoOnPghbaConfig(self, ipAddressList):
@@ -479,10 +462,12 @@ class Kernel(BaseComponent):
         i = 0
         GUCParasStr = ""
         GUCParasStrList = []
+        pg_user = ClusterUser.get_pg_user()
         for ipAddress in ipAddressList:
             i += 1
             GUCParasStr += " -h \"host    all    all    %s/32\"" % (ipAddress)
-            if (i % MAX_PARA_NUMBER == 0):
+            GUCParasStr += " -h \"host    all    %s    %s/32\"" % (pg_user, ipAddress)
+            if i * 2 % MAX_PARA_NUMBER == 0:
                 GUCParasStrList.append(GUCParasStr)
                 i = 0
                 GUCParasStr = ""

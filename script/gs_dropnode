@@ -46,6 +46,10 @@ from gspylib.common.ParallelBaseOM import ParallelBaseOM
 from gspylib.common.ParameterParsecheck import Parameter
 from gspylib.threads.SshTool import SshTool
 from impl.dropnode.DropnodeImpl import DropnodeImpl
+from impl.dropnode.drop_node_with_cm_impl import DropNodeWithCmImpl
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.net_util import NetUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
 
 ENV_LIST = ["MPPDB_ENV_SEPARATE_PATH", "GPHOME", "PATH",
             "LD_LIBRARY_PATH", "PYTHONPATH", "GAUSS_WARNING_TYPE",
@@ -70,12 +74,12 @@ class Dropnode(ParallelBaseOM):
         self.backIpNameMap = {}
         self.failureHosts = []
         self.flagOnlyPrimary = False
-        envFile = DefaultValue.getEnv("MPPDB_ENV_SEPARATE_PATH")
+        envFile = EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH")
         if envFile:
             self.envFile = envFile
             self.userProfile = envFile
         else:
-            self.envFile = "/etc/profile"
+            self.envFile = ClusterConstants.ETC_PROFILE
             cmd = "echo ~%s" % self.user
             (status, output) = subprocess.getstatusoutput(cmd)
             self.userProfile = os.path.join(output, ".bashrc")
@@ -184,7 +188,7 @@ General options:
                     self.hostMapForExist[node.name]['dn_id'].append(
                         'dn_' + str(i.instanceId))
                     self.hostMapForExist[node.name]['port'].append(str(i.port))
-        localIp = self.backIpNameMap[DefaultValue.GetHostIpOrName()]
+        localIp = self.backIpNameMap[NetUtil.GetHostIpOrName()]
         if localIp in self.hostIpListForDel:
             GaussLog.exitWithError(ErrorCode.GAUSS_358["GAUSS_35803"] % \
                                    localIp)
@@ -228,12 +232,12 @@ General options:
         input: NA
         output: NA
         """
-        tmpDir = DefaultValue.getTmpDirFromEnv()
+        tmpDir = EnvUtil.getTmpDirFromEnv()
         tmpFile = os.path.join(tmpDir, "gauss_cluster_status.dat_" + \
                                str(datetime.datetime.now().strftime(
                                    '%Y%m%d%H%M%S')) + "_" + str(os.getpid()))
         if not len(self.failureHosts):
-            cmd = ClusterCommand.getQueryStatusCmd(self.user, "", tmpFile, False)
+            cmd = ClusterCommand.getQueryStatusCmd("", tmpFile, False)
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0:
                 self.logger.debug("The cmd is %s " % cmd)
@@ -249,7 +253,7 @@ General options:
         statusDelHost = "The target node to be dropped is %s \n" % str(
             self.hostMapForDel.keys())[9:]
         for dndir_loop in \
-            self.hostMapForExist[DefaultValue.GetHostIpOrName()]['datadir']:
+            self.hostMapForExist[NetUtil.GetHostIpOrName()]['datadir']:
                 cmd = "gs_ctl query -D %s|grep '\<local_role\>'| " \
                       "awk -F ':' '{print $2}'" % dndir_loop
                 (status, output) = subprocess.getstatusoutput(cmd)
@@ -284,7 +288,7 @@ General options:
         if not os.path.isfile(self.userProfile):
             raise Exception(
                 ErrorCode.GAUSS_502["GAUSS_50210"] % self.userProfile)
-        log_path = DefaultValue.getEnvironmentParameterValue("GAUSSLOG",
+        log_path = EnvUtil.getEnvironmentParameterValue("GAUSSLOG",
                                                              self.user,
                                                              self.userProfile)
         self.logFile = os.path.realpath(
@@ -311,6 +315,19 @@ General options:
             GaussLog.exitWithError(
                 ErrorCode.GAUSS_358["GAUSS_35805"] % flag.upper())
 
+    def drop_run(self):
+        """
+        This is factory method of drop node operation
+        """
+        if DefaultValue.get_cm_server_num_from_static(self.clusterInfo) > 0:
+            self.logger.log("Drop node start with CM node.")
+            drop_node_impl = DropNodeWithCmImpl(self)
+        else:
+            self.logger.log("Drop node start without CM node.")
+            drop_node_impl = DropnodeImpl(self)
+        drop_node_impl.run()
+
+
 if __name__ == "__main__":
     # check if user is root
     if (os.getuid() == 0):
@@ -324,5 +341,5 @@ if __name__ == "__main__":
                              dropNode.envFile)
     dropNode.check_cluster_status()
     dropNode.flagForOnlyPrimaryLeft()
-    dropNodeImpl = DropnodeImpl(dropNode)
-    dropNodeImpl.run()
+    dropNode.drop_run()
+

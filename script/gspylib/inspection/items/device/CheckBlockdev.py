@@ -15,11 +15,13 @@
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------
 import subprocess
+
+from gspylib.common.ErrorCode import ErrorCode
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.hardware.gsdisk import g_disk
-from gspylib.os.gsOSlib import g_OSlib
+from base_utils.os.disk_util import DiskUtil
+from os_platform.UserPlatform import g_Platform
 
 expectedReadAhead = "16384"
 g_needRepair = []
@@ -50,6 +52,24 @@ class CheckBlockdev(BaseItem):
         devList = output.split('\n')
         return devList
 
+
+    def getDeviceIoctls(self, devName):
+        """
+        function : Get device ioctls
+        input  : devName   device name
+        output : blockSize
+        """
+        blockSize = 0
+        cmd = g_Platform.getBlockdevCmd(devName)
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_504["GAUSS_50408"] % cmd +
+                            " Error: \n%s" % str(output))
+        if str(output.strip()) != "" and output.isdigit():
+            blockSize = int(output)
+        return blockSize
+
+
     def collectBlockdev(self):
         """
         function : Collector blockdev
@@ -63,7 +83,7 @@ class CheckBlockdev(BaseItem):
             # If the directory of '/' is a disk array,
             # all disk prereads will be set
             devlist = self.getDevices()
-            allDiskList = g_disk.getMountInfo()
+            allDiskList = DiskUtil.getMountInfo()
             for diskInfo in allDiskList:
                 if (diskInfo.mountpoint == '/'):
                     diskName = diskInfo.device.replace('/dev/', '')
@@ -74,7 +94,7 @@ class CheckBlockdev(BaseItem):
         except Exception as e:
             data.errormsg = e.__str__()
         for d in devices:
-            data.ra[d] = g_OSlib.getDeviceIoctls(d)
+            data.ra[d] = self.getDeviceIoctls(d)
 
         return data
 
@@ -104,9 +124,9 @@ class CheckBlockdev(BaseItem):
 
     def doSet(self):
         for dev in g_needRepair:
-            self.SetBlockdev(expectedReadAhead, dev)
+            self.SetBlockdev(dev)
 
-    def SetBlockdev(self, expectedValue, devname):
+    def SetBlockdev(self, devname):
         (THPFile, initFile) = SharedFuncs.getTHPandOSInitFile()
         cmd = "/sbin/blockdev --setra %s %s " % (expectedReadAhead, devname)
         cmd += " && echo \"/sbin/blockdev --setra %s %s\" >> %s" % (

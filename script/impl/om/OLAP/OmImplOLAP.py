@@ -23,47 +23,15 @@ import re
 import time
 
 sys.path.append(sys.path[0] + "/../../../../")
-from gspylib.common.DbClusterInfo import dbClusterInfo, queryCmd
+from gspylib.common.DbClusterInfo import queryCmd
 from gspylib.threads.SshTool import SshTool
 from gspylib.common.ErrorCode import ErrorCode
+from gspylib.common.DbClusterStatus import DbClusterStatus
 from gspylib.common.Common import DefaultValue
 from gspylib.common.OMCommand import OMCommand
 from impl.om.OmImpl import OmImpl
 from gspylib.os.gsfile import g_file
-
-# action type
-ACTION_CHANGEIP = "changeip"
-
-# tmp file that storage change io information
-CHANGEIP_BACKUP_DIR = "%s/change_ip_bak" % DefaultValue.getTmpDirFromEnv()
-# cluster_static_config file
-CHANGEIP_BAK_STATIC = "%s/cluster_static_config" % CHANGEIP_BACKUP_DIR
-# daily alarm timeout waiting for other nodes to complete
-DAILY_ALARM_TIME_OUT = 300
-# daily alarm result file validity time
-DAILY_ALARM_FILE_VALIDITY_TIME = 60 * 60 * 1
-DAILY_ALARM_OUT_FILE = ""
-# The shell script with check remote result file change time
-DAILY_ALARM_SHELL_FILE = "/tmp/om_dailyAlarm_%s.sh" % \
-                         DefaultValue.GetHostIpOrName()
-# The tmp file with cluster status
-DAILY_ALARM_STATUS_FILE = "/tmp/gauss_cluster_status_dailyAlarm.dat"
-
-ISOLATE_TIMEOUT = 180
-KILL_SESSION = "select pg_terminate_backend(pid) " \
-               "from pg_stat_activity where state " \
-               "in ('active', 'fastpath function call', 'retrying') and " \
-               "query not like '%terminate%' " \
-               "and application_name not " \
-               "in('JobScheduler','WorkloadMonitor'," \
-               "'workload','WLMArbiter','cm_agent');"
-QUERY_SESSION = "select pid from pg_stat_activity" \
-                " where state " \
-                "in ('active', 'fastpath function call', 'retrying') and  " \
-                "query not like '%terminate%' " \
-                "and application_name " \
-                "not in('JobScheduler','WorkloadMonitor'" \
-                ",'workload','WLMArbiter','cm_agent');"
+from base_utils.os.net_util import NetUtil
 
 
 ###########################################
@@ -79,21 +47,6 @@ class OmImplOLAP(OmImpl):
         output:NA
         """
         OmImpl.__init__(self, OperationManager)
-
-    def checkNode(self):
-        """
-        function: check if the current node is to be uninstalled
-        input : NA
-        output: NA
-        """
-        if (len(
-                self.context.g_opts.nodeInfo) != 0
-                and self.context.g_opts.hostname ==
-                DefaultValue.GetHostIpOrName()):
-            raise Exception(
-                ErrorCode.GAUSS_516["GAUSS_51631"] % "coordinate"
-                + "\nPlease perform this operation on other nodes "
-                  "because this node will be deleted.")
 
     # AP
     def stopCluster(self):
@@ -142,7 +95,7 @@ class OmImplOLAP(OmImpl):
         self.logger.debug(
             "Command for removing the cluster dynamic configuration: %s."
             % cmd)
-        self.sshTool.executeCommand(cmd, "remove dynamic configuration")
+        self.sshTool.executeCommand(cmd)
         # Start cluster in 300 seconds
         cmd = "source %s; %s -t %s" % (
             self.context.g_opts.mpprcFile,
@@ -189,6 +142,35 @@ class OmImplOLAP(OmImpl):
                     % self.context.g_opts.azName)
         return nodeId, clusterType
 
+    def doStartClusterByCm(self):
+        """
+        function: start cluster by cm
+        :return: NA
+        """
+        (nodeId, startType) = self.getNodeId()
+        if not self.context.cmCons[0]:
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51622"] %
+                            ("cm", "local"))
+
+        cluster_normal_status = [DbClusterStatus.CLUSTER_STATUS_NORMAL,
+                                 DbClusterStatus.CLUSTER_STATUS_DEGRADED]
+        if nodeId == 0 and self.dataDir:
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51655"] % ("cm", "-D"))
+        # start cluster
+        is_success = self.context.cmCons[0].startCluster(
+            self.context.g_opts.user,
+            nodeId,
+            self.context.g_opts.time_out,
+            False,
+            self.context.isSingle,
+            cluster_normal_status,
+            False,
+            self.context.g_opts.azName,
+            self.dataDir)
+        if is_success:
+            self.logger.log("Successfully started %s." % startType)
+            self.logger.debug("Operation succeeded: Start by cm.")
+
     def doStartCluster(self):
         """
         function: do start cluster
@@ -196,13 +178,17 @@ class OmImplOLAP(OmImpl):
         output: NA
         """
         self.logger.debug("Operating: Starting.")
+        # if has cm, will start cluster by cm_ctl command
+        if not self.context.clusterInfo.hasNoCm():
+            self.doStartClusterByCm()
+            return
         # Specifies the stop node
         # Gets the specified node id
         startType = "node" if self.context.g_opts.nodeName != "" else "cluster"
         # Perform a start operation
         self.logger.log("Starting %s." % startType)
         self.logger.log("=========================================")
-        hostName = DefaultValue.GetHostIpOrName()
+        hostName = NetUtil.GetHostIpOrName()
         # get the newest dynaminc config and send to other node
         self.clusterInfo.checkClusterDynamicConfig(self.context.user, hostName)
         if self.context.g_opts.nodeName == "":
@@ -271,6 +257,28 @@ class OmImplOLAP(OmImpl):
         self.logger.log("Successfully started.")
         self.logger.debug("Operation succeeded: Start.")
 
+    def doStopClusterByCm(self):
+        """
+        function: stop cluster by cm
+        :return: None
+        """
+        (nodeId, _) = self.getNodeId()
+        if not self.context.cmCons[0]:
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51622"] %
+                            ("cm", "local"))
+        if self.time_out is None:
+            time_out = DefaultValue.TIMEOUT_CLUSTER_STOP
+        else:
+            time_out = int(self.time_out)
+        if nodeId == 0 and self.dataDir:
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51655"] % ("cm", "-D"))
+        self.context.cmCons[0].stop_cluster((nodeId,
+                                             self.mode,
+                                             time_out,
+                                             self.dataDir,
+                                             self.context.g_opts.azName))
+        self.logger.debug("Operation succeeded: Stop by cm.")
+
     def doStopCluster(self):
         """
         function: do stop cluster
@@ -278,17 +286,21 @@ class OmImplOLAP(OmImpl):
         output: NA
         """
         self.logger.debug("Operating: Stopping.")
+        # if has cm, will start cluster by cm_ctl command
+        if not self.context.clusterInfo.hasNoCm():
+            self.doStopClusterByCm()
+            return
         # Specifies the stop node
         # Gets the specified node id
-        stopType = "node" if self.context.g_opts.nodeName != "" else "cluster"
+        stop_type = "node" if self.context.g_opts.nodeName != "" else "cluster"
         # Perform a stop operation
-        self.logger.log("Stopping %s." % stopType)
+        self.logger.log("Stopping %s." % stop_type)
         self.logger.log("=========================================")
         if self.context.g_opts.nodeName == "":
-            hostList = self.clusterInfo.getClusterNodeNames()
+            host_list = self.clusterInfo.getClusterNodeNames()
         else:
-            hostList = []
-            hostList.append(self.context.g_opts.nodeName)
+            host_list = []
+            host_list.append(self.context.g_opts.nodeName)
         self.sshTool = SshTool(self.clusterInfo.getClusterNodeNames(), None,
                                DefaultValue.TIMEOUT_CLUSTER_START)
         if self.time_out is None:
@@ -303,15 +315,15 @@ class OmImplOLAP(OmImpl):
             cmd += " -D %s" % self.dataDir
         if self.mode != "":
             cmd += " -m %s" % self.mode
-        (statusMap, output) = self.sshTool.getSshStatusOutput(cmd, hostList)
-        for nodeName in hostList:
+        (statusMap, output) = self.sshTool.getSshStatusOutput(cmd, host_list)
+        for nodeName in host_list:
             if statusMap[nodeName] != 'Success':
                 raise Exception(
                     ErrorCode.GAUSS_536["GAUSS_53606"] % (cmd, output))
-        self.logger.log("Successfully stopped %s." % stopType)
+        self.logger.log("Successfully stopped %s." % stop_type)
 
         self.logger.log("=========================================")
-        self.logger.log("End stop %s." % stopType)
+        self.logger.log("End stop %s." % stop_type)
         self.logger.debug("Operation succeeded: Stop.")
 
     def doView(self):
@@ -321,8 +333,7 @@ class OmImplOLAP(OmImpl):
         output:NA
         """
         # view static_config_file
-        self.context.clusterInfo.printStaticConfig(self.context.user,
-                                                   self.context.g_opts.outFile)
+        self.context.clusterInfo.printStaticConfig(self.context.g_opts.outFile)
 
     def doQuery(self):
         """
@@ -330,7 +341,7 @@ class OmImplOLAP(OmImpl):
         input  : NA
         output : NA
         """
-        hostName = DefaultValue.GetHostIpOrName()
+        hostName = NetUtil.GetHostIpOrName()
         dbNums = len(self.context.clusterInfo.dbNodes)
         sshtools = []
         for _ in range(dbNums - 1):
@@ -352,7 +363,7 @@ class OmImplOLAP(OmImpl):
                 "No need to generate dynamic configuration file for one node.")
             return
         self.logger.log("Generating dynamic configuration file for all nodes.")
-        hostname = DefaultValue.GetHostIpOrName()
+        hostname = NetUtil.GetHostIpOrName()
         sshtool = SshTool(self.context.clusterInfo.getClusterNodeNames())
         self.context.clusterInfo.doRefreshConf(self.context.user, hostname,
                                                sshtool)

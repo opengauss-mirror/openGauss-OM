@@ -21,10 +21,15 @@ import os
 
 sys.path.append(sys.path[0] + "/../")
 
-from gspylib.common.Common import DefaultValue
+from gspylib.common.Common import DefaultValue, ClusterCommand
 from gspylib.common.OMCommand import OMCommand
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.os.gsfile import g_file
+from base_utils.executor.cmd_executor import CmdExecutor
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from base_utils.os.net_util import NetUtil
 
 
 class UninstallImpl:
@@ -37,7 +42,28 @@ class UninstallImpl:
         """
         function: constructor
         """
-        pass
+        self.logFile = unstallation.logFile
+        self.cleanInstance = unstallation.cleanInstance
+
+        self.localLog = unstallation.localLog
+        self.user = unstallation.user
+        self.group = unstallation.group
+        self.mpprcFile = unstallation.mpprcFile
+        self.localMode = unstallation.localMode
+        self.logger = unstallation.logger
+        self.sshTool = unstallation.sshTool
+        self.tmpDir = EnvUtil.getTmpDirFromEnv(self.user)
+        try:
+            # Initialize the unstallation.clusterInfo variable
+            unstallation.initClusterInfoFromStaticFile(self.user)
+            self.clusterInfo = unstallation.clusterInfo
+            nodeNames = self.clusterInfo.getClusterNodeNames()
+            # Initialize the self.sshTool variable
+            unstallation.initSshTool(nodeNames,
+                                     DefaultValue.TIMEOUT_PSSH_UNINSTALL)
+            self.sshTool = unstallation.sshTool
+        except Exception as e:
+            self.logger.logExit(str(e))
 
     def checkLogFilePath(self):
         """
@@ -48,12 +74,12 @@ class UninstallImpl:
         clusterPath = []
         try:
             # get tool path
-            clusterPath.append(DefaultValue.getClusterToolPath(self.user))
+            clusterPath.append(ClusterDir.getClusterToolPath(self.user))
             # get tmp path
-            tmpDir = DefaultValue.getTmpDirFromEnv()
+            tmpDir = EnvUtil.getTmpDirFromEnv()
             clusterPath.append(tmpDir)
             # get cluster path
-            hostName = DefaultValue.GetHostIpOrName()
+            hostName = NetUtil.GetHostIpOrName()
             dirs = self.clusterInfo.getClusterDirectorys(hostName, False)
             # loop all cluster path
             for checkdir in dirs.values():
@@ -61,7 +87,7 @@ class UninstallImpl:
             self.logger.debug("Cluster paths %s." % clusterPath)
 
             # check directory
-            g_file.checkIsInDirectory(self.logFile, clusterPath)
+            FileUtil.checkIsInDirectory(self.logFile, clusterPath)
         except Exception as e:
             self.logger.logExit(str(e))
 
@@ -81,10 +107,53 @@ class UninstallImpl:
         if (self.cleanInstance):
             cmd += " -d"
         self.logger.debug("Command for checking uninstallation: " + cmd)
-        DefaultValue.execCommandWithMode(cmd, "check uninstallation.",
-                                         self.sshTool, self.localMode,
-                                         self.mpprcFile)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.sshTool, self.localMode,
+                                        self.mpprcFile)
         self.logger.log("Successfully checked uninstallation.", "constant")
+
+    def cm_stop_cluster(self):
+        """
+        Stop cluster with CM
+        """
+        # get stop command, if node_id is not zero, then only stop local node
+        node_id = 0
+        cmd = ClusterCommand.getStopCmd(node_id, "i")
+        if self.localMode:
+            local_node_list = [node for node in self.clusterInfo.dbNodes
+                               if node.name == NetUtil.GetHostIpOrName()]
+            if not local_node_list:
+                self.logger.logExit(ErrorCode.GAUSS_516["GAUSS_51610"] % "the cluster" +
+                                    " Error:\nLocal node is not in the static file.")
+            cmd = ClusterCommand.getStopCmd(local_node_list[0].id, "i")
+        (status, output) = subprocess.getstatusoutput(cmd)
+        # if do command fail, throw error
+        if status != 0:
+            self.logger.logExit(ErrorCode.GAUSS_516["GAUSS_51610"] % "the cluster" +
+                                " Error:\n%s" % output)
+        if self.localMode:
+            self.logger.log("Successfully stopped local node.", "constant")
+        else:
+            self.logger.log("Successfully stopped the cluster.", "constant")
+
+        # check and kill all processes about
+        # clean cm_agent,cm_server,gs_gtm,gaussdb(CN/DN) and etcd.
+        self.logger.debug("Checking and killing processes.", "addStep")
+        # local mode, kill all process in local node
+        if self.localMode:
+            for prog_name in ["cm_agent", "cm_server", "gaussdb",
+                              "CheckDataDiskUsage"]:
+                DefaultValue.KillAllProcess(self.user, prog_name)
+        # kill process in all nodes
+        else:
+            cm_agent_file = "%s/bin/cm_agent" % self.clusterInfo.appPath
+            cm_server_file = "%s/bin/cm_server" % self.clusterInfo.appPath
+            gaussdb_file = "%s/bin/gaussdb" % self.clusterInfo.appPath
+            check_file = "CheckDataDiskUsage"
+            for prog_name in [cm_agent_file, cm_server_file, gaussdb_file,
+                              check_file]:
+                self.CheckAndKillAliveProc(prog_name)
+        self.logger.debug("Successfully checked and killed processes.", "constant")
 
     def StopCluster(self):
         """
@@ -109,18 +178,20 @@ class UninstallImpl:
                 self.logger.error("rename cluster_static_config_bak failed")
                 self.logger.debug("Error:\n%s" % output)
         # if path not exits, can not stop cluster
-        if (not os.path.exists(static_config)):
+        if not os.path.exists(static_config):
             self.logger.debug("Failed to stop the cluster.", "constant")
             return
-
-        # Stop cluster applications
-        cmd = "source %s; %s -U %s -R %s -l %s" % (
-            self.mpprcFile, OMCommand.getLocalScript("Local_StopInstance"),
-            self.user, self.clusterInfo.appPath, self.localLog)
-        self.logger.debug("Command for stop cluster: %s" % cmd)
-        DefaultValue.execCommandWithMode(cmd, "Stop cluster", self.sshTool,
-                                         self.localMode, self.mpprcFile)
-        self.logger.log("Successfully stopped cluster.")
+        if DefaultValue.get_cm_server_num_from_static(self.clusterInfo) == 0:
+            # Stop cluster applications
+            cmd = "source %s; %s -U %s -R %s -l %s" % (
+                self.mpprcFile, OMCommand.getLocalScript("Local_StopInstance"),
+                self.user, self.clusterInfo.appPath, self.localLog)
+            self.logger.debug("Command for stop cluster: %s" % cmd)
+            CmdExecutor.execCommandWithMode(cmd, self.sshTool,
+                                            self.localMode, self.mpprcFile)
+            self.logger.log("Successfully stopped the cluster.")
+        else:
+            self.cm_stop_cluster()
 
     def CheckAndKillAliveProc(self, procFileName):
         """
@@ -174,18 +245,17 @@ class UninstallImpl:
             OMCommand.getLocalScript("Local_Clean_Instance"), self.user,
             self.localLog)
         self.logger.debug("Command for deleting instance: %s" % cmd)
-        DefaultValue.execCommandWithMode(cmd, "delete instances data.",
-                                         self.sshTool, self.localMode,
-                                         self.mpprcFile)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.sshTool, self.localMode,
+                                        self.mpprcFile)
 
         # clean upgrade temp backup path
-        upgrade_bak_dir = DefaultValue.getBackupDir(self.user, "upgrade")
+        upgrade_bak_dir = ClusterDir.getBackupDir("upgrade", self.user)
         cmd = g_file.SHELL_CMD_DICT["cleanDir"] % (
             upgrade_bak_dir, upgrade_bak_dir, upgrade_bak_dir)
-        DefaultValue.execCommandWithMode(cmd,
-                                         "delete backup directory for upgrade",
-                                         self.sshTool, self.localMode,
-                                         self.mpprcFile)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.sshTool, self.localMode,
+                                        self.mpprcFile)
 
         self.logger.log("Successfully deleted instances.", "constant")
 
@@ -198,29 +268,28 @@ class UninstallImpl:
         self.logger.debug("Deleting temporary files.", "addStep")
         try:
             # copy record_app_directory file
-            tmpDir = DefaultValue.getTmpDirFromEnv(self.user)
+            tmpDir = EnvUtil.getTmpDirFromEnv(self.user)
             if tmpDir == "":
                 raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$PGHOST")
             upgradeBackupPath = os.path.join(tmpDir, "binary_upgrade")
             copyPath = os.path.join(upgradeBackupPath, "record_app_directory")
-            appPath = DefaultValue.getInstallDir(self.user)
+            appPath = ClusterDir.getInstallDir(self.user)
             if appPath == "":
                 raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$PGHOST")
             if copyPath != "":
                 copyCmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/';fi)" % (
                     copyPath, copyPath, appPath)
-                DefaultValue.execCommandWithMode(
+                CmdExecutor.execCommandWithMode(
                     copyCmd,
-                    "copy record_app_directory file",
                     self.sshTool, self.localMode,
                     self.mpprcFile)
 
             cmd = g_file.SHELL_CMD_DICT["cleanDir"] % (
                 self.tmpDir, self.tmpDir, self.tmpDir)
             # clean dir of PGHOST
-            DefaultValue.execCommandWithMode(cmd, "delete temporary files",
-                                             self.sshTool, self.localMode,
-                                             self.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.sshTool, self.localMode,
+                                            self.mpprcFile)
         except Exception as e:
             self.logger.logExit(str(e))
         self.logger.debug("Successfully deleted temporary files.", "constant")
@@ -238,9 +307,9 @@ class UninstallImpl:
             self.user, self.localLog)
         self.logger.debug("Command for Uninstalling: %s" % cmd)
         # clean application
-        DefaultValue.execCommandWithMode(cmd, "uninstall application",
-                                         self.sshTool, self.localMode,
-                                         self.mpprcFile)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.sshTool, self.localMode,
+                                        self.mpprcFile)
         self.logger.log("Successfully uninstalled application.", "constant")
 
     def CleanStaticConfFile(self):
@@ -253,9 +322,8 @@ class UninstallImpl:
         try:
             cmd = "rm -rf '%s'/bin " % self.clusterInfo.appPath
             # delete bin dir in GAUSSHOME
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "delete cluster static configuration file.",
                 self.sshTool, self.localMode,
                 self.mpprcFile)
         except Exception as e:
@@ -269,17 +337,16 @@ class UninstallImpl:
         input : NA
         output: NA
         """
-        gp_home = DefaultValue.getEnv("GPHOME")
+        gp_home = EnvUtil.getEnv("GPHOME")
         if os.path.exists(gp_home):
             gp_home = os.path.realpath(gp_home)
         rack_conf_file = os.path.realpath(
             os.path.join(gp_home, "script/gspylib/etc/conf/rack_info.conf"))
         if os.path.isfile(rack_conf_file):
             cmd = "rm -f %s" % rack_conf_file
-            DefaultValue.execCommandWithMode(cmd,
-                                             "Deleted rack information file.",
-                                             self.sshTool, self.localMode,
-                                             mpprcFile=self.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.sshTool, self.localMode,
+                                            mpprc_file=self.mpprcFile)
             self.logger.debug("Successfully deleted rack information file.")
 
     def CleanLog(self):
@@ -296,13 +363,13 @@ class UninstallImpl:
 
         try:
             # clean log
-            userLogDir = DefaultValue.getUserLogDirWithUser(self.user)
+            userLogDir = ClusterDir.getUserLogDirWithUser(self.user)
             cmd = g_file.SHELL_CMD_DICT["cleanDir"] % (
                 userLogDir, userLogDir, userLogDir)
             # delete log dir
-            DefaultValue.execCommandWithMode(cmd, "delete user log directory",
-                                             self.sshTool, self.localMode,
-                                             self.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.sshTool, self.localMode,
+                                            self.mpprcFile)
         except Exception as e:
             self.logger.exitWithError(str(e))
         self.logger.debug("Successfully deleted log.", "constant")
@@ -336,6 +403,17 @@ class UninstallImpl:
             etcd_file = "%s/bin/etcd" % self.clusterInfo.appPath
             self.CheckAndKillAliveProc(etcd_file)
 
+    def check_drop_node(self):
+        """
+        Check flag file of drop node
+        """
+        flag_file = os.path.realpath(os.path.join(self.clusterInfo.appPath,
+                                                  "bin", "drop_node_flag"))
+        if os.path.isfile(flag_file):
+            self.logger.log("This is a node where the gs_dropnode command has been executed. "
+                            "Uninstall a single node instead of the gs_dropnode command.")
+            self.localMode = True
+
     def run(self):
         """
         function: Uninstall database cluster
@@ -345,6 +423,7 @@ class UninstallImpl:
         try:
             self.checkEnv()
             self.checkLogFilePath()
+            self.check_drop_node()
             # do uninstall
             self.checkUninstall()
             self.StopCluster()

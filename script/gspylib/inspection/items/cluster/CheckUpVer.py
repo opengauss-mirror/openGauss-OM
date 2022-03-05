@@ -18,7 +18,7 @@ import os
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
 from gspylib.common.ErrorCode import ErrorCode
-from gspylib.os.gsfile import g_file
+from base_utils.os.file_util import FileUtil
 
 
 class CheckUpVer(BaseItem):
@@ -29,7 +29,7 @@ class CheckUpVer(BaseItem):
     def preCheck(self):
         # check the threshold was set correctly
         if (not self.threshold.__contains__("upgradepath")):
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50236"]
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50239"]
                             % "The upgrade path")
         self.upgradepath = self.threshold['upgradepath']
         if not os.path.isfile(os.path.join(self.upgradepath, "version.cfg")):
@@ -40,6 +40,6 @@ class CheckUpVer(BaseItem):
     def doCheck(self):
         packageFile = os.path.realpath(
             os.path.join(self.upgradepath, "version.cfg"))
-        output = g_file.readFile(packageFile)
+        output = FileUtil.readFile(packageFile)
         self.result.rst = ResultStatus.OK
         self.result.val = "".join(output)

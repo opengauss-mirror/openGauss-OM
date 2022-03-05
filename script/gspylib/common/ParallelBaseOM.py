@@ -15,44 +15,31 @@
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------
 import os
+import socket
 import sys
-import time
-import signal
-import copy
-import subprocess
-import re
 import getpass
-from datetime import datetime, timedelta
-from multiprocessing.dummy import Pool as ThreadPool
+from subprocess import PIPE
 
 sys.path.append(sys.path[0] + "/../../")
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.DbClusterInfo import dbClusterInfo
-from gspylib.common.Common import DefaultValue, ClusterCommand, \
-    TempfileManagement
-from gspylib.common.DbClusterStatus import DbClusterStatus
+from gspylib.common.Common import DefaultValue, ClusterCommand
 from gspylib.common.OMCommand import OMCommand
-from gspylib.os.gsfile import g_file
-from gspylib.os.gsplatform import g_Platform
 from gspylib.threads.SshTool import SshTool
 from gspylib.common.ErrorCode import ErrorCode
+from gspylib.component.CM.CM_OLAP.CM_OLAP import CM_OLAP
 from gspylib.component.Kernel.DN_OLAP.DN_OLAP import DN_OLAP
-
-SPACE_USAGE_DBUSER = 80
+from base_utils.executor.cmd_executor import CmdExecutor
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from base_utils.os.net_util import NetUtil
+from base_utils.common.fast_popen import FastPopen
+from base_utils.security.sensitive_mask import SensitiveMask
+from domain_utils.domain_common.cluster_constants import ClusterConstants
 
 
 class ParallelBaseOM(object):
-    """
-    Base class of parallel command
-    """
-    ACTION_INSTALL = "install"
-    ACTION_CONFIG = "config"
-    ACTION_START = "start"
-    ACTION_REDISTRIBUTE = "redistribute"
-    ACTION_HEALTHCHECK = "healthcheck"
-
-    HEALTH_CHECK_BEFORE = "before"
-    HEALTH_CHECK_AFTER = "after"
     """
     Base class for parallel command
     """
@@ -71,14 +58,14 @@ class ParallelBaseOM(object):
         self.xmlFile = ""
         self.oldXmlFile = ""
 
-        self.logType = DefaultValue.LOCAL_LOG_FILE
+        self.logType = ClusterConstants.LOCAL_LOG_FILE
         self.logFile = ""
         self.localLog = ""
         self.user = ""
         self.group = ""
         self.mpprcFile = ""
         # Temporary catalog for install
-        self.operateStepDir = TempfileManagement.getTempDir(
+        self.operateStepDir = EnvUtil.getTempDir(
             "%s_step" % self.__class__.__name__.lower())
         # Temporary files for install step
         self.operateStepFile = "%s/%s_step.dat" % (
@@ -131,6 +118,7 @@ class ParallelBaseOM(object):
         output: NA
         """
         for nodeInfo in self.clusterInfo.dbNodes:
+            self.initCmComponent(nodeInfo)
             self.initKernelComponent(nodeInfo)
 
     def initComponentAttributes(self, component):
@@ -142,6 +130,27 @@ class ParallelBaseOM(object):
         component.logger = self.logger
         component.binPath = "%s/bin" % self.clusterInfo.appPath
         component.dwsMode = self.dws_mode
+
+    def initCmComponent(self, nodeInfo):
+        """
+        function: Init cm component
+        input : Object nodeInfo
+        output: NA
+        """
+        for inst in nodeInfo.cmservers:
+            component = CM_OLAP()
+            #init component cluster type
+            component.clusterType = self.clusterInfo.clusterType
+            component.instInfo = inst
+            self.initComponentAttributes(component)
+            self.cmCons.append(component)
+        for inst in nodeInfo.cmagents:
+            component = CM_OLAP()
+            #init component cluster type
+            component.clusterType = self.clusterInfo.clusterType
+            component.instInfo = inst
+            self.initComponentAttributes(component)
+            self.cmCons.append(component)
 
     def initKernelComponent(self, nodeInfo):
         """
@@ -168,7 +177,7 @@ class ParallelBaseOM(object):
         self.logger = GaussLog(self.logFile, module, LOG_DEBUG)
 
         dirName = os.path.dirname(self.logFile)
-        self.localLog = os.path.join(dirName, DefaultValue.LOCAL_LOG_FILE)
+        self.localLog = os.path.join(dirName, ClusterConstants.LOCAL_LOG_FILE)
 
     def initClusterInfo(self, refreshCN=True):
         """
@@ -178,16 +187,9 @@ class ParallelBaseOM(object):
         """
         try:
             self.clusterInfo = dbClusterInfo()
-            if (refreshCN):
-                static_config_file = "%s/bin/cluster_static_config" % \
-                                     DefaultValue.getInstallDir(self.user)
-                self.clusterInfo.initFromXml(self.xmlFile, static_config_file)
-            else:
-                self.clusterInfo.initFromXml(self.xmlFile)
+            self.clusterInfo.initFromXml(self.xmlFile)
         except Exception as e:
             raise Exception(str(e))
-        self.logger.debug("Instance information of cluster:\n%s." %
-                          str(self.clusterInfo))
 
     def initClusterInfoFromStaticFile(self, user, flag=True):
         """
@@ -212,182 +214,6 @@ class ParallelBaseOM(object):
         """
         self.sshTool = SshTool(nodeNames, self.logger.logFile, timeout)
 
-    def check_cluster_version_consistency(self, clusterNodes, newNodes=None):
-        """
-        """
-        self.logger.log("Check cluster version consistency.")
-        if newNodes is None:
-            newNodes = []
-        dic_version_info = {}
-        # check version.cfg on every node.
-        gp_home = DefaultValue.getEnv("GPHOME")
-        gauss_home = DefaultValue.getEnv("GAUSSHOME")
-        if not (os.path.exists(gp_home) and os.path.exists(gauss_home)):
-            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50201"] %
-                                   ("%s", "or %s") % (gp_home, gauss_home))
-        for ip in clusterNodes:
-            if ip in newNodes:
-                cmd = "pssh -s -H %s 'cat %s/version.cfg'" % \
-                      (ip, DefaultValue.getEnv("GPHOME"))
-            else:
-                cmd = "pssh -s -H %s 'cat %s/bin/upgrade_version'" % \
-                      (ip, DefaultValue.getEnv("GAUSSHOME"))
-            status, output = subprocess.getstatusoutput(cmd)
-            if (status != 0):
-                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
-                                " Error:\n%s" % str(output))
-            if len(output.strip().split()) < 3:
-                raise Exception(ErrorCode.GAUSS_516["GAUSS_51623"])
-            dic_version_info[ip] = ",".join(output.strip().split()[1:])
-
-        self.logger.debug("The cluster version on every node.")
-        for check_ip, version_info in dic_version_info.items():
-            self.logger.debug("%s : %s" % (check_ip, version_info))
-        if len(set(dic_version_info.values())) != 1:
-            L_inconsistent = list(set(dic_version_info.values()))
-            self.logger.debug("The package version on some nodes are "
-                              "inconsistent\n%s" % str(L_inconsistent))
-            raise Exception("The package version on some nodes are "
-                            "inconsistent,%s" % str(L_inconsistent))
-        self.logger.log("Successfully checked cluster version.")
-
-    def checkBaseFile(self, checkXml=True):
-        """
-        function: Check xml file and log file
-        input : checkXml
-        output: NA
-        """
-        if (checkXml):
-            if (self.xmlFile == ""):
-                raise Exception(ErrorCode.GAUSS_500["GAUSS_50001"] % 'X' + ".")
-
-            if (not os.path.exists(self.xmlFile)):
-                raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] %
-                                ("configuration file [%s]" % self.xmlFile))
-
-            if (not os.path.isabs(self.xmlFile)):
-                raise Exception(ErrorCode.GAUSS_502["GAUSS_50213"] %
-                                ("configuration file [%s]" % self.xmlFile))
-        else:
-            self.xmlFile = ""
-
-        if (self.logFile == ""):
-            self.logFile = DefaultValue.getOMLogPath(self.logType,
-                                                     self.user, "",
-                                                     self.xmlFile)
-
-        if (not os.path.isabs(self.logFile)):
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50213"] % "log")
-
-    def initSignalHandler(self):
-        """
-        function: Function to init signal handler
-        input : NA
-        output: NA
-        """
-        signal.signal(signal.SIGINT, signal.SIG_IGN)
-        signal.signal(signal.SIGQUIT, signal.SIG_IGN)
-        signal.signal(signal.SIGTERM, signal.SIG_IGN)
-        signal.signal(signal.SIGALRM, signal.SIG_IGN)
-        signal.signal(signal.SIGHUP, signal.SIG_IGN)
-        signal.signal(signal.SIGUSR1, signal.SIG_IGN)
-        signal.signal(signal.SIGUSR2, signal.SIG_IGN)
-
-    def print_signal_stack(self, frame):
-        """
-        function: Function to print signal stack
-        input : frame
-        output: NA
-        """
-        if (self.logger is None):
-            return
-        try:
-            import inspect
-            stacks = inspect.getouterframes(frame)
-            for curr in range(len(stacks)):
-                stack = stacks[curr]
-                self.logger.debug("Stack level: %d. File: %s. Function: "
-                                  "%s. LineNo: %d." % (
-                                      curr, stack[1], stack[3],
-                                      stack[2]))
-                self.logger.debug("Code: %s." % (
-                    stack[4][0].strip().strip("\n")))
-        except Exception as e:
-            self.logger.debug("Failed to print signal stack. Error: \n%s" %
-                              str(e))
-
-    def raise_handler(self, signal_num, frame):
-        """
-        function: Function to raise handler
-        input : signal_num, frame
-        output: NA
-        """
-        if (self.logger is not None):
-            self.logger.debug("Received signal[%d]." % (signal_num))
-            self.print_signal_stack(frame)
-        raise Exception(ErrorCode.GAUSS_516["GAUSS_51614"] % (signal_num))
-
-    def setupTimeoutHandler(self):
-        """
-        function: Function to set up time out handler
-        input : NA
-        output: NA
-        """
-        signal.signal(signal.SIGALRM, self.timeout_handler)
-
-    def setTimer(self, timeout):
-        """
-        function: Function to set timer
-        input : timeout
-        output: NA
-        """
-        self.logger.debug("Set timer. The timeout: %d." % timeout)
-        signal.signal(signal.SIGALRM, self.timeout_handler)
-        signal.alarm(timeout)
-
-    def resetTimer(self):
-        """
-        function: Reset timer
-        input : NA
-        output: NA
-        """
-        signal.signal(signal.SIGALRM, signal.SIG_IGN)
-        self.logger.debug("Reset timer. Left time: %d." % signal.alarm(0))
-
-    def timeout_handler(self, signal_num, frame):
-        """
-        function: Received the timeout signal
-        input : signal_num, frame
-        output: NA
-        """
-        if (self.logger is not None):
-            self.logger.debug("Received the timeout signal: [%d]." %
-                              (signal_num))
-            self.print_signal_stack(frame)
-        raise Timeout("Time out.")
-
-    def waitProcessStop(self, processKeywords, hostname):
-        """
-        function: Wait the process stop
-        input : process name 
-        output: NA
-        """
-        count = 0
-        while (True):
-            psCmd = "ps ux|grep -v grep |awk '{print \$11}'|grep '%s' " % \
-                    processKeywords.strip()
-            (status, output) = self.sshTool.getSshStatusOutput(
-                psCmd, [hostname])
-            # Determine whether the process can be found.
-            if (status[hostname] != DefaultValue.SUCCESS):
-                self.logger.debug("The %s process stopped." % processKeywords)
-                break
-
-            count += 1
-            if (count % 20 == 0):
-                self.logger.debug("The %s process exists." % processKeywords)
-            time.sleep(3)
-
     def managerOperateStepDir(self, action='create', nodes=None):
         """
         function: manager operate step directory 
@@ -405,12 +231,11 @@ class ParallelBaseOM(object):
             else:
                 cmd = "(if [ -d '%s' ];then rm -rf '%s';fi)" % (
                     self.operateStepDir, self.operateStepDir)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "%s temporary directory" % action,
-                                             self.sshTool,
-                                             self.localMode or self.isSingle,
-                                             "",
-                                             nodes)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.sshTool,
+                                            self.localMode or self.isSingle,
+                                            "",
+                                            nodes)
         except Exception as e:
             raise Exception(str(e))
 
@@ -454,18 +279,16 @@ class ParallelBaseOM(object):
                 g_DB.write(os.linesep)
                 g_DB.flush()
             # change the INSTALL_STEP permissions
-            g_file.changeMode(DefaultValue.KEY_FILE_MODE, self.operateStepFile)
+            FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, self.operateStepFile)
 
             # distribute file to all nodes
             cmd = "mkdir -p -m %s '%s'" % (DefaultValue.KEY_DIRECTORY_MODE,
                                            self.operateStepDir)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "create backup directory "
-                                             "on all nodes",
-                                             self.sshTool,
-                                             self.localMode or self.isSingle,
-                                             "",
-                                             nodes)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.sshTool,
+                                            self.localMode or self.isSingle,
+                                            "",
+                                            nodes)
 
             if not self.localMode and not self.isSingle:
                 self.sshTool.scpFiles(self.operateStepFile,
@@ -484,10 +307,10 @@ class ParallelBaseOM(object):
         try:
             # get the all nodes
             hosts = self.clusterInfo.getClusterNodeNames()
-            if DefaultValue.GetHostIpOrName() not in hosts:
+            if NetUtil.GetHostIpOrName() not in hosts:
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51619"] %
-                                DefaultValue.GetHostIpOrName())
-            hosts.remove(DefaultValue.GetHostIpOrName())
+                                NetUtil.GetHostIpOrName())
+            hosts.remove(NetUtil.GetHostIpOrName())
             # Send xml file to every host
             DefaultValue.distributeXmlConfFile(self.sshTool, self.xmlFile,
                                                hosts, self.mpprcFile)
@@ -508,8 +331,8 @@ class ParallelBaseOM(object):
         try:
             cmd = "%s -U %s -t %s" % (
                 OMCommand.getLocalScript("Local_Check_PreInstall"), user, flag)
-            DefaultValue.execCommandWithMode(
-                cmd, "check preinstall", self.sshTool,
+            CmdExecutor.execCommandWithMode(
+                cmd, self.sshTool,
                 self.localMode or self.isSingle, "", nodes)
         except Exception as e:
             raise Exception(str(e))
@@ -541,12 +364,11 @@ class ParallelBaseOM(object):
         if (not strictUserCheck):
             cmd += " -O"
         self.logger.debug("Checking the install command: %s." % cmd)
-        DefaultValue.execCommandWithMode(cmd,
-                                         "check installation environment",
-                                         self.sshTool,
-                                         self.localMode or self.isSingle,
-                                         "",
-                                         nodes)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.sshTool,
+                                        self.localMode or self.isSingle,
+                                        "",
+                                        nodes)
 
     def cleanNodeConfig(self, nodes=None, datadirs=None):
         """
@@ -565,230 +387,10 @@ class ParallelBaseOM(object):
         cmd = "%s -U %s %s -l %s" % (
             OMCommand.getLocalScript("Local_Clean_Instance"),
             self.user, cmdParam, self.localLog)
-        DefaultValue.execCommandWithMode(
-            cmd, "clean instance", self.sshTool,
+        CmdExecutor.execCommandWithMode(
+            cmd, self.sshTool,
             self.localMode or self.isSingle, "", nodes)
         self.logger.log("Successfully deleted instances from all nodes.")
-
-    @staticmethod
-    def getPrepareKeysCmd(key_file, user, confFile, destPath, logfile,
-                          userProfile="", localMode=False):
-        """
-        function: get  etcd communication keys command
-        input: key_file, user, confFile, destPath, localMode:do not scp keys
-        output: NA
-        """
-        if (not os.path.exists(key_file)):
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % key_file)
-        if (not userProfile):
-            userProfile = DefaultValue.getMpprcFile()
-        # create the directory on all nodes
-        cmd = "source %s; %s -U %s -X %s --src-file=%s --dest-path=%s -l %s" \
-              % (userProfile, OMCommand.getLocalScript("Local_PrepareKeys"),
-               user, confFile, key_file, destPath, logfile)
-        # if local mode, only prepare keys, do not scp keys to cluster nodes
-        if (localMode):
-            cmd += " -L"
-        return cmd
-
-    def getClusterRings(self, clusterInfo):
-        """
-        function: get clusterRings from cluster info
-        input: DbclusterInfo() instance
-        output: list
-        """
-        hostPerNodeList = self.getDNHostnamesPerNode(clusterInfo)
-        # Loop the hostname list on each node where the master and slave
-        # of the DB instance.
-        for i in range(len(hostPerNodeList)):
-            # Loop the list after the i-th list
-            for perNodelist in hostPerNodeList[i + 1:len(hostPerNodeList)]:
-                # Define a tag
-                flag = 0
-                # Loop the elements of each perNodelist
-                for hostNameElement in perNodelist:
-                    # If elements on the i-th node, each element of the
-                    # list are joined in hostPerNodeList[i
-                    if hostNameElement in hostPerNodeList[i]:
-                        flag = 1
-                        for element in perNodelist:
-                            if element not in hostPerNodeList[i]:
-                                hostPerNodeList[i].append(element)
-                if (flag == 1):
-                    hostPerNodeList.remove(perNodelist)
-
-        return hostPerNodeList
-
-    def getDNHostnamesPerNode(self, clusterInfo):
-        """
-        function: get DB hostnames per node
-        input: DbclusterInfo() instance
-        output: list
-        """
-        hostPerNodeList = []
-        for dbNode in clusterInfo.dbNodes:
-            nodeDnlist = []
-            # loop per node
-            for dnInst in dbNode.datanodes:
-                if (dnInst.instanceType == DefaultValue.MASTER_INSTANCE):
-                    if dnInst.hostname not in nodeDnlist:
-                        nodeDnlist.append(dnInst.hostname)
-                    # get other standby and dummy hostname
-                    instances = clusterInfo.getPeerInstance(dnInst)
-                    for inst in instances:
-                        if inst.hostname not in nodeDnlist:
-                            nodeDnlist.append(inst.hostname)
-            if nodeDnlist != []:
-                hostPerNodeList.append(nodeDnlist)
-        return hostPerNodeList
-
-    # for olap function
-    def checkIsElasticGroupExist(self, dbNodes):
-        """
-        function: Check if elastic_group exists.
-        input : NA
-        output: NA
-        """
-        self.logger.debug("Checking if elastic group exists.")
-
-        self.isElasticGroup = False
-        coorNode = []
-        # traverse old nodes
-        for dbNode in dbNodes:
-            if (len(dbNode.coordinators) >= 1):
-                coorNode.append(dbNode.coordinators[0])
-                break
-
-        # check elastic group
-        CHECK_GROUP_SQL = "SELECT count(*) FROM pg_catalog.pgxc_group " \
-                          "WHERE group_name='elastic_group' " \
-                          "and group_kind='e'; "
-        (checkstatus, checkoutput) = ClusterCommand.remoteSQLCommand(
-            CHECK_GROUP_SQL, self.user, coorNode[0].hostname, coorNode[0].port)
-        if (checkstatus != 0 or not checkoutput.isdigit()):
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] %
-                            "node group" + " Error:\n%s" % str(checkoutput))
-        elif (checkoutput.strip() == '1'):
-            self.isElasticGroup = True
-        elif (checkoutput.strip() == '0'):
-            self.isElasticGroup = False
-        else:
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] %
-                            "the number of node group")
-
-        self.logger.debug("Successfully checked if elastic group exists.")
-
-    def checkHostnameIsLoop(self, nodenameList):
-        """
-        function: check if hostname is looped
-        input : NA
-        output: NA
-        """
-        isRing = True
-        # 1.get ring information in the cluster
-        clusterRings = self.getClusterRings(self.clusterInfo)
-        nodeRing = ""
-        nodenameRings = []
-        # 2.Check if the node is in the ring
-        for num in iter(clusterRings):
-            ringNodeList = []
-            for nodename in nodenameList:
-                if (nodename in num):
-                    ringNodeList.append(nodename)
-            if (len(ringNodeList) != 0 and len(ringNodeList) ==
-                    len(num)):
-                nodenameRings.append(ringNodeList)
-            if (len(ringNodeList) != 0 and len(ringNodeList) !=
-                    len(num)):
-                isRing = False
-                break
-            else:
-                continue
-        if not isRing:
-            raise Exception(ErrorCode.GAUSS_500["GAUSS_50004"] % "h" +
-                            " The hostname (%s) specified by the -h parameter "
-                            "must be looped." % nodeRing)
-        return (clusterRings, nodenameRings)
-
-    def getDNinstanceByNodeName(self, hostname, isMaster=True):
-        """
-        function: Get the DB instance of the node based on the node name.
-        input : hostname
-                isMaster: get master DB instance
-        output: NA
-        """
-        masterdnInsts = []
-        standbydnInsts = []
-        # notice
-        for dbNode in self.clusterInfo.dbNodes:
-            if (dbNode.name == hostname):
-                for dbInst in dbNode.datanodes:
-                    # get master DB instance
-                    if (dbInst.instanceType == DefaultValue.MASTER_INSTANCE):
-                        masterdnInsts.append(dbInst)
-                    # get standby or dummy DB instance
-                    else:
-                        standbydnInsts.append(dbInst)
-
-        if (isMaster):
-            return masterdnInsts
-        else:
-            return standbydnInsts
-
-    def getSQLResultList(self, sql, user, hostname, port,
-                         database="postgres"):
-        """
-        """
-        (status, output) = ClusterCommand.remoteSQLCommand(sql, user,
-                                                           hostname, port,
-                                                           False, database)
-        if status != 0 or ClusterCommand.findErrorInSql(output):
-            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % sql +
-                            " Error:\n%s" % str(output))
-        # split the output string with '\n'
-        resultList = output.split("\n")
-        return resultList
-
-    def getCooInst(self):
-        """
-        function: get CN instance
-        input : NA
-        output: CN instance
-        """
-        coorInst = []
-        # get CN on nodes
-        for dbNode in self.clusterInfo.dbNodes:
-            if (len(dbNode.coordinators) >= 1):
-                coorInst.append(dbNode.coordinators[0])
-        # check if contain CN on nodes
-        if (len(coorInst) == 0):
-            raise Exception(ErrorCode.GAUSS_526["GAUSS_52602"])
-        else:
-            return coorInst
-
-    def getGroupName(self, fieldName, fieldVaule):
-        """
-        function: Get nodegroup name by field name and field vaule.
-        input : field name and field vaule
-        output: node group name
-        """
-        # 1.get CN instance info from cluster
-        cooInst = self.getCooInst()
-
-        # 2.obtain the node group
-        OBTAIN_SQL = "select group_name from pgxc_group where %s = %s; " % \
-                     (fieldName, fieldVaule)
-        # execute the sql command
-        (status, output) = ClusterCommand.remoteSQLCommand(OBTAIN_SQL,
-                                                           self.user,
-                                                           cooInst[0].hostname,
-                                                           cooInst[0].port,
-                                                           ignoreError=False)
-        if (status != 0):
-            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
-                            OBTAIN_SQL + " Error:\n%s" % str(output))
-
-        return output.strip()
 
     def killKernalSnapshotThread(self, dnInst):
         """
@@ -818,7 +420,7 @@ class ParallelBaseOM(object):
         self.logger.debug("Generating CA files.")
         if hostList is None:
             hostList = []
-        appPath = DefaultValue.getInstallDir(self.user)
+        appPath = ClusterDir.getInstallDir(self.user)
         caPath = os.path.join(appPath, "share/sslcert/om")
         self.logger.debug("The ca file dir is: %s." % caPath)
         if (len(hostList) == 0):
@@ -837,7 +439,7 @@ class ParallelBaseOM(object):
         except Exception as e:
             certFile = caPath + "/demoCA/cacert.pem"
             if os.path.exists(certFile):
-                g_file.removeFile(certFile)
+                FileUtil.removeFile(certFile)
             DefaultValue.cleanServerCaDir(caPath)
             raise Exception(str(e))
         if not self.isSingle:
@@ -856,7 +458,7 @@ class ParallelBaseOM(object):
         self.logger.debug("Generating grpc CA files.")
         if hostList is None:
             hostList = []
-        appPath = DefaultValue.getInstallDir(self.user)
+        appPath = ClusterDir.getInstallDir(self.user)
         caPath = os.path.join(appPath, "share/sslcert/grpc")
         self.logger.debug("The ca file dir is: %s." % caPath)
         if (len(hostList) == 0):
@@ -880,20 +482,22 @@ class ParallelBaseOM(object):
         except Exception as e:
             certFile = caPath + "/demoCA/cacertnew.pem"
             if os.path.exists(certFile):
-                g_file.removeFile(certFile)
+                FileUtil.removeFile(certFile)
             DefaultValue.cleanCaDir(caPath)
             raise Exception(str(e))
-        for certFile in DefaultValue.GRPC_CERT_LIST:
-            scpFile = os.path.join(caPath, "%s" % certFile)
-            self.sshTool.scpFiles(scpFile, caPath, hostList)
+        if len(hostList) == 1 and hostList[0] == socket.gethostname():
+            self.logger.debug("Local host database, no need transform files.")
+        else:
+            for certFile in DefaultValue.GRPC_CERT_LIST:
+                scpFile = os.path.join(caPath, "%s" % certFile)
+                self.sshTool.scpFiles(scpFile, caPath, hostList)
         self.logger.debug("Successfully generated grpc CA files.")
 
     def genCipherAndRandFile(self, hostList=None, initPwd=None):
         self.logger.debug("Encrypting cipher and rand files.")
         if hostList is None:
             hostList = []
-        appPath = DefaultValue.getInstallDir(self.user)
-        binPath = os.path.join(appPath, "bin")
+        binPath = os.path.join(ClusterDir.getInstallDir(self.user), "bin")
         retry = 0
         while True:
             if not initPwd:
@@ -912,23 +516,26 @@ class ParallelBaseOM(object):
                 cmd = "%s/gs_guc encrypt -M server -K '%s' -D %s " % (binPath,
                                                                     sshpwd,
                                                                     binPath)
-                (status, output) = subprocess.getstatusoutput(cmd)
+                proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid,
+                                 close_fds=True)
+                stdout, stderr = proc.communicate()
+                output = stdout + stderr
                 sshpwd = ""
                 sshpwd_check = ""
                 initPwd = ""
-                if status != 0:
+                if proc.returncode != 0:
                     self.logger.error(
                         ErrorCode.GAUSS_503["GAUSS_50322"] % "database"
-                        + "Error:\n %s" % output)
+                        + "Error:\n %s" % SensitiveMask.mask_pwd(output))
                 else:
                     break
             if retry >= 2:
                 raise Exception(
                     ErrorCode.GAUSS_503["GAUSS_50322"] % "database")
             retry += 1
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE,
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE,
                           "'%s'/server.key.cipher" % binPath)
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE,
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE,
                           "'%s'/server.key.rand" % binPath)
         if len(hostList) == 0:
             for dbNode in self.clusterInfo.dbNodes:
@@ -941,5 +548,3 @@ class ParallelBaseOM(object):
         self.logger.debug("Successfully encrypted cipher and rand files.")
 
 
-class Timeout(Exception):
-    pass

@@ -31,6 +31,9 @@ from gspylib.common.ParameterParsecheck import Parameter
 from gspylib.common.LocalBaseOM import LocalBaseOM
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.threads.parallelTool import parallelTool
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
 #############################################################################
 # Global variables
@@ -66,6 +69,7 @@ class CmdOptions():
         """
         self.clusterUser = ""
         self.dataGucParams = []
+        self.cmsGucParams = []
         self.configType = CONFIG_ALL_FILE
         self.clusterStaticConfigFile = ""
         self.logFile = ""
@@ -103,7 +107,7 @@ def parseCommandLine():
                                                DefaultValue.BASE_DECODE)
         paraLine = paraLine.strip()
         paraList = paraLine.split("*==SYMBOL==*")
-        opts, args = getopt.getopt(paraList[1:], "U:C:D:T:P:l:hX:",
+        opts, args = getopt.getopt(paraList[1:], "U:C:D:S:T:P:l:hX:",
                                    ["help", "alarm=", "gucXml",
                                     "vc_mode", "dws-mode"])
     except Exception as e:
@@ -126,6 +130,8 @@ def parseCommandLine():
             g_opts.clusterUser = value
         elif (key == "-D"):
             g_opts.dataGucParams.append(value)
+        elif key == "-S":
+            g_opts.cmsGucParams.append(value)
         elif (key == "-T"):
             g_opts.configType = value
         elif (key == "-P"):
@@ -154,7 +160,7 @@ def checkParameter():
     # check if user exist and is the right user
     if (g_opts.clusterUser == ""):
         GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % 'U' + ".")
-    DefaultValue.checkUser(g_opts.clusterUser)
+    ClusterUser.checkUser(g_opts.clusterUser)
 
     if (g_opts.configType not in [CONFIG_ALL_FILE,
                                   CONFIG_GS_FILE, CONFIG_PG_FILE]):
@@ -162,8 +168,8 @@ def checkParameter():
                                % 'T' + " Value: %s." % g_opts.configType)
 
     if (g_opts.logFile == ""):
-        g_opts.logFile = DefaultValue.getOMLogPath(
-            DefaultValue.LOCAL_LOG_FILE, g_opts.clusterUser, "")
+        g_opts.logFile = ClusterLog.getOMLogPath(
+            ClusterConstants.LOCAL_LOG_FILE, g_opts.clusterUser, "")
 
     if (g_opts.alarmComponent == ""):
         g_opts.alarmComponent = DefaultValue.ALARM_COMPONENT_PATH
@@ -188,12 +194,14 @@ class ConfigInstance(LocalBaseOM):
 
     def __init__(self, logFile, user, clusterConf, dwsMode=False,
                  dataParams=None, confType="",
-                 clusterStaticConfigFile="", alarmComponent=""):
+                 clusterStaticConfigFile="", alarmComponent="", cmsParams=None):
         """
         function: configure all instance on local node
         """
         if dataParams is None:
             dataParams = []
+        if cmsParams is None:
+            cmsParams = []
         LocalBaseOM.__init__(self, logFile, user, clusterConf, dwsMode)
         if (self.clusterConfig == ""):
             # Read config from static config file
@@ -211,12 +219,14 @@ class ConfigInstance(LocalBaseOM):
         self.initComponent()
 
         self.dataGucParams = dataParams
+        self.cmsGucParams = cmsParams
         self.configType = confType
         self.clusterStaticConfigFile = clusterStaticConfigFile
         self.alarmComponent = alarmComponent
         self.__dataConfig = {}
+        self.__cmsConfig = {}
 
-    def __checkconfigParams(self, param):
+    def __checkconfigParams(self, param, instance_type):
         """
         function:
             Check parameter for postgresql.conf
@@ -235,11 +245,13 @@ class ConfigInstance(LocalBaseOM):
         value = keyValue[1].strip()
         if key in configInvalidArgs:
             return 1
-
-        self.__dataConfig[key] = value
+        if instance_type == "dn":
+            self.__dataConfig[key] = value
+        else:
+            self.__cmsConfig[key] = value
         return 0
 
-    def __checkDNInstParameters(self):
+    def __checkGUCInstParameters(self):
         """
         function: Check parameters for instance configuration
         input : NA
@@ -249,9 +261,12 @@ class ConfigInstance(LocalBaseOM):
         self.logger.log("Checking parameters for configuration database node.")
 
         for param in self.dataGucParams:
-            if self.__checkconfigParams(param.strip()) != 0:
+            if self.__checkconfigParams(param.strip(), "dn") != 0:
                 self.logger.logExit(ErrorCode.GAUSS_500["GAUSS_50000"]
                                     % param)
+        for param in self.cmsGucParams:
+            if self.__checkconfigParams(param.strip(), "cms") != 0:
+                self.logger.logExit(ErrorCode.GAUSS_500["GAUSS_50000"] % param)
 
     def __modifyConfig(self):
         """
@@ -265,8 +280,7 @@ class ConfigInstance(LocalBaseOM):
         configFile = "%s/bin/alarmItem.conf" % self.clusterInfo.appPath
         ClusterInstanceConfig.setConfigItem(
             DefaultValue.INSTANCE_ROLE_CMAGENT, "", configFile, tmpAlarmDict)
-
-        componentList = self.dnCons
+        componentList = self.dnCons + self.cmCons
         if len(componentList) == 0:
             return
         try:
@@ -291,13 +305,36 @@ class ConfigInstance(LocalBaseOM):
             dbCon.configInstance(self.user, allConfig,
                                  peerInsts, CONFIG_ITEM_TYPE,
                                  self.alarmComponent, azNames,
-                                 g_opts.gucXml, self.clusterInfo)
+                                 g_opts.gucXml)
+
+        if dbCon.instInfo.instanceRole == DefaultValue.INSTANCE_ROLE_CMSERVER:
+            # modifying CMServer configuration.
+            if len(self.cmsGucParams) != 0:
+                self.logger.log("Modifying CMServer configuration.")
+                dbCon.configInstance(self.user, CONFIG_ITEM_TYPE,
+                                     self.alarmComponent, self.__cmsConfig)
+            else:
+                self.logger.log("No need to modify CMServer configuration.")
+
+        if dbCon.instInfo.instanceRole == DefaultValue.INSTANCE_ROLE_CMAGENT:
+            # modifying CMAgent configuration.
+            if len(self.cmsGucParams) != 0:
+                self.logger.log("Modifying CMAgent configuration.")
+                tmp_config = {}
+                temp_cma_config = {}
+                tmp_config.update(self.__cmsConfig)
+                if 'enable_dcf' in tmp_config:
+                    temp_cma_config['enable_dcf'] = tmp_config['enable_dcf']
+                dbCon.configInstance(self.user, CONFIG_ITEM_TYPE,
+                                     self.alarmComponent, temp_cma_config)
+            else:
+                self.logger.log("No need to modify CMAgent configuration.")
 
     def modifyInstance(self):
         """
         Class: modifyInstance
         """
-        self.__checkDNInstParameters()
+        self.__checkGUCInstParameters()
         # modify all instances on loacl node
         if self.configType in [CONFIG_PG_FILE, CONFIG_ALL_FILE]:
             self.__modifyConfig()
@@ -326,7 +363,7 @@ if __name__ == '__main__':
                                   False,
                                   g_opts.dataGucParams, g_opts.configType,
                                   g_opts.clusterStaticConfigFile,
-                                  g_opts.alarmComponent)
+                                  g_opts.alarmComponent, g_opts.cmsGucParams)
         configer.modifyInstance()
     except Exception as e:
         GaussLog.exitWithError(str(e))

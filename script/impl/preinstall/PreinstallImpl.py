@@ -22,12 +22,19 @@ import getpass
 
 sys.path.append(sys.path[0] + "/../")
 
-from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.Common import ClusterCommand, DefaultValue
 from gspylib.common.OMCommand import OMCommand
 from gspylib.os.gsfile import g_file
-from multiprocessing.dummy import Pool as ThreadPool
+from base_utils.executor.cmd_executor import CmdExecutor
+from domain_utils.cluster_file.cluster_config_file import ClusterConfigFile
+from base_utils.os.cmd_util import CmdUtil
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from base_utils.os.file_util import FileUtil
+from domain_utils.cluster_file.package_info import PackageInfo
+from base_utils.os.password_util import PasswordUtil
+from base_utils.os.net_util import NetUtil
 
 # action name
 # prepare cluster tool package path
@@ -40,8 +47,6 @@ ACTION_CREATE_OS_USER = "create_os_user"
 ACTION_CHECK_OS_USER = "check_os_user"
 # create cluster path
 ACTION_CREATE_CLUSTER_PATHS = "create_cluster_paths"
-# set the os parameters
-ACTION_SET_OS_PARAMETER = "set_os_parameter"
 # set finish flag
 ACTION_SET_FINISH_FLAG = "set_finish_flag"
 # set the user environment variable
@@ -66,12 +71,12 @@ HOSTS_MAPPING_FLAG = "#Gauss OM IP Hosts Mapping"
 ACTION_INIT_GAUSSLOG = "init_gausslog"
 # check envfile
 ACTION_CHECK_ENVFILE = "check_envfile"
-# check path owner
-ACTION_CHECK_DIR_OWNER = "check_dir_owner"
 # check os software
 ACTION_CHECK_OS_SOFTWARE = "check_os_software"
 # change tool env
 ACTION_CHANGE_TOOL_ENV = "change_tool_env"
+#check config
+ACTION_CHECK_CONFIG = "check_config"
 #############################################################################
 # Global variables
 #   self.context.logger: globle logger
@@ -126,20 +131,12 @@ class PreinstallImpl:
         clusterPath.append(self.context.clusterToolPath)
         # get tmp path
         clusterPath.append(
-            dbClusterInfo.readClusterTmpMppdbPath(self.context.user,
+            ClusterConfigFile.readClusterTmpMppdbPath(self.context.user,
                                                   self.context.xmlFile))
         self.context.logger.debug("Cluster paths %s." % clusterPath,
                                   "constant")
         # check directory
-        g_file.checkIsInDirectory(self.context.mpprcFile, clusterPath)
-
-    def getUserName(self):
-        """
-        function: get the user name
-        input: NA
-        output: str
-        """
-        return os.environ.get('LOGNAME') or os.environ.get('USER')
+        FileUtil.checkIsInDirectory(self.context.mpprcFile, clusterPath)
 
     def getUserPasswd(self, name, point=""):
         """
@@ -158,71 +155,6 @@ class PreinstallImpl:
 
         return passwdone
 
-    def checkRootPasswd(self, ip):
-        """
-        function:check the root passwd is correct or not
-        input:node ip
-        output:NA
-
-        """
-        ssh = None
-        try:
-            import paramiko
-        except ImportError as e:
-            raise Exception(ErrorCode.GAUSS_522["GAUSS_52200"] % str(e))
-        try:
-            # ssh the ip
-            ssh = paramiko.Transport((ip, 22))
-        except Exception as e:
-            raise Exception(ErrorCode.GAUSS_506["GAUSS_50603"] + "IP: %s" % ip)
-        try:
-            ssh.connect(username="root", password=self.context.rootPasswd)
-        except Exception as e:
-            raise Exception(
-                ErrorCode.GAUSS_503["GAUSS_50306"] % ip
-                + " Maybe communication is exception, please check "
-                  "the password and communication."
-                + " Error: \nWrong password or communication is abnormal.")
-        finally:
-            if ssh is not None:
-                ssh.close()
-
-    def twoMoreChancesForRootPasswd(self):
-        """
-        function:for better user experience,
-         if the root password is wrong, two more chances should be given
-        input:ip list of all hosts
-        output:NA
-        """
-        # save the sshIps
-        Ips = []
-        # get the user sshIps
-        sshIps = self.context.clusterInfo.getClusterSshIps()
-        # save the sshIps to Ips
-        for ips in sshIps:
-            Ips.extend(ips)
-        times = 0
-        while True:
-            try:
-                # get the number of concurrent processes
-                pool = ThreadPool(DefaultValue.getCpuSet())
-                # start the concurrent processes
-                ipHostname = pool.map(self.checkRootPasswd, Ips)
-                # close the pool
-                pool.close()
-                # wait the return from concurrent processes
-                pool.join()
-                break
-            except Exception as e:
-                if str(e).find("The IP address is invalid") != -1:
-                    raise Exception(str(e))
-                if times == 2:
-                    raise Exception(str(e))
-                self.context.logger.log(
-                    "Password authentication failed, please try again.")
-                self.context.rootPasswd = getpass.getpass()
-                times += 1
-
     def createTrustForRoot(self):
         """
         function:
@@ -236,36 +168,10 @@ class PreinstallImpl:
         hideninfo:NA
         """
         if self.context.localMode or self.context.isSingle:
+            if not self.context.skipHostnameSet:
+                self.writeLocalHosts({"127.0.0.1": "localhost"})
             return
-
         try:
-            # check the interactive mode
-            # if interactive is True
-            if not self.context.preMode:
-                # Ask to create trust for root
-                flag = input(
-                    "Are you sure you want "
-                    "to create trust for root (yes/no)? ")
-                while True:
-                    # If it is not yes or no, it has been imported
-                    # if it is yes or no, it has been break
-                    if (
-                            flag.upper() != "YES"
-                            and flag.upper() != "NO"
-                            and flag.upper() != "Y" and flag.upper() != "N"):
-                        flag = input("Please type 'yes' or 'no': ")
-                        continue
-                    break
-
-                # Confirm that the user needs to be created trust for root
-                # Receives the entered password
-                if flag.upper() == "YES" or flag.upper() == "Y":
-                    self.context.rootPasswd = self.getUserPasswd("root")
-                    # check passwd, if wrong, then give two more chances
-                    self.twoMoreChancesForRootPasswd()
-
-            # save the distribute
-            result = {}
             # save the sshIps
             Ips = []
             # create trust for root
@@ -277,218 +183,89 @@ class PreinstallImpl:
             for ips in sshIps:
                 Ips.extend(ips)
 
-            Hosts = []
-            # get the sshIps and node name
-            for node in self.context.clusterInfo.dbNodes:
-                Hosts.append(node.name)
-                for ip in node.sshIps:
-                    result[ip] = node.name
-            # get the all hostname
-            iphostnamedict = self.getAllHosts(Ips, self.context.rootPasswd)
-            # check the hostname and node name
-            checkResult = self.checkIpHostname(result, iphostnamedict)
-            # if check failed, then exit
-            if checkResult != DefaultValue.SUCCESS:
-                raise Exception(checkResult)
-
-            # write the /etc/hosts
-            if not self.context.skipHostnameSet:
-                # write the ip and hostname to /etc/hosts
-                self.writeLocalHosts(result)
-                if self.context.rootPasswd == "":
-                    # write the /etc/hosts to remote node
-                    self.writeRemoteHosts(result)
-
-            # if not provide root passwd,
-            # then do not create SSH trust for root user
-            if not self.context.preMode:
-                if self.context.rootPasswd != "":
-                    self.context.logger.log(
-                        "Creating SSH trust for the root permission user.")
-                    self.context.sshTool.createTrust(
-                        username,
-                        self.context.rootPasswd,
-                        Ips,
-                        self.context.mpprcFile,
-                        self.context.skipHostnameSet)
-                    g_file.changeMode(DefaultValue.HOSTS_FILE, "/etc/hosts",
-                                      False, "shell")
+            # create SSH trust for root user
+            self.create_trust(Ips, username)
+            self.context.logger.debug("Finished execute createTrustForRoot function.")
 
         except Exception as e:
             raise Exception(str(e))
-        if self.context.rootPasswd != "":
-            self.context.logger.log(
-                "Successfully created SSH trust for the root permission user.")
 
-    def getAllHostName(self, ip):
+    def create_trust(self, ip_list, username):
         """
-        function:
-          Connect to all nodes ,then get all hostaname by threading
-        precondition:
-          1.User's password is correct on each node
-        postcondition:
-           NA
-        input: ip
-        output:Dictionary ipHostname,key is IP  and value is hostname
-        hideninfo:NA
+        create ssh trust for root user
         """
-        # ip and hostname
-        ipHostname = {}
-        # user name
-        username = pwd.getpwuid(os.getuid()).pw_name
-        try:
-            # load paramiko
-            import paramiko
-        except ImportError as e:
-            raise Exception(ErrorCode.GAUSS_522["GAUSS_52200"] % str(e))
-        try:
-            # ssh the ip
-            ssh = paramiko.Transport((ip, 22))
-        except Exception as e:
-            raise Exception(ErrorCode.GAUSS_506["GAUSS_50603"] + "IP: %s" % ip)
-        try:
-            # connect
-            ssh.connect(username=username, password=self.context.rootPasswd)
-        except Exception as e:
-            ssh.close()
-            raise Exception(
-                ErrorCode.GAUSS_503["GAUSS_50306"] % ip
-                + " Maybe communication is exception, "
-                  "please check the password and communication."
-                + " Error: \nWrong password or communication is abnormal.")
-
-        check_channel = ssh.open_session()
-        cmd = "cd"
-        check_channel.exec_command(cmd)
-        channel_read = ""
-        env_msg = check_channel.recv_stderr(9999).decode()
+        if self.context.preMode:
+            return
+        # Ask to create trust for root
+        flag = input("Are you sure you want to create trust for root (yes/no)?")
         while True:
-            channel_read = check_channel.recv(9999).decode().strip()
-            if len(channel_read) != 0:
-                env_msg += str(channel_read)
-            else:
-                break
-        if env_msg != "":
-            ipHostname[
-                "Node[%s]" % ip] = \
-                "Output: [" \
-                + env_msg \
-                + " ] print by /etc/profile or ~/.bashrc, please check it."
-            return ipHostname
+            # If it is not yes or no, it has been imported
+            # if it is yes or no, it has been break
+            if flag.upper() not in ("YES", "NO", "Y", "N"):
+                flag = input("Please type 'yes' or 'no': ")
+                continue
+            break
 
-        # get hostname
-        cmd = "hostname"
-        channel = ssh.open_session()
-        # exec the hostname on remote node
-        channel.exec_command(cmd)
-        # recv the result from remote node
-        hostname = channel.recv(9999).decode().strip()
-        # save the hostname
-        ipHostname[ip] = hostname
-        # close ssh
-        ssh.close()
-
-        return ipHostname
-
-    def getAllHosts(self, sshIps, passwd):
-        """
-        function:
-          Connect to all nodes ,then get all hostaname
-        precondition:
-          1.User's password is correct on each node
-        postcondition:
-           NA
-        input: sshIps,passwd
-        output:Dictionary ipHostname,key is IP  and value is hostname
-        hideninfo:NA
-        """
-        # ip and hostname
-        # the result for return
-        result = {}
-        if passwd != "":
-            try:
-                # get the number of concurrent processes
-                pool = ThreadPool(DefaultValue.getCpuSet())
-                # start the concurrent processes
-                ipHostname = pool.map(self.getAllHostName, sshIps)
-                # close the pool
-                pool.close()
-                # wait the return from concurrent processes
-                pool.join()
-            except Exception as e:
-                if str(e) == "":
-                    raise Exception(
-                        ErrorCode.GAUSS_511["GAUSS_51101"]
-                        % "communication may be abnormal.")
-                else:
-                    raise Exception(str(e))
-
-            # save the hostname to result
-            err_msg = ""
-            for i in ipHostname:
-                for (key, value) in list(i.items()):
-                    if key.find("Node") >= 0:
-                        err_msg += str(i)
+        # Receives the entered password
+        if flag.upper() in ("YES", "Y"):
+            self.context.logger.log("Please enter password for root")
+            retry_times = 0
+            while True:
+                try:
+                    self.context.sshTool.createTrust(username, ip_list, self.context.mpprcFile,
+                                                     self.context.skipHostnameSet)
+                    break
+                except Exception as err_msg:
+                    if retry_times == 2:
+                        raise Exception(str(err_msg))
+                    if "Authentication failed" in str(err_msg):
+                        self.context.logger.log(
+                            "Password authentication failed, please try again.")
+                        retry_times += 1
                     else:
-                        result[key] = value
-            if len(err_msg) > 0:
-                raise Exception(ErrorCode.GAUSS_518["GAUSS_51808"] % err_msg)
-        # if the passwd is null
-        else:
-            cmd = "source /etc/profile " \
-                  "&& if [ -f  ~/.bashrc ]; then source ~/.bashrc; fi"
-            if self.context.mpprcFile != "":
-                cmd += "&& if [ -f '%s' ]; then source '%s'; fi" % (
-                    self.context.mpprcFile, self.context.mpprcFile)
-            # send the cmd to sshIps
-            # check the trust and envfile
-            self.context.sshTool.executeCommand(cmd,
-                                                "check cluster trust",
-                                                DefaultValue.SUCCESS,
-                                                sshIps,
-                                                self.context.mpprcFile,
-                                                checkenv=True)
+                        raise Exception(str(err_msg))
+            self.context.logger.debug("Finished execute sshTool.createTrust for root.")
+            FileUtil.changeMode(DefaultValue.HOSTS_FILE, "/etc/hosts", False, "shell",
+                              retry_flag=True)
+            self.context.root_ssh_agent_flag = True
+            self.context.logger.log("Successfully created SSH trust for the root permission user.")
 
-            pssh_path = os.path.join(os.path.dirname(__file__),
-                                     "../../gspylib/pssh/bin/pssh")
-            for sship in sshIps:
-                # set the cmd
-                cmd = "%s -s -H %s hostname 2>/dev/null" % (pssh_path, sship)
-                # exec the command
-                (status, output) = subprocess.getstatusoutput(cmd)
-                # if cmd failed, then exit
-                if status != 0:
-
-                    raise Exception(ErrorCode.GAUSS_516["GAUSS_51618"]
-                                    + "The cmd is %s " % cmd)
-                result[sship] = output
-
-        return result
-
-    def checkIpHostname(self, srcList, tgtList):
+    def delete_root_mutual_trust(self):
         """
-        function:
-          Checking the hostname and IP is matched or not .
-        precondition:
-          NA
-        postcondition:
-           NA
-        input: srcList,tgtList
-        output: retValue ,if srclist and tgtlist is same ,
-        then return Success  else return Warning message.
-        hideninfo:NA
+        :return:
         """
-        retValue = ""
-        # Checking the hostname and IP is matched or not
-        for (key, value) in list(srcList.items()):
-            if srcList[key] != tgtList[key]:
-                retValue = retValue + ErrorCode.GAUSS_524["GAUSS_52402"] % (
-                    key, value)
+        if self.context.localMode or self.context.isSingle:
+            return
+        if self.context.preMode or not self.context.root_ssh_agent_flag:
+            return
+        self.context.logger.debug("Start Delete root mutual trust")
 
-        if retValue == "":
-            # the result of check is OK
-            retValue = DefaultValue.SUCCESS
-        return retValue
+        # get dir path
+        username = pwd.getpwuid(os.getuid()).pw_name
+        homeDir = os.path.expanduser("~" + username)
+        sshDir = "%s/.ssh/*" % homeDir
+        tmp_path = "%s/gaussdb_tmp" % homeDir
+
+        # get cmd
+        bashrc_file = os.path.join(pwd.getpwuid(os.getuid()).pw_dir, ".bashrc")
+        kill_ssh_agent_cmd = "ps ux | grep 'ssh-agent' | grep -v grep | awk '{print $2}' | " \
+                             "xargs kill -9"
+        delete_line_cmd = " && sed -i '/^\\s*export\\s*SSH_AUTH_SOCK=.*$/d' %s" % bashrc_file
+        delete_line_cmd += " && sed -i '/^\\s*export\\s*SSH_AGENT_PID=.*$/d' %s" % bashrc_file
+        delete_shell_cmd = " && rm -rf %s && rm -rf %s" % (sshDir, tmp_path)
+        cmd = "%s" + delete_line_cmd + delete_shell_cmd
+
+        # get remote node and local node
+        host_list = self.context.clusterInfo.getClusterNodeNames()
+        local_host = NetUtil.GetHostIpOrName()
+        host_list.remove(local_host)
+
+        # delete remote root mutual trust
+        kill_remote_ssh_agent_cmd = DefaultValue.killInstProcessCmd("ssh-agent", True)
+        self.context.sshTool.getSshStatusOutput(cmd % kill_remote_ssh_agent_cmd, host_list)
+        # delete local root mutual trust
+        CmdExecutor.execCommandLocally(cmd % kill_ssh_agent_cmd)
+        self.context.logger.debug("Delete root mutual trust successfully.")
 
     def writeLocalHosts(self, result):
         """
@@ -509,13 +286,13 @@ class PreinstallImpl:
         # the temporary Files for /etc/hosts
         tmp_hostipname = "./tmp_hostsiphostname_%d" % os.getpid()
         # Delete the line with 'HOSTS_MAPPING_FLAG' in the /etc/hosts
-        cmd = "grep -v '%s' %s > %s ; cp %s %s && rm -rf '%s'" % \
-              ("#Gauss.* IP Hosts Mapping", '/etc/hosts', tmp_hostipname,
-               tmp_hostipname, '/etc/hosts', tmp_hostipname)
-        (status, output) = DefaultValue.retryGetstatusoutput(cmd)
+        cmd = "grep -v '%s' %s > %s && cp %s %s && rm -rf '%s'" % \
+              ("#Gauss.* IP Hosts Mapping", '/etc/hosts', tmp_hostipname, tmp_hostipname,
+               '/etc/hosts', tmp_hostipname)
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd)
         # if cmd failed, append the output to writeResult
         if status != 0:
-            g_file.removeFile(tmp_hostipname)
+            FileUtil.removeFile(tmp_hostipname)
             writeResult.append(output)
         # cmd OK
         else:
@@ -524,58 +301,7 @@ class PreinstallImpl:
                 hostIPInfo = '%s  %s  %s' % (key, value, HOSTS_MAPPING_FLAG)
                 hostIPList.append(hostIPInfo)
             # write the ip and hostname to /etc/hosts
-            g_file.writeFile("/etc/hosts", hostIPList, mode="a+")
-
-    def writeRemoteHosts(self, result):
-        """
-        function:
-         Write hostname and Ip into /etc/hosts
-         when there's not the same one in /etc/hosts file
-        precondition:
-          NA
-        postcondition:
-           NA
-        input: Dictionary result,key is IP and value is hostname
-                    rootPasswd
-        output: NA
-        hideninfo:NA
-        """
-        # IP and hostname
-        global iphostInfo
-        iphostInfo = ""
-        # remote hosts
-        remoteHosts = []
-
-        # set the str for write into /etc/hosts
-        for (key, value) in list(result.items()):
-            iphostInfo += '%s  %s  %s\n' % (key, value, HOSTS_MAPPING_FLAG)
-            if value != DefaultValue.GetHostIpOrName():
-                remoteHosts.append(value)
-        remoteHosts1 = list(set(remoteHosts))
-        iphostInfo = iphostInfo[:-1]
-        if len(remoteHosts1) == 0:
-            return
-        # the temporary Files for /etc/hosts
-        tmp_hostipname = "./tmp_hostsiphostname_%d" % os.getpid()
-        # Delete the line with 'HOSTS_MAPPING_FLAG' in the /etc/hosts
-        cmd = "if [ -f '%s' ]; then grep -v '%s' %s > %s " \
-              "; cp %s %s ; rm -rf '%s'; fi" % \
-              ('/etc/hosts', "#Gauss.* IP Hosts Mapping", '/etc/hosts',
-               tmp_hostipname, tmp_hostipname, '/etc/hosts', tmp_hostipname)
-        # exec the cmd on all remote nodes
-        self.context.sshTool.executeCommand(cmd,
-                                            "grep /etc/hosts",
-                                            DefaultValue.SUCCESS,
-                                            remoteHosts1,
-                                            self.context.mpprcFile)
-
-        # write the iphostInfo into /etc/hosts on all remote nodes
-        cmd = "echo '%s'  >> /etc/hosts" % iphostInfo
-        self.context.sshTool.executeCommand(cmd,
-                                            "write /etc/hosts",
-                                            DefaultValue.SUCCESS,
-                                            remoteHosts1,
-                                            self.context.mpprcFile)
+            FileUtil.writeFile("/etc/hosts", hostIPList, mode="a+")
 
     def distributePackages(self):
         """
@@ -611,12 +337,12 @@ class PreinstallImpl:
 
         self.context.logger.log("Distributing package.", "addStep")
         try:
-            self.makeCompressedToolPackage(self.context.clusterToolPath)
+            PackageInfo.makeCompressedToolPackage(self.context.clusterToolPath)
 
             # get the all node names in xml file
             hosts = self.context.clusterInfo.getClusterNodeNames()
             # remove the local node name
-            hosts.remove(DefaultValue.GetHostIpOrName())
+            hosts.remove(NetUtil.GetHostIpOrName())
             self.getTopToolPath(self.context.sshTool,
                                 self.context.clusterToolPath, hosts,
                                 self.context.mpprcFile)
@@ -640,13 +366,12 @@ class PreinstallImpl:
                     self.context.logger.log(
                         "Begin to distribute package to tool path.")
                     # Send compressed package to every host
-                    DefaultValue.distributePackagesToRemote(
+                    PackageInfo.distributePackagesToRemote(
                         self.context.sshTool,
                         self.context.clusterToolPath,
                         self.context.clusterToolPath,
                         hosts,
-                        self.context.mpprcFile,
-                        self.context.clusterInfo)
+                        self.context.mpprcFile)
                     # Decompress package on every host
                 except Exception as e:
                     # loop 3 times, if still wrong, exit with error code.
@@ -670,13 +395,12 @@ class PreinstallImpl:
                     self.context.logger.log(
                         "Begin to distribute package to package path.")
                     # distribute the distribute package to all node names
-                    DefaultValue.distributePackagesToRemote(
+                    PackageInfo.distributePackagesToRemote(
                         self.context.sshTool,
                         self.context.clusterToolPath,
                         packageDir,
                         hosts,
-                        self.context.mpprcFile,
-                        self.context.clusterInfo)
+                        self.context.mpprcFile)
                 except Exception as e:
                     # loop 3 times, if still wrong, exit with error code.
                     if i == 2:
@@ -693,19 +417,21 @@ class PreinstallImpl:
             DefaultValue.distributeXmlConfFile(self.context.sshTool,
                                                self.context.xmlFile, hosts,
                                                self.context.mpprcFile)
+            cmd = "%s -t %s -u %s -X %s" % (OMCommand.getLocalScript("Local_PreInstall"),
+                                      ACTION_CHECK_CONFIG,
+                                      self.context.user,
+                                      self.context.xmlFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                             self.context.sshTool,
+                                             False,
+                                             self.context.mpprcFile,
+                                             hosts)
         except Exception as e:
             raise Exception(str(e))
 
         self.context.logger.log("Successfully distributed package.",
                                 "constant")
 
-    def makeCompressedToolPackage(self, path):
-        """
-        function: make compressed tool package
-        input  : path
-        output : NA
-        """
-        pass
 
     def getTopToolPath(self, top_sshTool, clusterToolPath, hosts, mpprcFile):
         """
@@ -760,8 +486,8 @@ class PreinstallImpl:
         if self.context.localMode or self.context.isSingle:
             # fix new created path's owner
             for onePath in self.context.needFixOwnerPaths:
-                g_file.changeOwner(self.context.user, onePath, recursive=True,
-                                   cmdType="shell")
+                FileUtil.changeOwner(self.context.user, onePath, recursive=True,
+                                     cmd_type="shell", link=True)
             return
 
         self.context.logger.log("Installing the tools in the cluster.",
@@ -772,8 +498,8 @@ class PreinstallImpl:
                 % self.context.needFixOwnerPaths)
             # fix new created path's owner
             for onePath in self.context.needFixOwnerPaths:
-                g_file.changeOwner(self.context.user, onePath, recursive=True,
-                                   cmdType="shell")
+                FileUtil.changeOwner(self.context.user, onePath, recursive=True,
+                                     cmd_type="shell", link=True)
 
             # fix remote toolpath's owner
             for node in list(topToolPath.keys()):
@@ -785,21 +511,18 @@ class PreinstallImpl:
                         topToolPath[node])
                     self.context.sshTool.executeCommand(
                         cmd,
-                        "authorize top tool path",
                         DefaultValue.SUCCESS,
                         nodelist,
                         self.context.mpprcFile)
 
             # chown chmod top path file
-            dirName = os.path.dirname(self.context.logFile)
-            topDirFile = "%s/topDirPath.dat" % dirName
+            topDirFile = ClusterConstants.TOP_DIR_FILE
             cmd = "(if [ -f '%s' ];then cat '%s' " \
                   "| awk -F = '{print $1}' " \
-                  "| xargs chown -R %s:%s; rm -rf '%s';fi)" % \
+                  "| xargs chown -R -h %s:%s; rm -rf '%s';fi)" % \
                   (topDirFile, topDirFile, self.context.user,
                    self.context.group, topDirFile)
             self.context.sshTool.executeCommand(cmd,
-                                                "authorize top path",
                                                 DefaultValue.SUCCESS,
                                                 [],
                                                 self.context.mpprcFile)
@@ -810,14 +533,14 @@ class PreinstallImpl:
             packageDir = os.path.realpath(
                 os.path.join(dirName, "./../../../")) + "/"
 
-            list_dir = g_file.getDirectoryList(packageDir)
+            list_dir = FileUtil.getDirectoryList(packageDir)
             for directory in list_dir:
                 dirPath = packageDir + directory
                 dirPath = os.path.normpath(dirPath)
                 if directory.find('sudo') >= 0:
                     continue
-                g_file.changeOwner(self.context.user, dirPath, recursive=True,
-                                   cmdType="python")
+                FileUtil.changeOwner(self.context.user, dirPath, recursive=True,
+                                   cmd_type="python")
 
             # check enter permission
             cmd = "su - %s -c 'cd '%s''" % (self.context.user, packageDir)
@@ -835,9 +558,9 @@ class PreinstallImpl:
             # so we need check its exists
             if os.path.exists(user_dir):
 
-                g_file.changeOwner(self.context.user, user_dir, recursive=True,
-                                   cmdType="shell", retryFlag=True,
-                                   retryTime=15, waiteTime=1)
+                FileUtil.changeOwner(self.context.user, user_dir, recursive=True,
+                                   cmd_type="shell", retry_flag=True,
+                                   retry_time=15, waite_time=1, link=True)
 
                 # check enter permission
                 cmd = "su - %s -c 'cd '%s''" % (self.context.user, user_dir)
@@ -848,11 +571,11 @@ class PreinstallImpl:
                                     + " Error: \n%s" % output)
             # user can specify log file,
             # so we need change the owner of log file alonely
-            g_file.changeOwner(self.context.user, self.context.logger.logFile,
-                               recursive=False, cmdType="shell")
-            g_file.changeMode(DefaultValue.FILE_MODE,
+            FileUtil.changeOwner(self.context.user, self.context.logger.logFile,
+                               recursive=False, cmd_type="shell", link=True)
+            FileUtil.changeMode(DefaultValue.FILE_MODE,
                               self.context.logger.logFile, recursive=False,
-                              cmdType="shell")
+                              cmd_type="shell")
 
             # check enter permission
             log_file_dir = os.path.dirname(self.context.logger.logFile)
@@ -875,7 +598,6 @@ class PreinstallImpl:
                 cmd += " -s '%s' -g %s" % (
                     self.context.mpprcFile, self.context.group)
             self.context.sshTool.executeCommand(cmd,
-                                                "set cluster tool ENV",
                                                 DefaultValue.SUCCESS,
                                                 [],
                                                 self.context.mpprcFile)
@@ -889,7 +611,6 @@ class PreinstallImpl:
             # prepare cluster tool package path
             self.context.sshTool.executeCommand(
                 cmd,
-                "prepare cluster tool package path",
                 DefaultValue.SUCCESS,
                 [],
                 self.context.mpprcFile)
@@ -916,10 +637,10 @@ class PreinstallImpl:
                 self.context.xmlFile,
                 self.context.clusterToolPath)
             if self.context.mpprcFile == "":
-                DefaultValue.execCommandWithMode(
+                CmdExecutor.execCommandWithMode(
                     cmd,
-                    "change software tool env path",
-                    self.context.sshTool)
+                    self.context.sshTool,
+                    self.context.localMode)
         except Exception as e:
             raise Exception(str(e))
 
@@ -942,7 +663,6 @@ class PreinstallImpl:
                 self.context.xmlFile,
                 self.context.localLog)
             self.context.sshTool.executeCommand(cmd,
-                                                "check hostname mapping",
                                                 DefaultValue.SUCCESS,
                                                 [],
                                                 self.context.mpprcFile,
@@ -977,14 +697,13 @@ class PreinstallImpl:
             for ips in sshIps:
                 allIps.extend(ips)
             # create trust
-            self.context.sshTool.createTrust(self.context.user,
-                                             self.context.password, allIps,
-                                             self.context.mpprcFile)
+            self.context.sshTool.createTrust(self.context.user, allIps, self.context.mpprcFile)
+            self.context.user_ssh_agent_flag = True
+            self.context.logger.debug("{debug exception010} Finished execute sshTool."
+                                      "createTrust for common user.")
         except Exception as e:
             raise Exception(str(e))
-        self.context.logger.log(
-            "Successfully created SSH trust for [%s] user."
-            % self.context.user)
+        self.context.logger.log("Successfully created SSH trust for [%s] user." % self.context.user)
 
     def checkOSVersion(self):
         """
@@ -1005,9 +724,8 @@ class PreinstallImpl:
                 ACTION_CHECK_OS_VERSION,
                 self.context.user,
                 self.context.localLog)
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "check OS version",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle,
                 self.context.mpprcFile)
@@ -1041,23 +759,16 @@ class PreinstallImpl:
             if not self.context.preMode:
                 try:
                     # get the input
-                    if self.context.localMode:
-                        flag = input(
-                            "Are you sure you want to "
-                            "create the user[%s] (yes/no)? "
-                            % self.context.user)
+                    if(self.context.isSingle):
+                        flag = input("Are you sure you want to create "
+                                     "the user[%s] (yes/no)? " % self.context.user)
                     else:
-                        flag = input(
-                            "Are you sure you want to create "
-                            "the user[%s] and create trust for it (yes/no)? "
-                            % self.context.user)
-                    while True:
+                        flag = input("Are you sure you want to create the user[%s] "
+                                     "and create trust for it (yes/no)? " % self.context.user)
+                    while(True):
                         # check the input
-                        if (
-                                flag.upper() != "YES"
-                                and flag.upper() != "NO"
-                                and flag.upper() != "Y"
-                                and flag.upper() != "N"):
+                        if(flag.upper() != "YES" and flag.upper() != "NO"
+                                and flag.upper() != "Y" and flag.upper() != "N"):
                             flag = input("Please type 'yes' or 'no': ")
                             continue
                         break
@@ -1072,9 +783,8 @@ class PreinstallImpl:
                             ACTION_INIT_GAUSSLOG,
                             self.context.user,
                             self.context.localLog)
-                        DefaultValue.execCommandWithMode(
+                        CmdExecutor.execCommandWithMode(
                             cmd,
-                            "init gausslog",
                             self.context.sshTool,
                             self.context.isSingle,
                             self.context.mpprcFile)
@@ -1086,24 +796,23 @@ class PreinstallImpl:
                         self.context.user,
                         self.context.group,
                         self.context.localLog)
-                    DefaultValue.execCommandWithMode(cmd,
-                                                     "check OS user",
-                                                     self.context.sshTool,
-                                                     self.context.isSingle,
-                                                     self.context.mpprcFile)
+                    CmdExecutor.execCommandWithMode(cmd,
+                                                    self.context.sshTool,
+                                                    self.context.isSingle,
+                                                    self.context.mpprcFile)
                     self.context.logger.debug(
                         "Successfully set the flag for creating user's trust")
                     return
                 except Exception as e:
+                    # An exception is thrown when the user and user group are inconsistent.
+                    self.check_error_code(str(e))
                     i = 0
                     # get the password
                     while i < 3:
                         self.context.password = self.getUserPasswd(
                             "cluster user")
-                        DefaultValue.checkPasswordVaild(
-                            self.context.password,
-                            self.context.user,
-                            self.context.clusterInfo)
+                        PasswordUtil.checkPasswordVaild(
+                            self.context.password)
                         self.context.passwordsec = self.getUserPasswd(
                             "cluster user", "again")
 
@@ -1127,8 +836,7 @@ class PreinstallImpl:
                     ACTION_INIT_GAUSSLOG,
                     self.context.user,
                     self.context.localLog)
-                DefaultValue.execCommandWithMode(cmd,
-                                                 "init gausslog",
+                CmdExecutor.execCommandWithMode(cmd,
                                                  self.context.sshTool,
                                                  self.context.isSingle,
                                                  self.context.mpprcFile)
@@ -1140,30 +848,23 @@ class PreinstallImpl:
 
             # create the user on all nodes
             # write the password into temporary file
-            tmp_file = "/tmp/temp.%s" % self.context.user
-            g_file.createFileInSafeMode(tmp_file)
-            with open("/tmp/temp.%s" % self.context.user, "w") as fp:
-                fp.write(self.context.password)
-                fp.flush()
+            tmp_path = "/tmp/os_user_pwd"
+            ClusterCommand.aes_cbc_encrypt_with_multi(self.context.password, tmp_path,
+                                                      self.context.logger)
             # change the temporary file permissions
-            g_file.changeMode(DefaultValue.KEY_FILE_MODE, tmp_file,
-                              recursive=False, cmdType="shell")
+            FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, tmp_path,
+                              recursive=True, cmd_type="shell", retry_flag=True)
 
             if not self.context.isSingle:
                 # send the temporary file to all remote nodes
                 try:
-                    self.context.sshTool.scpFiles(
-                        tmp_file, "/tmp/",
-                        self.context.sshTool.hostNames)
+                    self.context.sshTool.scpFiles(tmp_path, "/tmp/", self.context.sshTool.hostNames)
                 except Exception as e:
-                    cmd = "(if [ -f '/tmp/temp.%s' ];" \
-                          "then rm -f '/tmp/temp.%s';fi)" % (
-                              self.context.user, self.context.user)
-                    DefaultValue.execCommandWithMode(cmd,
-                                                     "delete temporary files",
-                                                     self.context.sshTool,
-                                                     self.context.isSingle,
-                                                     self.context.mpprcFile)
+                    cmd = "rm -rf %s" % tmp_path
+                    CmdExecutor.execCommandWithMode(cmd,
+                                                    self.context.sshTool,
+                                                    self.context.isSingle,
+                                                    self.context.mpprcFile)
                     raise Exception(ErrorCode.GAUSS_502["GAUSS_50216"]
                                     % "temporary files")
 
@@ -1174,20 +875,17 @@ class PreinstallImpl:
                 self.context.user,
                 self.context.group,
                 self.context.localLog)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "create OS user",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
 
             # delete the temporary file on all nodes
-            cmd = "(if [ -f '/tmp/temp.%s' ];then rm -f '/tmp/temp.%s';fi)" \
-                  % (self.context.user, self.context.user)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "delete temporary files",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            cmd = "rm -rf %s" % tmp_path
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
 
             # Successfully created user on all nodes
             self.context.logger.log(
@@ -1195,14 +893,17 @@ class PreinstallImpl:
                 % self.context.user)
         except Exception as e:
             # delete the temporary file on all nodes
-            cmd = "(if [ -f '/tmp/temp.%s' ];then rm -f '/tmp/temp.%s';fi)" \
-                  % (self.context.user, self.context.user)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "delete temporary files",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            tmp_path = "/tmp/os_user_pwd"
+            cmd = "rm -rf %s" % tmp_path
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
             raise Exception(str(e))
+
+    def check_error_code(self,error_message):
+        if (error_message.find("GAUSS-50305") > 0):
+            raise Exception(str(error_message))
 
     def createDirs(self):
         """
@@ -1218,19 +919,18 @@ class PreinstallImpl:
                     "Paths need to be fixed owner:%s."
                     % self.context.needFixOwnerPaths)
                 for onePath in self.context.needFixOwnerPaths:
-                    g_file.changeOwner(self.context.user, onePath,
-                                       recursive=True, cmdType="shell")
+                    FileUtil.changeOwner(self.context.user, onePath,
+                                         recursive=True, cmd_type="shell", link=True)
 
-                dirName = os.path.dirname(self.context.logFile)
-                topDirFile = "%s/topDirPath.dat" % dirName
+                topDirFile = ClusterConstants.TOP_DIR_FILE
                 if os.path.exists(topDirFile):
-                    keylist = g_file.readFile(topDirFile)
+                    keylist = FileUtil.readFile(topDirFile)
                     if keylist != []:
                         for key in keylist:
-                            g_file.changeOwner(self.context.user, key.strip(),
-                                               True, "shell")
+                            FileUtil.changeOwner(self.context.user, key.strip(),
+                                               True, "shell", link=True)
 
-                    g_file.removeFile(topDirFile)
+                    FileUtil.removeFile(topDirFile)
 
             # create the directory on all nodes
             cmd = "%s -t %s -u %s -g %s -X '%s' -l '%s'" % (
@@ -1244,9 +944,8 @@ class PreinstallImpl:
             if self.context.mpprcFile != "":
                 cmd += " -s '%s'" % self.context.mpprcFile
             # exec the cmd
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "create cluster's path",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle,
                 self.context.mpprcFile)
@@ -1271,7 +970,7 @@ class PreinstallImpl:
             # set the localmode
             if self.context.localMode or self.context.isSingle:
                 # localmode
-                namelist = DefaultValue.GetHostIpOrName()
+                namelist = NetUtil.GetHostIpOrName()
             else:
                 # Non-native mode
                 namelist = ",".join(NodeNames)
@@ -1391,9 +1090,8 @@ class PreinstallImpl:
                 ACTION_PREPARE_USER_CRON_SERVICE,
                 self.context.user,
                 self.context.localLog)
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "prepare CRON service",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle,
                 self.context.mpprcFile)
@@ -1419,9 +1117,8 @@ class PreinstallImpl:
                 self.context.group,
                 self.context.xmlFile,
                 self.context.localLog)
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "prepare SSH service",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle,
                 self.context.mpprcFile)
@@ -1455,9 +1152,8 @@ class PreinstallImpl:
                 self.context.localLog)
             self.context.logger.debug("Command for setting library: %s" % cmd)
             # exec the cmd for set library
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "set library",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle,
                 self.context.mpprcFile)
@@ -1524,9 +1220,8 @@ class PreinstallImpl:
             if self.context.mpprcFile != "":
                 cmd += " -s '%s'" % self.context.mpprcFile
             # exec the cmd for set finish flag
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "setting finish flag",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle,
                 self.context.mpprcFile)
@@ -1593,7 +1288,7 @@ class PreinstallImpl:
             global g_stepTrustTmpFile
             global TRUST_TMP_FILE_DIR
             TRUST_TMP_FILE_DIR = "/tmp/%s" % TRUST_TMP_FILE
-            g_file.createFileInSafeMode(TRUST_TMP_FILE_DIR)
+            FileUtil.createFileInSafeMode(TRUST_TMP_FILE_DIR)
             with open(TRUST_TMP_FILE_DIR, "w") as g_stepTrustTmpFile:
                 g_stepTrustTmpFile.flush()
         except Exception as e:
@@ -1610,7 +1305,7 @@ class PreinstallImpl:
 
         try:
             cmd = "rm -rf '%s'" % TRUST_TMP_FILE_DIR
-            self.context.sshTool.executeCommand(cmd, "delete step tmp file")
+            self.context.sshTool.executeCommand(cmd)
         except Exception as e:
             self.context.logger.error(str(e))
 
@@ -1631,7 +1326,7 @@ class PreinstallImpl:
                 self.context.localLog)
             if self.context.mpprcFile != "":
                 cmd += " -s '%s'" % self.context.mpprcFile
-            self.context.sshTool.executeCommand(cmd, "delete step tmp file")
+            self.context.sshTool.executeCommand(cmd)
         except Exception as e:
             raise Exception(str(e))
 
@@ -1657,15 +1352,13 @@ class PreinstallImpl:
         input  : NA
         output : NA
         """
-        gphome = gausshome = pghost = gausslog \
-            = agent_path = agent_log_path = ""
         if self.context.mpprcFile and os.path.isfile(self.context.mpprcFile):
             source_file = self.context.mpprcFile
         elif self.context.mpprcFile:
             self.context.logger.debug(
                 "Environment file is not exist environment file,"
                 " skip check repeat.")
-            return
+            return []
         elif os.path.isfile(
                 os.path.join("/home", "%s/.bashrc" % self.context.user)):
             source_file = os.path.join("/home",
@@ -1673,7 +1366,7 @@ class PreinstallImpl:
         else:
             self.context.logger.debug(
                 "There is no environment file, skip check repeat.")
-            return
+            return []
         with open(source_file, 'r') as f:
             env_list = f.readlines()
         new_env_list = []
@@ -1688,6 +1381,14 @@ class PreinstallImpl:
                     new_env_list.append(env.strip())
 
         new_env_list.extend([env.replace('\n', '') for env in env_list])
+        return new_env_list
+
+    def check_env_repeat(self):
+        gphome = gausshome = pghost = gausslog \
+            = agent_path = agent_log_path = ""
+        new_env_list = self.checkRepeat()
+        if not new_env_list:
+            return
         if "export GAUSS_ENV=2" not in new_env_list:
             self.context.logger.debug(
                 "There is no install cluster exist. "
@@ -1707,22 +1408,21 @@ class PreinstallImpl:
             if env.startswith("export AGENTLOGPATH="):
                 agent_log_path = env.split('=')[1]
 
-        gaussdbToolPath = DefaultValue.getPreClusterToolPath(
-            self.context.user,
+        gaussdbToolPath = ClusterDir.getPreClusterToolPath(
             self.context.xmlFile)
-        gaussdbAppPath = self.context.getOneClusterConfigItem(
+        gaussdbAppPath = ClusterConfigFile.getOneClusterConfigItem(
             "gaussdbAppPath",
             self.context.xmlFile)
         DefaultValue.checkPathVaild(gaussdbAppPath)
-        tmpMppdbPath = self.context.clusterInfo.readClusterTmpMppdbPath(
+        tmpMppdbPath = ClusterConfigFile.readClusterTmpMppdbPath(
             self.context.user, self.context.xmlFile)
-        gaussdbLogPath = self.context.clusterInfo.readClusterLogPath(
+        gaussdbLogPath = ClusterConfigFile.readClusterLogPath(
             self.context.xmlFile)
-        agentToolPath = self.context.getOneClusterConfigItem(
+        agentToolPath = ClusterConfigFile.getOneClusterConfigItem(
             "agentToolPath",
             self.context.xmlFile)
         DefaultValue.checkPathVaild(agentToolPath)
-        agentLogPath = self.context.getOneClusterConfigItem(
+        agentLogPath = ClusterConfigFile.getOneClusterConfigItem(
             "agentLogPath",
             self.context.xmlFile)
         DefaultValue.checkPathVaild(agentLogPath)
@@ -1771,7 +1471,7 @@ class PreinstallImpl:
         output : None
         """
         appPath = self.context.clusterInfo.appPath
-        self.checkRepeat()
+        self.check_env_repeat()
         for dbNode in self.context.clusterInfo.dbNodes:
             # dn
             for dataInst in dbNode.datanodes:
@@ -1795,9 +1495,8 @@ class PreinstallImpl:
                 self.context.localLog)
             self.context.logger.debug("Checking OS software: %s" % cmd)
             # exec the cmd for Checking software
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "check software",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle,
                 self.context.mpprcFile)
@@ -1816,6 +1515,30 @@ class PreinstallImpl:
         dir_name = os.path.dirname(os.path.realpath(__file__))
         package_dir = os.path.join(dir_name, "./../../../")
         return os.path.realpath(package_dir)
+
+    def set_user_crontab(self):
+        """
+        :return:
+        """
+        if not self.context.user_ssh_agent_flag:
+            return
+        self.context.logger.debug("Start set cron for %s" %self.context.user)
+        tmp_path = ClusterConfigFile.readClusterTmpMppdbPath(
+            self.context.user, self.context.xmlFile)
+        gaussdb_tool_path = ClusterDir.getPreClusterToolPath(self.context.xmlFile)
+        cron_file = "%s/gauss_cron_%s" % (tmp_path, self.context.user)
+        set_cron_cmd = "crontab -u %s -l > %s && " % (self.context.user, cron_file)
+        set_cron_cmd += "sed -i '/CheckSshAgent.py/d' %s;" % cron_file
+        set_cron_cmd += "echo '*/1 * * * * source ~/.bashrc;python3 %s/script/local/CheckSshAgent.py >>/dev/null 2>&1 &' >> %s;" % (gaussdb_tool_path, cron_file)
+
+        set_cron_cmd += "crontab -u %s %s;service cron restart;" % (self.context.user, cron_file)
+        set_cron_cmd += "rm -f '%s'" % cron_file
+        self.context.logger.debug("Command for setting CRON: %s" % set_cron_cmd)
+        CmdExecutor.execCommandWithMode(set_cron_cmd,
+                                        self.context.sshTool,
+                                        self.context.localMode or self.context.isSingle,
+                                        self.context.mpprcFile)
+        self.context.logger.debug("Successfully to set cron for %s" %self.context.user)
 
     def doPreInstall(self):
         """
@@ -1889,9 +1612,13 @@ class PreinstallImpl:
         # fix server package mode
         self.fixServerPackageOwner()
 
+        # set user cron
+        self.set_user_crontab()
         # set user env and a flag,
         # indicate that the preinstall.py has been execed succeed
         self.doPreInstallSucceed()
+        # delete root mutual trust
+        self.delete_root_mutual_trust()
 
         self.context.logger.log("Preinstallation succeeded.")
 
@@ -1908,8 +1635,8 @@ class PreinstallImpl:
             self.deleteStepTmpFile()
             for rmPath in self.context.needFixOwnerPaths:
                 if os.path.isfile(rmPath):
-                    g_file.removeFile(rmPath)
+                    FileUtil.removeFile(rmPath)
                 elif os.path.isdir(rmPath):
-                    g_file.removeDirectory(rmPath)
+                    FileUtil.removeDirectory(rmPath)
             self.context.logger.logExit(str(e))
         sys.exit(0)

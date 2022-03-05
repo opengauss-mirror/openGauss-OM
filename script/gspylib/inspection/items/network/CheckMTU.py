@@ -19,7 +19,7 @@ from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
 from gspylib.common.ErrorCode import ErrorCode
-from gspylib.os.gsnetwork import g_network
+from base_utils.os.net_util import NetUtil
 
 networkCardNum = ""
 
@@ -53,7 +53,7 @@ class CheckMTU(BaseItem):
         else:
             backIP = SharedFuncs.getIpByHostName(self.host)
         # Get the network card number
-        networkCards = g_network.getAllNetworkInfo()
+        networkCards = NetUtil.getAllNetworkInfo()
         for network in networkCards:
             if network.ipAddress == backIP:
                 networkCardNum = network.NICNum

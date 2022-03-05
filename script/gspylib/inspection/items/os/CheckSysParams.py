@@ -16,15 +16,12 @@
 # ----------------------------------------------------------------------------
 import os
 import subprocess
-import configparser
-import platform
-from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsfile import g_file
-from gspylib.hardware.gsmemory import g_memory
-from gspylib.os.gsfile import g_Platform
 from gspylib.common.ErrorCode import ErrorCode
+from domain_utils.cluster_file.config_param import ConfigParam
+from base_utils.os.file_util import FileUtil
+from os_platform.linux_distro import LinuxDistro
 
 setParameterList = {}
 
@@ -54,48 +51,6 @@ class CheckSysParams(BaseItem):
         if (status != 0):
             raise Exception(output + " The cmd is %s " % cmd)
 
-    def getConfigFilePara(self, configFile, section, checkList=None,
-                          optionsName=None):
-        try:
-            if checkList is None:
-                checkList = []
-            if optionsName is None:
-                optionsName = []
-            data = {}
-            fp = configparser.RawConfigParser()
-            fp.read(configFile)
-            secs = fp.sections()
-            if section not in secs:
-                return data
-            optionList = fp.options(section)
-            if (len(optionsName) != 0 and optionsName not in optionList):
-                return data
-            elif (len(optionsName) != 0):
-                optionList = optionsName
-            for key in optionList:
-                value = fp.get(section, key)
-                if (len(value.split()) == 0):
-                    raise Exception(ErrorCode.GAUSS_500["GAUSS_50018"] % key)
-                value = value.split('#')[0]
-                if (key in checkList and not value.isdigit()):
-                    raise Exception(ErrorCode.GAUSS_500["GAUSS_50020"] % key)
-                if (
-                        section == '/etc/security/limits.conf'
-                        and not value.isdigit() and value != 'unlimited'):
-                    raise Exception(ErrorCode.GAUSS_500["GAUSS_50019"] % key)
-                data[key] = value
-            if ("vm.min_free_kbytes" in list(data.keys())):
-                output = g_memory.getMemTotalSize()
-                totalMemory_k = output // 1024
-                multiple = data["vm.min_free_kbytes"].split('*')[1].split('%')[
-                    0].strip()
-                val = int(totalMemory_k) * int(multiple) // 100
-                data["vm.min_free_kbytes"] = str(val)
-
-            return data
-        except Exception as e:
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51234"] % configFile
-                            + " Error: \n%s" % str(e))
 
     def doCheck(self):
         global setParameterList
@@ -106,15 +61,15 @@ class CheckSysParams(BaseItem):
 
         configFile = "%s/../../config/check_list_%s.conf" % (
             dirName, self.version)
-        suggestParameterList = self.getConfigFilePara(
+        suggestParameterList = ConfigParam.getConfigFilePara(
             configFile,
             'SUGGEST:/etc/sysctl.conf')
-        kernelParameter = self.getConfigFilePara(configFile,
+        kernelParameter = ConfigParam.getConfigFilePara(configFile,
                                                  '/etc/sysctl.conf')
         kernelParameter.update(suggestParameterList)
-        distname, version, idnum = g_Platform.dist()
+        distname, version, idnum = LinuxDistro.linux_distribution()
         if (distname == "SuSE" and version == "11"):
-            patInfo = g_file.readFile("/etc/SuSE-release", 'PATCHLEVEL')[0]
+            patInfo = FileUtil.readFile("/etc/SuSE-release", 'PATCHLEVEL')[0]
             if (patInfo.find('=') > 0):
                 output = patInfo.split('=')[1].strip()
                 if (output != ""):
@@ -128,7 +83,7 @@ class CheckSysParams(BaseItem):
             if (not os.path.exists(
                     sysFile) and key == "net.ipv4.tcp_tw_recycle"):
                 continue
-            output = g_file.readFile(sysFile)[0].strip()
+            output = FileUtil.readFile(sysFile)[0].strip()
             if (len(output.split()) > 1):
                 output = ' '.join(output.split())
 
@@ -142,7 +97,7 @@ class CheckSysParams(BaseItem):
                 setParameterList[key] = kernelParameter[key]
             elif output != kernelParameter[key].strip():
                 if (key == "vm.overcommit_ratio"):
-                    output = g_file.readFile("/proc/sys/vm/overcommit_memory")[
+                    output = FileUtil.readFile("/proc/sys/vm/overcommit_memory")[
                         0].strip()
                     if (output == "0"):
                         continue

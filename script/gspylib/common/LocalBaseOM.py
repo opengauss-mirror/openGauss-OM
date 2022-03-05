@@ -21,11 +21,12 @@ import os
 sys.path.append(sys.path[0] + "/../../")
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.DbClusterInfo import dbClusterInfo
-from gspylib.common.Common import DefaultValue
-from gspylib.common.VersionInfo import VersionInfo
-from gspylib.os.gsOSlib import g_OSlib
 from gspylib.common.ErrorCode import ErrorCode
+from gspylib.component.CM.CM_OLAP.CM_OLAP import CM_OLAP
 from gspylib.component.Kernel.DN_OLAP.DN_OLAP import DN_OLAP
+from domain_utils.cluster_file.version_info import VersionInfo
+from base_utils.os.net_util import NetUtil
+from base_utils.os.user_util import UserUtil
 
 
 class LocalBaseOM(object):
@@ -34,7 +35,7 @@ class LocalBaseOM(object):
     """
 
     def __init__(self, logFile=None, user=None, clusterConf=None,
-                 dwsMode=False, initParas=None, gtmInitParas=None):
+                 dwsMode=False, initParas=None, gtmInitParas=None, paxos_mode=False):
         '''
         Constructor
         '''
@@ -60,14 +61,16 @@ class LocalBaseOM(object):
         self.cnCons = []
         self.dnCons = []
         self.gtsCons = []
+        self.paxos_mode = paxos_mode
 
-    def initComponent(self):
+    def initComponent(self, paxos_mode=False):
         """
         function: Init component
         input : NA
         output: NA
         """
-        self.initKernelComponent()
+        self.initCmComponent()
+        self.initKernelComponent(paxos_mode)
 
     def initComponentAttributes(self, component):
         """
@@ -79,7 +82,29 @@ class LocalBaseOM(object):
         component.binPath = "%s/bin" % self.clusterInfo.appPath
         component.dwsMode = self.dws_mode
 
-    def initKernelComponent(self):
+    def initCmComponent(self):
+        """
+        function: Init cm component on current node
+        input : Object nodeInfo
+        output: NA
+        """
+        for inst in self.dbNodeInfo.cmservers:
+            component = CM_OLAP()
+            # init component cluster type
+            component.clusterType = self.clusterInfo.clusterType
+            component.instInfo = inst
+            self.initComponentAttributes(component)
+            self.cmCons.append(component)
+
+        for inst in self.dbNodeInfo.cmagents:
+            component = CM_OLAP()
+            # init component cluster type
+            component.clusterType = self.clusterInfo.clusterType
+            component.instInfo = inst
+            self.initComponentAttributes(component)
+            self.cmCons.append(component)
+
+    def initKernelComponent(self, paxos_mode=False):
         """
         function: Init kernel component on current node
         input : Object nodeInfo
@@ -92,6 +117,7 @@ class LocalBaseOM(object):
             component.instInfo = inst
             component.instInfo.peerInstanceInfos = \
                 self.clusterInfo.getPeerInstance(component.instInfo)
+            component.paxos_mode = paxos_mode
             self.initComponentAttributes(component)
             component.initParas = self.initParas
             self.dnCons.append(component)
@@ -104,7 +130,7 @@ class LocalBaseOM(object):
         """
         try:
             self.clusterInfo = dbClusterInfo()
-            hostName = DefaultValue.GetHostIpOrName()
+            hostName = NetUtil.GetHostIpOrName()
             dynamicFileExist = False
             if self.__class__.__name__ == "Start":
                 dynamicFileExist = \
@@ -134,12 +160,9 @@ class LocalBaseOM(object):
             if (self.clusterConfig is None):
                 self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50201"] %
                                     "XML configuration file")
-            static_config_file = "%s/bin/cluster_static_config" % \
-                                 DefaultValue.getInstallDir(self.user)
             self.clusterInfo = dbClusterInfo()
-            self.clusterInfo.initFromXml(self.clusterConfig,
-                                         static_config_file)
-            hostName = DefaultValue.GetHostIpOrName()
+            self.clusterInfo.initFromXml(self.clusterConfig)
+            hostName = NetUtil.GetHostIpOrName()
             self.dbNodeInfo = self.clusterInfo.getDbNodeByName(hostName)
             if (self.dbNodeInfo is None):
                 self.logger.logExit(ErrorCode.GAUSS_516["GAUSS_51619"] %
@@ -161,6 +184,6 @@ class LocalBaseOM(object):
             commitid = VersionInfo.getCommitid()
             appPath = self.clusterInfo.appPath + "_" + commitid
         self.logger.debug("Get the install path %s user info." % appPath)
-        (self.user, self.group) = g_OSlib.getPathOwner(appPath)
+        (self.user, self.group) = UserUtil.getPathOwner(appPath)
         if (self.user == "" or self.group == ""):
             self.logger.logExit(ErrorCode.GAUSS_503["GAUSS_50308"])

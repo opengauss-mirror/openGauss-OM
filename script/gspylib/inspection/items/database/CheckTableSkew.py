@@ -15,12 +15,12 @@
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------
 import os
-import json
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.common.Common import DefaultValue, ClusterCommand
+from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
+from domain_utils.sql_handler.sql_executor import SqlExecutor
 
 
 class CheckTableSkew(BaseItem):
@@ -56,7 +56,7 @@ class CheckTableSkew(BaseItem):
                     raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"]
                                     % ("sql file:%s" % sqlFileName))
                 sqldb = "select datname from pg_database;"
-                (status, result, error) = ClusterCommand.excuteSqlOnLocalhost(
+                (status, result, error) = SqlExecutor.excuteSqlOnLocalhost(
                     self.port, sqldb)
                 if (status != 2):
                     raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"]
@@ -70,12 +70,12 @@ class CheckTableSkew(BaseItem):
                     schemaTable = []
                     for sql in sqlList:
                         sql = "set client_min_messages='error';\n" + sql
-                        ClusterCommand.excuteSqlOnLocalhost(self.port, sql, db)
+                        SqlExecutor.excuteSqlOnLocalhost(self.port, sql, db)
                     sql = "SELECT  schemaname , tablename FROM " \
                           "PUBLIC.pgxc_analyzed_skewness WHERE " \
                           "skewness_tuple > 100000;"
                     (status, result,
-                     error) = ClusterCommand.excuteSqlOnLocalhost(self.port,
+                     error) = SqlExecutor.excuteSqlOnLocalhost(self.port,
                                                                   sql, db)
                     if (status != 2):
                         raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"]

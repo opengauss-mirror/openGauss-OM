@@ -18,7 +18,9 @@
 import os
 import sys
 from gspylib.common.Common import DefaultValue
-from gspylib.os.gsfile import g_file
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+
 
 
 class CheckperfImpl():
@@ -57,7 +59,7 @@ class CheckperfImpl():
             # check output file
             if self.opts.outFile != "":
                 self.opts.outFile_tmp = os.path.join(
-                    DefaultValue.getTmpDirFromEnv(self.opts.user),
+                    EnvUtil.getTmpDirFromEnv(self.opts.user),
                     (os.path.split(self.opts.outFile)[1]
                      + "_tmp_%s" % os.getpid()))
                 outputInfo = self.setOutFile()
@@ -80,9 +82,9 @@ class CheckperfImpl():
                 outputInfo.flush()
                 outputInfo.close()
             if os.path.isfile(self.opts.outFile_tmp):
-                g_file.removeFile(self.opts.outFile_tmp)
+                FileUtil.removeFile(self.opts.outFile_tmp)
             # modify the log file's owner
-            g_file.changeOwner(self.opts.user, self.logger.logFile)
+            FileUtil.changeOwner(self.opts.user, self.logger.logFile)
             self.logger.error(str(e))
             sys.exit(1)
 
@@ -96,22 +98,22 @@ class CheckperfImpl():
         dirName = os.path.dirname(self.opts.outFile)
         # judge if directory
         if not os.path.isdir(dirName):
-            g_file.createDirectory(dirName, True,
+            FileUtil.createDirectory(dirName, True,
                                    DefaultValue.KEY_DIRECTORY_MODE)
         # create output file and modify permission
-        g_file.createFile(self.opts.outFile, True, DefaultValue.KEY_FILE_MODE)
-        g_file.changeOwner(self.opts.user, self.opts.outFile)
+        FileUtil.createFile(self.opts.outFile, True, DefaultValue.KEY_FILE_MODE)
+        FileUtil.changeOwner(self.opts.user, self.opts.outFile)
         self.logger.log(
             "Performing performance check. "
             "Output the checking result to the file %s." % self.opts.outFile)
         # write file
         self.opts.outFile_tmp = os.path.join(
-            DefaultValue.getTmpDirFromEnv(self.opts.user),
+            EnvUtil.getTmpDirFromEnv(self.opts.user),
             (os.path.split(self.opts.outFile)[1] + "_tmp_%s" % os.getpid()))
         if not os.path.isfile(self.opts.outFile_tmp):
-            g_file.createFile(self.opts.outFile_tmp, True,
+            FileUtil.createFile(self.opts.outFile_tmp, True,
                               DefaultValue.KEY_FILE_MODE)
-        g_file.changeOwner(self.opts.user, self.opts.outFile_tmp)
+        FileUtil.changeOwner(self.opts.user, self.opts.outFile_tmp)
         fp = open(self.opts.outFile_tmp, "w")
         outputInfo = fp
         return outputInfo
@@ -126,5 +128,5 @@ class CheckperfImpl():
             # close file handle if outputInfo is out file
             fp.flush()
             fp.close()
-            g_file.moveFile(self.opts.outFile_tmp, self.opts.outFile)
+            FileUtil.moveFile(self.opts.outFile_tmp, self.opts.outFile)
             self.logger.log("Performance check is completed.")

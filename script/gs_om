@@ -24,16 +24,19 @@ import os
 import sys
 import pwd
 
-from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.ParameterParsecheck import Parameter
 from gspylib.common.Common import DefaultValue
 from gspylib.common.ParallelBaseOM import ParallelBaseOM
-from gspylib.os.gsOSlib import g_OSlib
 from gspylib.threads.SshTool import SshTool
 from impl.om.OLAP.OmImplOLAP import OmImplOLAP
-from gspylib.common.VersionInfo import VersionInfo
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from base_utils.os.user_util import UserUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
 # action type
 ACTION_START = "start"
@@ -228,11 +231,11 @@ Install options:
             self.logFile = self.g_opts.logFile
             self.initLogger(self.g_opts.action)
             if (os.getuid() != 0):
-                DefaultValue.modifyFileOwnerFromGPHOME(self.logger.logFile)
+                FileUtil.modifyFileOwnerFromGPHOME(self.logger.logFile)
 
             dirName = os.path.dirname(self.g_opts.logFile)
             self.g_opts.localLog = os.path.join(dirName,
-                                                DefaultValue.LOCAL_LOG_FILE)
+                                                ClusterConstants.LOCAL_LOG_FILE)
 
             if self.g_opts.action == ACTION_REBUID and self.g_opts.confFile:
                 self.initClusterInfo()
@@ -245,7 +248,7 @@ Install options:
 
             # Obtain the owner and group of the cluster installation directory
             if self.g_opts.action != ACTION_KERBEROS:
-                (self.g_opts.user, self.g_opts.group) = g_OSlib.getPathOwner(
+                (self.g_opts.user, self.g_opts.group) = UserUtil.getPathOwner(
                     self.clusterInfo.appPath)
                 if self.g_opts.user == "" or self.g_opts.group == "":
                     raise Exception(ErrorCode.GAUSS_503["GAUSS_50308"])
@@ -542,7 +545,7 @@ Install options:
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % "t")
 
         # check mpprc file path
-        self.g_opts.mpprcFile = DefaultValue.getMpprcFile()
+        self.g_opts.mpprcFile = EnvUtil.getMpprcFile()
 
         # check if user exist and is the right user
         if (self.g_opts.user == ""):
@@ -552,7 +555,7 @@ Install options:
                                        "U" + ".")
 
         # Check user on installed cluster
-        DefaultValue.checkUser(self.g_opts.user)
+        ClusterUser.checkUser(self.g_opts.user)
         # Check whether the current user is consistent with -U if no root
         if (os.getuid() != 0):
             cmd = "id -un"
@@ -562,12 +565,12 @@ Install options:
                     ErrorCode.GAUSS_530["GAUSS_53033"] % self.g_opts.user)
 
         self.OM_PARAMETER_DIR = "%s/om_parameter_dir" % \
-                                DefaultValue.getTmpDirFromEnv(self.g_opts.user)
+                                EnvUtil.getTmpDirFromEnv(self.g_opts.user)
 
         # check log file
         if (self.g_opts.logFile == ""):
-            self.g_opts.logFile = DefaultValue.getOMLogPath(
-                DefaultValue.OM_LOG_FILE, self.g_opts.user, "",
+            self.g_opts.logFile = ClusterLog.getOMLogPath(
+                ClusterConstants.OM_LOG_FILE, self.g_opts.user, "",
                 action=self.g_opts.action)
         if (not os.path.isabs(self.g_opts.logFile)):
             GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"] % "log")
@@ -705,7 +708,7 @@ Install options:
                                    % self.g_opts.kerberosMode)
 
         # get user info
-        self.user = g_OSlib.getUserInfo()['name']
+        self.user = UserUtil.getUserInfo()['name']
         if (self.g_opts.clusterUser == ""):
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % 'U')
         if self.g_opts.clusterUser != self.user:
@@ -757,7 +760,6 @@ def main():
     main function
     """
     try:
-        REPEAT = False
         # Objectize class
         manager = OperationManager()
         # parse cmd lines
@@ -768,18 +770,9 @@ def main():
         # init global variables
         manager.initGlobal()
         # set action flag file
-        DefaultValue.setActionFlagFile(manager.g_opts.action, manager.logger)
+        DefaultValue.setActionFlagFile(manager.g_opts.action)
     except Exception as e:
-        if (manager.g_opts.action in (ACTION_STATUS, ACTION_STOP,
-                                      ACTION_START)):
-            actionDict = {ACTION_STATUS: DefaultValue.TASK_QUERY_STATUS,
-                          ACTION_STOP: DefaultValue.TASK_STOP,
-                          ACTION_START: DefaultValue.TASK_START}
-            if REPEAT:
-                manager.sshTool = SshTool(
-                    manager.clusterInfo.getClusterNodeNames(), manager.logFile,
-                    timeout=DefaultValue.TIMEOUT_PSSH_COMMON)
-        manager.logger.logExit(str(e))
+        GaussLog.exitWithError(str(e))
 
     try:
         impl = OmImplOLAP(manager)
@@ -830,7 +823,7 @@ def main():
     except Exception as e:
         manager.logger.logExit(str(e))
     finally:
-        DefaultValue.setActionFlagFile("gs_om", None, False)
+        DefaultValue.setActionFlagFile("gs_om", False)
 
 
 if __name__ == '__main__':

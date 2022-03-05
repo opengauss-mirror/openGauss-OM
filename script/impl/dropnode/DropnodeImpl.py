@@ -30,26 +30,14 @@ import socket
 sys.path.append(sys.path[0] + "/../../../../")
 from gspylib.threads.SshTool import SshTool
 from gspylib.common.ErrorCode import ErrorCode
-from gspylib.common.Common import DefaultValue, ClusterCommand
+from gspylib.common.Common import DefaultValue
 from gspylib.common.GaussLog import GaussLog
 from gspylib.inspection.common.Exception import CheckException
 from gspylib.common.OMCommand import OMCommand
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.net_util import NetUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
 
-sys.path.append(sys.path[0] + "/../../../lib/")
-DefaultValue.doConfigForParamiko()
-import paramiko
-
-# mode
-MODE_PRIMARY = "primary"
-MODE_STANDBY = "standby"
-MODE_NORMAL = "normal"
-
-SWITCHOVER_FILE = "/switchover"
-FAILOVER_FILE = "/failover"
-PROMOTE_FILE = "/promote"
-
-# db state
-STAT_NORMAL = "normal"
 
 # master 
 MASTER_INSTANCE = 0
@@ -78,16 +66,16 @@ class DropnodeImpl():
         self.userProfile = self.context.userProfile
         self.group = self.context.group
         self.backupFilePrimary = ''
-        self.localhostname = DefaultValue.GetHostIpOrName()
+        self.localhostname = NetUtil.GetHostIpOrName()
         self.logger = self.context.logger
         self.resultDictOfPrimary = []
         self.replSlot = ''
-        envFile = DefaultValue.getEnv("MPPDB_ENV_SEPARATE_PATH")
+        envFile = EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH")
         if envFile:
             self.envFile = envFile
         else:
-            self.envFile = "/etc/profile"
-        gphomepath = DefaultValue.getEnv("GPHOME")
+            self.envFile = ClusterConstants.ETC_PROFILE
+        gphomepath = EnvUtil.getEnv("GPHOME")
         if gphomepath:
             self.gphomepath = gphomepath
         else:
@@ -95,15 +83,13 @@ class DropnodeImpl():
             if "no gs_om in" in output:
                 raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$GPHOME")
             self.gphomepath = os.path.normpath(output.replace("/gs_om", ""))
-        if not DefaultValue.getEnv("PGHOST"):
+        if not EnvUtil.getEnv("PGHOST"):
             GaussLog.exitWithError(ErrorCode.GAUSS_518["GAUSS_51802"] % (
                 "\"PGHOST\", please import environment variable"))
-        self.pghostPath = DefaultValue.getEnv("PGHOST")
+        self.pghostPath = EnvUtil.getEnv("PGHOST")
         self.appPath = self.context.clusterInfo.appPath
         self.gsql_path = "source %s;%s/bin/gsql" % (self.userProfile, self.appPath)
 
-        currentTime = str(datetime.datetime.now()).replace(" ", "_").replace(
-            ".", "_")
         self.dnIdForDel = []
         for hostDelName in self.context.hostMapForDel.keys():
             self.dnIdForDel += self.context.hostMapForDel[hostDelName]['dn_id']
@@ -245,7 +231,7 @@ class DropnodeImpl():
         self.logger.log("[gs_dropnode]Start to modify the cluster static conf.")
         staticConfigPath = "%s/bin/cluster_static_config" % self.appPath
         # first backup, only need to be done on primary node
-        tmpDir = DefaultValue.getEnvironmentParameterValue("PGHOST", self.user,
+        tmpDir = EnvUtil.getEnvironmentParameterValue("PGHOST", self.user,
                                                            self.userProfile)
         cmd = "cp %s %s/%s_BACKUP" % (
         staticConfigPath, tmpDir, 'cluster_static_config')
@@ -273,9 +259,8 @@ class DropnodeImpl():
             "[gs_dropnode]Start to scp the cluster static conf to any other node.")
 
         if not self.context.flagOnlyPrimary:
-            sshtool = SshTool(self.context.clusterInfo.getClusterNodeNames())
             cmd = "%s/script/gs_om -t refreshconf" % self.gphomepath
-            (status, output) = subprocess.getstatusoutput(cmd)
+            subprocess.getstatusoutput(cmd)
             for hostName in self.context.hostMapForExist.keys():
                 hostSsh = SshTool([hostName])
                 if hostName != self.localhostname:
@@ -435,7 +420,7 @@ class OperCommon:
         cmd = "(find %s -type d | grep gs_dropnode_backup | xargs rm -rf;" \
               "if [ ! -d '%s' ]; then mkdir -p '%s' -m %s;fi)" \
               % (pghostPath, tmpPath, tmpPath, DefaultValue.KEY_DIRECTORY_MODE)
-        sshTool.executeCommand(cmd, "", DefaultValue.SUCCESS, [host], envfile)
+        sshTool.executeCommand(cmd, DefaultValue.SUCCESS, [host], envfile)
         logfile = os.path.join(tmpPath, 'gs_dropnode_call_Backup_py.log')
         cmd = "python3 %s -U %s -P %s -p --nodeName=%s -l %s" \
               % (backupPyPath, user, tmpPath, host, logfile)
@@ -686,18 +671,6 @@ class OperCommon:
                 self.logger.debug("[gs_dropnode]Set repl slot failed:" + output)
                 raise ValueError(output)
         self.logger.log("[gs_dropnode]End of set repl slot on %s." % host)
-
-    def SetSyncCommit(self, dirDn):
-        """
-        Set the synccommit to local when only primary server be left
-        """
-        self.logger.log("[gs_dropnode]Start to set sync_commit on primary node.")
-        command = "gs_guc set -D %s -c 'synchronous_commit = local'" % dirDn
-        (status, output) = subprocess.getstatusoutput(command)
-        if status or '0' not in re.findall(r'Failed instances: (\d)\.', output):
-            self.logger.debug("[gs_dropnode]Set sync_commit failed:" + output)
-            raise ValueError(output)
-        self.logger.log("[gs_dropnode]End of set sync_commit on primary node.")
 
     def stopInstance(self, host, sshTool, dirDn, env):
         """

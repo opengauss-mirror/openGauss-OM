@@ -25,7 +25,105 @@ import sys
 import stat
 import threading
 import time
-from threading import Timer
+import pwd
+
+PROCESS_INIT = 1
+SELF_FD_DIR = "/proc/self/fd"
+MAXFD = os.sysconf("SC_OPEN_MAX")
+def fast_close_fds(self, but):
+    """
+    command fd close
+    """
+    if not os.path.exists(SELF_FD_DIR):
+        if hasattr(os, 'closerange'):
+            os.closerange(3, but)
+            os.closerange(but + 1, MAXFD)
+        else:
+            for i in range(3, MAXFD):
+                if i == but:
+                    continue
+                try:
+                    os.close(i)
+                except BaseException as bex:
+                    if self.logger:
+                        self.logger.info("WARNING:%s" % str(bex))
+        return
+
+    fd_list = os.listdir(SELF_FD_DIR)
+    for fd_h in fd_list:
+        if int(fd_h) < 3 or int(fd_h) == but:
+            continue
+        try:
+            os.close(int(fd_h))
+        except BaseException as bex:
+            if self.logger:
+                self.logger.info("WARNING:%s" % str(bex))
+
+
+class FastPopen(subprocess.Popen):
+    """
+    optimization subprocess.Popen when close_fds=True,
+    only close the currently opend file,
+    reduce the execution time when ulimit is too large
+    """
+
+    def __init__(self, args, bufsize=0, executable=None,
+                 stdin=None, stdout=None, stderr=None,
+                 preexec_fn=None, close_fds=False, shell=False,
+                 cwd=None, env=None, universal_newlines=True,
+                 startupinfo=None, creationflags=0, logger=None):
+        subprocess.Popen.logger = logger
+        subprocess.Popen.__init__(self, args, bufsize=bufsize,
+                                  executable=executable,
+                                  stdin=stdin, stdout=stdout, stderr=stderr,
+                                  preexec_fn=preexec_fn, close_fds=close_fds,
+                                  shell=shell,
+                                  cwd=cwd, env=env,
+                                  universal_newlines=universal_newlines,
+                                  startupinfo=startupinfo,
+                                  creationflags=creationflags)
+        self.logger = logger
+
+    def _close_fds(self, but):
+        fast_close_fds(self, but)
+
+
+class AgentPopen(subprocess.Popen):
+    """
+    this is a Popen for the agent scenario
+    """
+
+    def __init__(self, cmd, bufsize=0,
+                 stdout=None, stderr=None,
+                 preexec_fn=None, close_fds=False,
+                 cwd=None, env=None, universal_newlines=True,
+                 startupinfo=None, creationflags=0, logger=None):
+
+        self.logger = logger
+        subprocess.Popen.__init__(self, ["sh", "-"], bufsize=bufsize,
+                                  executable=None,
+                                  stdin=subprocess.PIPE, stdout=stdout,
+                                  stderr=stderr,
+                                  preexec_fn=preexec_fn, close_fds=close_fds,
+                                  shell=None,
+                                  cwd=cwd, env=env,
+                                  universal_newlines=universal_newlines,
+                                  startupinfo=startupinfo,
+                                  creationflags=creationflags)
+        self.cmd = cmd
+
+    def communicate(self, input_cmd=None):
+        if input_cmd:
+            self.cmd = input_cmd
+
+        if not isinstance(self.cmd, str):
+            self.cmd = subprocess.list2cmdline(self.cmd)
+
+        std_out, std_err = subprocess.Popen.communicate(self, self.cmd)
+        return std_out, std_err
+
+    def _close_fds(self, but):
+        fast_close_fds(self, but)
 
 
 class WriterThread(threading.Thread):
@@ -75,7 +173,7 @@ class TaskThread(threading.Thread):
     """
 
     def __init__(self, host, cmd, f_out="", f_err="",
-                 detail=False, timeout=0, shell_mode=False, inline=False):
+                 detail=False, timeout=0, shell_mode=False, inline=False, agent_mode=False):
         super(TaskThread, self).__init__()
         self.setDaemon(True)
 
@@ -92,6 +190,7 @@ class TaskThread(threading.Thread):
         self.proc = None
         self.timestamp = time.time()
         self.isKill = False
+        self.agent_mode = agent_mode
         self.writer = WriterThread(f_out, f_err) if (f_out or f_err) else None
 
     def kill(self):
@@ -127,19 +226,66 @@ class TaskThread(threading.Thread):
             return True
         return False
 
+    def get_env_variable(self, envparam, bashrc_file):
+        """
+        :param envparam:
+        :param bashrc_file:
+        :return:
+        """
+        echo_env_cmd = "source %s && echo $%s" % (bashrc_file, envparam)
+        (status, output) = subprocess.getstatusoutput(echo_env_cmd)
+        if status == 0:
+            env_value = output.split("\n")[0]
+            env_value = env_value.replace("\\", "\\\\").replace('"', '\\"\\"')
+            self.checkPathVaild(env_value)
+            return env_value
+        else:
+            return ""
+
+    def checkPathVaild(self, env_value):
+        """
+        function: check path vaild
+        input : envValue
+        output: NA
+        """
+        if env_value.strip() == "":
+            return
+        PATH_CHECK_LIST = ["|", ";", "&", "$", "<", ">", "`", "\\", "'", "\"",
+                           "{", "}", "(", ")", "[", "]", "~", "*", "?", " ",
+                           "!", "\n"]
+        for rac in PATH_CHECK_LIST:
+            flag = env_value.find(rac)
+            if flag >= 0:
+                raise Exception(" There are illegal characters [%s] in the path."
+                                %env_value)
+
     def run(self):
         """
         Execute the cmd on host.
+        Currently, the OpenGauss supports only the SSH mode.
+        Therefore, the default value of agent_mode is False and remains unchanged.
         :return: NA
         """
         self.timestamp = time.time()
-        self.proc = subprocess.Popen(self.cmd, shell=False,
-                                     stdout=subprocess.PIPE,
-                                     stderr=subprocess.PIPE)
+        if self.agent_mode:
+            self.proc = AgentPopen(self.cmd, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE,
+                                   close_fds=True)
+        else:
+            login_user = pwd.getpwuid(os.getuid()).pw_name
+            bashrc_file = os.path.join(pwd.getpwnam(login_user).pw_dir,
+                                       ".bashrc")
+            ssh_auth_sock = self.get_env_variable("SSH_AUTH_SOCK", bashrc_file)
+            ssh_agent_pid = self.get_env_variable("SSH_AGENT_PID", bashrc_file)
+            env = {"SSH_AUTH_SOCK": ssh_auth_sock,
+                   "SSH_AGENT_PID": ssh_agent_pid}
+            self.proc = FastPopen(self.cmd, shell=False, stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE, env=env,
+                                  close_fds=True)
 
         stdout, stderr = self.proc.communicate()
-        self.stdout += stdout.decode('utf-8')
-        self.stderr += stderr.decode('utf-8')
+        self.stdout += stdout
+        self.stderr += stderr
         self.status = self.proc.returncode
 
     def __print_out(self):

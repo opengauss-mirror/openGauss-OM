@@ -23,17 +23,23 @@ import sys
 import os
 import subprocess
 import pwd
-import re
 import traceback
 
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
-from gspylib.common.Common import DefaultValue
 from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.ParameterParsecheck import Parameter
 from gspylib.common.ErrorCode import ErrorCode
-from gspylib.os.gsfile import g_file
 import impl.upgrade.UpgradeConst as Const
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from domain_utils.cluster_file.package_info import PackageInfo
+from domain_utils.cluster_file.version_info import VersionInfo
+from base_utils.os.net_util import NetUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from base_utils.common.constantsbase import ConstantsBase
 
 INSTANCE_TYPE_UNDEFINED = -1
 MASTER_INSTANCE = 0
@@ -145,11 +151,11 @@ class CheckUpgrade():
         output: NA
         """
         # grey upgrade no need do this check
-        curVer = DefaultValue.getAppVersion(self.appPath)
+        curVer = VersionInfo.getAppVersion(self.appPath)
         if (curVer == ""):
             g_logger.logExit(ErrorCode.GAUSS_516["GAUSS_51623"])
 
-        gaussHome = DefaultValue.getEnvironmentParameterValue("GAUSSHOME",
+        gaussHome = EnvUtil.getEnvironmentParameterValue("GAUSSHOME",
                                                               g_opts.user)
         if not gaussHome:
             g_logger.logExit(ErrorCode.GAUSS_518["GAUSS_51800"]
@@ -169,42 +175,19 @@ class CheckUpgrade():
         output: NA
         '''
         try:
-            DefaultValue.checkPackageOS()
+            PackageInfo.checkPackageOS()
         except Exception as e:
             g_logger.logExit(str(e))
 
     def __getTmpDir(self):
         """
         """
-        return DefaultValue.getTmpDirFromEnv()
+        return EnvUtil.getTmpDirFromEnv()
 
     def __getBackupDir(self):
         """
         """
-        return "%s/binary_upgrade" % DefaultValue.getTmpDirFromEnv()
-
-    def __getGaussdbVersion(self, gaussdbFile):
-        """
-        """
-        # backup gaussdb version
-        # get old cluster version by gaussdb
-        # the information of gaussdb like this:
-        #    gaussdb Gauss200 V100R00XCXX build xxxx
-        #    compiled at xxxx-xx-xx xx:xx:xx
-        if (not os.path.isfile(gaussdbFile)):
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50210"] % gaussdbFile)
-
-        oldClusterVersion = ""
-        cmd = "%s --version" % (gaussdbFile)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if (status == 0 and None is not re.compile(
-                r'V[0-9]{3}R[0-9]{3}C[0-9]{2}').search(str(output))):
-            oldClusterVersion = re.compile(
-                r'V[0-9]{3}R[0-9]{3}C[0-9]{2}').search(str(output)).group()
-        else:
-            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                            + "\nOutput:%s" % output)
-        return oldClusterVersion
+        return "%s/binary_upgrade" % EnvUtil.getTmpDirFromEnv()
 
     def __backupDbClusterInfo(self):
         """
@@ -253,7 +236,7 @@ class CheckUpgrade():
             g_logger.debug("Backup failed.ERROR:%s\nClean backup path."
                            % str(e))
             if (os.path.isdir(upgradeBakPath)):
-                g_file.removeDirectory(upgradeBakPath)
+                FileUtil.removeDirectory(upgradeBakPath)
 
     def __checkBackupDir(self):
         """
@@ -271,9 +254,9 @@ class CheckUpgrade():
         TEST:
         Pseudocode:
         """
-        binaryBakDir = "%s/binary_upgrade" % DefaultValue.getTmpDirFromEnv()
+        binaryBakDir = "%s/binary_upgrade" % EnvUtil.getTmpDirFromEnv()
         if not os.path.isdir(binaryBakDir):
-            os.makedirs(binaryBakDir, DefaultValue.KEY_DIRECTORY_PERMISSION)
+            os.makedirs(binaryBakDir, ConstantsBase.KEY_DIRECTORY_PERMISSION)
 
         vfs = os.statvfs(binaryBakDir)
         availableSize = vfs.f_bavail * vfs.f_bsize / (1024 * 1024)
@@ -295,7 +278,7 @@ class CheckUpgrade():
         for path in instDirs:
             if (not os.path.exists(path)):
                 g_logger.logExit(ErrorCode.GAUSS_502["GAUSS_50201"] % path)
-            if (not g_file.checkDirWriteable(path)):
+            if not FileUtil.checkDirWriteable(path):
                 g_logger.logExit(ErrorCode.GAUSS_502["GAUSS_50205"] % path)
 
         g_logger.debug("Successfully to check data directory access rights.")
@@ -310,7 +293,7 @@ class CheckUpgrade():
         input : pathType
         output : tempPaths
         """
-        localHost = DefaultValue.GetHostIpOrName()
+        localHost = NetUtil.GetHostIpOrName()
         dbNode = g_clusterInfo.getDbNodeByName(localHost)
         if not dbNode:
             g_logger.logExit(ErrorCode.GAUSS_512["GAUSS_51209"]
@@ -378,6 +361,7 @@ Options for big version upgrade check
 Options for upgrade check
   -R                                the install path of old cluster
   -N                                the install path of new cluster
+  -v                                backup upgrade version
     """
     print(usage.__doc__)
 
@@ -433,8 +417,8 @@ def checkParameter():
         g_opts.user = pwd.getpwuid(os.getuid()).pw_name
 
     if (g_opts.logFile == ""):
-        g_opts.logFile = DefaultValue.getOMLogPath(
-            DefaultValue.LOCAL_LOG_FILE, "", g_opts.appPath, "")
+        g_opts.logFile = ClusterLog.getOMLogPath(
+            ClusterConstants.LOCAL_LOG_FILE, "", g_opts.appPath, "")
 
     if g_opts.action in [Const.ACTION_LARGE_UPGRADE,
                          Const.ACTION_SMALL_UPGRADE,
@@ -459,11 +443,11 @@ def checkVersion():
     output: NA
     """
     g_logger.debug("Checking version information.")
-    gaussHome = DefaultValue.getInstallDir(g_opts.user)
+    gaussHome = ClusterDir.getInstallDir(g_opts.user)
     if gaussHome == "":
         raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$GAUSSHOME")
     localPostgresVersion = \
-        DefaultValue.getAppBVersion(os.path.realpath(gaussHome))
+        VersionInfo.getAppBVersion(os.path.realpath(gaussHome))
     if (localPostgresVersion.find(g_opts.upgrade_version) > 0):
         g_logger.debug("Successfully checked version information.")
     else:

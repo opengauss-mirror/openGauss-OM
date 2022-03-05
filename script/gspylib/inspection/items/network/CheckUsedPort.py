@@ -19,7 +19,7 @@ import subprocess
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsfile import g_file
+from base_utils.os.file_util import FileUtil
 
 
 class CheckUsedPort(BaseItem):
@@ -28,7 +28,7 @@ class CheckUsedPort(BaseItem):
 
     def getPortRange(self):
         portRangeValue = \
-            g_file.readFile('/proc/sys/net/ipv4/ip_local_port_range')[0]
+            FileUtil.readFile('/proc/sys/net/ipv4/ip_local_port_range')[0]
         (startPort, endPort) = portRangeValue.split()
         portRange = int(endPort) - int(startPort)
 

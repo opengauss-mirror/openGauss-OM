@@ -16,14 +16,11 @@
 # See the Mulan PSL v2 for more details.
 #############################################################################
 
-import os
-import sys
 import json
 import time
-import pwd
 from gspylib.inspection.common import SharedFuncs
 from gspylib.common.Common import DefaultValue
-from gspylib.inspection.common.Log import LoggerFactory
+
 
 class GsCheckEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -100,7 +97,7 @@ class ItemResult(object):
     def append(self, val):
         self._items.append(val)
 
-    def formatOutput(self, detail=False):
+    def formatOutput(self):
         result = u"{name:.<25}...............{rst:.>6}".format(name=self.name,
                                                                rst=self.rst)
         result += u"\r\n%s\r\n" % self.analysis

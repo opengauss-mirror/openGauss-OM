@@ -23,8 +23,14 @@ from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.Common import DefaultValue, ClusterInstanceConfig
 from gspylib.component.Kernel.Kernel import Kernel
 from gspylib.common.DbClusterInfo import dbClusterInfo
-from gspylib.os.gsfile import g_file
-from gspylib.os.gsOSlib import g_OSlib
+from base_utils.os.cmd_util import CmdUtil
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from base_utils.os.compress_util import CompressUtil
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from domain_utils.cluster_os.cluster_user import ClusterUser
+from base_utils.os.grep_util import GrepUtil
+from base_utils.os.user_util import UserUtil
 
 METHOD_TRUST = "trust"
 METHOD_SHA = "sha256"
@@ -66,38 +72,38 @@ class DN_OLAP(Kernel):
         input : NA
         output : NA
         """
-        user = g_OSlib.getUserInfo()["name"]
-        appPath = DefaultValue.getInstallDir(user)
+        user = UserUtil.getUserInfo()["name"]
+        appPath = ClusterDir.getInstallDir(user)
         caPath = os.path.join(appPath, "share/sslcert/om")
         # cp cert files
-        g_file.cpFile("%s/server.crt" % caPath, "%s/" %
+        FileUtil.cpFile("%s/server.crt" % caPath, "%s/" %
                       self.instInfo.datadir)
-        g_file.cpFile("%s/server.key" % caPath, "%s/" %
+        FileUtil.cpFile("%s/server.key" % caPath, "%s/" %
                       self.instInfo.datadir)
-        g_file.cpFile("%s/cacert.pem" % caPath, "%s/" %
+        FileUtil.cpFile("%s/cacert.pem" % caPath, "%s/" %
                       self.instInfo.datadir)
-        g_file.cpFile("%s/server.key.cipher" % caPath, "%s/" %
+        FileUtil.cpFile("%s/server.key.cipher" % caPath, "%s/" %
                       self.instInfo.datadir)
-        g_file.cpFile("%s/server.key.rand" % caPath, "%s/" %
+        FileUtil.cpFile("%s/server.key.rand" % caPath, "%s/" %
                       self.instInfo.datadir)
         # change mode
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE, "%s/server.crt" %
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, "%s/server.crt" %
                           self.instInfo.datadir)
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE, "%s/server.key" %
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, "%s/server.key" %
                           self.instInfo.datadir)
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE, "%s/cacert.pem" %
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, "%s/cacert.pem" %
                           self.instInfo.datadir)
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE, "%s/server.key.cipher" %
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, "%s/server.key.cipher" %
                           self.instInfo.datadir)
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE, "%s/server.key.rand" %
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, "%s/server.key.rand" %
                           self.instInfo.datadir)
 
     def initInstance(self):
         """
-        function: 
+        function:
             init DB instance
         input:string:NA
-        output: 
+        output:
         """
         if (not os.path.exists(self.instInfo.datadir)):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] %
@@ -110,7 +116,7 @@ class DN_OLAP(Kernel):
             image_path = DefaultValue.DWS_IMAGE_PATH
             # decompress package to files
             packageName = "%s/datanode.tar.gz" % image_path
-            g_file.decompressFiles(packageName, self.instInfo.datadir)
+            CompressUtil.decompressFiles(packageName, self.instInfo.datadir)
             # set GUC parameter
             tmpDict = {}
             tmpDict["pgxc_node_name"] = "'%s'" % nodename
@@ -129,9 +135,12 @@ class DN_OLAP(Kernel):
                       % \
                       (self.binPath, self.instInfo.datadir, nodename,
                        " ".join(self.initParas), self.binPath)
+            self.logger.debug('check DCF mode:%s' % self.paxos_mode)
+            if self.paxos_mode:
+                cmd += " -c"
             self.logger.debug("Command for initializing database "
                               "node instance: %s" % cmd)
-            (status, output) = DefaultValue.retryGetstatusoutput(cmd)
+            (status, output) = CmdUtil.retryGetstatusoutput(cmd)
             if (status != 0):
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51615"] +
                                 " Command:%s. Error:\n%s" % (cmd, output))
@@ -146,7 +155,7 @@ class DN_OLAP(Kernel):
         input : NA
         output: instance node name
         """
-        user = g_OSlib.getUserInfo()["name"]
+        user = UserUtil.getUserInfo()["name"]
         clusterInfo = dbClusterInfo()
         clusterInfo.initFromStaticConfig(user)
         peerInsts = clusterInfo.getPeerInstance(self.instInfo)
@@ -171,77 +180,84 @@ class DN_OLAP(Kernel):
             peerInsts = []
         if azNames is None:
             azNames = []
-        tmpDNDict = {}
+        tmp_dn_dict = {}
+        if self.instInfo.dcf_data_path != "":
+            tmp_dn_dict["dcf_node_id"] = str(int(self.instInfo.instanceId) - 6000)
+            tmp_dn_dict["dcf_data_path"] = self.instInfo.datadir + '/dcf_data'
+            tmp_dn_dict["dcf_log_path"] = '%s/dcf_log' % ClusterDir.getUserLogDirWithUser(user)
         if "127.0.0.1" in self.instInfo.listenIps:
-            tmpDNDict["listen_addresses"] = "'%s'" % ",".join(
+            tmp_dn_dict["listen_addresses"] = "'%s'" % ",".join(
                 self.instInfo.listenIps)
         else:
-            tmpDNDict["listen_addresses"] = "'localhost,%s'" % ",".join(
+            tmp_dn_dict["listen_addresses"] = "'localhost,%s'" % ",".join(
                 self.instInfo.listenIps)
 
-        tmpDNDict["local_bind_address"] = "'%s'" % self.instInfo.listenIps[0]
-        tmpDNDict["port"] = self.instInfo.port
+        tmp_dn_dict["local_bind_address"] = "'%s'" % self.instInfo.listenIps[0]
+        tmp_dn_dict["port"] = self.instInfo.port
 
-        if (configItemType == "ConfigInstance"):
-            tmpDNDict["cstore_buffers"] = "1GB"
-            tmpDNDict["max_connections"] = "3000"
-            tmpDNDict["shared_buffers"] = "1GB"
-            tmpDNDict["work_mem"] = "64MB"
-            tmpDNDict["maintenance_work_mem"] = "128MB"
-            tmpDNDict["data_replicate_buffer_size"] = "128MB"
+        if configItemType == "ConfigInstance":
+            tmp_dn_dict["cstore_buffers"] = "1GB"
+            tmp_dn_dict["max_connections"] = "3000"
+            tmp_dn_dict["shared_buffers"] = "1GB"
+            tmp_dn_dict["work_mem"] = "64MB"
+            tmp_dn_dict["maintenance_work_mem"] = "128MB"
+            tmp_dn_dict["data_replicate_buffer_size"] = "128MB"
         if (self.clusterType ==
                 DefaultValue.CLUSTER_TYPE_SINGLE_PRIMARY_MULTI_STANDBY or
                 self.clusterType == DefaultValue.CLUSTER_TYPE_SINGLE_INST):
-            tmpDNDict["enable_data_replicate"] = "off"
-            tmpDNDict["replication_type"] = "1"
-            tmpDNDict["max_wal_senders"] = "16"
+            tmp_dn_dict["enable_data_replicate"] = "off"
+            tmp_dn_dict["replication_type"] = "1"
+            tmp_dn_dict["max_wal_senders"] = "16"
             totalnum = len(peerInsts)
             for inst in peerInsts:
                 if inst.instanceType == CASCADE_STANDBY_INSTANCE:
                     totalnum = totalnum - 1
-            tmpDNDict["application_name"] = "'dn_%s'" % \
+            tmp_dn_dict["application_name"] = "'dn_%s'" % \
                                             self.instInfo.instanceId
             if len(azNames) == 1 and totalnum > 0:
                 if syncNum == -1 and totalnum > 1:
-                    num = totalnum - 1
-                    tmpDNDict["synchronous_standby_names"] = \
-                        "'ANY %d(%s)'" % (num, azNames[0])
+                    num = (totalnum + 1)//2
+                    dn_inst_str = ",".join(['dn_{0}'.format(inst.instanceId)
+                                            for inst in peerInsts])
+                    tmp_dn_dict["synchronous_standby_names"] = \
+                        "'ANY %d(%s)'" % (num, dn_inst_str)
                 elif syncNum > 0:
-                    tmpDNDict["synchronous_standby_names"] = \
+                    tmp_dn_dict["synchronous_standby_names"] = \
                         "'ANY %d(%s)'" % (syncNum, azNames[0])
                 elif syncNum == 0:
-                    tmpDNDict["synchronous_standby_names"] = \
+                    tmp_dn_dict["synchronous_standby_names"] = \
                         "'ANY 1(%s)'" % (azNames[0])
             elif len(azNames) == 2 and totalnum in (3, 4):
-                tmpDNDict["synchronous_standby_names"] = \
+                tmp_dn_dict["synchronous_standby_names"] = \
                     "'ANY 2(%s,%s)'" % (azNames[0], azNames[1])
             elif len(azNames) == 2 and totalnum in (5, 6, 7):
-                tmpDNDict["synchronous_standby_names"] = \
+                tmp_dn_dict["synchronous_standby_names"] = \
                     "'ANY 3(%s,%s)'" % (azNames[0], azNames[1])
             elif len(azNames) == 3 and totalnum in (3, 4):
-                tmpDNDict["synchronous_standby_names"] = \
+                tmp_dn_dict["synchronous_standby_names"] = \
                     "'ANY 2(%s,%s,%s)'" % (azNames[0], azNames[1], azNames[2])
             elif len(azNames) == 3 and totalnum in (5, 6, 7):
-                tmpDNDict["synchronous_standby_names"] = \
+                tmp_dn_dict["synchronous_standby_names"] = \
                     "'ANY 3(%s,%s,%s)'" % (azNames[0], azNames[1], azNames[2])
 
-        if (self.clusterType == DefaultValue.CLUSTER_TYPE_SINGLE):
-            tmpDNDict["replication_type"] = "2"
+        if self.clusterType == DefaultValue.CLUSTER_TYPE_SINGLE:
+            tmp_dn_dict["replication_type"] = "2"
 
-        if (configItemType != "ChangeIPUtility"):
-            tmpDNDict["log_directory"] = "'%s/pg_log/dn_%d'" % (
-                DefaultValue.getUserLogDirWithUser(user),
+        if configItemType != "ChangeIPUtility":
+            tmp_dn_dict["log_directory"] = "'%s/pg_log/dn_%d'" % (
+                ClusterDir.getUserLogDirWithUser(user),
                 self.instInfo.instanceId)
-            tmpDNDict["audit_directory"] = "'%s/pg_audit/dn_%d'" % (
-                DefaultValue.getUserLogDirWithUser(user),
+            tmp_dn_dict["audit_directory"] = "'%s/pg_audit/dn_%d'" % (
+                ClusterDir.getUserLogDirWithUser(user),
                 self.instInfo.instanceId)
 
         if (len(self.instInfo.ssdDir) != 0 and configItemType !=
                 "ChangeIPUtility"):
-            tmpDNDict["ssd_cache_dir"] = "'%s'" % (self.instInfo.ssdDir)
-            tmpDNDict["enable_adio_function"] = "on"
-            tmpDNDict["enable_cstore_ssd_cache"] = "on"
-        return tmpDNDict
+            tmp_dn_dict["ssd_cache_dir"] = "'%s'" % (self.instInfo.ssdDir)
+            tmp_dn_dict["enable_adio_function"] = "on"
+            tmp_dn_dict["enable_cstore_ssd_cache"] = "on"
+        self.logger.debug("DN parameter value is : {0}".format(tmp_dn_dict))
+        return tmp_dn_dict
 
     def getPrivateGucParamList(self):
         """
@@ -298,7 +314,7 @@ class DN_OLAP(Kernel):
         connInfo2 = None
         dummyStandbyInst = None
         nodename = None
-        user = g_OSlib.getUserInfo()["name"]
+        user = UserUtil.getUserInfo()["name"]
         clusterInfo = dbClusterInfo()
         clusterInfo.initFromStaticConfig(user)
         if (self.clusterType ==
@@ -330,7 +346,7 @@ class DN_OLAP(Kernel):
 
     def configInstance(self, user, dataConfig, peerInsts,
                        configItemType=None, alarm_component=None,
-                       azNames=None, gucXml=False, clusterInfo=None):
+                       azNames=None, gucXml=False):
         """
         peerInsts : peerInsts is empty means that it is a single cluster.
         """
@@ -345,12 +361,11 @@ class DN_OLAP(Kernel):
 
         self.logger.debug("Check if tmp_guc file exists.")
         tmpGucFile = ""
-        tmpGucPath = DefaultValue.getTmpDirFromEnv(user)
+        tmpGucPath = EnvUtil.getTmpDirFromEnv(user)
         tmpGucFile = "%s/tmp_guc" % tmpGucPath
         if (os.path.exists(tmpGucFile)):
             dynamicDict = {}
-            dynamicDict = DefaultValue.dynamicGuc(user, self.logger,
-                                                  "dn", tmpGucFile,
+            dynamicDict = DefaultValue.dynamicGuc("dn", tmpGucFile,
                                                   gucXml)
             if gucXml:
                 dynamicDict["log_line_prefix"] = "'%s'" % \
@@ -392,18 +407,18 @@ class DN_OLAP(Kernel):
 
         self.modifyDummpyStandbyConfigItem()
 
-    def setPghbaConfig(self, clusterAllIpList, user='all'):
+    def setPghbaConfig(self, clusterAllIpList):
         """
         """
         principal = None
-        if (DefaultValue.checkKerberos(DefaultValue.getMpprcFile())):
+        if DefaultValue.checkKerberos(EnvUtil.getMpprcFile()):
 
             (status, output) = \
-                g_OSlib.getGrepValue("-Er", "^default_realm",
+                GrepUtil.getGrepValue("-Er", "^default_realm",
                                      os.path.join(os.path.dirname(
-                                         DefaultValue.getMpprcFile()),
+                                         EnvUtil.getMpprcFile()),
                                          DefaultValue.FI_KRB_CONF))
-            if (status != 0):
+            if status != 0:
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50222"] %
                                 "krb5.conf" + "Error:\n%s" % output)
             principal = output.split("=")[1].strip()
@@ -413,16 +428,20 @@ class DN_OLAP(Kernel):
         i = 0
         GUCParasStr = ""
         GUCParasStrList = []
+        pg_user = ClusterUser.get_pg_user()
         for ipAddress in clusterAllIpList:
             i += 1
-            # Set the initial user and initial database access permissions 
+            # Set the initial user and initial database access permissions
             if principal is None:
                 GUCParasStr += "-h \"host    all    %s    %s/32    %s\" " % \
-                               (user, ipAddress, METHOD_TRUST)
+                               (pg_user, ipAddress, METHOD_TRUST)
+                GUCParasStr += "-h \"host    all    all    %s/32    %s\" " % (ipAddress, METHOD_SHA)
+
             else:
                 GUCParasStr += "-h \"host    all    %s    %s/32    gss    " \
                                "include_realm=1    krb_realm=%s\" "\
-                               % (user, ipAddress, principal)
+                               % (pg_user, ipAddress, principal)
+                GUCParasStr += "-h \"host    all    all    %s/32    %s\" " % (ipAddress, METHOD_SHA)
             if (i % MAX_PARA_NUMBER == 0):
                 GUCParasStrList.append(GUCParasStr)
                 i = 0
@@ -440,14 +459,6 @@ class DN_OLAP(Kernel):
         uninstall/postcheck for every componet. 
     """
 
-    def fixPermission(self):
-        pass
-
     def upgrade(self):
         pass
 
-    def createPath(self):
-        pass
-
-    def postCheck(self):
-        pass

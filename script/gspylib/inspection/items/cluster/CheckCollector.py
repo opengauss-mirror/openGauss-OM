@@ -18,8 +18,9 @@ import os
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsfile import g_file
 from gspylib.common.Common import DefaultValue
+from base_utils.os.compress_util import CompressUtil
+from base_utils.os.file_util import FileUtil
 
 SHELLPATH = os.path.realpath(
     os.path.join(os.path.split(os.path.realpath(__file__))[0],
@@ -48,7 +49,7 @@ class CheckCollector(BaseItem):
         # Check the file permissions
         # Modify the file permissions
         if (not os.access(filename, os.X_OK)):
-            g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE, filename)
+            FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, filename)
 
     def genhostfile(self, nodenames):
         """
@@ -61,10 +62,10 @@ class CheckCollector(BaseItem):
         for nodename in nodenames:
             iphostInfo += '%s\n' % nodename
 
-        g_file.createFile(recordFile, True, DefaultValue.KEY_DIRECTORY_MODE)
+        FileUtil.createFile(recordFile, True, DefaultValue.KEY_DIRECTORY_MODE)
 
         # Write IP information to file
-        g_file.writeFile(recordFile, [iphostInfo])
+        FileUtil.writeFile(recordFile, [iphostInfo])
 
     def doCheck(self):
         parRes = ""
@@ -77,8 +78,8 @@ class CheckCollector(BaseItem):
         # judge permission
         self.checkFilePermission(shellName)
 
-        g_file.replaceFileLineContent('omm', self.user, shellName)
-        g_file.replaceFileLineContent(
+        FileUtil.replaceFileLineContent('omm', self.user, shellName)
+        FileUtil.replaceFileLineContent(
             '\/opt\/huawei\/Bigdata\/mppdb\/.mppdbgs_profile',
             self.mpprcFile.replace('/', '\/'), shellName)
         # the shell command
@@ -91,7 +92,7 @@ class CheckCollector(BaseItem):
         pacakageName = os.path.join(self.outPath, "checkcollector_%s"
                                     % self.context.checkID)
         # crate tar package
-        g_file.compressZipFiles(pacakageName, os.path.join(SHELLPATH, 'out'))
+        CompressUtil.compressZipFiles(pacakageName, os.path.join(SHELLPATH, 'out'))
         # Check the result information
         parRes += "The inspection(checkcollector) has been completed!\n"
         parRes += "Please perform decompression firstly." \

@@ -20,8 +20,7 @@ from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
 from gspylib.common.ErrorCode import ErrorCode
-from gspylib.os.gsfile import g_file
-
+from base_utils.os.file_util import FileUtil
 
 class CheckDNSkew(BaseItem):
     def __init__(self):
@@ -37,7 +36,7 @@ class CheckDNSkew(BaseItem):
         for DnInstance in nodeInfo.datanodes:
             if (DnInstance.instanceId in masterDnList):
                 datadir = os.path.join(DnInstance.datadir, "base")
-                output = g_file.getDirSize(datadir, "m")
+                output = FileUtil.getDirSize(datadir, "m")
                 output = output.split()[0][:-1]
                 if (not output.isdigit()):
                     raise Exception(ErrorCode.GAUSS_504["GAUSS_50412"]

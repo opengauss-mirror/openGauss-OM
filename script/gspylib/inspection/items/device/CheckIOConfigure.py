@@ -14,13 +14,11 @@
 # MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------
-import platform
-import os
-from gspylib.common.Common import DefaultValue
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsfile import g_file
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
 
 deviceNeedRepair = []
 
@@ -43,10 +41,10 @@ class CheckIOConfigure(BaseItem):
             for inst in nodeInfo.etcds:
                 dataDirList.append(inst.datadir)
 
-        dataDirList.append(DefaultValue.getEnv("PGHOST"))
-        dataDirList.append(DefaultValue.getEnv("GPHOME"))
-        dataDirList.append(DefaultValue.getEnv("GAUSSHOME"))
-        dataDirList.append(DefaultValue.getEnv("GAUSSLOG"))
+        dataDirList.append(EnvUtil.getEnv("PGHOST"))
+        dataDirList.append(EnvUtil.getEnv("GPHOME"))
+        dataDirList.append(EnvUtil.getEnv("GAUSSHOME"))
+        dataDirList.append(EnvUtil.getEnv("GAUSSLOG"))
         dataDirList.append("/tmp")
         return dataDirList
 
@@ -119,7 +117,7 @@ class CheckIOConfigure(BaseItem):
             if (not d):
                 continue
             device = {}
-            scheduler = g_file.readFile("/sys/block/%s/queue/scheduler" % d)[0]
+            scheduler = FileUtil.readFile("/sys/block/%s/queue/scheduler" % d)[0]
             words = scheduler.split("[")
             if len(words) != 2:
                 continue

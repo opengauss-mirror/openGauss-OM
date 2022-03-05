@@ -18,7 +18,7 @@ import platform
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsplatform import g_Platform
+from os_platform.UserPlatform import g_Platform
 
 
 class CheckOSVer(BaseItem):

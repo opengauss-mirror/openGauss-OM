@@ -17,16 +17,14 @@
 #############################################################################
 from gspylib.inspection.common import SharedFuncs
 
-import json
 import imp
 import types
 from abc import abstractmethod
-from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
-from gspylib.inspection.common.Log import LoggerFactory
 from gspylib.inspection.common.CheckResult import LocalItemResult, \
     ResultStatus
 from gspylib.inspection.common.Exception import CheckNAException
+from base_utils.os.net_util import NetUtil
 
 
 def defaultAnalysis(self, itemResult):
@@ -149,41 +147,6 @@ def consistentAnalysis(self, itemResult):
     return itemResult
 
 
-def getValsItems(vals):
-    """
-
-    :param vals:
-    :return:
-    """
-    ret = {}
-    for i_key, i_val in list(vals.items()):
-        try:
-            i_val = eval(i_val)
-        except Exception:
-            i_val = i_val
-        if isinstance(i_val, dict):
-            for j_key, j_val in list(i_val.items()):
-                ret[j_key] = j_val
-
-    return ret
-
-
-def getCheckType(category):
-    '''
-    function : get check type
-    input : category
-    output : 1,2,3
-    '''
-    if not category:
-        return 0
-    if category == "cluster":
-        return 1
-    elif category == "database":
-        return 3
-    else:
-        return 2
-
-
 def classifyItemResult(itemResult):
     nas = []
     oks = []
@@ -268,7 +231,7 @@ class BaseItem(object):
         self.context = None
         self.tmpPath = None
         self.outPath = None
-        self.host = DefaultValue.GetHostIpOrName()
+        self.host = NetUtil.GetHostIpOrName()
         self.result = LocalItemResult(name, self.host)
         self.routing = None
         self.skipSetItem = []
@@ -338,8 +301,8 @@ class BaseItem(object):
             self.thresholdDn = context.thresholdDn
         # new host without cluster installed
         if (not self.user):
-            self.host = DefaultValue.GetHostIpOrName()
-            self.result.host = DefaultValue.GetHostIpOrName()
+            self.host = NetUtil.GetHostIpOrName()
+            self.result.host = NetUtil.GetHostIpOrName()
 
     def __getLocalIP(self, nodeList):
         for node in nodeList:

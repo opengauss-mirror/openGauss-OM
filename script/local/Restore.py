@@ -32,11 +32,18 @@ from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.LocalBaseOM import LocalBaseOM
 from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.os.gsfile import g_file
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from base_utils.os.net_util import NetUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from base_utils.common.constantsbase import ConstantsBase
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
 # init config file parameter
 POSTGRESQL_CONF = "postgresql.conf"
 POSTGRESQL_HBA_CONF = "pg_hba.conf"
-HOSTNAME = DefaultValue.GetHostIpOrName()
+HOSTNAME = NetUtil.GetHostIpOrName()
 # init global paramter
 g_clusterUser = ""
 g_ignoreMiss = False
@@ -111,12 +118,12 @@ class LocalRestore(LocalBaseOM):
 
         try:
             self.clusterInfo = dbClusterInfo()
-            gaussHome = os.getenv("GAUSSHOME")
+            gaussHome = EnvUtil.getEnvironmentParameterValue("GAUSSHOME", self.user)
             if g_forceRestore and self.restoreBin:
                 self.clusterInfo.appPath = gaussHome
             else:
                 self.clusterInfo.initFromStaticConfig(self.user, g_staticFile)
-                hostName = DefaultValue.GetHostIpOrName()
+                hostName = NetUtil.GetHostIpOrName()
                 self.dbNodeInfo = self.clusterInfo.getDbNodeByName(hostName)
                 if self.dbNodeInfo is None:
                     self.logger.logExit(
@@ -194,11 +201,11 @@ class LocalRestore(LocalBaseOM):
                     "Creating installation path if did not exist.")
                 if (not os.path.exists(self.installPath)):
                     os.makedirs(self.installPath,
-                                DefaultValue.KEY_DIRECTORY_PERMISSION)
+                                ConstantsBase.KEY_DIRECTORY_PERMISSION)
 
                 # Restore binary files to install path.
                 self.logger.debug("Restore binary files to install path.")
-                g_file.cleanDirectoryContent(self.installPath)
+                FileUtil.cleanDirectoryContent(self.installPath)
                 cmd = g_file.SHELL_CMD_DICT["decompressTarFile"] % (
                 self.restoreDir, tarName)
                 cmd += " && "
@@ -211,7 +218,7 @@ class LocalRestore(LocalBaseOM):
                     raise Exception(ErrorCode.GAUSS_502["GAUSS_50220"] % (
                                 "binary files to install path[%s]" % \
                                 self.installPath) + " Error: \n%s" % output)
-                g_file.removeDirectory(
+                FileUtil.removeDirectory(
                     os.path.join(self.restoreDir, self.binExtractName))
             except Exception as e:
                 raise Exception(str(e))
@@ -222,7 +229,7 @@ class LocalRestore(LocalBaseOM):
             # Re-obtaining clusterInfo because the restoreBin succeeded
             if self.dbNodeInfo is None:
                 self.clusterInfo.initFromStaticConfig(self.user, g_staticFile)
-                hostName = DefaultValue.GetHostIpOrName()
+                hostName = NetUtil.GetHostIpOrName()
                 self.dbNodeInfo = self.clusterInfo.getDbNodeByName(
                         hostName)
                 if self.dbNodeInfo is None:
@@ -239,7 +246,7 @@ class LocalRestore(LocalBaseOM):
                 temp_dir = os.path.join(self.restoreDir,
                                         "parameter_%s" % HOSTNAME)
                 if (os.path.exists(temp_dir)):
-                    g_file.removeDirectory(temp_dir)
+                    FileUtil.removeDirectory(temp_dir)
 
                 # extract parameter files to the temporary directory
                 self.logger.debug(
@@ -276,13 +283,13 @@ class LocalRestore(LocalBaseOM):
                 paraFileNum = len(paraFileList)
                 for i in range(paraFileNum):
                     tarFileName, paraFilePath = paraFileList[i].split('|')
-                    g_file.cpFile(os.path.join(temp_dir, tarFileName),
+                    FileUtil.cpFile(os.path.join(temp_dir, tarFileName),
                                   paraFilePath)
 
                 self.logger.debug("Remove the temporary directory.")
-                g_file.removeDirectory(temp_dir)
+                FileUtil.removeDirectory(temp_dir)
             except Exception as e:
-                g_file.removeDirectory(temp_dir)
+                FileUtil.removeDirectory(temp_dir)
                 raise Exception(str(e))
             self.logger.log("Successfully restored parameter files.")
 
@@ -314,7 +321,7 @@ class LocalRestore(LocalBaseOM):
         output: NA
         """
         # make sure the hostname stored in tar files
-        localHostName = DefaultValue.GetHostIpOrName()
+        localHostName = NetUtil.GetHostIpOrName()
         with open(hostnameFile, 'r') as self.__hostNameFile:
             storedHostName = self.__hostNameFile.read()
         storedHostName.strip('\n')
@@ -418,20 +425,7 @@ def checkUserExist():
     """
     if (g_clusterUser == ""):
         GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % "U" + ".")
-    DefaultValue.checkUser(g_clusterUser, False)
-
-
-def checkLogFile(logFile):
-    """
-    function: check log file
-    input : NA
-    output: NA
-    """
-    if (logFile == ""):
-        logFile = DefaultValue.getOMLogPath(DefaultValue.LOCAL_LOG_FILE,
-                                            g_clusterUser, "")
-    if (not os.path.isabs(logFile)):
-        GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"] % "log")
+    ClusterUser.checkUser(g_clusterUser, False)
 
 
 def checkRestorePara(restorePara, restoreBin):
@@ -508,14 +502,15 @@ def main():
         Parameter.checkParaVaild(key, value)
 
     if (g_ignoreMiss):
-        gaussHome = DefaultValue.getEnv("GAUSSHOME")
+        gaussHome = EnvUtil.getEnv("GAUSSHOME")
         if not gaussHome:
             return
 
     # check if user exist and is the right user
     checkUserExist()
     # check log file
-    checkLogFile(logFile)
+    logFile = ClusterLog.checkLogFile(logFile, g_clusterUser, "",
+                                      ClusterConstants.LOCAL_LOG_FILE)
     # check -p and -b
     checkRestorePara(restorePara, restoreBin)
     # check -P

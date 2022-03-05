@@ -16,20 +16,24 @@
 # ----------------------------------------------------------------------------
 
 import sys
-import time
 import subprocess
 import time
 import base64
 import json
 
+
 sys.path.append(sys.path[0] + "/../../../")
 from gspylib.common.Common import DefaultValue
 from gspylib.common.OMCommand import OMCommand
 from gspylib.common.ErrorCode import ErrorCode
-from gspylib.os.gsfile import g_file
-from gspylib.os.gsplatform import g_Platform
-from gspylib.os.gsOSlib import g_OSlib
 from impl.collect.CollectImpl import CollectImpl
+from base_utils.executor.cmd_executor import CmdExecutor
+from base_utils.os.cmd_util import CmdUtil
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from base_utils.os.compress_util import CompressUtil
+from base_utils.os.file_util import FileUtil
+from base_utils.os.net_util import NetUtil
+from base_utils.os.user_util import UserUtil
 
 
 class CollectImplOLAP(CollectImpl):
@@ -59,7 +63,7 @@ class CollectImplOLAP(CollectImpl):
             self.context.appPath = self.context.clusterInfo.appPath
 
             # Obtain the cluster installation directory owner and group
-            (self.context.user, self.context.group) = g_OSlib.getPathOwner(
+            (self.context.user, self.context.group) = UserUtil.getPathOwner(
                 self.context.appPath)
             if (self.context.user == "" or self.context.group == ""):
                 self.context.logger.logExit(ErrorCode.GAUSS_503["GAUSS_50308"])
@@ -77,7 +81,7 @@ class CollectImplOLAP(CollectImpl):
             self.context.initSshTool(self.context.nodeName,
                                      DefaultValue.TIMEOUT_PSSH_COLLECTOR)
             if (len(self.context.nodeName) == 1 and self.context.nodeName[
-                0] == DefaultValue.GetHostIpOrName()):
+                0] == NetUtil.GetHostIpOrName()):
                 self.context.localMode = True
         except Exception as e:
             raise Exception(str(e))
@@ -100,20 +104,19 @@ class CollectImplOLAP(CollectImpl):
                    json.dumps(check).replace("$", "\$").replace("\"", "#") \
                    + "\'"
 
-    def checkTmpDir(self):
+    def checkLogDir(self):
         """
-        function: Check tmp dir, if tmp dir not exist, create it
-        input : TmpDirFromEnv
-        output: NA
+        function: Check Log dir, if log dir not exist, create it
         """
         try:
             # Create a temporary file
-            tmpDir = DefaultValue.getTmpDirFromEnv()
-            cmd = "(if [ ! -d '%s' ];then mkdir -p '%s' -m %s;fi)" \
-                  % (tmpDir, tmpDir, DefaultValue.KEY_DIRECTORY_MODE)
-            DefaultValue.execCommandWithMode(
+            logDir = ClusterDir.getLogDirFromEnv("")
+            cmd = "(if [ ! -d '%s' ];then mkdir -p '%s' -m %s;fi)" % (
+                logDir,
+                logDir,
+                DefaultValue.KEY_DIRECTORY_MODE)
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "Check temporary directory",
                 self.context.sshTool,
                 self.context.isSingle or self.context.localMode,
                 self.context.mpprcFile)
@@ -173,13 +176,13 @@ class CollectImplOLAP(CollectImpl):
             resultdir = self.context.outFile
         else:
             # rm the tmpdir
-            resultdir = DefaultValue.getTmpDirFromEnv()
+            resultdir = ClusterDir.getLogDirFromEnv("")
 
         cmd = \
             "if [ -d '%s'/collector_tmp_* ];" \
             "then rm -rf '%s'/collector_tmp_*; fi" % (
                 resultdir, resultdir)
-        (status, output) = DefaultValue.retryGetstatusoutput(cmd)
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
                             + "Error:\n%s" % output)
@@ -187,8 +190,8 @@ class CollectImplOLAP(CollectImpl):
         targetdir = "%s/collector_tmp_%s" % (resultdir, currentTime)
         self.context.outFile = "%s/collector_%s" % (targetdir, currentTime)
         # Create a folder to store log information
-        g_file.createDirectory(self.context.outFile)
-        g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE,
+        FileUtil.createDirectory(self.context.outFile)
+        FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE,
                           self.context.outFile, True)
         return (currentTime, targetdir, resultdir)
 
@@ -655,7 +658,7 @@ class CollectImplOLAP(CollectImpl):
             OMCommand.getLocalScript("Local_Collect"),
             self.context.user,
             self.context.outFile,
-            DefaultValue.GetHostIpOrName(),
+            NetUtil.GetHostIpOrName(),
             self.context.localLog)
 
         flag = 0
@@ -722,15 +725,15 @@ class CollectImplOLAP(CollectImpl):
             # tar the result and delete directory
             tarFile = "collector_%s.tar.gz" % currentTime
             destDir = "collector_%s" % currentTime
-            cmd = "%s && %s" % (g_Platform.getCdCmd(targetdir),
-                                g_Platform.getCompressFilesCmd(tarFile,
+            cmd = "%s && %s" % (CmdUtil.getCdCmd(targetdir),
+                                CompressUtil.getCompressFilesCmd(tarFile,
                                                                destDir))
-            cmd += " && %s" % g_Platform.getChmodCmd(
+            cmd += " && %s" % CmdUtil.getChmodCmd(
                 str(DefaultValue.KEY_FILE_MODE), tarFile)
-            cmd += " && %s" % g_Platform.getMoveFileCmd(tarFile, "../")
+            cmd += " && %s" % CmdUtil.getMoveFileCmd(tarFile, "../")
             cmd += " && %s '%s'" % (
-                g_Platform.getRemoveCmd("directory"), targetdir)
-            DefaultValue.execCommandLocally(cmd)
+                CmdUtil.getRemoveCmd("directory"), targetdir)
+            CmdExecutor.execCommandLocally(cmd)
             self.context.logger.log(
                 "All results are stored in %s/collector_%s.tar.gz." % (
                     resultdir, currentTime))
@@ -763,7 +766,7 @@ class CollectImplOLAP(CollectImpl):
             self.checkCommand()
 
         # check tmp directory
-        self.checkTmpDir()
+        self.checkLogDir()
 
         self.createDir()
         # create store dir

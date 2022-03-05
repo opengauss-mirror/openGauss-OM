@@ -23,9 +23,10 @@ import time
 sys.path.append(sys.path[0] + "/../../")
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.Common import DefaultValue
-from gspylib.os.gsfile import g_file
-from gspylib.os.gsOSlib import g_OSlib
-from gspylib.os.gsnetwork import g_network
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from base_utils.os.process_util import ProcessUtil
+from base_utils.os.net_util import NetUtil
 
 TIME_OUT = 2
 RETRY_TIMES = 100
@@ -51,14 +52,12 @@ class BaseComponent(object):
         self.dwsMode = False
         self.level = 1
         self.clusterType = DefaultValue.CLUSTER_TYPE_SINGLE_INST
+        self.paxos_mode = ''
 
     def install(self):
         pass
 
     def setGucConfig(self, setMode='set', paraDict=None):
-        pass
-
-    def getGucConfig(self, paraList):
         pass
 
     def setPghbaConfig(self):
@@ -73,21 +72,7 @@ class BaseComponent(object):
     def uninstall(self):
         pass
 
-    def killProcess(self):
-        """
-        function: kill process
-        input:  process flag
-        output: NA
-        """
-        pass
-
-    def fixPermission(self):
-        pass
-
     def upgrade(self):
-        pass
-
-    def createPath(self):
         pass
 
     def perCheck(self):
@@ -109,7 +94,7 @@ class BaseComponent(object):
         for port in portList:
             self.__checkport(port, ipList)
         # check ip
-        failIps = g_network.checkIpAddressList(ipList)
+        failIps = NetUtil.checkIpAddressList(ipList)
         if (len(failIps) > 0):
             raise Exception(ErrorCode.GAUSS_506["GAUSS_50600"] +
                             " The IP is %s." % ",".join(failIps))
@@ -120,7 +105,7 @@ class BaseComponent(object):
         input : NA
         output: NA
         """
-        tmpDir = DefaultValue.getTmpDirFromEnv()
+        tmpDir = EnvUtil.getTmpDirFromEnv()
         if (not os.path.exists(tmpDir)):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] %
                             tmpDir + " Please create it first.")
@@ -157,7 +142,7 @@ class BaseComponent(object):
                     if (retryTime > RETRY_TIMES):
                         retryFlag = False
                         try:
-                            portProcessInfo = g_OSlib.getPortProcessInfo(port)
+                            portProcessInfo = ProcessUtil.getPortProcessInfo(port)
                             self.logger.debug("The ip [%s] port [%s] is "
                                               "occupied. \nBind error "
                                               "msg:\n%s\nDetail msg:\n%s" % \
@@ -179,7 +164,7 @@ class BaseComponent(object):
         res = []
         try:
             rangeFile = "/proc/sys/net/ipv4/ip_local_port_range"
-            output = g_file.readFile(rangeFile)
+            output = FileUtil.readFile(rangeFile)
             res = output[0].split()
         except Exception as e:
             self.logger.debug(
@@ -197,5 +182,3 @@ class BaseComponent(object):
                               "range of random port(%d - %d)." % (minPort,
                                                                   maxPort))
 
-    def postCheck(self):
-        pass

@@ -24,7 +24,6 @@ class CheckIdleSession(BaseItem):
         super(CheckIdleSession, self).__init__(self.__class__.__name__)
 
     def doCheck(self):
-        dbNode = self.cluster.getDbNodeByName(self.host)
         sqlcmd = "select pid, query_id, application_name, query_start, " \
                  "state, " \
                  "query from pg_stat_activity where state <> 'idle' and " \

@@ -5608,46 +5608,4 @@ analyze pmk.pmk_configuration;""", """
 analyze pmk.pmk_snapshot;""", """
 analyze pmk.pmk_snapshot_datanode_stat;""", """
 analyze pmk.pmk_meta_data;"""]
-TEST_PMK = """
-DECLARE
-    pmk_oid oid;
-    class_count int;
-    proc_count int;
-BEGIN
-    --if pmk schema not exist, it will raise an error.
-    select oid from pg_namespace where nspname='pmk' into pmk_oid;
-    select count(*) from pg_class where relnamespace=pmk_oid into class_count;
-    select count(*) from pg_proc where pronamespace=pmk_oid into proc_count;
-    raise exception 'pmk schema exist. class count is %, proc count is %.', 
-    class_count , proc_count;
-END;
-"""
-dnquerySql = ""
-dnquerySql += "SELECT node_name, COALESCE(pns.physical_reads, 0), " \
-              "COALESCE(pns.physical_writes, 0), "
-dnquerySql += "COALESCE(pns.read_time, 0), COALESCE(pns.write_time, 0), " \
-              "COALESCE(pns.xact_commit, 0), "
-dnquerySql += "COALESCE(pns.xact_rollback, 0), " \
-              "COALESCE(pns.checkpoints_timed, 0)," \
-              " COALESCE(pns.checkpoints_req, 0), "
-dnquerySql += "COALESCE(pns.checkpoint_write_time, 0), " \
-              "COALESCE(pns.blocks_read, 0), " \
-              "COALESCE(pns.blocks_hit, 0), "
-dnquerySql += "COALESCE(pns.busy_time, 0), " \
-              "COALESCE(pns.idle_time, 0), " \
-              "COALESCE(pns.iowait_time, 0), "
-dnquerySql += "COALESCE(pns.db_cpu_time, 0) FROM " \
-              "pmk.pmk_snapshot_datanode_stat pns "
-dnquerySql += "WHERE pns.snapshot_id = %s"
 
-totalSql = {
-    "getMetaData": "SELECT l_pmk_curr_collect_start_time, "
-                   "l_pmk_last_collect_start_time, l_last_snapshot_id "
-                   "FROM pmk.get_meta_data();",
-    "deleteSnapShots": "SELECT * FROM pmk.delete_expired_snapshots();",
-    "getRedistributeRate": "set statement_timeout = 20000;select name,value "
-                           "from public.redis_progress where name in "
-                           "('Bytes Done', 'Bytes Left');",
-    "getNodeStatDN": dnquerySql,
-    "checkTransactionReadonly": "show default_transaction_read_only;"
-}

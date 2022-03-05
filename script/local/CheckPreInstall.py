@@ -28,8 +28,8 @@ import pwd
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.ParameterParsecheck import Parameter
-from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
 PREINSTALL_FLAG = "1"
 INSTALL_FLAG = "2"
@@ -78,27 +78,25 @@ def main():
         Parameter.checkParaVaild(key, value)
 
     # check user
-    if (DBUser == ""):
+    if DBUser == "":
         GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % 'U' + ".")
 
     try:
         execUser = pwd.getpwuid(os.getuid()).pw_name
-        if (execUser != DBUser):
+        if execUser != DBUser:
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % "U")
         # Check if user exists and if is the right user
-        DefaultValue.checkUser(DBUser, False)
+        ClusterUser.checkUser(DBUser, False)
     except Exception as e:
         GaussLog.exitWithError(str(e))
     # check if have done preinstall for this user
     cmd = "echo $GAUSS_ENV 2>/dev/null"
     (status, output) = subprocess.getstatusoutput(cmd)
-    if (status != 0):
+    if status != 0:
         GaussLog.exitWithError(
             ErrorCode.GAUSS_518["GAUSS_51802"] % "GAUSS_ENV")
     if checkInstall == "preinstall":
-        if (
-                output.strip() == PREINSTALL_FLAG or output.strip() ==
-                INSTALL_FLAG):
+        if output.strip() == PREINSTALL_FLAG or output.strip() == INSTALL_FLAG:
             GaussLog.printMessage("Successfully checked GAUSS_ENV.")
             sys.exit(0)
         else:

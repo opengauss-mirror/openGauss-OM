@@ -26,11 +26,10 @@ sys.path.append(sys.path[0] + "/../../")
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.Common import DefaultValue
 from gspylib.common.GaussLog import GaussLog
-from gspylib.os.gsfile import g_file
-from gspylib.common.VersionInfo import VersionInfo
+from base_utils.os.file_util import FileUtil
+from domain_utils.cluster_file.version_info import VersionInfo
 
 PARAMETER_VALUEDICT = {}
-PARAMETER_KEYLIST = []
 ParameterDict = {}
 Itemstr = []
 skipItems = []
@@ -38,6 +37,7 @@ user_passwd = []
 EnvParams = []
 DbInitParam = []
 DataGucParam = []
+cm_server_guc_param = []
 NODE_NAME = []
 
 # Add parameter: the logic cluster name
@@ -47,12 +47,14 @@ PARA_CHECK_LIST = ["-t", "-h", "-m", "--mode",
                    "-N", "--time-out", "--alarm-component",
                    "--parallel-jobs", '--redis-mode', "--ring-num",
                    "--virtual-ip",
-                   "--nodeName", "--name", "--failure-limit"]
+                   "--nodeName", "--name", "--failure-limit", "--skip-items",
+                   "script_type=", "oldcluster_num=", "guc_string=", "setType="]
 PATH_CHEKC_LIST = ["-M", "-o", "-f", "-X", "-P", "-s", "-R", "-Q",
                    "--position", "-B",
                    "--backupdir", "--sep-env-file", "-l", "--logpath",
                    "--backup-dir",
-                   "--priority-tables", "--exclude-tables"]
+                   "--priority-tables", "--exclude-tables", "upgrade_bak_path=",
+                   "old_cluster_app_path=", "new_cluster_app_path="]
 VALUE_CHECK_LIST = ["|", ";", "&", "$", "<", ">", "`", "\\", "'", "\"", "{",
                     "}", "(", ")",
                     "[", "]", "~", "*", "?", "!", "\n"]
@@ -65,7 +67,7 @@ gs_preinstall = ["-?", "--help", "-V", "--version", "-U:", "-G:", "-L",
                  "--env-var=", "--sep-env-file=", "--skip-hostname-set",
                  "-l:", "--non-interactive"]
 gs_install = ["-?", "--help", "-V", "--version", "-X:", "-l:",
-              "--gsinit-parameter=", "--dn-guc=",
+              "--gsinit-parameter=", "--dn-guc=", "--cms-guc=",
               "--time-out=", "--alarm-component="]
 gs_uninstall = ["-?", "--help", "-V", "--version", "-l:", "-L",
                 "--delete-data"]
@@ -117,12 +119,6 @@ gs_om_cert = ["-t:", "-?", "--help", "-V", "--version", "-L", "-l:",
               "--cert-file=", "--rollback"]
 gs_om_kerberos = ["-t:", "-?", "--help", "-V", "--version", "-m:", "-U:",
                   "-X:", "-l:", "--krb-server", "--krb-client"]
-gs_sql_list = ["-t:", "-?", "--help", "-V", "--version", "-c:",
-               "--dbname=", "--dbuser=", "-W:"]
-gs_start = ["-n:", "-?", "--help", "-V", "--version", "-t:",
-            "-D:"]
-gs_stop = ["-n:", "-?", "--help", "-V", "--version", "-t:",
-           "-D:", "-m:"]
 gs_om_refreshconf = ["-t:", "-?", "--help", "-V", "--version", "-l:"]
 # gs_upgradectl child branch
 # AP and TP are same
@@ -211,10 +207,8 @@ class Parameter():
                             ErrorCode.GAUSS_500["GAUSS_50000"] % paraInfo)
             # check delete parameter -h and -f, if specified lcname,
             # not required -h or -f.
-            check_delete_name = False
             for check_i in sys.argv[1:]:
-                if ("--name" in check_i):
-                    check_delete_name = True
+                if "--name" in check_i:
                     break
             (opts, args) = getopt.getopt(sys.argv[1:], shortParameter,
                                          longParameter)
@@ -349,7 +343,6 @@ class Parameter():
                            "--non-interactive": "preMode",
                            "--skip-os-set": "skipOSSet",
                            "--skip-hostname-set": "skipHostnameSet",
-                           "--no-deduplicate": "noDeduplicate",
                            "--reset": "reset",
                            "--parameter": "isParameter",
                            "--binary": "isBinary",
@@ -437,6 +430,8 @@ class Parameter():
                 DbInitParam.append(value)
             elif (key == "--dn-guc"):
                 DataGucParam.append(value)
+            elif key == "--cms-guc":
+                cm_server_guc_param.append(value)
             elif (key == "-l"):
                 PARAMETER_VALUEDICT['logFile'] = os.path.realpath(value)
             elif (key == "--backup-dir"):
@@ -478,6 +473,7 @@ class Parameter():
                            "envparams": EnvParams,
                            "dbInitParams": DbInitParam,
                            "dataGucParams": DataGucParam,
+                           "cmServerGucParams": cm_server_guc_param,
                            "itemstr": Itemstr,
                            "skipItems": skipItems,
                            "nodename": NODE_NAME
@@ -509,6 +505,20 @@ class Parameter():
                                                "GAUSS_50011"] % \
                                            (para, value) +
                                            " Invaild value: %s." % role)
+
+    @staticmethod
+    def check_parse(key, value):
+        """
+                function: check para supplements
+                input : NA
+                output: NA
+                """
+        if value is None:
+            return
+        for i in VALUE_CHECK_LIST:
+            if value.find(i) >= 0:
+                GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50011"] % \
+                                       (key, value) + " Invaild value: %s." % key)
 
     def checkLcGroupName(self, lcPara, lcGroupName):
         """
@@ -555,19 +565,18 @@ class Parameter():
         output: NA
         """
         actions = []
-        getMode = False
-        if (module in special_list):
-            if (sys.argv[1:] == []):
+        if module in special_list:
+            if sys.argv[1:] == []:
                 GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50014"]
                                        % module)
-            if (sys.argv[1:][-1] == "-t"):
+            if sys.argv[1:][-1] == "-t":
                 GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % \
                                        "t" + " option -t requires argument.")
 
             for n, value in enumerate(sys.argv[1:]):
-                if (sys.argv[1:][n - 1] == "-t"):
+                if sys.argv[1:][n - 1] == "-t":
                     actions.append(value)
-                    if (len(actions) != 1):
+                    if len(actions) != 1:
                         GaussLog.exitWithError(
                             ErrorCode.GAUSS_500["GAUSS_50006"] % actions[0])
                     self.action = value
@@ -635,7 +644,7 @@ class Parameter():
                                        "Error:\noption %s requires argument"
                                        % key)
             path = str(value)
-            g_file.checkFilePermission(path, True)
+            FileUtil.check_file_permission(path, True)
             return path
         except Exception as e:
             GaussLog.exitWithError(str(e))

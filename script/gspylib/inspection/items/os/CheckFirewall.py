@@ -19,8 +19,8 @@ import subprocess
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsservice import g_service
-from gspylib.os.gsplatform import g_Platform
+from os_platform.gsservice import g_service
+from os_platform.UserPlatform import g_Platform
 
 EXPECTED_VALUE = "disabled"
 SUSE_FLAG = "SuSEfirewall2 not active"

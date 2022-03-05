@@ -19,7 +19,6 @@
 # Description  : gs_uninstall is a utility to uninstall a Gauss200 server.
 #############################################################################
 
-import subprocess
 import os
 import sys
 import pwd
@@ -28,12 +27,17 @@ sys.path.append(sys.path[0] + "/../")
 
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.Common import DefaultValue
-from gspylib.common.OMCommand import OMCommand
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.ParallelBaseOM import ParallelBaseOM
 from gspylib.common.ParameterParsecheck import Parameter
-from gspylib.os.gsfile import g_file
 from impl.uninstall.OLAP.UninstallImplOLAP import UninstallImplOLAP
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from base_utils.os.net_util import NetUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
 #####################################################
 # Ation type
@@ -105,19 +109,19 @@ General options:
             GaussLog.exitWithError(ErrorCode.GAUSS_503["GAUSS_50308"])
         # else check user
         try:
-            DefaultValue.checkUser(self.user, False)
+            ClusterUser.checkUser(self.user, False)
         except Exception as e:
             GaussLog.exitWithError(str(e))
 
         # check log file
         if (self.logFile == ""):
-            self.logFile = DefaultValue.getOMLogPath(
-                DefaultValue.UNINSTALL_LOG_FILE, self.user, "")
+            self.logFile = ClusterLog.getOMLogPath(
+                ClusterConstants.UNINSTALL_LOG_FILE, self.user, "")
         if (not os.path.isabs(self.logFile)):
             GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"] % "log")
 
         # get user env info
-        self.mpprcFile = DefaultValue.getMpprcFile()
+        self.mpprcFile = EnvUtil.getMpprcFile()
 
     def initGlobals(self):
         """
@@ -141,12 +145,12 @@ General options:
         clusterPath = []
         try:
             # get tool path
-            clusterPath.append(DefaultValue.getClusterToolPath(self.user))
+            clusterPath.append(ClusterDir.getClusterToolPath(self.user))
             # get tmp path
-            tmpDir = DefaultValue.getTmpDirFromEnv()
+            tmpDir = EnvUtil.getTmpDirFromEnv()
             clusterPath.append(tmpDir)
             # get cluster path
-            hostName = DefaultValue.GetHostIpOrName()
+            hostName = NetUtil.GetHostIpOrName()
             dirs = self.clusterInfo.getClusterDirectorys(hostName, False)
             # loop all cluster path
             for checkdir in dirs.values():
@@ -154,7 +158,7 @@ General options:
             self.logger.debug("Cluster paths %s." % clusterPath)
 
             # check directory
-            g_file.checkIsInDirectory(self.logFile, clusterPath)
+            FileUtil.checkIsInDirectory(self.logFile, clusterPath)
         except Exception as e:
             self.logger.logExit(str(e))
 

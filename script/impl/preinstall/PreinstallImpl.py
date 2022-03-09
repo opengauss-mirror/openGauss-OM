@@ -250,7 +250,7 @@ class PreinstallImpl:
         bashrc_file = os.path.join(pwd.getpwuid(os.getuid()).pw_dir, ".bashrc")
         kill_ssh_agent_cmd = "ps ux | grep 'ssh-agent' | grep -v grep | awk '{print $2}' | " \
                              "xargs kill -9"
-        delete_line_cmd = " && sed -i '/^\\s*export\\s*SSH_AUTH_SOCK=.*$/d' %s" % bashrc_file
+        delete_line_cmd = " ; sed -i '/^\\s*export\\s*SSH_AUTH_SOCK=.*$/d' %s" % bashrc_file
         delete_line_cmd += " && sed -i '/^\\s*export\\s*SSH_AGENT_PID=.*$/d' %s" % bashrc_file
         delete_shell_cmd = " && rm -rf %s && rm -rf %s" % (sshDir, tmp_path)
         cmd = "%s" + delete_line_cmd + delete_shell_cmd

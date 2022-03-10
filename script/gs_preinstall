@@ -345,7 +345,9 @@ General options:
                                  "&& mv ./bin/encrypt ./script/gspylib/clib && rm -rf ./bin"
         (status, _) = subprocess.getstatusoutput(cmd)
         if status != 0:
-            cmd = "cd " + toolpath + " && tar -xpf `ls openGauss*.tar.bz2|tail -1` ./version.cfg"
+            cmd = "cd " + toolpath + " && tar -xpf `ls openGauss*.tar.bz2|tail -1` ./version.cfg" \
+                                     " ./bin/encrypt && mv ./bin/encrypt ./script/gspylib/clib" \
+                                     " && rm -rf ./bin"
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0:
                 GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"] % "version.cfg"

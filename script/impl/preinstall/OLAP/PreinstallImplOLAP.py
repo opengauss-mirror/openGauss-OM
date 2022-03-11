@@ -429,7 +429,6 @@ class PreinstallImplOLAP(PreinstallImpl):
             self.context.logger.debug("Command for setting Cgroup: %s." % cmd)
             # exec cmd fro set cgroup
             CmdExecutor.execCommandWithMode(cmd,
-                                            "set Cgroup",
                                             self.context.sshTool,
                                             self.context.localMode or self.context.isSingle,
                                             self.context.mpprcFile)

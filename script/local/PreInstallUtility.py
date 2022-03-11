@@ -1205,6 +1205,13 @@ Common options:
         DefaultValue.cleanUserEnvVariable(userProfile,
                                           cleanGS_CLUSTER_NAME=False)
         self.logger.debug("Successfully delete user's environmental variable.")
+        if self.mpprcFile:
+            #import environment variable separation scene to bashrc
+            FileUtil.deleteLine(ClusterConstants.HOME_USER_BASHRC % self.user,
+                                "^\\s*export\\s*%s=.*$" % DefaultValue.MPPRC_FILE_ENV)
+            context = "export %s=%s" %(DefaultValue.MPPRC_FILE_ENV, self.mpprcFile)
+            FileUtil.writeFile(ClusterConstants.HOME_USER_BASHRC % self.user, [context])
+            self.logger.debug("Successfully flush 'export MPPRC' in bashrc")
 
         # user's environmental variable
         self.logger.debug("Seting user's environmental variable.")

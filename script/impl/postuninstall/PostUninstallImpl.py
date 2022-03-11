@@ -464,6 +464,9 @@ class PostUninstallImpl:
             # clean user's environmental variable
             DefaultValue.cleanUserEnvVariable(userProfile,
                                               cleanGAUSS_WARNING_TYPE=True)
+            if os.path.exists(ClusterConstants.HOME_USER_BASHRC % self.user):
+                FileUtil.deleteLine(ClusterConstants.HOME_USER_BASHRC % self.user,
+                                    "^\\s*export\\s*%s=.*$" % DefaultValue.MPPRC_FILE_ENV)
 
             # clean $GAUSS_ENV
             if (not self.deleteUser):

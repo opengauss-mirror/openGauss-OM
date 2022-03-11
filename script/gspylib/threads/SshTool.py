@@ -704,6 +704,8 @@ class SshTool():
         """
         scpCmd = "source /etc/profile"
         outputCollect = ""
+        localMode = False
+        resultMap = {}
         if hostList is None:
             hostList = []
         try:
@@ -735,6 +737,7 @@ class SshTool():
                 hostList = self.hostNames
             if len(hostList) == 1 and hostList[0] == socket.gethostname() and \
                 srcFile != targetDir:
+                localMode = True
                 scpCmd = "cp -r %s %s" % (srcFile, targetDir)
             else:
                 scpCmd += " && %s -r -v -t %s -p %s -H %s -o %s -e %s %s %s" \
@@ -763,7 +766,36 @@ class SshTool():
                                 + " Error:\n%s" % output)
 
             # ip and host name should match here
-            resultMap, outputCollect = self.parseSshResult(hostList)
+            if localMode:
+                dir_permission = 0o700
+                if status == 0:
+                    resultMap[hostList[0]] = DefaultValue.SUCCESS
+                    outputCollect = "[%s] %s:\n%s" % ("SUCCESS", hostList[0],
+                                                      SensitiveMask.mask_pwd(output))
+
+                    if not os.path.exists(self.__outputPath):
+                        os.makedirs(self.__outputPath, mode=dir_permission)
+                    file_path = os.path.join(self.__outputPath, hostList[0])
+                    FileUtil.createFileInSafeMode(file_path)
+                    with open(file_path, "w") as fp:
+                        fp.write(SensitiveMask.mask_pwd(output))
+                        fp.flush()
+                        fp.close()
+                else:
+                    resultMap[hostList[0]] = DefaultValue.FAILURE
+                    outputCollect = "[%s] %s:\n%s" % ("FAILURE", hostList[0],
+                                                      SensitiveMask.mask_pwd(output))
+
+                    if not os.path.exists(self.__errorPath):
+                        os.makedirs(self.__errorPath, mode=dir_permission)
+                    file_path = os.path.join(self.__errorPath, hostList[0])
+                    FileUtil.createFileInSafeMode(file_path)
+                    with open(file_path, "w") as fp:
+                        fp.write(SensitiveMask.mask_pwd(output))
+                        fp.flush()
+                        fp.close()
+            else:
+                resultMap, outputCollect = self.parseSshResult(hostList)
         except Exception as e:
             self.clenSshResultFiles()
             raise Exception(str(e))

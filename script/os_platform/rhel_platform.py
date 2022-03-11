@@ -26,7 +26,7 @@ from gspylib.common.ErrorCode import ErrorCode
 from os_platform.common import BIT_VERSION, EULEROS, SUPPORT_EULEROS_VERSION_LIST, \
     SUPPORT_RHEL_SERIES_PLATFORM_LIST, \
     SUPPORT_RHEL_SERIES_VERSION_LIST, OPENEULER, CENTOS, \
-    SUPPORT_RHEL7X_VERSION_LIST, DEBIAN
+    SUPPORT_RHEL7X_VERSION_LIST, DEBIAN, BLANK_SPACE
 from os_platform.linux_distro import LinuxDistro
 from os_platform.linux_platform import LinuxPlatform
 
@@ -141,6 +141,18 @@ class RHELPlatform(LinuxPlatform):
                             % ("systemd-journald", "SuSE"))
         except Exception as e:
             raise Exception(str(e))
+    
+    def getBlockdevCmd(self, device, value="", isSet=False):
+        """
+        function: get block dev cmd
+        input  :  device, value, isSet
+        output : str
+        """
+        if isSet and value != "":
+            return self.findCmdInPath('blockdev') + " --setra " + value + \
+                   BLANK_SPACE + device
+        else:
+            return self.findCmdInPath('blockdev') + " --getra " + device
 
     def getCurrentPlatForm(self):
         """

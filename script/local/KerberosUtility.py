@@ -874,7 +874,7 @@ class Kerberos():
 
     def __initKadm5Conf(self, dest_dir):
         kadm5_file = os.path.realpath(os.path.join(dest_dir, "kadm5.acl"))
-        cmd = "sed -i 's/#realms#/HUAWEI.COM/g' %s" % kadm5_file
+        cmd = "sed -i 's/#realms#/OPENGAUSS.ORG/g' %s" % kadm5_file
         (status, output) = subprocess.getstatusoutput(cmd)
         if (status != 0):
             g_logger.debug("The cmd is %s " % cmd)
@@ -930,7 +930,7 @@ class Kerberos():
     def __initMppdbSite(self, dest_dir):
         mppdb_site_file = os.path.realpath(os.path.join(dest_dir,
                                                         "mppdb-site.xml"))
-        principal = "%s/huawei.huawei.com@HUAWEI.COM " % g_opts.user
+        principal = "%s/opengauss.org@OPENGAUSS.ORG " % g_opts.user
         cmd = "sed -i 's;#mppdb.kerberos.principal#;%s;g' %s" % \
               (principal, mppdb_site_file)
         (status, output) = subprocess.getstatusoutput(cmd)
@@ -1030,7 +1030,7 @@ class Kerberos():
             os.makedirs(os.path.dirname(kerberos_database_file),
                         mode=dir_permission)
             passwd = RandomValue.getRandStr()
-            cmd = "source %s && echo -e '%s\n%s\n%s' | kdb5_util create -r HUAWEI.COM -s -m" % \
+            cmd = "source %s && echo -e '%s\n%s\n%s' | kdb5_util create -r OPENGAUSS.ORG -s -m" % \
                   (g_opts.mpprcFile, str(passwd), str(passwd), str(passwd))
             proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
             stdout, stderr = proc.communicate()
@@ -1047,7 +1047,7 @@ class Kerberos():
 
         # create kerberos database user
         cmd = "source %s && kadmin.local -q \"addprinc  " \
-              "-randkey %s/huawei.huawei.com\"" % \
+              "-randkey %s/opengauss.org\"" % \
               (g_opts.mpprcFile, g_opts.user)
         proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
         stdout, stderr = proc.communicate()
@@ -1059,7 +1059,7 @@ class Kerberos():
 
         # create kerberos keytab
         cmd = "source %s && kadmin.local -q \"ktadd -k %s/%s.keytab " \
-              "%s/huawei.huawei.com@HUAWEI.COM\"" % \
+              "%s/opengauss.org@OPENGAUSS.ORG\"" % \
                 (g_opts.mpprcFile, g_opts.gausshome_kerberso,
                  g_opts.user, g_opts.user)
         proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)

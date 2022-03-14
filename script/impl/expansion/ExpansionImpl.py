@@ -176,8 +176,8 @@ class ExpansionImpl():
                 if not os.path.exists(file):
                     GaussLog.exitWithError("Package [%s] is not found." % file)
                 sshTool.scpFiles(file, srcFile, [host])
-            sshTool.executeCommand("cd %s;tar -xf %s" % (srcFile, pkgfiles[0]) , 
-                "", DefaultValue.SUCCESS, [host])
+            sshTool.executeCommand("cd %s;tar -xf %s" % (srcFile, pkgfiles[0]), 
+                                   DefaultValue.SUCCESS, [host])
             self.cleanSshToolFile(sshTool)
         self.logger.log("End to send soft to each standby nodes.")
     
@@ -373,7 +373,7 @@ class ExpansionImpl():
             self.getIncreaseAppNames(len(standbyHosts))):
             if not self.expansionSuccess[newHost]:
                 continue
-            log_path = DefaultValue.getUserLogDirWithUser(self.user)
+            log_path = ClusterDir.getUserLogDirWithUser(self.user)
             log_dir = "%s/pg_log/dn_%d" % (log_path, appName)
             audit_dir = "%s/pg_audit/dn_%d" % (log_path, appName)
             installCmd = "source {envFile} ; gs_install -X {xmlFile}" \
@@ -463,12 +463,12 @@ class ExpansionImpl():
 
         if not EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH"):
             preinstallCmd = "{softPath}/script/gs_preinstall -U {user} -G {group} "\
-                "-X {xmlFile} --non-interactive 2>&1".format(
+                "-X {xmlFile} --non-interactive --skip-hostname-set 2>&1".format(
                 softPath = self.context.packagepath, user = self.user,
                 group = self.group, xmlFile = tempXmlFile)
         else:
             preinstallCmd = "{softPath}/script/gs_preinstall -U {user} -G {group} " \
-                            "-X {xmlFile} --sep-env-file={envFile} " \
+                            "-X {xmlFile} --sep-env-file={envFile} --skip-hostname-set " \
                             "--non-interactive 2>&1".format(softPath = self.context.packagepath,
                                                             user = self.user,
                                                             group = self.group,
@@ -935,9 +935,8 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             srcFile = staticConfigPath
             if not os.path.exists(srcFile):
                 GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35710"] % srcFile)
-            hostSsh = SshTool([hostName])
+            
             targetFile = "%s/bin/cluster_static_config" % appPath
-            hostSsh.scpFiles(srcFile, targetFile, [hostName], self.envFile)
             # if dynamic config file exists on primary node, refreshconf on each host.
             # if not, remove it on standby nodes if exists.
             dynamic_opt_cmd = ""
@@ -946,8 +945,18 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             else:
                 dynamic_opt_cmd = "if [ -f '%s' ];then rm %s;fi" % \
                     (dynamic_file, dynamic_file)
-            hostSsh.getSshStatusOutput(dynamic_opt_cmd, [hostName], self.envFile)
-            self.cleanSshToolFile(hostSsh)
+                        
+            if hostName != socket.gethostname():
+                hostSsh = SshTool([hostName])
+                hostSsh.scpFiles(srcFile, targetFile, [hostName], self.envFile)
+                hostSsh.getSshStatusOutput(dynamic_opt_cmd, [hostName], self.envFile)
+                self.cleanSshToolFile(hostSsh)
+            else:
+                scpcmd = "cp %s %s" % (srcFile, targetFile)
+                (status, output) = subprocess.getstatusoutput(scpcmd)
+                if status != 0:
+                    GaussLog.exitWithError("Copy file faild. %s" % output)
+                
         self.logger.log("End to generate and send cluster static file.\n")
         if DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo) > 0:
             self.logger.debug("Check new host state after restart.")

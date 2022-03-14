@@ -80,6 +80,9 @@ ACTION_GREY_RESTORE_GUC = "grey_restore_guc"
 ACTION_CLEAN_CONF_BAK_OLD = "clean_conf_bak_old"
 ACTION_SET_GUC_VALUE = "setGucValue"
 ACTION_CLEAN_CM = "clean_cm_inst"
+ACTION_RESTORE_GLOBAL_RELMAP_FILE = "restore_global_relmap_file"
+ACTION_CLEAN_TMP_GLOBAL_RELMAP_FILE = "clean_tmp_global_relmap_file"
+ACTION_BACKUP_GLOBAL_RELMAP_FILE = "backup_global_relmap_file"
 
 OPTION_PRECHECK = "before"
 OPTION_POSTCHECK = "after"
@@ -169,3 +172,4 @@ MAX_APP_SIZE = 2000
 UPGRADE_VERSION_64bit_xid = 91.208
 ENABLE_STREAM_REPLICATION_VERSION = "92.149"
 ENABLE_STREAM_REPLICATION_NAME = "enable_stream_replication"
+RELMAP_4K_VERSION = "92.420"

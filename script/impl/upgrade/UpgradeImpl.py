@@ -240,6 +240,10 @@ class UpgradeImpl:
                 # we will only rollback specified nodes
                 self.context.action = self.choseStrategy()
                 self.context.rollback = True
+                if self.context.oldClusterNumber < const.RELMAP_4K_VERSION and self.context.forceRollback:
+                    errMsg = "could not do force rollback in this version: %s" % self.context.oldClusterNumber
+                    self.context.logger.log(errMsg)
+                    self.exitWithRetCode(action, False, errMsg)
                 if self.context.action == const.ACTION_INPLACE_UPGRADE:
                     self.exitWithRetCode(const.ACTION_AUTO_ROLLBACK,
                                          self.doInplaceBinaryRollback())
@@ -1085,6 +1089,8 @@ class UpgradeImpl:
                 # 14. exec post upgrade script
                 if self.context.action == const.ACTION_LARGE_UPGRADE:
                     self.waitClusterForNormal()
+                    # backup global relmap file before doing upgrade-post
+                    self.backupGlobalRelmapFile()
                     self.prepareSql("rollback-post")
                     self.execRollbackUpgradedCatalog(scriptType="rollback-post")
                     self.prepareSql("upgrade-post")
@@ -1773,6 +1779,88 @@ class UpgradeImpl:
                                  self.doInplaceBinaryRollback())
         self.exitWithRetCode(const.ACTION_INPLACE_UPGRADE, True)
 
+    def backupGlobalRelmapFile(self):
+        """
+        Wait and check if all standbys have replayed upto flushed xlog
+        positions of primaries, then backup global/pg_filenode.map.
+        if old cluster version num >= RELMAP_4K_VERSION, then no need to backup
+        """
+        if self.context.oldClusterNumber >= const.RELMAP_4K_VERSION:
+            self.context.logger.debug("no need to backup global relmap file")
+            return
+
+        # perform a checkpoint and wait standby catchup
+        self.createCheckpoint()
+        self.HASyncReplayCheck(False)
+        # send cmd to all node and exec
+        cmd = "%s -t %s -U %s -l %s -V %d" % \
+                (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+                const.ACTION_BACKUP_GLOBAL_RELMAP_FILE,
+                self.context.user,
+                self.context.localLog,
+                int(float(self.context.oldClusterNumber) * 1000))
+        self.context.logger.debug("backup global relmap file: %s." % cmd)
+        hostList = copy.deepcopy(self.context.clusterNodes)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle,
+                                        self.context.mpprcFile)
+        self.context.logger.debug("Successfully backup global relmap file.")
+
+    def cleanTmpGlobalRelampFile(self):
+        """
+        remove global/pg_filenode.map when commit, if old cluster
+        version num >= RELMAP_4K_VERSION, then no need to remove.
+        """
+        if self.context.oldClusterNumber >= const.RELMAP_4K_VERSION:
+            self.context.logger.debug("no need to clean tmp global relmap file")
+            return
+        # send cmd to all node and exec
+        cmd = "%s -t %s -U %s -l %s -V %d" % \
+                (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+                const.ACTION_CLEAN_TMP_GLOBAL_RELMAP_FILE,
+                self.context.user,
+                self.context.localLog,
+                int(float(self.context.oldClusterNumber) * 1000))
+
+        self.context.logger.debug("clean tmp global relmap file when commit or rollback: %s." % cmd)
+        hostList = copy.deepcopy(self.context.clusterNodes)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle,
+                                        self.context.mpprcFile)
+        self.context.logger.debug("Successfully clean tmp global relmap file.")
+
+    def restoreGlobalRelampFile(self):
+        """
+        restore global/pg_filenode.map when rollback, if old cluster
+        version num >= RELMAP_4K_VERSION, then no need to restore.
+        use pg_filenode.old.map to recover pg_filenode.map and pg_filenode.map.backup
+        """
+        if self.context.oldClusterNumber >= const.RELMAP_4K_VERSION:
+            self.context.logger.debug("no need to restore global relmap file")
+            return
+
+        # perform checkpoint and wait standby sync before rollback
+        self.createCheckpoint()
+        self.HASyncReplayCheck(False)
+
+        # send cmd to all node and exec
+        cmd = "%s -t %s -U %s -l %s -V %d" % \
+                (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+                const.ACTION_RESTORE_GLOBAL_RELMAP_FILE,
+                self.context.user,
+                self.context.localLog,
+                int(float(self.context.oldClusterNumber) * 1000))
+
+        self.context.logger.debug("restore global relmap file when commit: %s." % cmd)
+        hostList = copy.deepcopy(self.context.clusterNodes)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle,
+                                        self.context.mpprcFile)
+        self.context.logger.debug("Successfully restore global relmap file.")
+
     def doInplaceCommitUpgrade(self):
         """
         function: commit binary upgrade and clean up backup files
@@ -1846,6 +1934,8 @@ class UpgradeImpl:
             self.install_kerberos()
             self.context.logger.log("Clean temp files for upgrade succeeded.", "constant")
             self.context.logger.log("NOTICE: Commit binary upgrade succeeded.")
+        # remove global relmap file
+        self.cleanTmpGlobalRelampFile()
         self.exitWithRetCode(const.ACTION_INPLACE_UPGRADE, cleanUpSuccess)
 
     def install_kerberos(self):
@@ -2101,7 +2191,7 @@ class UpgradeImpl:
                                         self.context.userProfile,
                                         hosts)
 
-    def HASyncReplayCheck(self):
+    def HASyncReplayCheck(self, catchupFailedOk = True):
         """
         function: Wait and check if all standbys have replayed upto flushed
                   xlog positions of primaries.We record primary xlog flush
@@ -2111,16 +2201,16 @@ class UpgradeImpl:
                   position may increase during the check.We do not check such
                    newly added xlog because they will not change catalog
                    physical file position.
-        Input: NA
+        Input: catchupFailedOk, if it's ok standby catch up primay failed
         output : NA
         """
         self.context.logger.debug("Start to wait and check if all the standby"
                                   " instances have replayed all xlogs.")
-        self.doReplay()
+        self.doReplay(catchupFailedOk)
         self.context.logger.debug("Successfully performed the replay check "
                                   "of the standby instance.")
 
-    def doReplay(self):
+    def doReplay(self, catchupFailedOk):
         refreshTimeout = 180
         waitTimeout = 300
         RefreshTime = datetime.now() + timedelta(seconds=refreshTimeout)
@@ -2190,10 +2280,12 @@ class UpgradeImpl:
                         "Error: \n%s" % str(output))
 
             if datetime.now() > EndTime and NeedReplay:
-                self.context.logger.log("WARNING: " + ErrorCode.GAUSS_513[
-                    "GAUSS_51300"] % sql + " Timeout while waiting for "
-                                           "standby replay.")
-                return
+                logStr = "WARNING: " + ErrorCode.GAUSS_513["GAUSS_51300"] % sql +\
+                    " Timeout while waiting for standby replay."
+                if catchupFailedOk:
+                    self.context.logger.log(logStr)
+                    return
+                raise Exception(logStr)
             time.sleep(5)
 
     def getXlogPosition(self, output):
@@ -2411,6 +2503,8 @@ class UpgradeImpl:
             else:
                 self.context.logger.debug("Post upgrade.")
                 self.waitClusterForNormal()
+                # backup global relmap file before doing upgrade-post
+                self.backupGlobalRelmapFile()
                 self.execRollbackUpgradedCatalog(scriptType="rollback-post")
                 self.execRollbackUpgradedCatalog(scriptType="upgrade-post")
 
@@ -3168,6 +3262,8 @@ class UpgradeImpl:
             self.dropSupportSchema()
             self.cleanBinaryUpgradeBakFiles()
             self.cleanConfBakOld()
+            # remove tmp global relmap file
+            self.cleanTmpGlobalRelampFile()
             self.context.logger.log("Commit upgrade succeeded.")
         except Exception as e:
             self.exitWithRetCode(const.ACTION_COMMIT_UPGRADE, False, str(e))
@@ -3261,6 +3357,7 @@ class UpgradeImpl:
             if self.unSetClusterReadOnlyMode() != 0:
                 self.context.logger.log(
                     "WARNING: Failed to unset cluster read only mode.")
+
             if self.context.forceRollback:
                 # if one node is uninstalled,
                 # there will be no binary_upgrade dir
@@ -3310,6 +3407,8 @@ class UpgradeImpl:
                         self.setUpgradeMode(2)
                         self.execRollbackUpgradedCatalog(
                             scriptType="rollback-post")
+                        # restore old relmap file after rollback-post
+                        self.restoreGlobalRelampFile()
                 except Exception as e:
                     if self.context.forceRollback:
                         self.context.logger.debug("Error: %s" % str(e))
@@ -3343,6 +3442,7 @@ class UpgradeImpl:
                 self.dropSupportSchema()
                 self.initOmRollbackProgressFile()
                 self.cleanBinaryUpgradeBakFiles(True)
+                self.cleanTmpGlobalRelampFile()
         except Exception as e:
             self.context.logger.debug(str(e))
             self.context.logger.debug(traceback.format_exc())
@@ -3661,6 +3761,7 @@ class UpgradeImpl:
                                     ErrorCode.GAUSS_529["GAUSS_52907"])
                 self.cleanBinaryUpgradeBakFiles(True)
                 self.cleanInstallPath(const.NEW)
+                self.cleanTmpGlobalRelampFile()
                 # install kerberos
                 self.install_kerberos()
         except Exception as e:

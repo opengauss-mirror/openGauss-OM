@@ -69,6 +69,9 @@ STANDBY_INSTANCE = 1
 # statu failed
 STATUS_FAIL = "Failure"
 
+BASE_ID_DATANODE = 6001
+MAX_DATANODE_NUM = 9
+
 
 class ExpansionImpl():
     """
@@ -101,10 +104,11 @@ class ExpansionImpl():
             self.envFile = mpprcFile
 
         currentTime = str(datetime.datetime.now()).replace(" ", "_").replace(
-            ".", "_")
+            ".", "_").replace(":", "_")
 
         self.commonGsCtl = GsCtlCommon(expansion)
         self.tempFileDir = "/tmp/gs_expansion_%s" % (currentTime)
+        self.remote_pkg_dir = os.path.join(self.tempFileDir, "pkg")
         self.logger.debug("tmp expansion dir is %s ." % self.tempFileDir)
         # primary's wal_keep_segments value
         self.walKeepSegments = -1
@@ -170,14 +174,15 @@ class ExpansionImpl():
         for host in self.context.newHostList:
             sshTool = SshTool([host], timeout=time_out)
             # mkdir package dir and send package to remote nodes.
-            sshTool.executeCommand("umask 0022;mkdir -p %s" % srcFile ,
+            sshTool.executeCommand("umask 0022;mkdir -m a+x -p %s; chown %s:%s %s" % \
+                (self.remote_pkg_dir, self.user, self.group, self.tempFileDir),
                 DefaultValue.SUCCESS, [host])
             for file in pkgfiles:
                 if not os.path.exists(file):
                     GaussLog.exitWithError("Package [%s] is not found." % file)
-                sshTool.scpFiles(file, srcFile, [host])
-            sshTool.executeCommand("cd %s;tar -xf %s" % (srcFile, pkgfiles[0]), 
-                                   DefaultValue.SUCCESS, [host])
+                sshTool.scpFiles(file, self.remote_pkg_dir, [host])
+            sshTool.executeCommand("cd %s;tar -xf %s" % (self.remote_pkg_dir, 
+                os.path.basename(pkgfiles[0])), DefaultValue.SUCCESS, [host])
             self.cleanSshToolFile(sshTool)
         self.logger.log("End to send soft to each standby nodes.")
     
@@ -351,12 +356,20 @@ class ExpansionImpl():
         clusterInfo.initFromStaticConfigWithoutUser(staticFile)
         dbNodes = clusterInfo.dbNodes
 
-        maxinsId = -1
+        newInsIds = []
+        existInsIds = []
         for dbNode in dbNodes:
             for dnInst in dbNode.datanodes:
-                maxinsId = max(maxinsId, int(dnInst.instanceId))
-        
-        return range(maxinsId + 1, maxinsId + 1 + num)
+                existInsIds.append(int(dnInst.instanceId))
+        idx = 0
+        while idx <= MAX_DATANODE_NUM and num > 0:
+            insId = BASE_ID_DATANODE + idx
+            if insId not in existInsIds:
+                newInsIds.append(insId)
+                existInsIds.append(insId)
+                num -= 1
+            idx += 1
+        return newInsIds
 
     def installDatabaseOnHosts(self):
         """
@@ -464,12 +477,12 @@ class ExpansionImpl():
         if not EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH"):
             preinstallCmd = "{softPath}/script/gs_preinstall -U {user} -G {group} "\
                 "-X {xmlFile} --non-interactive --skip-hostname-set 2>&1".format(
-                softPath = self.context.packagepath, user = self.user,
+                softPath = self.remote_pkg_dir, user = self.user,
                 group = self.group, xmlFile = tempXmlFile)
         else:
             preinstallCmd = "{softPath}/script/gs_preinstall -U {user} -G {group} " \
                             "-X {xmlFile} --sep-env-file={envFile} --skip-hostname-set " \
-                            "--non-interactive 2>&1".format(softPath = self.context.packagepath,
+                            "--non-interactive 2>&1".format(softPath = self.remote_pkg_dir,
                                                             user = self.user,
                                                             group = self.group,
                                                             xmlFile = tempXmlFile,

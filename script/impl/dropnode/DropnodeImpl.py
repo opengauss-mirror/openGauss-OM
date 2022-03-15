@@ -641,7 +641,7 @@ class OperCommon:
             self.logger.debug(
                 "[gs_dropnode]Get repl slot failed:" + output)
             GaussLog.exitWithError(ErrorCode.GAUSS_358["GAUSS_35809"])
-        return ','.join(output.split('\n')[1:])
+        return ','.join(output.split('\n'))
 
     def SetReplSlot(self, host, gsqlPath, port, dnid,
                     flag_rollback=False):

@@ -553,12 +553,9 @@ class ExpansionClusterInfo(dbClusterInfo):
                 self.compare_list(a_dict.get(a_key), b_dict.get(a_key))
                 self._remove_normal_msg(a_key)
             elif isinstance(a_dict.get(a_key), str):
-                if a_key not in IGNORE_CHECK_KEY:
-                    self.compare_string(a_dict.get(a_key), b_dict.get(a_key))
-                self._remove_normal_msg(a_key)
+                pass
             elif isinstance(a_dict.get(a_key), int):
-                self.compare_int(a_dict.get(a_key), b_dict.get(a_key))
-                self._remove_normal_msg(a_key)
+                pass
             else:
                 raise Exception("Not support type. key is {0} , "
                                 "static value is {1}, XML value is {2}, "

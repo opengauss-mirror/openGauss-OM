@@ -28,7 +28,7 @@ import grp
 
 sys.path.append(sys.path[0] + "/../../")
 from gspylib.common.ErrorCode import ErrorCode
-from gspylib.common.VersionInfo import VersionInfo
+from domain_utils.cluster_file.version_info import VersionInfo
 from gspylib.os.gsplatform import g_Platform, findCmdInPath
 from gspylib.os.gsfile import g_file
 

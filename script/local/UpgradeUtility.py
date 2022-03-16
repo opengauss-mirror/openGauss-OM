@@ -2208,7 +2208,14 @@ def  cleanInstallPath():
     pluginPath = "%s/lib/postgresql/pg_plugin" % installPath
     cmd = "(if [ -d '%s' ]; then chmod -R %d '%s'; fi)" % (
         pluginPath, DefaultValue.KEY_DIRECTORY_MODE, pluginPath)
+    cm_cert_dir = os.path.realpath(os.path.join(installPath, "share", "sslcert", "cm"))
+    cmd += " && (if [ -d '%s' ]; then chmod -R %d '%s'; fi)" % (cm_cert_dir, 
+                                                                DefaultValue.KEY_DIRECTORY_MODE, 
+                                                                cm_cert_dir)
     appBakPath = "%s/to_be_delete" % tmpDir
+    cmd += " && (if [ -d '%s' ]; then chmod -R %d '%s'; fi)" % (appBakPath, 
+                                                                DefaultValue.KEY_DIRECTORY_MODE, 
+                                                                appBakPath)
     cmd += " && (if [ ! -d '%s' ]; then mkdir -p '%s'; fi)" % (
         appBakPath, appBakPath)
     cmd += " && (if [ -d '%s' ]; then cp -r '%s/' '%s/to_be_delete/'; fi)" % (
@@ -3669,20 +3676,34 @@ def greyUpgradeSyncConfig():
         g_logger.debug("Current version is the new version, "
                        "no need to sync old configure to new install path.")
         return
-    # synchronize static and dynamic configuration files
-    static_config = "%s/bin/cluster_static_config" % srcDir
-    cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
-        static_config, static_config, destDir)
-    dynamic_config = "%s/bin/cluster_dynamic_config" % srcDir
-    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
-        dynamic_config, dynamic_config, destDir)
+    
+    old_static_config_file = os.path.join(g_opts.oldClusterAppPath, "bin/cluster_static_config")
+    old_static_cluster_info = dbClusterInfo()
+    old_static_cluster_info.initFromStaticConfig(g_opts.user, old_static_config_file)
+    new_static_config_file = os.path.join(g_opts.newClusterAppPath, "bin/cluster_static_config")
+    if not os.path.isfile(new_static_config_file):
+        raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % 
+                        os.path.realpath(new_static_config_file))
+    if DefaultValue.check_add_cm(old_static_config_file, new_static_config_file, g_logger):
+        install_cm_instance(new_static_config_file)
+        cmd = ""
+    else:
+        g_logger.debug("No need to install CM component for grey upgrade sync config.")
+        # synchronize static and dynamic configuration files
+        static_config = "%s/bin/cluster_static_config" % srcDir
+        cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+            static_config, static_config, destDir)
+        dynamic_config = "%s/bin/cluster_dynamic_config" % srcDir
+        cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi) && " % (
+            dynamic_config, dynamic_config, destDir)
     # sync obsserver.key.cipher/obsserver.key.rand and
     #  server.key.cipher/server.key.rand and
     # datasource.key.cipher/datasource.key.rand
     # usermapping.key.cipher/usermapping.key.rand
     # subscription.key.cipher/subscription.key.rand
+    
     OBS_cipher_key_bak_file = "%s/bin/obsserver.key.cipher" % srcDir
-    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+    cmd += "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
         OBS_cipher_key_bak_file, OBS_cipher_key_bak_file, destDir)
     OBS_rand_key_bak_file = "%s/bin/obsserver.key.rand" % srcDir
     cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
@@ -3864,6 +3885,17 @@ def greyUpgradeSyncConfig():
         srcDir, destDir)
     g_logger.debug("Grey upgrade sync command: %s" % cmd)
     CmdExecutor.execCommandLocally(cmd)
+
+    cm_cert_old_dir = os.path.realpath(os.path.join(srcDir, "share", "sslcert", "cm"))
+    cm_cert_dest_dir = os.path.realpath(os.path.join(destDir, "share", "sslcert"))
+    restore_cm_cert_file_cmd = "(if [ -d '%s' ];" \
+                               "then cp -r '%s' '%s/';fi)" % (cm_cert_old_dir, 
+                                                              cm_cert_old_dir, 
+                                                              cm_cert_dest_dir)
+    g_logger.debug("Restore CM cert files for grey upgrade cmd: " \
+                   "{0}".format(restore_cm_cert_file_cmd))
+    CmdExecutor.execCommandLocally(restore_cm_cert_file_cmd)
+    g_logger.debug("Restore CM cert files for grey upgrade successfully.")
 
 
 def setGucValue():
@@ -4177,9 +4209,17 @@ def greyRestoreConfig():
     if os.path.samefile(g_opts.oldClusterAppPath, g_gausshome):
         g_logger.log("Current version is old version, nothing need to do.")
         return
-    static_config = "%s/bin/cluster_static_config" % newDir
-    cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
-        static_config, static_config, oldDir)
+    old_static_config_file = os.path.realpath(os.path.join(g_opts.oldClusterAppPath, 
+                                                           "bin", "cluster_static_config"))
+    new_static_config_file = os.path.realpath(os.path.join(g_opts.newClusterAppPath, 
+                                                           "bin", "cluster_static_config"))
+    if DefaultValue.check_add_cm(old_static_config_file, new_static_config_file, g_logger):
+        g_logger.log("There is no need to copy static and dynamic config file.")
+        return
+    g_logger.log("Start to copy static and dynamic config file.")
+    cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (new_static_config_file, 
+                                                                new_static_config_file, 
+                                                                oldDir)
     dynamic_config = "%s/bin/cluster_dynamic_config" % newDir
     cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
         dynamic_config, dynamic_config, oldDir)
@@ -4335,7 +4375,8 @@ def clean_cm_instance():
         server_component.killProcess()
         FileUtil.cleanDirectoryContent(local_node.cmservers[0].datadir)
         g_logger.debug("Clean cm_server instance successfully.")
-    FileUtil.cleanDirectoryContent(local_node.cmagents[0].datadir)
+    if os.path.isdir(local_node.cmagents[0].datadir):
+        FileUtil.cleanDirectoryContent(local_node.cmagents[0].datadir)
     g_logger.debug("Local clean CM instance directory [{0}] successfully.".format(clean_dir))
 
 

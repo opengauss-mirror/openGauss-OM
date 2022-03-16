@@ -1056,7 +1056,10 @@ class UpgradeImpl:
                 self.greySyncGuc()
                 self.greyUpgradeSyncOldConfigToNew()
                 # 11. switch the cluster version to new version
+                self.getOneDNInst(checkNormal=True)
                 self.switchBin(const.NEW)
+                # create CA for CM
+                self.create_ca_for_cm()
                 self.setNewVersionGuc()
                 self.recordNodeStep(GreyUpgradeStep.STEP_UPGRADE_PROCESS)
             if currentStep < GreyUpgradeStep.STEP_UPDATE_POST_CATALOG:
@@ -1189,6 +1192,27 @@ class UpgradeImpl:
             raise Exception(str(e) + " Failed to sync configuration.")
         self.context.logger.log("Successfully synced cluster configuration.")
 
+    def _check_and_start_cluster(self):
+        """
+        Check cluster state and start cluster
+        """
+        self.context.logger.log("Check cluster state.")
+        cmd = "source {0};gs_om -t status".format(self.context.userProfile)
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            self.context.logger.debug("Check cluster state failed. Output: {0}".format(output))
+            return
+        if "cluster_state   : Degraded" in output or "cluster_state   : Normal" in output:
+            self.context.logger.log("Cluster state: {0}".format(output))
+            return
+        self.context.logger.log("Cluster need start now.")
+        cmd = "source {0};gs_om -t start".format(self.context.userProfile)
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            self.context.logger.debug("Start cluster state failed. Output: {0}".format(output))
+            return
+        self.context.logger.log("Cluster is started now.")
+
     def switchExistsProcess(self, isRollback=False):
         """
         switch all the process
@@ -1196,6 +1220,7 @@ class UpgradeImpl:
         :return:
         """
         self.context.logger.log("Switching all db processes.", "addStep")
+        self._check_and_start_cluster()
         self.createCheckpoint()
         self.switchDn(isRollback)
         try:
@@ -1212,7 +1237,7 @@ class UpgradeImpl:
 
     def createCheckpoint(self):
         try:
-            self.context.logger.debug("Create checkpoint before switching.")
+            self.context.logger.log("Create checkpoint before switching.")
             start_time = timeit.default_timer()
             # create checkpoint
             sql = "CHECKPOINT;"
@@ -3329,6 +3354,7 @@ class UpgradeImpl:
                 self.greyRestoreGuc()
                 if needSwitchProcess:
                     self.rollbackHotpatch()
+                    self.getOneDNInst(checkNoraml=True)
                     self.switchExistsProcess(True)
                 self.recordNodeStep(GreyUpgradeStep.STEP_UPDATE_CATALOG)
             if maxStep >= GreyUpgradeStep.STEP_UPDATE_CATALOG and\
@@ -3419,7 +3445,7 @@ class UpgradeImpl:
         count = 0
         status, output = 1, ""
         while count < retryTime:
-            self.getOneDNInst(checkNormal=True)
+
             self.context.logger.debug(
                 "Exec sql in dn node {0}".format(self.dnInst.hostname))
             (status, output) = ClusterCommand.remoteSQLCommand(

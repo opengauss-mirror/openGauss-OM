@@ -377,6 +377,18 @@ class Install(LocalBaseOM):
                                 % cm_package + " Error: \n%s" % str(output))
         self.logger.log("Decompress CM package successfully.")
 
+    def generate_install_path(self):
+        """
+        Generate install path
+        """
+        if os.path.isdir(self.installPath):
+            self.logger.debug("[{0}] is normal. "
+                              "No need to generate install directory.".format(self.installPath))
+            return
+        self.logger.debug("Try to create new app path.")
+        FileUtil.createDirectory(self.installPath, True, DefaultValue.KEY_DIRECTORY_MODE)
+        self.logger.debug("Try to create new app path successfully.")
+
     def __decompressBinPackage(self):
         """
         function: Install database binary file.
@@ -391,6 +403,7 @@ class Install(LocalBaseOM):
         cmd = "export LD_LIBRARY_PATH=$GPHOME/script/gspylib/clib:" \
               "$LD_LIBRARY_PATH && "
         # decompress tar file.
+        self.generate_install_path()
         str_cmd = cmd + "tar -xpf \"" + tar_file + "\" -C \"" + \
                  self.installPath + "\""
         self.logger.debug("Decompress cmd is: %s" % str_cmd)

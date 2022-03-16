@@ -686,7 +686,7 @@ def log_copy():
     input : NA
     output: NA
     """
-    g_logger.info("Starting collect log.")
+    g_logger.debug("Starting collect log.")
     g_jobInfo.jobName = "Collecting pg_log information"
     logfiletar = "log_%s.tar.gz" % datetime.datetime.now().strftime(
         "%Y%m%d_%H%M%S%f")
@@ -741,12 +741,12 @@ def log_copy():
         else:
             g_jobInfo.failedTask["find log files"] = ErrorCode.GAUSS_535[
                                                          "GAUSS_53504"] % 'log'
-        g_logger.info("Successfully find log files.")
+        g_logger.debug("Successfully find log files.")
 
     else:
         g_jobInfo.failedTask["find log files"] = ErrorCode.GAUSS_535[
             "GAUSS_53505"]
-        g_logger.info("There is no log files.")
+        g_logger.debug("There is no log files.")
 
     # Make temporary directory and copy
     cmd = "cd $GAUSSLOG && mkdir -p -m %s tmp_gs_collector" % \
@@ -780,7 +780,7 @@ def log_copy():
             raise Exception("")
 
     g_jobInfo.successTask.append("copy log files")
-    g_logger.info("Successful to copy logFiles.")
+    g_logger.debug("Successful to copy logFiles.")
 
     # Filter zip files
     cmd = "cd $GAUSSLOG && find . -type f -iname '*.zip' -print" \
@@ -879,7 +879,7 @@ def log_copy():
 
     subprocess.getstatusoutput("cd '%s'/logfiles/ && chmod %s *" % (
     g_resultdir, DefaultValue.FILE_MODE))
-    g_logger.info("Successfully collected log files.")
+    g_logger.debug("Successfully collected log files.")
     g_logger.log(json.dumps(g_jobInfo.__dict__))
 
 

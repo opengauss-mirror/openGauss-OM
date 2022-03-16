@@ -17,13 +17,12 @@
 import os
 import json
 import configparser
-import multiprocessing
 from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.inspection.common import SharedFuncs
-from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
+from base_utils.os.net_util import NetUtil
 
 # master 
 MASTER_INSTANCE = 0
@@ -64,7 +63,7 @@ class CheckGUCConsistent(BaseItem):
                 lcName = os.path.splitext(os.path.basename(staticConfigFile))[
                     0]
                 for dbnode in clusterInfo.dbNodes:
-                    if (dbnode.name == DefaultValue.GetHostIpOrName()):
+                    if (dbnode.name == NetUtil.GetHostIpOrName()):
                         return [lcName, dbnode]
             return ["", None]
         else:
@@ -166,7 +165,7 @@ class CheckGUCConsistent(BaseItem):
                 needm = False
             else:
                 needm = True
-            output = SharedFuncs.runSqlCmd(sqlcmd, self.user, "",
+            SharedFuncs.runSqlCmd(sqlcmd, self.user, "",
                                            Instance.port, self.tmpPath,
                                            'postgres', self.mpprcFile, needm)
             self.checkInstanceGucValue(Instance, needm, "", logicCluster)

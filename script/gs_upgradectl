@@ -44,6 +44,7 @@ import sys
 import pwd
 import grp
 import copy
+import re
 
 from gspylib.common.Common import DefaultValue
 from gspylib.common.GaussLog import GaussLog
@@ -53,6 +54,10 @@ from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.ParameterParsecheck import Parameter
 import impl.upgrade.UpgradeConst as Const
 from impl.upgrade.OLAP.UpgradeImplOLAP import UpgradeImplOLAP
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.net_util import NetUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
 
 
 class Upgrade(ParallelBaseOM):
@@ -74,7 +79,7 @@ class Upgrade(ParallelBaseOM):
         self.nodesNum = -1
         self.nodeNames = []
         ##static parameter
-        self.binTarName = "binary_%s.tar" % DefaultValue.GetHostIpOrName()
+        self.binTarName = "binary_%s.tar" % NetUtil.GetHostIpOrName()
         self.rollback = False
         self.is_inplace_upgrade = True
         self.is_grey_upgrade = False
@@ -94,10 +99,9 @@ Usage:
   gs_upgradectl -? | --help
   gs_upgradectl -V | --version
   gs_upgradectl -t chose-strategy [-l LOGFILE]
-  gs_upgradectl -t commit-upgrade -X XMLFILE [-l LOGFILE]
-
   gs_upgradectl -t auto-upgrade -X XMLFILE [-l LOGFILE] [--grey]
   gs_upgradectl -t auto-rollback -X XMLFILE [-l LOGFILE] [--force]
+  gs_upgradectl -t commit-upgrade -X XMLFILE [-l LOGFILE]
 
 General options:
   -?, --help                      Show help information for this utility,
@@ -108,6 +112,7 @@ General options:
                                   commit-upgrade.
   -X                              Path of the XML configuration file of the
                                   later version cluster.
+  -l                              Path of log file.
   --force                         Force to rollback when cluster status is
                                   not normal
   --grey                          Use grey-binary-upgrade
@@ -160,19 +165,19 @@ General options:
 
         # we must make sure the env 'GAUSSHOME', 'GS_CLUSTER_NAME',
         # 'GAUSS_ENV' exists
-        if (DefaultValue.getEnvironmentParameterValue("GAUSSHOME",
+        if (EnvUtil.getEnvironmentParameterValue("GAUSSHOME",
                                                       self.user) == ""):
             raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$GAUSSHOME")
-        if (DefaultValue.getEnvironmentParameterValue("GS_CLUSTER_NAME",
+        if (EnvUtil.getEnvironmentParameterValue("GS_CLUSTER_NAME",
                                                       self.user) == ""):
             raise Exception(
                 ErrorCode.GAUSS_518["GAUSS_51800"] % "$GS_CLUSTER_NAME")
-        if (DefaultValue.getEnvironmentParameterValue("GAUSS_ENV",
+        if (EnvUtil.getEnvironmentParameterValue("GAUSS_ENV",
                                                       self.user) == ""):
             raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$GAUSS_ENV")
 
         # depending on the environment variable GPHOME, access to the python 
-        GPHOME = DefaultValue.getEnv(DefaultValue.TOOL_PATH_ENV)
+        GPHOME = EnvUtil.getEnv(ClusterConstants.TOOL_PATH_ENV)
         if (GPHOME == None or GPHOME == ""):
             raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$GPHOME")
 
@@ -193,29 +198,70 @@ General options:
         # check mpprc file path
         # get mpprcFile by MPPDB_ENV_SEPARATE_PATH. Even if the return value
         # is "" or None, no need to pay attention
-        self.mpprcFile = DefaultValue.getEnv(DefaultValue.MPPRC_FILE_ENV)
+        self.mpprcFile = EnvUtil.getEnv(DefaultValue.MPPRC_FILE_ENV)
 
         # make sure which env file we use
         # If self.mpprcFile is not "" and None, return self.mpprcFile; else
         # return '~/.bashrc'
-        self.userProfile = DefaultValue.getMpprcFile()
+        self.userProfile = EnvUtil.getMpprcFile()
         self.checkUser()
 
         # check log file
         if self.logFile == "":
-            self.logFile = DefaultValue.getOMLogPath(
-                DefaultValue.UPGRADE_LOG_FILE, self.user, "", "")
+            self.logFile = ClusterLog.getOMLogPath(
+                ClusterConstants.UPGRADE_LOG_FILE, self.user, "", "")
         if not os.path.isabs(self.logFile):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50213"] % "log")
 
         self.initLogger(self.action)
+
+    def execCommandInSpecialNode(self, cmd, hosts, retry_times=2, time_out=0):
+        if not hosts:
+            host_list = copy.deepcopy(self.clusterNodes)
+        else:
+            host_list = copy.deepcopy(hosts)
+        self.logger.debug("Commanded: exec cmd in the hosts {0}".format(host_list))
+        failed_host = []
+        fail_msg = ""
+        retry = True
+        count = 0
+        status, output = dict(), dict()
+        try:
+            while retry:
+                try:
+                    (status, output) = self.sshTool.getSshStatusOutput(cmd, host_list)
+                    for key, val in list(status.items()):
+                        if DefaultValue.SUCCESS in val:
+                            host_list.remove(key)
+                    if host_list:
+                        count += 1
+                    if not host_list or count >= retry_times:
+                        retry = False
+                except Exception as _:
+                    count += 1
+                    retry = False if not host_list or count >= retry_times else True
+
+            for key, val in list(status.items()):
+                if DefaultValue.FAILURE in val:
+                    failed_host.append(key)
+                    fail_msg += val
+        finally:
+            if failed_host:
+                local_file_msg = ""
+                if self.localLog in cmd:
+                    local_log = GaussLog(self.localLog)
+                    local_file_msg = "\n For details about this error, see the file: {0} " \
+                                     "on the host {1}".format(local_log.logFile, failed_host)
+                replace_reg = re.compile(r'-W[ ]*[^ ]*[ ]*')
+                cmd_hide_passwd = replace_reg.sub('-W *** ', cmd)
+                raise Exception(ErrorCode.GAUSS_535["GAUSS_53507"] % cmd_hide_passwd + local_file_msg)
 
     def initGlobalInfos(self):
         """
         function: init global infos
         """
         self.logger.debug("Init global infos")
-
+        
         # init cluster info
         if self.xmlFile:
             self.initClusterInfo()
@@ -226,10 +272,10 @@ General options:
             self.clusterNodes.append(dbNode.name)
         if len(self.clusterNodes) == 0:
             raise Exception(ErrorCode.GAUSS_512["GAUSS_51201"])
-        
-        # verify whether it is single cluster, isSingle means single node
+
+        # verify whether it is single cluster, isSingle means single node     
         if len(self.clusterNodes) == 1:
-            self.isSingle = True        
+            self.isSingle = True
 
         for nodeName in self.nodeNames:
             if nodeName not in self.clusterNodes:
@@ -248,8 +294,8 @@ General options:
             hostList = copy.deepcopy(self.clusterNodes)
         else:
             hostList = copy.deepcopy(hostList)
-        if DefaultValue.GetHostIpOrName() in hostList:
-            hostList.remove(DefaultValue.GetHostIpOrName())
+        if NetUtil.GetHostIpOrName() in hostList:
+            hostList.remove(NetUtil.GetHostIpOrName())
 
         self.logger.debug("Start copy file:{0} to hosts:{1}.".format(
             file, hostList))
@@ -284,14 +330,14 @@ if __name__ == '__main__':
         upgrade.checkParameter()
 
         # set action flag file
-        DefaultValue.setActionFlagFile("gs_upgradectl", upgrade.logger)
+        DefaultValue.setActionFlagFile("gs_upgradectl")
         upgrade.initGlobalInfos()
         impl = UpgradeImplOLAP(upgrade)
         impl.run()
     except Exception as e:
         if REPEAT:
-            upgrade.sshTool = SshTool(upgrade.clusterNodes, upgrade.localLog,
+            upgrade.sshTool = SshTool(upgrade.clusterNodes,
                                       DefaultValue.TIMEOUT_PSSH_COMMON)
         GaussLog.exitWithError(str(e))
     finally:
-        DefaultValue.setActionFlagFile("gs_upgradectl", None, False)
+        DefaultValue.setActionFlagFile("gs_upgradectl",False)

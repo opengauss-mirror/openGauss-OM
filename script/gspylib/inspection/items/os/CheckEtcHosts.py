@@ -17,7 +17,7 @@
 import subprocess
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsfile import g_file
+from base_utils.os.file_util import FileUtil
 
 
 class CheckEtcHosts(BaseItem):
@@ -31,7 +31,7 @@ class CheckEtcHosts(BaseItem):
         IPMapping = {}
         IpList = []
 
-        mappingList = g_file.readFile('/etc/hosts')
+        mappingList = FileUtil.readFile('/etc/hosts')
         for eachLine in mappingList:
             eachLine = eachLine.strip()
             if (eachLine == ""):

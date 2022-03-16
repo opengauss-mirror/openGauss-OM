@@ -21,10 +21,11 @@ import getopt
 
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
-from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.LocalBaseOM import LocalBaseOM
 from gspylib.common.ParameterParsecheck import Parameter
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from domain_utils.domain_common.cluster_constants import ClusterConstants
 
 
 class Stop(LocalBaseOM):
@@ -107,8 +108,8 @@ General options:
             GaussLog.exitWithError(
                 ErrorCode.GAUSS_500["GAUSS_50001"] % 'U' + ".")
         if self.logFile == "":
-            self.logFile = DefaultValue.getOMLogPath(
-                DefaultValue.LOCAL_LOG_FILE, self.user, self.installPath)
+            self.logFile = ClusterLog.getOMLogPath(
+                ClusterConstants.LOCAL_LOG_FILE, self.user, self.installPath)
 
     def __initLogger(self):
         """

@@ -35,9 +35,15 @@ from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.ParameterParsecheck import Parameter
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.Common import ClusterCommand, DefaultValue
-from gspylib.os.gsfile import g_file
 from multiprocessing.dummy import Pool as ThreadPool
 from gspylib.common.ErrorCode import ErrorCode
+from base_utils.os.cmd_util import CmdUtil
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from base_utils.os.net_util import NetUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
 ###########################
 # instance type. only for CN/DN
@@ -58,7 +64,7 @@ DUMMY_STANDBY_INSTANCE = 2
 #   g_resultdir: globle result dir
 #   g_localnodeinfo: globle local nodes information
 #######################################################################
-HOSTNAME = DefaultValue.GetHostIpOrName()
+HOSTNAME = NetUtil.GetHostIpOrName()
 g_opts = None
 g_logger = None
 g_clusterInfo = None
@@ -165,7 +171,7 @@ def sendLogFiles():
         # directory
         cmd = "%s && (if [ -f '%s'/'%s' ];then rm -rf '%s'/'%s';fi)" % \
               (cmd, g_tmpdir, tarName, g_tmpdir, tarName)
-        (status, output) = DefaultValue.retryGetstatusoutput(cmd)
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd)
         if status != 0:
             g_logger.logExit("Failed to delete %s." % "%s and %s" % (
             g_resultdir, tarName) + " Error:\n%s" % output)
@@ -173,7 +179,7 @@ def sendLogFiles():
 
     cmd = "cd '%s' && tar -zcf '%s' '%s' && chmod %s '%s'" % \
           (g_tmpdir, tarName, HOSTNAME, DefaultValue.FILE_MODE, tarName)
-    (status, output) = DefaultValue.retryGetstatusoutput(cmd)
+    (status, output) = CmdUtil.retryGetstatusoutput(cmd)
     if status != 0:
         g_logger.logExit("Failed to compress %s." % ("directory %s/%s" % \
                                                      (g_tmpdir,
@@ -183,7 +189,7 @@ def sendLogFiles():
     if g_opts.nodeName != "":
         # send  backup file which is compressed  to the node that is
         # currently performing the backup
-        if g_opts.nodeName == DefaultValue.GetHostIpOrName():
+        if g_opts.nodeName == NetUtil.GetHostIpOrName():
             if int(g_opts.speedLimitFlag) == 1:
                 cmd = "rsync --bwlimit=%d '%s'/'%s' '%s'/" % \
                       (g_opts.speedLimitKBs, g_tmpdir, tarName,
@@ -197,7 +203,7 @@ def sendLogFiles():
                   (
                   g_opts.speedLimitKBs * 8, g_opts.nodeName, g_tmpdir, tarName,
                   g_opts.outputDir)
-        (status, output) = DefaultValue.retryGetstatusoutput(cmd)
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd)
         if status != 0:
             g_logger.logExit(
                 "Failed to copy %s." % tarName + " Error:\n%s" % output)
@@ -207,7 +213,7 @@ def sendLogFiles():
     # Delete the archive if the archive is present in the temporary directory
     cmd = "%s && (if [ -f '%s'/'%s' ];then rm -rf '%s'/'%s';fi)" % \
           (cmd, g_tmpdir, tarName, g_tmpdir, tarName)
-    (status, output) = DefaultValue.retryGetstatusoutput(cmd)
+    (status, output) = CmdUtil.retryGetstatusoutput(cmd)
     if status != 0:
         g_logger.logExit("Failed to delete %s. %s" % (
         "%s and %s" % (g_resultdir, tarName), " Error:\n%s" % output))
@@ -276,10 +282,10 @@ def parseCommandLine():
     checkParameterEmpty(g_opts.action, "t")
     # check if user exist and is the right user
     checkParameterEmpty(g_opts.user, "U")
-    DefaultValue.checkUser(g_opts.user, False)
+    ClusterUser.checkUser(g_opts.user, False)
     # check log file
     if g_opts.logFile == "":
-        g_opts.logFile = DefaultValue.getOMLogPath(DefaultValue.LOCAL_LOG_FILE,
+        g_opts.logFile = ClusterLog.getOMLogPath(ClusterConstants.LOCAL_LOG_FILE,
                                                    g_opts.user, "", "")
     if not os.path.isabs(g_opts.logFile):
         GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"] % "log")
@@ -313,7 +319,7 @@ def initGlobal():
         # Init the cluster information from static configuration file
         g_clusterInfo = dbClusterInfo()
         g_clusterInfo.initFromStaticConfig(g_opts.user)
-        g_tmpdir = DefaultValue.getTmpDirFromEnv()
+        g_tmpdir = EnvUtil.getTmpDirFromEnv()
 
         # Obtain the cluster installation directory
         g_opts.appPath = g_clusterInfo.appPath
@@ -369,7 +375,7 @@ def create_temp_result_folder():
           (cmd, DefaultValue.KEY_DIRECTORY_MODE, g_resultdir,
            DefaultValue.KEY_DIRECTORY_MODE, g_resultdir)
     g_logger.debug("Command for creating output directory: %s" % cmd)
-    (status, output) = DefaultValue.retryGetstatusoutput(cmd)
+    (status, output) = CmdUtil.retryGetstatusoutput(cmd)
     if status != 0:
         g_logger.logExit("Failed to create the %s directory." % \
                          ("%s/logfiles and %s/configfiles" % (
@@ -534,7 +540,6 @@ def database_check():
     # Execute SQL for collect catalog statistics
     g_logger.debug("Collecting catalog statistics.")
     g_jobInfo.jobName = "Collecting catalog information"
-    isFailed = 0
     for dnInst in g_localnodeinfo.datanodes:
         if dnInst.instanceType == STANDBY_INSTANCE:
             continue
@@ -633,7 +638,7 @@ def execute_sqls(sqls, dnInst):
     # Writes the formatted content to the specified file
     filePath = "%s/catalogfiles/gs_clean_%s.txt" % (
     g_resultdir, datetime.datetime.now().strftime("%Y%m%d_%H%M%S%f"))
-    g_file.createFileInSafeMode(filePath)
+    FileUtil.createFileInSafeMode(filePath)
     with open(filePath, "w") as f:
         f.write(
             "************************************\n"
@@ -648,7 +653,7 @@ def execute_sqls(sqls, dnInst):
                                                    dnInst.port)[1]
             f.write(str(output))
 
-        userProfile = DefaultValue.getMpprcFile()
+        userProfile = EnvUtil.getMpprcFile()
         cmd = "source %s ; gs_clean -a -N -s -p %s" \
               % (userProfile, dnInst.port)
         f.write(
@@ -660,213 +665,6 @@ def execute_sqls(sqls, dnInst):
         f.flush()
     # Modify the file permissions to 640
     os.chmod(filePath, DefaultValue.FILE_MODE_PERMISSION)
-
-
-def compareTime(time_A, time_B):
-    """
-    input: string, string
-    output: boolean
-    description: compare time, time_A >= time_B is True
-    """
-    if time_A >= time_B:
-        return True
-    else:
-        return False
-
-
-def matchFile(begin_t, end_t, fileTime):
-    """
-    input: string, string, list
-    output: boolean
-    description: determine the time in the list is between the start time
-    and the end time.
-    """
-    # both of begin_time and end_time
-    if begin_t and end_t:
-        for t in fileTime:
-            if compareTime(t, begin_t) and compareTime(end_t, t):
-                return True
-    # only begin_time
-    elif begin_t and (not end_t):
-        for t in fileTime:
-            if compareTime(t, begin_t):
-                return True
-    # only end_time
-    elif (not begin_t) and end_t:
-        for t in fileTime:
-            if compareTime(end_t, t):
-                return True
-    # none of begin_time and end_time
-    else:
-        return True
-
-    return False
-
-
-def filterFile(filename):
-    """
-    input: string
-    output: boolean
-    description: filter the files suffixed in .log/.rlog/.dlog/.aud/.raft
-    """
-    endList = [".log", ".rlog", ".dlog", ".aud", ".raft"]
-    if os.path.splitext(filename)[-1] in endList:
-        return True
-    else:
-        return False
-
-
-# chieve rule1 or rule2 or rule4 to yyyymmddHHMM
-def d_timeToString(dateString):
-    """
-    input: string
-    output: string
-    description: format dateString to yyyymmddHHMM
-    example: 2018-08-26 14:18:40 ->> 201808261418
-    """
-    return dateString.replace("-", "").replace(" ", "").replace(":",
-                                                                "").replace(
-        "/", "").replace("T", "")[:12]
-
-
-# achieve rule3 to yyyymmddHHMM
-def e_timeToString(dateString):
-    """
-    input: string
-    output: string
-    description: format dateString to yyyymmddHHMM
-    example: Wed Aug 29 07:23:03 CST 2018 ->> 201808290723
-    """
-    # define month list for get digital
-    month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep",
-             "Oct", "Nov", "Dec"]
-    year_string = dateString[-4:]
-    month_string = str(month.index(dateString[4:7]) + 1)
-    if len(month_string) == 1:
-        month_string = "0" + month_string
-    day_string = dateString[8:10]
-
-    # time format HHMM
-    time_string = dateString[11:16].replace(":", "")
-
-    return year_string + month_string + day_string + time_string
-
-
-def getCtimeOfFile(fileName):
-    """
-    input: string
-    output: string
-    description: Get the first line of the file to determine whether there
-    is a date,
-                 if any, change to the specified date format(yyyymmddHHMM)
-                 and return,
-                 if not, return an empty string
-    """
-
-    if not os.path.exists(fileName):
-        raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % str(fileName))
-
-    # 2018-08-26 14:18:40
-    rule1 = r'\d{4}-[0-1]\d-[0-3]\d [0-2]\d:[0-6]\d:[0-6]\d'
-
-    # 2018/08/25 20:40:16
-    rule2 = r'\d{4}/[0-1]\d/[0-3]\d [0-2]\d:[0-6]\d:[0-6]\d'
-
-    # Wed Aug 29 00:00:03 CST 2018
-    rule3 = r'(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b (' \
-            r'Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b [0-3]\d [' \
-            r'0-2]\d:[0-6]\d:[0-6]\d CST \d{4}'
-
-    # 2018-08-25T20:49:05+08:00
-    rule4 = r'\d{4}-[0-1]\d-[0-3]\dT[0-2]\d:[0-6]\d:[0-6]\d'
-
-    # defining rules and partitioning method key-value pairs
-    rule_dict = {rule1: d_timeToString,
-                 rule2: d_timeToString,
-                 rule3: e_timeToString,
-                 rule4: d_timeToString
-                 }
-
-    # open file
-    with open(fileName, "r") as f:
-        # get the first line of the file
-        line = f.readline().strip()
-        # match according to known rules
-        for rule in rule_dict.keys():
-            result = re.search(rule, line)
-            if result:
-                # change to the specified date format and return
-                return rule_dict[rule](result.group())
-
-        return ""
-
-
-def log_copy_for_zenith():
-    """
-    function: collected log files
-    output: Successfully collected log files
-    """
-    g_logger.debug("Collecting log files.")
-    g_jobInfo.jobName = "Collecting zenith log information"
-
-    try:
-        # get envPath $GAUSSLOG
-        gausslogPath = DefaultValue.getPathFileOfENV("GAUSSLOG")
-
-        # define necessary path
-        logfilePath = "%s/logfiles/" % g_resultdir
-        keyword_result = "keyword_result.txt"
-
-        # match the log files that meet the time requirements
-        # and add them to the archive
-        logfileList = []
-        g_logger.debug("Start matching log file.")
-        for root, dirs, files in os.walk(gausslogPath):
-            for f in files:
-                logfile = os.path.join(root, f)
-
-                # get matched files in the list
-                if filterFile(f):
-                    # get the time of file
-                    statInfo = os.stat(logfile)
-
-                    # convert timestamp to format "%Y%m%d%H%M"
-                    mtime = time.strftime("%Y%m%d%H%M",
-                                          time.localtime(statInfo.st_mtime))
-                    ctime = getCtimeOfFile(logfile)
-                    if not ctime:
-                        ctime = mtime
-
-                    timeList = [mtime, ctime]
-
-                    # compare file time
-                    if matchFile(g_opts.begin, g_opts.end, timeList):
-                        childDir = ''.join(root.split(gausslogPath)[1:])
-                        childDir = childDir.lstrip("/")
-                        targetDir = os.path.join(logfilePath, childDir)
-                        if not os.path.exists(targetDir):
-                            dir_permission = 0o700
-                            os.makedirs(targetDir, mode=dir_permission)
-                        g_file.cpFile(logfile, targetDir)
-        g_logger.debug("Match log file completion.")
-        g_jobInfo.successTask.append("Match log file")
-    except Exception as e:
-        if os.path.exists(logfilePath):
-            g_file.cleanDirectoryContent(logfilePath)
-        g_logger.debug("Failed to filter log files. Error:\n%s" % str(e))
-        g_jobInfo.failedTask["Failed to filter log files"] = str(e)
-        g_logger.log(json.dumps(g_jobInfo.__dict__))
-        raise Exception("")
-
-    if g_opts.key:
-        # Look for keyword matching in the dir and write to the specified file
-        cmd = "echo \"\"  > %s/logfiles/%s; for f in `find %s -type f`;" \
-              " do grep -ai '%s' $f >> %s/logfiles/%s; done" % (
-        g_resultdir, keyword_result, logfilePath, g_opts.key, g_resultdir,
-        keyword_result)
-        (status, output) = subprocess.getstatusoutput(cmd)
-    g_logger.log(json.dumps(g_jobInfo.__dict__))
-    g_logger.debug("Successfully collected log files.")
 
 
 def log_check(logFileName):
@@ -974,7 +772,7 @@ def log_copy():
         else:
             cmd = "cd $GAUSSLOG && cp '%s' tmp_gs_collector/'%s'" % (log, log)
         (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
+        if status != 0 and 'Permission denied' not in output:
             (status1, output1) = subprocess.getstatusoutput(deleteCmd)
             g_jobInfo.failedTask["copy log files"] = replaceInvalidStr(output)
             g_logger.log(json.dumps(g_jobInfo.__dict__))
@@ -1032,7 +830,7 @@ def log_copy():
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0 and output != "":
                 cmd = "rm -rf $GAUSSLOG/tmp_gs_collector"
-                (status1, output1) = DefaultValue.retryGetstatusoutput(cmd)
+                (status1, output1) = CmdUtil.retryGetstatusoutput(cmd)
                 g_jobInfo.failedTask[
                     "filter keyword"] = "keywords: %s, Error: %s" % (
                 g_opts.key, output)
@@ -1042,14 +840,14 @@ def log_copy():
                 raise Exception("")
             else:
                 cmd = "rm -rf $GAUSSLOG/tmp_gs_collector"
-                (status, output) = DefaultValue.retryGetstatusoutput(cmd)
+                (status, output) = CmdUtil.retryGetstatusoutput(cmd)
             g_logger.debug("Successfully filter keyword.")
             g_jobInfo.successTask.append("filter keyword: %s" % g_opts.key)
 
         else:
             cmd = "touch %s/logfiles/%s && " % (g_resultdir, keyword_result)
             cmd = "%s rm -rf $GAUSSLOG/tmp_gs_collector" % cmd
-            (status, output) = DefaultValue.retryGetstatusoutput(cmd)
+            (status, output) = CmdUtil.retryGetstatusoutput(cmd)
             if status != 0:
                 g_jobInfo.failedTask["touch keyword file"] = replaceInvalidStr(
                     output)

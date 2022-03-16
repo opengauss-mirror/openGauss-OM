@@ -31,13 +31,9 @@ import optparse as _optparse
 try:
     from typing import Dict
     from typing import List
-    from typing import Tuple
-    from typing import Any
 except ImportError:
     Dict = dict
     List = list
-    Tuple = tuple
-    Any = str or int or complex or list or dict
 
 # local import
 from gspylib.common.ErrorCode import ErrorCode
@@ -395,13 +391,3 @@ class CommandLineParser(object):
             setattr(self, "unknown_args", unknown_args)
 
 
-class ExecuteCommand(object):
-    """
-
-    """
-
-    def __init__(self):
-        """
-
-        """
-        pass

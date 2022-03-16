@@ -28,12 +28,13 @@ import subprocess
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.ParameterParsecheck import Parameter
-from gspylib.common.Common import DefaultValue, ClusterCommand
+from base_utils.os.env_util import EnvUtil
 
-libpath = os.path.join(DefaultValue.getEnv("GAUSSHOME"), "lib")
+libpath = os.path.join(EnvUtil.getEnv("GAUSSHOME"), "lib")
 sys.path.append(libpath)
 from gspylib.common.ErrorCode import ErrorCode
-from gspylib.os.gsfile import g_file
+from base_utils.os.file_util import FileUtil
+from domain_utils.sql_handler.sql_executor import SqlExecutor
 
 
 def usage():
@@ -113,7 +114,7 @@ def main():
                 for line in lines:
                     exesql += line + "\n"
         (status, result, err_output) = \
-            ClusterCommand.excuteSqlOnLocalhost(port, exesql, database)
+            SqlExecutor.excuteSqlOnLocalhost(port, exesql, database)
         cmd = "rm -rf %s" % sqlfile
         if (err_output != ""):
             output["status"] = status
@@ -123,7 +124,7 @@ def main():
         output["status"] = status
         output["result"] = result
         output["error_output"] = err_output
-        g_file.createFileInSafeMode(outputfile)
+        FileUtil.createFileInSafeMode(outputfile)
         with open(outputfile, "w") as fp_json:
             json.dump(output, fp_json)
         (status, outpout) = subprocess.getstatusoutput(cmd)

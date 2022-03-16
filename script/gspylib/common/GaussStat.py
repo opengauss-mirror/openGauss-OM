@@ -21,20 +21,26 @@
 import subprocess
 import os
 import sys
-import socket
 import glob
-import pwd
-import datetime
-from random import sample
 from multiprocessing.dummy import Pool as ThreadPool
 
 sys.path.append(sys.path[0] + "/../../")
-from gspylib.os.gsfile import g_file
 from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.Common import DefaultValue, ClusterCommand
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.threads.SshTool import SshTool
 import gspylib.common.Sql as Sql
+from base_utils.os.cmd_util import CmdUtil
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from domain_utils.sql_handler.sql_executor import SqlExecutor
+from domain_utils.sql_handler.sql_result import SqlResult
+from domain_utils.sql_handler.sql_file import SqlFile
+from base_utils.os.net_util import NetUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from base_utils.security.sensitive_mask import SensitiveMask
+from base_diff.sql_commands import SqlCommands
 
 ########################################################################
 # Global variables define
@@ -50,7 +56,6 @@ ACTION_INSTALL_PMK = "install_pmk"
 ACTION_COLLECT_STAT = "collect_stat"
 ACTION_DISPLAY_STAT = "display_stat"
 ACTION_ASYN_COLLECT = "asyn_collect"
-ACTION_COLLECT_SINGLE_DN_INFO = "single_dn_info"
 
 SQL_FILE_PATH = os.path.realpath(os.path.join(os.path.dirname(__file__),
                                               "../etc/sql"))
@@ -74,20 +79,6 @@ def isNumber(num):
         # is not a number
         float(num)
     except Exception as e:
-        return False
-    return True
-
-
-def isIp(ip):
-    '''
-    function: Judge if the variable is an ip address
-    input : ip
-    output: bool
-    '''
-    try:
-        ### only support ipv4...
-        socket.inet_aton(ip)
-    except ImportError as e:
         return False
     return True
 
@@ -321,7 +312,6 @@ class GaussStat():
                           "the node [%s]." % connInfo[0])
         global g_sessionCpuList
         try:
-            nodeName = connInfo[0]
             nodePort = connInfo[1]
             # when I query from pgxc_node, if I query from a cn node,
             # it will return all the logical nodes of the cluster.
@@ -330,7 +320,7 @@ class GaussStat():
 
             if (g_DWS_mode):
                 (status, result, err_output) = \
-                    ClusterCommand.excuteSqlOnLocalhost(nodePort, querySql)
+                    SqlExecutor.excuteSqlOnLocalhost(nodePort, querySql)
                 self.logger.debug("Get pgxc_node info from the cluster. "
                                   "\ncommand: %s \nresult: %s." % (querySql,
                                                                    result))
@@ -352,7 +342,7 @@ class GaussStat():
                            pgxcNodeName
 
                 (status, result, err_output) = \
-                    ClusterCommand.excuteSqlOnLocalhost(nodePort, querySql)
+                    SqlExecutor.excuteSqlOnLocalhost(nodePort, querySql)
                 self.logger.debug("Load single node session cpu stat. "
                                   "\ncommand: %s \nresult: %s." % (querySql,
                                                                    result))
@@ -418,7 +408,6 @@ class GaussStat():
                           "node [%s]." % connInfo[0])
         global g_sessionMemList
         try:
-            nodeName = connInfo[0]
             nodePort = connInfo[1]
             # when I query from pgxc_node, if I query from a cn node,
             # it will return all the logical nodes of the cluster.
@@ -427,7 +416,7 @@ class GaussStat():
 
             if (g_DWS_mode):
                 (status, result,
-                 err_output) = ClusterCommand.excuteSqlOnLocalhost(nodePort,
+                 err_output) = SqlExecutor.excuteSqlOnLocalhost(nodePort,
                                                                    querySql)
                 self.logger.debug(
                     "Get pgxc_node info "
@@ -436,7 +425,7 @@ class GaussStat():
 
             if (g_DWS_mode):
                 (status, result, err_output) = \
-                    ClusterCommand.excuteSqlOnLocalhost(nodePort, querySql)
+                    SqlExecutor.excuteSqlOnLocalhost(nodePort, querySql)
                 self.logger.debug("Get pgxc_node info from the cluster. "
                                   "\ncommand: %s \nresult: %s." % (querySql,
                                                                    result))
@@ -461,7 +450,7 @@ class GaussStat():
                            pgxcNodeName
 
                 (status, result, err_output) = \
-                    ClusterCommand.excuteSqlOnLocalhost(nodePort, querySql)
+                    SqlExecutor.excuteSqlOnLocalhost(nodePort, querySql)
                 self.logger.debug("Load single node session memory stat. "
                                   "\ncommand: %s \nresult: %s." % (querySql,
                                                                    result))
@@ -530,7 +519,6 @@ class GaussStat():
                           "on the node [%s]." % connInfo[0])
         global g_sessionIOList
         try:
-            nodeName = connInfo[0]
             nodePort = connInfo[1]
             # when I query from pgxc_node, if I query from a cn node,
             # it will return all the logical nodes of the cluster.
@@ -538,7 +526,7 @@ class GaussStat():
             querySql = "SELECT node_name FROM DBE_PERF.node_name;"
             if g_DWS_mode:
                 (status, result, err_output) = \
-                    ClusterCommand.excuteSqlOnLocalhost(nodePort, querySql)
+                    SqlExecutor.excuteSqlOnLocalhost(nodePort, querySql)
                 self.logger.debug("Get pgxc_node info from the cluster. "
                                   "\ncommand: %s \nresult: %s." % (querySql,
                                                                    result))
@@ -559,7 +547,7 @@ class GaussStat():
                            % pgxcNodeName
 
                 (status, result,
-                 err_output) = ClusterCommand.excuteSqlOnLocalhost(nodePort,
+                 err_output) = SqlExecutor.excuteSqlOnLocalhost(nodePort,
                                                                    querySql)
                 self.logger.debug(
                     "Load single node session io stat."
@@ -567,7 +555,7 @@ class GaussStat():
                         querySql, result))
 
                 (status, result, err_output) = \
-                    ClusterCommand.excuteSqlOnLocalhost(nodePort, querySql)
+                    SqlExecutor.excuteSqlOnLocalhost(nodePort, querySql)
                 self.logger.debug("Load single node session io stat. "
                                   "\ncommand: %s \nresult: %s." % (querySql,
                                                                    result))
@@ -630,7 +618,6 @@ class GaussStat():
                           connInfo[0])
         global g_recordList
         try:
-            nodeName = connInfo[0]
             nodePort = connInfo[1]
             # when I query from pgxc_node, if I query from a cn node,
             # it will return all the logical nodes of the cluster.
@@ -638,7 +625,7 @@ class GaussStat():
             querySql = "SELECT node_name FROM DBE_PERF.node_name;"
             if (g_DWS_mode):
                 (status, result,
-                 err_output) = ClusterCommand.excuteSqlOnLocalhost(nodePort,
+                 err_output) = SqlExecutor.excuteSqlOnLocalhost(nodePort,
                                                                    querySql)
                 self.logger.debug(
                     "Get pgxc_node info from cluster."
@@ -661,7 +648,6 @@ class GaussStat():
                                     % recordList)
                 if (recordList[0] != ''):
                     recordList[0] = (recordList[0]).strip()
-                    nodeType = 'D'
 
                 # when I query from pgxc_node on a DB node, the node type is
                 # 'C'. it's wrong, so I modify here.
@@ -680,7 +666,7 @@ class GaussStat():
                            (self.currTime, self.lastTime, self.snapshotId,
                             recordList[0], instType, skipSupperRoles)
                 (status, result,
-                 err_output) = ClusterCommand.excuteSqlOnLocalhost(nodePort,
+                 err_output) = SqlExecutor.excuteSqlOnLocalhost(nodePort,
                                                                    querySql)
                 self.logger.debug(
                     "Load single node stat. \ncommand: %s \nresult: %s." % (
@@ -691,7 +677,7 @@ class GaussStat():
                            (self.currTime, self.lastTime, self.snapshotId,
                             recordList[0], instType, skipSupperRoles)
                 (status, result,
-                 err_output) = ClusterCommand.excuteSqlOnLocalhost(nodePort,
+                 err_output) = SqlExecutor.excuteSqlOnLocalhost(nodePort,
                                                                    querySql)
                 self.logger.debug(
                     "Load single node stat. \ncommand: %s \nresult: %s." % (
@@ -736,7 +722,6 @@ class GaussStat():
                                     % recordList)
                 if (recordList[0] != ''):
                     recordList[0] = (recordList[0]).strip()
-                    nodeType = 'D'
 
                 # when I query from pgxc_node on a DB node, the node type is
                 # 'C'. it's wrong, so I modify here.
@@ -801,7 +786,7 @@ class GaussStat():
 
             checkCmd = "gs_ctl query -D %s | grep 'HA state' -A 1 | grep " \
                        "'local_role'" % dnDataDir
-            (status, output) = DefaultValue.retryGetstatusoutput(checkCmd)
+            (status, output) = CmdUtil.retryGetstatusoutput(checkCmd)
             if (status != 0):
                 cmd = "gs_ctl query -D %s" % dnDataDir
                 (status, output) = subprocess.getstatusoutput(cmd)
@@ -834,7 +819,7 @@ class GaussStat():
         try:
             # get node info
             nodeInfo = g_clusterInfo.getDbNodeByName(
-                DefaultValue.GetHostIpOrName())
+                NetUtil.GetHostIpOrName())
             for dnInst in nodeInfo.datanodes:
                 if (dnInst.instanceType != DUMMY_STANDBY_INSTANCE):
                     if self.checkRoleOfDnInst(dnInst.datadir) or len(
@@ -852,7 +837,7 @@ class GaussStat():
     def getPerfCheckPsqlCommand(self, dbname):
         """
         """
-        cmd = ClusterCommand.getSQLCommand(self.localport, dbname,
+        cmd = SqlCommands.getSQLCommand(self.localport, dbname,
                                            os.path.join(self.installPath,
                                                         "bin/gsql"))
         return cmd
@@ -869,7 +854,7 @@ class GaussStat():
             baselineflag = self.__baselineFlag
 
         # save sql statement to file to reduce quot nesting
-        sqlFile = os.path.join(DefaultValue.getTmpDirFromEnv(),
+        sqlFile = os.path.join(EnvUtil.getTmpDirFromEnv(),
                                "checkperf_query_%s_%s.sql" % (os.getpid(),
                                                               collectNum))
         if (dwsFlag):
@@ -886,22 +871,22 @@ class GaussStat():
 
         try:
             sql_cmd = self.getPerfCheckPsqlCommand(self.database)
-            if (os.getuid() == 0):
+            if os.getuid() == 0:
                 cmd = "su - %s -c \'%s -f %s -X " \
                       "--variable=ON_ERROR_STOP=on\' " \
                       "2>/dev/null" % (self.user, sql_cmd, sqlFile)
             else:
                 cmd = "%s -f %s -X --variable=ON_ERROR_STOP=on 2>/dev/null" % \
                       (sql_cmd, sqlFile)
-            self.logger.debug("Execute command: %s" % (cmd))
+            self.logger.debug("Execute command: %s" % (SensitiveMask.mask_pwd(cmd)))
 
             (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0 or ClusterCommand.findErrorInSqlFile(sqlFile,
+            if status != 0 or SqlFile.findErrorInSqlFile(sqlFile,
                                                                 output):
-                raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % cmd +
-                                " Error: \n%s" % output)
+                raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] %
+                                SensitiveMask.mask_pwd(cmd) + " Error: \n%s" % output)
 
-            DefaultValue.cleanTmpFile(sqlFile)
+            FileUtil.cleanTmpFile(sqlFile)
 
             baseline = self.checkExpectedOutput(output, baselineflag, False)
 
@@ -937,9 +922,9 @@ class GaussStat():
             return records
         except Exception as e:
             ### execute query command failed. log and raise
-            self.logger.debug("Failed to execute the command of query [%s] "
+            self.logger.debug("Failed to execute the sql [%s] "
                               "on local host." % sql)
-            DefaultValue.cleanTmpFile(sqlFile)
+            FileUtil.cleanTmpFile(sqlFile)
             raise Exception(str(e))
 
     ## check if the expected line existed in output.
@@ -1020,15 +1005,15 @@ class GaussStat():
                        "pronamespace=(select oid from pg_namespace where " \
                        "nspname='pmk')"
             (pmk_status, pmkResult, pmk_error) = \
-                ClusterCommand.excuteSqlOnLocalhost(self.localport, pmk_cmd)
+                SqlExecutor.excuteSqlOnLocalhost(self.localport, pmk_cmd)
             (class_status, classResult, class_error) = \
-                ClusterCommand.excuteSqlOnLocalhost(self.localport, class_cmd)
+                SqlExecutor.excuteSqlOnLocalhost(self.localport, class_cmd)
             (proc_status, procResult, proc_error) = \
-                ClusterCommand.excuteSqlOnLocalhost(self.localport, proc_cmd)
+                SqlExecutor.excuteSqlOnLocalhost(self.localport, proc_cmd)
             self.logger.debug("Test PMK schema. Output: \n%s %s %s." %
                               (pmkResult, classResult, procResult))
 
-            tablespace = DefaultValue.getEnv("ELK_SYSTEM_TABLESPACE")
+            tablespace = EnvUtil.getEnv("ELK_SYSTEM_TABLESPACE")
             if (pmk_status != 2):
                 raise Exception(ErrorCode.GAUSS_530["GAUSS_53028"]
                                 % pmk_error)
@@ -1059,7 +1044,7 @@ class GaussStat():
                                   "execute \"drop schema pmk cascade;\".")
                 drop_cmd = "drop schema pmk cascade"
                 (drop_status, drop_result, err_output) = \
-                    ClusterCommand.excuteSqlOnLocalhost(self.localport,
+                    SqlExecutor.excuteSqlOnLocalhost(self.localport,
                                                         drop_cmd)
                 if err_output != "":
                     raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] %
@@ -1073,7 +1058,7 @@ class GaussStat():
             if tablespace is not None and tablespace != "":
                 for i in iter(Sql.PMK_NEW):
                     (status, result, err_output) = \
-                        ClusterCommand.excuteSqlOnLocalhost(self.localport, i)
+                        SqlExecutor.excuteSqlOnLocalhost(self.localport, i)
                     if err_output != "":
                         self.logger.debug("Failed to install pmk schema,"
                                           "Error: \n%s" % err_output)
@@ -1081,7 +1066,7 @@ class GaussStat():
             else:
                 for i in iter(Sql.PMK_ORIGINAL):
                     (status, result, err_output) = \
-                        ClusterCommand.excuteSqlOnLocalhost(self.localport, i)
+                        SqlExecutor.excuteSqlOnLocalhost(self.localport, i)
                     if err_output != "":
                         self.logger.debug("Failed to install pmk schema,"
                                           "Error: \n%s" % err_output)
@@ -1091,7 +1076,7 @@ class GaussStat():
             if err_output != "":
                 dropSchemaCmd = "drop schema if exists pmk cascade"
                 (status, result, err1_output) = \
-                    ClusterCommand.excuteSqlOnLocalhost(self.localport,
+                    SqlExecutor.excuteSqlOnLocalhost(self.localport,
                                                         dropSchemaCmd)
                 if err1_output != "":
                     self.logger.debug("Failed to drop schema PMK. "
@@ -1112,7 +1097,7 @@ class GaussStat():
                                                "test_data_node.sql")
             test_pmk_file = os.path.join(SQL_FILE_PATH, "test_pmk.sql")
             gsql_path = os.path.join(self.installPath, "bin/gsql")
-            tablespace = DefaultValue.getEnv("ELK_SYSTEM_TABLESPACE")
+            tablespace = EnvUtil.getEnv("ELK_SYSTEM_TABLESPACE")
             pmk_schema_num1 = "pmk schema exist. class count is 13, " \
                               "proc count is 29"
             pmk_schema_num2 = "pmk schema exist. class count is 5, " \
@@ -1136,7 +1121,7 @@ class GaussStat():
                 (status, output) = subprocess.getstatusoutput(cmd)
                 self.logger.debug("Command for testing node: %s" % cmd)
                 self.logger.debug("Output for testing node: %s" % output)
-                if (status != 0 or ClusterCommand.findErrorInSqlFile(
+                if (status != 0 or SqlFile.findErrorInSqlFile(
                         test_data_node_file, output)):
                     self.logger.debug(
                         "Failed to query dataNode. Error: \n%s" % output)
@@ -1200,7 +1185,7 @@ class GaussStat():
                           "pmk cascade;\"" % \
                           (self.database, str(self.localport))
                 (status, output) = subprocess.getstatusoutput(cmd)
-                if (status != 0 or ClusterCommand.findErrorInSql(
+                if (status != 0 or SqlResult.findErrorInSql(
                         output) == True):
                     self.logger.debug("Failed to drop schema PMK. "
                                       "Error: \n%s" % output)
@@ -1235,7 +1220,7 @@ class GaussStat():
                        (tablespace, pmkSqlFile_back)
                 (status, output) = subprocess.getstatusoutput(cmd)
                 if (status != 0):
-                    DefaultValue.cleanTmpFile(pmkSqlFile_back)
+                    FileUtil.cleanTmpFile(pmkSqlFile_back)
                     raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
                                     " Error: \n%s" % output)
             else:
@@ -1256,7 +1241,7 @@ class GaussStat():
                               (self.database, str(self.localport),
                                sql_nodegroup)
                     (status, output) = subprocess.getstatusoutput(cmd)
-                    if (status != 0 or ClusterCommand.findErrorInSql(output)):
+                    if (status != 0 or SqlResult.findErrorInSql(output)):
                         self.logger.debug("Failed to get installation groupt. "
                                           "Error: \n%s" % output)
                         raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] %
@@ -1268,7 +1253,7 @@ class GaussStat():
                           (installation_groupt, pmkSqlFile_back)
                     (status, output) = subprocess.getstatusoutput(cmd)
                     if (status != 0):
-                        DefaultValue.cleanTmpFile(pmkSqlFile_back)
+                        FileUtil.cleanTmpFile(pmkSqlFile_back)
                         raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
                                         cmd + " Error: \n%s" % output)
                     self.logger.debug("Successfully set "
@@ -1295,7 +1280,7 @@ class GaussStat():
             (status, output) = subprocess.getstatusoutput(cmd)
             self.logger.debug("Create pmk output:%s" % output)
             # Determine the execution result of the pmk installation
-            if (status != 0 or ClusterCommand.findErrorInSqlFile(
+            if (status != 0 or SqlFile.findErrorInSqlFile(
                     pmkSqlFile_back, output)):
                 # Determine whether the current user is the root user
                 if (os.getuid() == 0):
@@ -1313,7 +1298,7 @@ class GaussStat():
                                      str(self.localport))
                 (status, output1) = subprocess.getstatusoutput(dropSchemaCmd)
                 # Judge the results of the fallback installation pmk
-                if (status != 0 or ClusterCommand.findErrorInSql(output1)):
+                if (status != 0 or SqlResult.findErrorInSql(output1)):
                     self.logger.debug("Failed to drop schema PMK. Error: "
                                       "\n%s" % output1)
                 raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % cmd +
@@ -1424,26 +1409,26 @@ class GaussStat():
 
             # create a temp file for records write
             strCmd = ""
-            recordTempFile = os.path.join(DefaultValue.getTmpDirFromEnv(),
+            recordTempFile = os.path.join(EnvUtil.getTmpDirFromEnv(),
                                           "recordTempFile_%d_%s" % \
                                           (self.flagNum,
-                                           DefaultValue.GetHostIpOrName()))
+                                           NetUtil.GetHostIpOrName()))
 
             # clean the temp file first
-            DefaultValue.cleanTmpFile(recordTempFile)
+            FileUtil.cleanTmpFile(recordTempFile)
             # write records into the temp file
             for record in g_recordList.keys():
                 strCmd += "%s::::%s\n" % (record, g_recordList[record])
 
-            g_file.createFileInSafeMode(recordTempFile)
+            FileUtil.createFileInSafeMode(recordTempFile)
             with open(recordTempFile, 'w') as fp:
                 fp.writelines(strCmd)
 
-            if self.masterHost != DefaultValue.GetHostIpOrName():
+            if self.masterHost != NetUtil.GetHostIpOrName():
                 # scp record Temp File to tmpDir
                 scpCmd = " pscp -H %s '%s' '%s/'" % (
                     self.masterHost, recordTempFile,
-                    DefaultValue.getTmpDirFromEnv())
+                    EnvUtil.getTmpDirFromEnv())
 
                 self.logger.debug("Execute command: %s" % scpCmd)
                 (status, output) = subprocess.getstatusoutput(scpCmd)
@@ -1451,11 +1436,13 @@ class GaussStat():
                     raise Exception(ErrorCode.GAUSS_502["GAUSS_50205"] %
                                     "record temp file" + " Error: \n%s" %
                                     output)
+                FileUtil.cleanTmpFile(recordTempFile)
+
             self.logger.debug("Successfully collected PGXC node "
                               "performance statistics.")
         except Exception as e:
             # close and remove temporary file
-            DefaultValue.cleanTmpFile(recordTempFile)
+            FileUtil.cleanTmpFile(recordTempFile)
             raise Exception(str(e))
 
     def collectSessionCpuStatNew(self, pgxcNodeList):
@@ -1470,7 +1457,7 @@ class GaussStat():
             if (len(pgxcNodeList) != 0):
                 # load session cpu statistics parallel
                 pool = ThreadPool(DefaultValue.getCpuSet())
-                results = pool.map(self.loadSingleNodeSessionCpuStat,
+                pool.map(self.loadSingleNodeSessionCpuStat,
                                    pgxcNodeList)
                 pool.close()
                 pool.join()
@@ -1481,26 +1468,26 @@ class GaussStat():
 
             # create a temp file for records write
             strCmd = ""
-            sessionCpuTempFile = os.path.join(DefaultValue.getTmpDirFromEnv(),
+            sessionCpuTempFile = os.path.join(EnvUtil.getTmpDirFromEnv(),
                                               "sessionCpuTempFile_%d_%s" % \
                                               (self.flagNum,
-                                               DefaultValue.GetHostIpOrName()))
+                                               NetUtil.GetHostIpOrName()))
 
             # clean the temp file first
-            DefaultValue.cleanTmpFile(sessionCpuTempFile)
+            FileUtil.cleanTmpFile(sessionCpuTempFile)
             # write records into the temp file
             for record in g_sessionCpuList:
                 strCmd += "%s\n" % record
 
-            g_file.createFileInSafeMode(sessionCpuTempFile)
+            FileUtil.createFileInSafeMode(sessionCpuTempFile)
             with open(sessionCpuTempFile, 'w') as fp:
                 fp.writelines(strCmd)
 
-            if self.masterHost != DefaultValue.GetHostIpOrName():
+            if self.masterHost != NetUtil.GetHostIpOrName():
                 # scp session Cpu Temp File to tmpDir
                 scpCmd = "pscp -H %s '%s' '%s'/" % (
                     self.masterHost, sessionCpuTempFile,
-                    DefaultValue.getTmpDirFromEnv())
+                    EnvUtil.getTmpDirFromEnv())
 
                 self.logger.debug("Execute command: %s" % scpCmd)
                 (status, output) = subprocess.getstatusoutput(scpCmd)
@@ -1510,13 +1497,13 @@ class GaussStat():
                                     output)
 
                 # close and remove temporary file
-                DefaultValue.cleanTmpFile(sessionCpuTempFile)
+                FileUtil.cleanTmpFile(sessionCpuTempFile)
 
             self.logger.debug("Successfully collected session "
                               "cpu performance statistics.")
         except Exception as e:
             # close and remove temporary file
-            DefaultValue.cleanTmpFile(sessionCpuTempFile)
+            FileUtil.cleanTmpFile(sessionCpuTempFile)
             raise Exception(str(e))
 
     def collectSessionMemStatNew(self, pgxcNodeList):
@@ -1532,7 +1519,7 @@ class GaussStat():
             if (len(pgxcNodeList) != 0):
                 # load session memory statistics parallel
                 pool = ThreadPool(DefaultValue.getCpuSet())
-                results = pool.map(self.loadSingleNodeSessionMemoryStat,
+                pool.map(self.loadSingleNodeSessionMemoryStat,
                                    pgxcNodeList)
                 pool.close()
                 pool.join()
@@ -1544,25 +1531,25 @@ class GaussStat():
                 # create a temp file for records write
             strCmd = ""
             sessionMemTempFile = os.path.join(
-                DefaultValue.getTmpDirFromEnv(),
+                EnvUtil.getTmpDirFromEnv(),
                 "sessionMemTempFile_%d_%s" % (
-                    self.flagNum, DefaultValue.GetHostIpOrName()))
+                    self.flagNum, NetUtil.GetHostIpOrName()))
 
             # clean the temp file first
-            DefaultValue.cleanTmpFile(sessionMemTempFile)
+            FileUtil.cleanTmpFile(sessionMemTempFile)
             # write records into the temp file
             for record in g_sessionMemList:
                 strCmd += "%s\n" % record
 
-            g_file.createFileInSafeMode(sessionMemTempFile)
+            FileUtil.createFileInSafeMode(sessionMemTempFile)
             with open(sessionMemTempFile, 'w') as fp:
                 fp.writelines(strCmd)
 
-            if self.masterHost != DefaultValue.GetHostIpOrName():
+            if self.masterHost != NetUtil.GetHostIpOrName():
                 # scp session Mem TempFile to tmpDir
                 scpCmd = "pscp -H %s '%s' '%s'/" % (
                     self.masterHost, sessionMemTempFile,
-                    DefaultValue.getTmpDirFromEnv())
+                    EnvUtil.getTmpDirFromEnv())
 
                 self.logger.debug("Execute command: %s" % scpCmd)
                 (status, output) = subprocess.getstatusoutput(scpCmd)
@@ -1572,13 +1559,13 @@ class GaussStat():
                                     output)
 
                 # close and remove temporary file
-                DefaultValue.cleanTmpFile(sessionMemTempFile)
+                FileUtil.cleanTmpFile(sessionMemTempFile)
 
             self.logger.debug("Successfully collected session memory "
                               "performance statistics.")
         except Exception as e:
             # close and remove temporary file
-            DefaultValue.cleanTmpFile(sessionMemTempFile)
+            FileUtil.cleanTmpFile(sessionMemTempFile)
             raise Exception(str(e))
 
     def collectSessionIOStatNew(self, pgxcNodeList):
@@ -1593,7 +1580,7 @@ class GaussStat():
             if (len(pgxcNodeList) != 0):
                 # load session IO statistics parallel
                 pool = ThreadPool(DefaultValue.getCpuSet())
-                results = pool.map(self.loadSingleNodeSessionIOStat,
+                pool.map(self.loadSingleNodeSessionIOStat,
                                    pgxcNodeList)
                 pool.close()
                 pool.join()
@@ -1604,26 +1591,26 @@ class GaussStat():
 
             # create a temp file for records write
             strCmd = ""
-            sessionIOTempFile = os.path.join(DefaultValue.getTmpDirFromEnv(),
+            sessionIOTempFile = os.path.join(EnvUtil.getTmpDirFromEnv(),
                                              "sessionIOTempFile_%d_%s" %
                                              (self.flagNum,
-                                              DefaultValue.GetHostIpOrName()))
+                                              NetUtil.GetHostIpOrName()))
 
             # clean the temp file first
-            DefaultValue.cleanTmpFile(sessionIOTempFile)
+            FileUtil.cleanTmpFile(sessionIOTempFile)
             # write records into the temp file
             for record in g_sessionIOList:
                 strCmd += "%s\n" % record
 
-            g_file.createFileInSafeMode(sessionIOTempFile)
+            FileUtil.createFileInSafeMode(sessionIOTempFile)
             with open(sessionIOTempFile, 'w') as fp:
                 fp.writelines(strCmd)
 
-            if self.masterHost != DefaultValue.GetHostIpOrName():
+            if self.masterHost != NetUtil.GetHostIpOrName():
                 # scp session IO Temp File to tmpDir
                 scpCmd = "pscp -H %s '%s' '%s'/" % (
                     self.masterHost, sessionIOTempFile,
-                    DefaultValue.getTmpDirFromEnv())
+                    EnvUtil.getTmpDirFromEnv())
 
                 self.logger.debug("Execute command: %s" % scpCmd)
                 (status, output) = subprocess.getstatusoutput(scpCmd)
@@ -1633,59 +1620,59 @@ class GaussStat():
                                     output)
 
                 # close and remove temporary file
-                DefaultValue.cleanTmpFile(sessionIOTempFile)
+                FileUtil.cleanTmpFile(sessionIOTempFile)
 
             self.logger.debug("Successfully collected session IO "
                               "performance statistics.")
         except Exception as e:
             # close and remove temporary file
-            DefaultValue.cleanTmpFile(sessionIOTempFile)
+            FileUtil.cleanTmpFile(sessionIOTempFile)
             raise Exception(str(e))
 
     def cleanTempFiles(self):
         """
         """
         # clean all the temp files before start collect the performance data
-        recordTempFilePattern = os.path.join(DefaultValue.getTmpDirFromEnv(),
+        recordTempFilePattern = os.path.join(EnvUtil.getTmpDirFromEnv(),
                                              'recordTempFile_*_*')
         recordTempFileList = glob.iglob(r'%s' % recordTempFilePattern)
         for tempFile in recordTempFileList:
             os.remove(tempFile)
 
         sessionCpuTempFilePattern = os.path.join(
-            DefaultValue.getTmpDirFromEnv(), 'sessionCpuTempFile_*_*')
+            EnvUtil.getTmpDirFromEnv(), 'sessionCpuTempFile_*_*')
         sessionCpuTempFileList = glob.iglob(r'%s' % sessionCpuTempFilePattern)
         for tempFile in sessionCpuTempFileList:
             os.remove(tempFile)
 
         sessionMemTempFilePattern = os.path.join(
-            DefaultValue.getTmpDirFromEnv(), 'sessionMemTempFile_*_*')
+            EnvUtil.getTmpDirFromEnv(), 'sessionMemTempFile_*_*')
         sessionMemTempFileList = glob.iglob(r'%s' % sessionMemTempFilePattern)
         for tempFile in sessionMemTempFileList:
             os.remove(tempFile)
 
         sessionIOTempFilePattern = os.path.join(
-            DefaultValue.getTmpDirFromEnv(), 'sessionIOTempFile_*_*')
+            EnvUtil.getTmpDirFromEnv(), 'sessionIOTempFile_*_*')
         sessionIOTempFileList = glob.iglob(r'%s' % sessionIOTempFilePattern)
         for tempFile in sessionIOTempFileList:
             os.remove(tempFile)
 
         sessionCpuTempResultPattern = os.path.join(
-            DefaultValue.getTmpDirFromEnv(), 'sessionCpuTempResult_*_*')
+            EnvUtil.getTmpDirFromEnv(), 'sessionCpuTempResult_*_*')
         sessionCpuTempResultList = glob.iglob(r'%s' %
                                               sessionCpuTempResultPattern)
         for tempFile in sessionCpuTempResultList:
             os.remove(tempFile)
 
         sessionMemTempResultPattern = os.path.join(
-            DefaultValue.getTmpDirFromEnv(), 'sessionMemTempResult_*_*')
+            EnvUtil.getTmpDirFromEnv(), 'sessionMemTempResult_*_*')
         sessionMemTempResultList = glob.iglob(r'%s' %
                                               sessionMemTempResultPattern)
         for tempFile in sessionMemTempResultList:
             os.remove(tempFile)
 
         sessionIOTempResultPattern = os.path.join(
-            DefaultValue.getTmpDirFromEnv(), 'sessionIOTempResult_*_*')
+            EnvUtil.getTmpDirFromEnv(), 'sessionIOTempResult_*_*')
         sessionIOTempResultList = glob.iglob(r'%s' %
                                              sessionIOTempResultPattern)
         for tempFile in sessionIOTempResultList:
@@ -1733,7 +1720,7 @@ class GaussStat():
 
             # clean all the temp files before display the performance data
             queryTempFilePattern = os.path.join(
-                DefaultValue.getTmpDirFromEnv(),
+                EnvUtil.getTmpDirFromEnv(),
                 'checkperf_query_*_*')
             queryTempFileList = glob.iglob(r'%s' % queryTempFilePattern)
             for tempFile in queryTempFileList:
@@ -1759,7 +1746,7 @@ class GaussStat():
                 actionList.extend(sessionList)
             # Concurrent execute collectStat function
             pool = ThreadPool(DEFAULT_PARALLEL_NUM)
-            results = pool.map(self.collectStat, actionList)
+            pool.map(self.collectStat, actionList)
             pool.close()
             pool.join()
             self.outPut()
@@ -1780,7 +1767,7 @@ class GaussStat():
                        "SUM(pg_database_size(oid))::bigint FROM pg_database;"
             if (g_DWS_mode):
                 (status, result, err_output) = \
-                    ClusterCommand.excuteSqlOnLocalhost(nodePort, querySql)
+                    SqlExecutor.excuteSqlOnLocalhost(nodePort, querySql)
                 self.logger.debug("Asyn collecting database size. "
                                   "\ncommand: %s \nresult: %s." %
                                   (querySql, result))
@@ -1794,7 +1781,7 @@ class GaussStat():
                                                 DefaultValue.DB_SIZE_FILE)
                 output = result[0][0]
 
-                g_file.createFileInSafeMode(databaseSizeFile)
+                FileUtil.createFileInSafeMode(databaseSizeFile)
                 with open(databaseSizeFile, 'w') as f:
                     f.writelines(output)
                     if (f):
@@ -1817,7 +1804,7 @@ class GaussStat():
                 binPath = os.path.join(g_clusterInfo.appPath, "bin")
                 databaseSizeFile = os.path.join(binPath,
                                                 DefaultValue.DB_SIZE_FILE)
-                g_file.createFileInSafeMode(databaseSizeFile)
+                FileUtil.createFileInSafeMode(databaseSizeFile)
                 with open(databaseSizeFile, 'w') as f:
                     f.writelines(output)
                     if (f):
@@ -1864,7 +1851,7 @@ class GaussStat():
                 # execute the sql command
 
                 (status, result, err_output) = \
-                    ClusterCommand.excuteSqlOnLocalhost(self.localport, sql)
+                    SqlExecutor.excuteSqlOnLocalhost(self.localport, sql)
             except Exception as e:
                 raise Exception(str(e))
             # failed to execute the sql command
@@ -1927,7 +1914,7 @@ class GaussStat():
         if (g_DWS_mode):
             try:
                 (status, result, err_output) = \
-                    ClusterCommand.excuteSqlOnLocalhost(self.localport, sql)
+                    SqlExecutor.excuteSqlOnLocalhost(self.localport, sql)
             except Exception as e:
                 raise Exception(str(e))
             # failed to execute the sql command
@@ -1978,7 +1965,7 @@ class GaussStat():
         if (g_DWS_mode):
             try:
                 (status, result, err_output) = \
-                    ClusterCommand.excuteSqlOnLocalhost(self.localport, sql)
+                    SqlExecutor.excuteSqlOnLocalhost(self.localport, sql)
             except Exception as e:
                 raise Exception(ErrorCode.GAUSS_536["GAUSS_53611"] % str(e))
             # failed to execute the sql command
@@ -2030,7 +2017,7 @@ class GaussStat():
             try:
                 # execute the sql command
                 (status, result, err_output) = \
-                    ClusterCommand.excuteSqlOnLocalhost(self.localport, sql)
+                    SqlExecutor.excuteSqlOnLocalhost(self.localport, sql)
             except Exception as e:
                 raise Exception(str(e))
             # failed to execute the sql command
@@ -2083,7 +2070,7 @@ class GaussStat():
             try:
                 # execute the sql command
                 (status, result, err_output) = \
-                    ClusterCommand.excuteSqlOnLocalhost(self.localport, sql)
+                    SqlExecutor.excuteSqlOnLocalhost(self.localport, sql)
             except Exception as e:
                 raise Exception(str(e))
             # failed to execute the sql command
@@ -2146,7 +2133,7 @@ class GaussStat():
             try:
                 # execute the sql command
                 (status, result, err_output) = \
-                    ClusterCommand.excuteSqlOnLocalhost(self.localport, sql)
+                    SqlExecutor.excuteSqlOnLocalhost(self.localport, sql)
             except Exception as e:
                 raise Exception(str(e))
             # failed to execute the sql command
@@ -2204,7 +2191,7 @@ class GaussStat():
             try:
                 # execute the sql command
                 (status, result, err_output) = \
-                    ClusterCommand.excuteSqlOnLocalhost(self.localport, sql)
+                    SqlExecutor.excuteSqlOnLocalhost(self.localport, sql)
             except Exception as e:
                 raise Exception(str(e))
             # failed to execute the sql command
@@ -2249,7 +2236,7 @@ class GaussStat():
             try:
                 # execute the sql command
                 (status, result, err_output) = \
-                    ClusterCommand.excuteSqlOnLocalhost(self.localport, sql)
+                    SqlExecutor.excuteSqlOnLocalhost(self.localport, sql)
             except Exception as e:
                 raise Exception(str(e))
             # failed to execute the sql command
@@ -2297,7 +2284,7 @@ class GaussStat():
             try:
                 # execute the sql command
                 (status, result, err_output) = \
-                    ClusterCommand.excuteSqlOnLocalhost(self.localport, sql)
+                    SqlExecutor.excuteSqlOnLocalhost(self.localport, sql)
             except Exception as e:
                 raise Exception(str(e))
             recordsCount = len(result)
@@ -2385,7 +2372,7 @@ class GaussStat():
             try:
                 # execute the sql command
                 (status, result, err_output) = \
-                    ClusterCommand.excuteSqlOnLocalhost(self.localport, sql)
+                    SqlExecutor.excuteSqlOnLocalhost(self.localport, sql)
             except Exception as e:
                 raise Exception(str(e))
             recordsCount = len(result)
@@ -2472,7 +2459,7 @@ class GaussStat():
             try:
                 # execute the sql command
                 (status, result, err_output) = \
-                    ClusterCommand.excuteSqlOnLocalhost(self.localport, sql)
+                    SqlExecutor.excuteSqlOnLocalhost(self.localport, sql)
             except Exception as e:
                 raise Exception(str(e))
 
@@ -2549,7 +2536,7 @@ class GaussStat():
         try:
             # get session Cpu Temp Result
             sessionCpuTempResult = os.path.join(
-                DefaultValue.getTmpDirFromEnv(),
+                EnvUtil.getTmpDirFromEnv(),
                 "sessionCpuTempResult_%d_%s" % \
                 (self.flagNum, self.masterHost))
             # read session Cpu Temp Result
@@ -2569,10 +2556,10 @@ class GaussStat():
                             statItem((tempList[5]).strip(), "%")
                         self.session_cpu_stat.append(sess)
             # close and remove session Cpu Temp Result
-            DefaultValue.cleanTmpFile(sessionCpuTempResult)
+            FileUtil.cleanTmpFile(sessionCpuTempResult)
         except Exception as e:
             # close and remove session Cpu Temp Result
-            DefaultValue.cleanTmpFile(sessionCpuTempResult)
+            FileUtil.cleanTmpFile(sessionCpuTempResult)
             raise Exception(str(e))
         self.logger.debug("Successfully collected session CPU statistics.")
 
@@ -2587,7 +2574,7 @@ class GaussStat():
         try:
             # get session Memory Temp Result
             sessionMemTempResult = os.path.join(
-                DefaultValue.getTmpDirFromEnv(),
+                EnvUtil.getTmpDirFromEnv(),
                 "sessionMemTempResult_%d_%s" % \
                 (self.flagNum, self.masterHost))
             # read session Memory Temp Result
@@ -2616,10 +2603,10 @@ class GaussStat():
                             statItem((tempList[4]).strip())
                         self.session_mem_stat.append(sess)
             # close and remove session Memory Temp Result
-            DefaultValue.cleanTmpFile(sessionMemTempResult)
+            FileUtil.cleanTmpFile(sessionMemTempResult)
         except Exception as e:
             # close and remove session Memory Temp Result
-            DefaultValue.cleanTmpFile(sessionMemTempResult)
+            FileUtil.cleanTmpFile(sessionMemTempResult)
             raise Exception(str(e))
         self.logger.debug("Successfully collected session memory statistics.")
 
@@ -2633,7 +2620,7 @@ class GaussStat():
         sessionIOTempResult = ""
         try:
             # get session IO Temp Result
-            sessionIOTempResult = os.path.join(DefaultValue.getTmpDirFromEnv(),
+            sessionIOTempResult = os.path.join(EnvUtil.getTmpDirFromEnv(),
                                                "sessionIOTempResult_%d_%s" % \
                                                (self.flagNum, self.masterHost))
             # read session IO Temp Result
@@ -2652,10 +2639,10 @@ class GaussStat():
                             statItem((tempList[4]).strip())
                         self.session_io_stat.append(sess)
             # close and remove session IO Temp Result
-            DefaultValue.cleanTmpFile(sessionIOTempResult)
+            FileUtil.cleanTmpFile(sessionIOTempResult)
         except Exception as e:
             # close and remove session IO Temp Result
-            DefaultValue.cleanTmpFile(sessionIOTempResult)
+            FileUtil.cleanTmpFile(sessionIOTempResult)
             raise Exception(str(e))
         self.logger.debug("Successfully collected session IO statistics.")
 
@@ -3009,8 +2996,8 @@ options:
 
     # get log file
     if (logFile == ""):
-        logFile = "%s/om/%s" % (DefaultValue.getUserLogDirWithUser(user),
-                                DefaultValue.LOCAL_LOG_FILE)
+        logFile = "%s/om/%s" % (ClusterDir.getUserLogDirWithUser(user),
+                                ClusterConstants.LOCAL_LOG_FILE)
 
     # initialize log
     logger = GaussLog(logFile, "GaussStat")
@@ -3020,7 +3007,7 @@ options:
         # Init cluster from static configuration file
         g_clusterInfo.initFromStaticConfig(user)
         localNodeInfo = g_clusterInfo.getDbNodeByName(
-            DefaultValue.GetHostIpOrName())
+            NetUtil.GetHostIpOrName())
         security_mode_value = DefaultValue.getSecurityMode()
         if (security_mode_value == "on"):
             g_DWS_mode = True

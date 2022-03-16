@@ -64,8 +64,10 @@ elif [ X$(echo $PLAT_FORM_STR | grep "openeuler") != X"" ]; then
     dist_version="openEuler"
 elif [ X$(echo $PLAT_FORM_STR | grep "euleros") != X"" ]; then
     dist_version="EulerOS"
+elif [ X$(echo $PLAT_FORM_STR | grep "ubuntu") != X"" ]; then
+    dist_version="Ubuntu"
 else
-    echo "We only support openEuler(aarch64), EulerOS(aarch64), CentOS platform."
+    echo "We only support openEuler(aarch64), EulerOS(aarch64), CentOS, Ubuntu(x86) platform."
     echo "Kernel is $kernel"
     exit 1
 fi
@@ -117,6 +119,9 @@ function env_check()
 function copy_script_file()
 {    
     cp -rf $ROOT_DIR/script $PKG_TMP_DIR/ &&
+    if [ -f $PKG_TMP_DIR/script/gspylib/common/py_pstree.py ]; then
+        mv $PKG_TMP_DIR/script/gspylib/common/py_pstree.py $PKG_TMP_DIR/script/py_pstree.py
+    fi
     cp -rf $ROOT_DIR/other/transfer.py $PKG_TMP_DIR/script/ &&
     find $PKG_TMP_DIR/script/ -type f -print0 | xargs -0 -n 10 -r dos2unix > /dev/null 2>&1 &&
     find $PKG_TMP_DIR/script/gspylib/inspection/ -name d2utmp* -print0 | xargs -0 rm -rf &&
@@ -136,15 +141,15 @@ function version_cfg()
     gitversion=$(git log | grep commit | head -1 | awk '{print $2}' | cut -b 1-8)
     commits=$(git log | grep "See in merge request" | wc -l)
     mrid=$(git log | grep "See in merge request" | head -1 | awk -F! '{print $2}' | grep -o '[0-9]\+')
-    om_version="(openGauss OM 2.0.1 build $gitversion) compiled at `date -d today +\"%Y-%m-%d %H:%M:%S\"` commit $commits last mr $mrid"
+    om_version="(openGauss OM ${version_number} build $gitversion) compiled at `date -d today +\"%Y-%m-%d %H:%M:%S\"` commit $commits last mr $mrid"
     version_file=${PKG_TMP_DIR}/version.cfg
     touch ${version_file}
     echo "${module_name}-${version_number}">${version_file}
     echo "${version_Kernel}" >>${version_file}
     echo "${gitversion}" >>${version_file}
 
-    if [ -f ${PKG_TMP_DIR}/script/gspylib/common/VersionInfo.py ] ; then
-        sed -i -e "s/COMMON_VERSION = \"Gauss200 OM VERSION\"/COMMON_VERSION = \"$(echo ${om_version})\"/g" -e "s/__GAUSS_PRODUCT_STRING__/$module_name/g" ${PKG_TMP_DIR}/script/gspylib/common/VersionInfo.py
+    if [ -f ${PKG_TMP_DIR}/script/domain_utils/cluster_file/version_info.py ] ; then
+        sed -i -e "s/COMMON_VERSION = \"Gauss200 OM VERSION\"/COMMON_VERSION = \"$(echo ${om_version})\"/g" -e "s/__GAUSS_PRODUCT_STRING__/$module_name/g" ${PKG_TMP_DIR}/script/domain_utils/cluster_file/version_info.py
         if [ $? -ne 0 ]; then
             die "Failed to replace OM tools version number."
         fi
@@ -166,7 +171,7 @@ function clib_copy()
     if [ -f $BINARYLIBS_PATH_INSTALL_TOOLS/libpython3.*m.so.1.0 ]
     then
         cp $BINARYLIBS_PATH_INSTALL_TOOLS/libpython3.*m.so.1.0 $PKG_TMP_DIR/script/gspylib/clib
-    fi		
+    fi
     #cp $BUILD_DIR/bin/encrypt $BUILD_DIR/script/gspylib/clib
 }
 
@@ -221,6 +226,13 @@ function lib_copy()
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/paramiko             ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psutil               ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/netifaces            ${PKG_TMP_DIR}/lib
+
+    if [ -d "${BINARYLIBS_PATH_INSTALL_TOOLS}/psycopg2" ]; then
+        mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/psycopg2/
+        cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psycopg2    ${PKG_TMP_DIR}/lib
+        cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psycopg2    ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
+    fi
+
 }
 
 function main()
@@ -258,3 +270,4 @@ function main()
 
 main
 exit 0
+

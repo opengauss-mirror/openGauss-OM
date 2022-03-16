@@ -17,7 +17,7 @@
 import subprocess
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsfile import g_file
+from base_utils.os.file_util import FileUtil
 
 MASTER_INSTANCE = 0
 STANDBY_INSTANCE = 1
@@ -29,7 +29,7 @@ class CheckMaxAsyIOrequests(BaseItem):
 
     def collectAsynchronousIORequest(self):
         result = []
-        request = g_file.readFile("/proc/sys/fs/aio-max-nr")[0]
+        request = FileUtil.readFile("/proc/sys/fs/aio-max-nr")[0]
         result.append(request.strip())
         return result
 

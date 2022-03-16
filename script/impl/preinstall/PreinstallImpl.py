@@ -19,15 +19,23 @@ import os
 import pwd
 import sys
 import getpass
+from multiprocessing.dummy import Pool as ThreadPool
 
 sys.path.append(sys.path[0] + "/../")
 
-from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.Common import ClusterCommand, DefaultValue
 from gspylib.common.OMCommand import OMCommand
 from gspylib.os.gsfile import g_file
-from multiprocessing.dummy import Pool as ThreadPool
+from base_utils.executor.cmd_executor import CmdExecutor
+from domain_utils.cluster_file.cluster_config_file import ClusterConfigFile
+from base_utils.os.cmd_util import CmdUtil
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from base_utils.os.file_util import FileUtil
+from domain_utils.cluster_file.package_info import PackageInfo
+from base_utils.os.password_util import PasswordUtil
+from base_utils.os.net_util import NetUtil
 
 # action name
 # prepare cluster tool package path
@@ -40,8 +48,6 @@ ACTION_CREATE_OS_USER = "create_os_user"
 ACTION_CHECK_OS_USER = "check_os_user"
 # create cluster path
 ACTION_CREATE_CLUSTER_PATHS = "create_cluster_paths"
-# set the os parameters
-ACTION_SET_OS_PARAMETER = "set_os_parameter"
 # set finish flag
 ACTION_SET_FINISH_FLAG = "set_finish_flag"
 # set the user environment variable
@@ -54,8 +60,6 @@ ACTION_PREPARE_USER_CRON_SERVICE = "prepare_user_cron_service"
 ACTION_PREPARE_USER_SSHD_SERVICE = "prepare_user_sshd_service"
 # set the dynamic link library
 ACTION_SET_LIBRARY = "set_library"
-# set sctp service
-ACTION_SET_SCTP = "set_sctp"
 # set virtual Ip
 ACTION_SET_VIRTUALIP = "set_virtualIp"
 # clean virtual Ip
@@ -68,12 +72,12 @@ HOSTS_MAPPING_FLAG = "#Gauss OM IP Hosts Mapping"
 ACTION_INIT_GAUSSLOG = "init_gausslog"
 # check envfile
 ACTION_CHECK_ENVFILE = "check_envfile"
-# check path owner
-ACTION_CHECK_DIR_OWNER = "check_dir_owner"
 # check os software
 ACTION_CHECK_OS_SOFTWARE = "check_os_software"
 # change tool env
 ACTION_CHANGE_TOOL_ENV = "change_tool_env"
+#check config
+ACTION_CHECK_CONFIG = "check_config"
 #############################################################################
 # Global variables
 #   self.context.logger: globle logger
@@ -128,20 +132,12 @@ class PreinstallImpl:
         clusterPath.append(self.context.clusterToolPath)
         # get tmp path
         clusterPath.append(
-            dbClusterInfo.readClusterTmpMppdbPath(self.context.user,
+            ClusterConfigFile.readClusterTmpMppdbPath(self.context.user,
                                                   self.context.xmlFile))
         self.context.logger.debug("Cluster paths %s." % clusterPath,
                                   "constant")
         # check directory
-        g_file.checkIsInDirectory(self.context.mpprcFile, clusterPath)
-
-    def getUserName(self):
-        """
-        function: get the user name
-        input: NA
-        output: str
-        """
-        return os.environ.get('LOGNAME') or os.environ.get('USER')
+        FileUtil.checkIsInDirectory(self.context.mpprcFile, clusterPath)
 
     def getUserPasswd(self, name, point=""):
         """
@@ -313,7 +309,7 @@ class PreinstallImpl:
                         Ips,
                         self.context.mpprcFile,
                         self.context.skipHostnameSet)
-                    g_file.changeMode(DefaultValue.HOSTS_FILE, "/etc/hosts",
+                    FileUtil.changeMode(DefaultValue.HOSTS_FILE, "/etc/hosts",
                                       False, "shell")
 
         except Exception as e:
@@ -514,10 +510,10 @@ class PreinstallImpl:
         cmd = "grep -v '%s' %s > %s ; cp %s %s && rm -rf '%s'" % \
               ("#Gauss.* IP Hosts Mapping", '/etc/hosts', tmp_hostipname,
                tmp_hostipname, '/etc/hosts', tmp_hostipname)
-        (status, output) = DefaultValue.retryGetstatusoutput(cmd)
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd)
         # if cmd failed, append the output to writeResult
         if status != 0:
-            g_file.removeFile(tmp_hostipname)
+            FileUtil.removeFile(tmp_hostipname)
             writeResult.append(output)
         # cmd OK
         else:
@@ -526,8 +522,7 @@ class PreinstallImpl:
                 hostIPInfo = '%s  %s  %s' % (key, value, HOSTS_MAPPING_FLAG)
                 hostIPList.append(hostIPInfo)
             # write the ip and hostname to /etc/hosts
-            g_file.writeFile("/etc/hosts", hostIPList, mode="a+")
-
+            FileUtil.writeFile("/etc/hosts", hostIPList, mode="a+")
     def writeRemoteHosts(self, result):
         """
         function:
@@ -613,12 +608,12 @@ class PreinstallImpl:
 
         self.context.logger.log("Distributing package.", "addStep")
         try:
-            self.makeCompressedToolPackage(self.context.clusterToolPath)
+            PackageInfo.makeCompressedToolPackage(self.context.clusterToolPath)
 
             # get the all node names in xml file
             hosts = self.context.clusterInfo.getClusterNodeNames()
             # remove the local node name
-            hosts.remove(DefaultValue.GetHostIpOrName())
+            hosts.remove(NetUtil.GetHostIpOrName())
             self.getTopToolPath(self.context.sshTool,
                                 self.context.clusterToolPath, hosts,
                                 self.context.mpprcFile)
@@ -642,13 +637,12 @@ class PreinstallImpl:
                     self.context.logger.log(
                         "Begin to distribute package to tool path.")
                     # Send compressed package to every host
-                    DefaultValue.distributePackagesToRemote(
+                    PackageInfo.distributePackagesToRemote(
                         self.context.sshTool,
                         self.context.clusterToolPath,
                         self.context.clusterToolPath,
                         hosts,
-                        self.context.mpprcFile,
-                        self.context.clusterInfo)
+                        self.context.mpprcFile)
                     # Decompress package on every host
                 except Exception as e:
                     # loop 3 times, if still wrong, exit with error code.
@@ -672,13 +666,12 @@ class PreinstallImpl:
                     self.context.logger.log(
                         "Begin to distribute package to package path.")
                     # distribute the distribute package to all node names
-                    DefaultValue.distributePackagesToRemote(
+                    PackageInfo.distributePackagesToRemote(
                         self.context.sshTool,
                         self.context.clusterToolPath,
                         packageDir,
                         hosts,
-                        self.context.mpprcFile,
-                        self.context.clusterInfo)
+                        self.context.mpprcFile)
                 except Exception as e:
                     # loop 3 times, if still wrong, exit with error code.
                     if i == 2:
@@ -695,19 +688,21 @@ class PreinstallImpl:
             DefaultValue.distributeXmlConfFile(self.context.sshTool,
                                                self.context.xmlFile, hosts,
                                                self.context.mpprcFile)
+            cmd = "%s -t %s -u %s -X %s" % (OMCommand.getLocalScript("Local_PreInstall"),
+                                      ACTION_CHECK_CONFIG,
+                                      self.context.user,
+                                      self.context.xmlFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                             self.context.sshTool,
+                                             False,
+                                             self.context.mpprcFile,
+                                             hosts)
         except Exception as e:
             raise Exception(str(e))
 
         self.context.logger.log("Successfully distributed package.",
                                 "constant")
 
-    def makeCompressedToolPackage(self, path):
-        """
-        function: make compressed tool package
-        input  : path
-        output : NA
-        """
-        pass
 
     def getTopToolPath(self, top_sshTool, clusterToolPath, hosts, mpprcFile):
         """
@@ -762,8 +757,8 @@ class PreinstallImpl:
         if self.context.localMode or self.context.isSingle:
             # fix new created path's owner
             for onePath in self.context.needFixOwnerPaths:
-                g_file.changeOwner(self.context.user, onePath, recursive=True,
-                                   cmdType="shell")
+                FileUtil.changeOwner(self.context.user, onePath, recursive=True,
+                                     cmd_type="shell", link=True)
             return
 
         self.context.logger.log("Installing the tools in the cluster.",
@@ -774,8 +769,8 @@ class PreinstallImpl:
                 % self.context.needFixOwnerPaths)
             # fix new created path's owner
             for onePath in self.context.needFixOwnerPaths:
-                g_file.changeOwner(self.context.user, onePath, recursive=True,
-                                   cmdType="shell")
+                FileUtil.changeOwner(self.context.user, onePath, recursive=True,
+                                     cmd_type="shell", link=True)
 
             # fix remote toolpath's owner
             for node in list(topToolPath.keys()):
@@ -787,21 +782,18 @@ class PreinstallImpl:
                         topToolPath[node])
                     self.context.sshTool.executeCommand(
                         cmd,
-                        "authorize top tool path",
                         DefaultValue.SUCCESS,
                         nodelist,
                         self.context.mpprcFile)
 
             # chown chmod top path file
-            dirName = os.path.dirname(self.context.logFile)
-            topDirFile = "%s/topDirPath.dat" % dirName
+            topDirFile = ClusterConstants.TOP_DIR_FILE
             cmd = "(if [ -f '%s' ];then cat '%s' " \
                   "| awk -F = '{print $1}' " \
-                  "| xargs chown -R %s:%s; rm -rf '%s';fi)" % \
+                  "| xargs chown -R -h %s:%s; rm -rf '%s';fi)" % \
                   (topDirFile, topDirFile, self.context.user,
                    self.context.group, topDirFile)
             self.context.sshTool.executeCommand(cmd,
-                                                "authorize top path",
                                                 DefaultValue.SUCCESS,
                                                 [],
                                                 self.context.mpprcFile)
@@ -812,14 +804,14 @@ class PreinstallImpl:
             packageDir = os.path.realpath(
                 os.path.join(dirName, "./../../../")) + "/"
 
-            list_dir = g_file.getDirectoryList(packageDir)
+            list_dir = FileUtil.getDirectoryList(packageDir)
             for directory in list_dir:
                 dirPath = packageDir + directory
                 dirPath = os.path.normpath(dirPath)
                 if directory.find('sudo') >= 0:
                     continue
-                g_file.changeOwner(self.context.user, dirPath, recursive=True,
-                                   cmdType="python")
+                FileUtil.changeOwner(self.context.user, dirPath, recursive=True,
+                                   cmd_type="python")
 
             # check enter permission
             cmd = "su - %s -c 'cd '%s''" % (self.context.user, packageDir)
@@ -837,9 +829,9 @@ class PreinstallImpl:
             # so we need check its exists
             if os.path.exists(user_dir):
 
-                g_file.changeOwner(self.context.user, user_dir, recursive=True,
-                                   cmdType="shell", retryFlag=True,
-                                   retryTime=15, waiteTime=1)
+                FileUtil.changeOwner(self.context.user, user_dir, recursive=True,
+                                   cmd_type="shell", retry_flag=True,
+                                   retry_time=15, waite_time=1, link=True)
 
                 # check enter permission
                 cmd = "su - %s -c 'cd '%s''" % (self.context.user, user_dir)
@@ -850,11 +842,11 @@ class PreinstallImpl:
                                     + " Error: \n%s" % output)
             # user can specify log file,
             # so we need change the owner of log file alonely
-            g_file.changeOwner(self.context.user, self.context.logger.logFile,
-                               recursive=False, cmdType="shell")
-            g_file.changeMode(DefaultValue.FILE_MODE,
+            FileUtil.changeOwner(self.context.user, self.context.logger.logFile,
+                               recursive=False, cmd_type="shell", link=True)
+            FileUtil.changeMode(DefaultValue.FILE_MODE,
                               self.context.logger.logFile, recursive=False,
-                              cmdType="shell")
+                              cmd_type="shell")
 
             # check enter permission
             log_file_dir = os.path.dirname(self.context.logger.logFile)
@@ -877,7 +869,6 @@ class PreinstallImpl:
                 cmd += " -s '%s' -g %s" % (
                     self.context.mpprcFile, self.context.group)
             self.context.sshTool.executeCommand(cmd,
-                                                "set cluster tool ENV",
                                                 DefaultValue.SUCCESS,
                                                 [],
                                                 self.context.mpprcFile)
@@ -891,7 +882,6 @@ class PreinstallImpl:
             # prepare cluster tool package path
             self.context.sshTool.executeCommand(
                 cmd,
-                "prepare cluster tool package path",
                 DefaultValue.SUCCESS,
                 [],
                 self.context.mpprcFile)
@@ -918,10 +908,10 @@ class PreinstallImpl:
                 self.context.xmlFile,
                 self.context.clusterToolPath)
             if self.context.mpprcFile == "":
-                DefaultValue.execCommandWithMode(
+                CmdExecutor.execCommandWithMode(
                     cmd,
-                    "change software tool env path",
-                    self.context.sshTool)
+                    self.context.sshTool,
+                    self.context.localMode)
         except Exception as e:
             raise Exception(str(e))
 
@@ -944,7 +934,6 @@ class PreinstallImpl:
                 self.context.xmlFile,
                 self.context.localLog)
             self.context.sshTool.executeCommand(cmd,
-                                                "check hostname mapping",
                                                 DefaultValue.SUCCESS,
                                                 [],
                                                 self.context.mpprcFile,
@@ -1007,9 +996,8 @@ class PreinstallImpl:
                 ACTION_CHECK_OS_VERSION,
                 self.context.user,
                 self.context.localLog)
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "check OS version",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle,
                 self.context.mpprcFile)
@@ -1074,9 +1062,8 @@ class PreinstallImpl:
                             ACTION_INIT_GAUSSLOG,
                             self.context.user,
                             self.context.localLog)
-                        DefaultValue.execCommandWithMode(
+                        CmdExecutor.execCommandWithMode(
                             cmd,
-                            "init gausslog",
                             self.context.sshTool,
                             self.context.isSingle,
                             self.context.mpprcFile)
@@ -1088,11 +1075,10 @@ class PreinstallImpl:
                         self.context.user,
                         self.context.group,
                         self.context.localLog)
-                    DefaultValue.execCommandWithMode(cmd,
-                                                     "check OS user",
-                                                     self.context.sshTool,
-                                                     self.context.isSingle,
-                                                     self.context.mpprcFile)
+                    CmdExecutor.execCommandWithMode(cmd,
+                                                    self.context.sshTool,
+                                                    self.context.isSingle,
+                                                    self.context.mpprcFile)
                     self.context.logger.debug(
                         "Successfully set the flag for creating user's trust")
                     return
@@ -1102,10 +1088,8 @@ class PreinstallImpl:
                     while i < 3:
                         self.context.password = self.getUserPasswd(
                             "cluster user")
-                        DefaultValue.checkPasswordVaild(
-                            self.context.password,
-                            self.context.user,
-                            self.context.clusterInfo)
+                        PasswordUtil.checkPasswordVaild(
+                            self.context.password)
                         self.context.passwordsec = self.getUserPasswd(
                             "cluster user", "again")
 
@@ -1129,8 +1113,7 @@ class PreinstallImpl:
                     ACTION_INIT_GAUSSLOG,
                     self.context.user,
                     self.context.localLog)
-                DefaultValue.execCommandWithMode(cmd,
-                                                 "init gausslog",
+                CmdExecutor.execCommandWithMode(cmd,
                                                  self.context.sshTool,
                                                  self.context.isSingle,
                                                  self.context.mpprcFile)
@@ -1143,13 +1126,13 @@ class PreinstallImpl:
             # create the user on all nodes
             # write the password into temporary file
             tmp_file = "/tmp/temp.%s" % self.context.user
-            g_file.createFileInSafeMode(tmp_file)
+            FileUtil.createFileInSafeMode(tmp_file)
             with open("/tmp/temp.%s" % self.context.user, "w") as fp:
                 fp.write(self.context.password)
                 fp.flush()
             # change the temporary file permissions
-            g_file.changeMode(DefaultValue.KEY_FILE_MODE, tmp_file,
-                              recursive=False, cmdType="shell")
+            FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, tmp_file,
+                              recursive=False, cmd_type="shell")
 
             if not self.context.isSingle:
                 # send the temporary file to all remote nodes
@@ -1161,8 +1144,7 @@ class PreinstallImpl:
                     cmd = "(if [ -f '/tmp/temp.%s' ];" \
                           "then rm -f '/tmp/temp.%s';fi)" % (
                               self.context.user, self.context.user)
-                    DefaultValue.execCommandWithMode(cmd,
-                                                     "delete temporary files",
+                    CmdExecutor.execCommandWithMode(cmd,
                                                      self.context.sshTool,
                                                      self.context.isSingle,
                                                      self.context.mpprcFile)
@@ -1176,8 +1158,7 @@ class PreinstallImpl:
                 self.context.user,
                 self.context.group,
                 self.context.localLog)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "create OS user",
+            CmdExecutor.execCommandWithMode(cmd,
                                              self.context.sshTool,
                                              self.context.isSingle,
                                              self.context.mpprcFile)
@@ -1185,8 +1166,7 @@ class PreinstallImpl:
             # delete the temporary file on all nodes
             cmd = "(if [ -f '/tmp/temp.%s' ];then rm -f '/tmp/temp.%s';fi)" \
                   % (self.context.user, self.context.user)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "delete temporary files",
+            CmdExecutor.execCommandWithMode(cmd,
                                              self.context.sshTool,
                                              self.context.isSingle,
                                              self.context.mpprcFile)
@@ -1199,12 +1179,15 @@ class PreinstallImpl:
             # delete the temporary file on all nodes
             cmd = "(if [ -f '/tmp/temp.%s' ];then rm -f '/tmp/temp.%s';fi)" \
                   % (self.context.user, self.context.user)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "delete temporary files",
+            CmdExecutor.execCommandWithMode(cmd,
                                              self.context.sshTool,
                                              self.context.isSingle,
                                              self.context.mpprcFile)
             raise Exception(str(e))
+
+    def check_error_code(self,error_message):
+        if (error_message.find("GAUSS-50305") > 0):
+            raise Exception(str(error_message))
 
     def createDirs(self):
         """
@@ -1220,19 +1203,18 @@ class PreinstallImpl:
                     "Paths need to be fixed owner:%s."
                     % self.context.needFixOwnerPaths)
                 for onePath in self.context.needFixOwnerPaths:
-                    g_file.changeOwner(self.context.user, onePath,
-                                       recursive=True, cmdType="shell")
+                    FileUtil.changeOwner(self.context.user, onePath,
+                                         recursive=True, cmd_type="shell", link=True)
 
-                dirName = os.path.dirname(self.context.logFile)
-                topDirFile = "%s/topDirPath.dat" % dirName
+                topDirFile = ClusterConstants.TOP_DIR_FILE
                 if os.path.exists(topDirFile):
-                    keylist = g_file.readFile(topDirFile)
+                    keylist = FileUtil.readFile(topDirFile)
                     if keylist != []:
                         for key in keylist:
-                            g_file.changeOwner(self.context.user, key.strip(),
-                                               True, "shell")
+                            FileUtil.changeOwner(self.context.user, key.strip(),
+                                               True, "shell", link=True)
 
-                    g_file.removeFile(topDirFile)
+                    FileUtil.removeFile(topDirFile)
 
             # create the directory on all nodes
             cmd = "%s -t %s -u %s -g %s -X '%s' -l '%s'" % (
@@ -1246,9 +1228,8 @@ class PreinstallImpl:
             if self.context.mpprcFile != "":
                 cmd += " -s '%s'" % self.context.mpprcFile
             # exec the cmd
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "create cluster's path",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle,
                 self.context.mpprcFile)
@@ -1273,7 +1254,7 @@ class PreinstallImpl:
             # set the localmode
             if self.context.localMode or self.context.isSingle:
                 # localmode
-                namelist = DefaultValue.GetHostIpOrName()
+                namelist = NetUtil.GetHostIpOrName()
             else:
                 # Non-native mode
                 namelist = ",".join(NodeNames)
@@ -1393,9 +1374,8 @@ class PreinstallImpl:
                 ACTION_PREPARE_USER_CRON_SERVICE,
                 self.context.user,
                 self.context.localLog)
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "prepare CRON service",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle,
                 self.context.mpprcFile)
@@ -1421,9 +1401,8 @@ class PreinstallImpl:
                 self.context.group,
                 self.context.xmlFile,
                 self.context.localLog)
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "prepare SSH service",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle,
                 self.context.mpprcFile)
@@ -1457,9 +1436,8 @@ class PreinstallImpl:
                 self.context.localLog)
             self.context.logger.debug("Command for setting library: %s" % cmd)
             # exec the cmd for set library
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "set library",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle,
                 self.context.mpprcFile)
@@ -1476,7 +1454,7 @@ class PreinstallImpl:
         input: NA
         output: NA
         """
-        pass 
+        pass
 
     def setCorePath(self):
         """
@@ -1493,38 +1471,6 @@ class PreinstallImpl:
         output: NA
         """
         pass
-
-    def setSctp(self):
-        """
-        function: setting SCTP service
-        input: NA
-        output: NA
-        """
-        self.context.logger.log("Setting SCTP service.", "addStep")
-        try:
-            # set SCTP service
-            cmd = "%s -t %s -u %s -l %s" % (
-                OMCommand.getLocalScript("Local_PreInstall"),
-                ACTION_SET_SCTP,
-                self.context.user,
-                self.context.localLog)
-            # check the mpprcFile
-            if self.context.mpprcFile != "":
-                cmd += " -s '%s'" % self.context.mpprcFile
-            self.context.logger.debug("Command for setting SCTP: %s" % cmd)
-
-            # exec cmd for set SCTP
-            DefaultValue.execCommandWithMode(
-                cmd,
-                "set SCTP",
-                self.context.sshTool,
-                self.context.localMode or self.context.isSingle,
-                self.context.mpprcFile)
-        except Exception as e:
-            # failed set SCTP service
-            raise Exception(str(e))
-        # Successfully set SCTP service
-        self.context.logger.log("Successfully set SCTP service.", "constant")
 
     def setVirtualIp(self):
         """
@@ -1558,9 +1504,8 @@ class PreinstallImpl:
             if self.context.mpprcFile != "":
                 cmd += " -s '%s'" % self.context.mpprcFile
             # exec the cmd for set finish flag
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "setting finish flag",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle,
                 self.context.mpprcFile)
@@ -1627,7 +1572,7 @@ class PreinstallImpl:
             global g_stepTrustTmpFile
             global TRUST_TMP_FILE_DIR
             TRUST_TMP_FILE_DIR = "/tmp/%s" % TRUST_TMP_FILE
-            g_file.createFileInSafeMode(TRUST_TMP_FILE_DIR)
+            FileUtil.createFileInSafeMode(TRUST_TMP_FILE_DIR)
             with open(TRUST_TMP_FILE_DIR, "w") as g_stepTrustTmpFile:
                 g_stepTrustTmpFile.flush()
         except Exception as e:
@@ -1644,7 +1589,7 @@ class PreinstallImpl:
 
         try:
             cmd = "rm -rf '%s'" % TRUST_TMP_FILE_DIR
-            self.context.sshTool.executeCommand(cmd, "delete step tmp file")
+            self.context.sshTool.executeCommand(cmd)
         except Exception as e:
             self.context.logger.error(str(e))
 
@@ -1665,7 +1610,7 @@ class PreinstallImpl:
                 self.context.localLog)
             if self.context.mpprcFile != "":
                 cmd += " -s '%s'" % self.context.mpprcFile
-            self.context.sshTool.executeCommand(cmd, "delete step tmp file")
+            self.context.sshTool.executeCommand(cmd)
         except Exception as e:
             raise Exception(str(e))
 
@@ -1691,15 +1636,13 @@ class PreinstallImpl:
         input  : NA
         output : NA
         """
-        gphome = gausshome = pghost = gausslog \
-            = agent_path = agent_log_path = ""
         if self.context.mpprcFile and os.path.isfile(self.context.mpprcFile):
             source_file = self.context.mpprcFile
         elif self.context.mpprcFile:
             self.context.logger.debug(
                 "Environment file is not exist environment file,"
                 " skip check repeat.")
-            return
+            return []
         elif os.path.isfile(
                 os.path.join("/home", "%s/.bashrc" % self.context.user)):
             source_file = os.path.join("/home",
@@ -1707,7 +1650,7 @@ class PreinstallImpl:
         else:
             self.context.logger.debug(
                 "There is no environment file, skip check repeat.")
-            return
+            return []
         with open(source_file, 'r') as f:
             env_list = f.readlines()
         new_env_list = []
@@ -1722,6 +1665,14 @@ class PreinstallImpl:
                     new_env_list.append(env.strip())
 
         new_env_list.extend([env.replace('\n', '') for env in env_list])
+        return new_env_list
+
+    def check_env_repeat(self):
+        gphome = gausshome = pghost = gausslog \
+            = agent_path = agent_log_path = ""
+        new_env_list = self.checkRepeat()
+        if not new_env_list:
+            return
         if "export GAUSS_ENV=2" not in new_env_list:
             self.context.logger.debug(
                 "There is no install cluster exist. "
@@ -1741,22 +1692,21 @@ class PreinstallImpl:
             if env.startswith("export AGENTLOGPATH="):
                 agent_log_path = env.split('=')[1]
 
-        gaussdbToolPath = DefaultValue.getPreClusterToolPath(
-            self.context.user,
+        gaussdbToolPath = ClusterDir.getPreClusterToolPath(
             self.context.xmlFile)
-        gaussdbAppPath = self.context.getOneClusterConfigItem(
+        gaussdbAppPath = ClusterConfigFile.getOneClusterConfigItem(
             "gaussdbAppPath",
             self.context.xmlFile)
         DefaultValue.checkPathVaild(gaussdbAppPath)
-        tmpMppdbPath = self.context.clusterInfo.readClusterTmpMppdbPath(
+        tmpMppdbPath = ClusterConfigFile.readClusterTmpMppdbPath(
             self.context.user, self.context.xmlFile)
-        gaussdbLogPath = self.context.clusterInfo.readClusterLogPath(
+        gaussdbLogPath = ClusterConfigFile.readClusterLogPath(
             self.context.xmlFile)
-        agentToolPath = self.context.getOneClusterConfigItem(
+        agentToolPath = ClusterConfigFile.getOneClusterConfigItem(
             "agentToolPath",
             self.context.xmlFile)
         DefaultValue.checkPathVaild(agentToolPath)
-        agentLogPath = self.context.getOneClusterConfigItem(
+        agentLogPath = ClusterConfigFile.getOneClusterConfigItem(
             "agentLogPath",
             self.context.xmlFile)
         DefaultValue.checkPathVaild(agentLogPath)
@@ -1805,7 +1755,7 @@ class PreinstallImpl:
         output : None
         """
         appPath = self.context.clusterInfo.appPath
-        self.checkRepeat()
+        self.check_env_repeat()
         for dbNode in self.context.clusterInfo.dbNodes:
             # dn
             for dataInst in dbNode.datanodes:
@@ -1829,9 +1779,8 @@ class PreinstallImpl:
                 self.context.localLog)
             self.context.logger.debug("Checking OS software: %s" % cmd)
             # exec the cmd for Checking software
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "check software",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle,
                 self.context.mpprcFile)
@@ -1850,6 +1799,12 @@ class PreinstallImpl:
         dir_name = os.path.dirname(os.path.realpath(__file__))
         package_dir = os.path.join(dir_name, "./../../../")
         return os.path.realpath(package_dir)
+    
+    def check_mpprc_exist(self):
+        if not self.context.mpprcFile:
+            return False
+        
+        return os.path.isfile(self.context.mpprcFile);
 
     def doPreInstall(self):
         """
@@ -1902,10 +1857,6 @@ class PreinstallImpl:
         self.checkOSVersion()
         # create path and set mode
         self.createDirs()
-
-        # set Sctp
-        if not DefaultValue.checkDockerEnv():
-            self.setSctp()
         # set os parameters
         self.setAndCheckOSParameter()
         # prepare cron service for user
@@ -1937,6 +1888,7 @@ class PreinstallImpl:
         """
         function: run method
         """
+        mpp_file_exist = self.check_mpprc_exist()
         try:
             # do preinstall option
             self.doPreInstall()
@@ -1945,9 +1897,12 @@ class PreinstallImpl:
         except Exception as e:
             self.deleteStepTmpFile()
             for rmPath in self.context.needFixOwnerPaths:
+                # do not remove seperate envfile if it exist before preinstall.
+                if mpp_file_exist and rmPath == self.context.mpprcFile:
+                    continue
                 if os.path.isfile(rmPath):
-                    g_file.removeFile(rmPath)
+                    FileUtil.removeFile(rmPath)
                 elif os.path.isdir(rmPath):
-                    g_file.removeDirectory(rmPath)
+                    FileUtil.removeDirectory(rmPath)
             self.context.logger.logExit(str(e))
         sys.exit(0)

@@ -31,14 +31,18 @@ function fn_check_firewall()
 
 function fn_selinux()
 {
-    sed -i "s/SELINUX=.*/SELINUX=disabled/g" /etc/selinux/config
+    system_name=`cat /etc/os-release | grep '^ID=.*' | grep -o -E '(openEuler|centos|ubuntu)'`
+    if [ "$system_name"X == "openEuler"X ] || [ "$system_name"X == "centos"X ]
+    then
+        sed -i "s/SELINUX=.*/SELINUX=disabled/g" /etc/selinux/config
+    fi
     return 0
 }
 
 function fn_precheck()
 {
     system_arch=`uname -p`
-    system_name=`cat /etc/os-release | grep '^ID=".*' | grep -o -E '(openEuler|centos)'`
+    system_name=`cat /etc/os-release | grep '^ID=.*' | grep -o -E '(openEuler|centos|ubuntu)'`
     total=0
     python3 --version >/dev/null 2>&1
     if [ $? -ne 0 ]
@@ -52,7 +56,18 @@ function fn_precheck()
         then
             continue
         fi
-        yum list installed | grep $line > /dev/null
+        
+        if [ "$system_name"X == "openEuler"X ] || [ "$system_name"X == "centos"X ]
+        then
+            yum list installed | grep $line >/dev/null
+        elif [ "$system_name"X == "ubuntu"X ]
+        then
+            apt list --installed 2>/dev/null | grep $line >/dev/null
+        else
+            echo "We only support CentOS, openEuler and Ubuntu by now."
+            return 1
+        fi
+
         if [ $? -ne 0 ]
         then
             total=`expr $total + 1`

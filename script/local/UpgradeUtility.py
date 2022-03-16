@@ -37,20 +37,38 @@ import csv
 import fcntl
 from multiprocessing.dummy import Pool as ThreadPool
 
+
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.Common import DefaultValue, ClusterCommand, \
     ClusterInstanceConfig
 from gspylib.common.ParameterParsecheck import Parameter
-from gspylib.common.DbClusterInfo import dbClusterInfo
+from gspylib.common.DbClusterInfo import dbClusterInfo, \
+    MASTER_INSTANCE, STANDBY_INSTANCE, CASCADE_STANDBY
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.DbClusterStatus import DbClusterStatus
-from gspylib.os.gsfile import g_file
+from gspylib.component.CM.CM_OLAP.CM_OLAP import CM_OLAP
+
 import impl.upgrade.UpgradeConst as const
+from base_utils.executor.cmd_executor import CmdExecutor
+from base_utils.os.cmd_util import CmdUtil
+
+from base_utils.os.compress_util import CompressUtil
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+
+from base_utils.os.net_util import NetUtil
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from domain_utils.sql_handler.sql_result import SqlResult
+from domain_utils.sql_handler.sql_file import SqlFile
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from base_diff.sql_commands import SqlCommands
+
+
 
 INSTANCE_TYPE_UNDEFINED = -1
-MASTER_INSTANCE = 0
-STANDBY_INSTANCE = 1
+
 DUMMY_STANDBY_INSTANCE = 2
 # init value
 INSTANCE_ROLE_UNDEFINED = -1
@@ -59,9 +77,6 @@ INSTANCE_ROLE_COODINATOR = 3
 # dn
 INSTANCE_ROLE_DATANODE = 4
 
-BINARY_UPGRADE_TMP = "binary_upgrade"
-PG_LOCATION = "pg_location"
-CFDUMPPREFIX = "cfdump"
 
 # Global parameter
 g_oldVersionModules = None
@@ -122,6 +137,9 @@ class CmdOptions():
              "shp2pgsql": "bin/",
              "libgcc_s.so.*": "lib/",
              "libstdc++.so.*": "lib/"}
+        self.fromFile = False
+        self.setType = "reload"
+        self.isSingleInst = False
 
 
 class OldVersionModules():
@@ -146,7 +164,7 @@ def importOldVersionModules():
     output:NA
     """
     # get install directory by user name
-    installDir = DefaultValue.getInstallDir(g_opts.user)
+    installDir = ClusterDir.getInstallDir(g_opts.user)
     if installDir == "":
         GaussLog.exitWithError(
             ErrorCode.GAUSS_503["GAUSS_50308"] + " User: %s." % g_opts.user)
@@ -196,7 +214,7 @@ def initGlobals():
         g_logger.error(str(e))
         # init cluster info from install path failed
         # try to do it from backup path again
-        g_opts.bakPath = DefaultValue.getTmpDirFromEnv() + "/"
+        g_opts.bakPath = EnvUtil.getTmpDirFromEnv() + "/"
         staticConfigFile = "%s/cluster_static_config" % g_opts.bakPath
 
         if os.path.isfile(staticConfigFile):
@@ -253,7 +271,7 @@ def initGlobals():
                 raise Exception(str(e))
 
     # init g_dbNode
-    localHost = DefaultValue.GetHostIpOrName()
+    localHost = NetUtil.GetHostIpOrName()
     g_dbNode = g_clusterInfo.getDbNodeByName(localHost)
     if g_dbNode is None:
         raise Exception(
@@ -295,57 +313,82 @@ def parseCommandLine():
     """
     try:
         opts, args = getopt.getopt(sys.argv[1:], "t:U:R:l:V:X:",
-                                   ["help", "upgrade_bak_path=",
-                                    "script_type=", "old_cluster_app_path=",
-                                    "new_cluster_app_path=", "rollback",
-                                    "force", "guc_string=", "oldcluster_num=",
-                                    "rolling"])
-    except Exception as e:
+                                   ["help", "upgrade_bak_path=", "script_type=",
+                                    "old_cluster_app_path=", "new_cluster_app_path=", "rollback",
+                                    "force", "rolling", "oldcluster_num=", "guc_string=",
+                                    "fromFile", "setType=", "HA"])
+    except Exception as er:
         usage()
-        GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"] % str(e))
+        raise Exception(ErrorCode.GAUSS_500["GAUSS_50000"] % str(er))
 
     if len(args) > 0:
-        GaussLog.exitWithError(
-            ErrorCode.GAUSS_500["GAUSS_50000"] % str(args[0]))
+        raise Exception(ErrorCode.GAUSS_500["GAUSS_50000"] % str(args[0]))
 
     for (key, value) in opts:
-        if key == "--help":
-            usage()
-            sys.exit(0)
-        elif key == "-t":
-            g_opts.action = value
-        elif key == "-U":
-            g_opts.user = value
-        elif key == "-R":
-            g_opts.appPath = value
-        elif key == "-l":
-            g_opts.logFile = os.path.realpath(value)
-        elif key == "-V":
-            g_opts.oldVersion = value
-        elif key == "-X":
-            g_opts.xmlFile = os.path.realpath(value)
-        elif key == "--upgrade_bak_path":
-            g_opts.upgrade_bak_path = os.path.normpath(value)
-        elif key == "--script_type":
-            g_opts.scriptType = os.path.normpath(value)
-        elif key == "--old_cluster_app_path":
-            g_opts.oldClusterAppPath = os.path.normpath(value)
-        elif key == "--new_cluster_app_path":
-            g_opts.newClusterAppPath = os.path.normpath(value)
-        elif key == "--rollback":
-            g_opts.rollback = True
-        elif key == "--rolling":
-            g_opts.rolling = True
-        elif key == "--force":
-            g_opts.forceRollback = True
-        elif key == "--guc_string":
-            g_opts.gucStr = value
-        elif key == "--oldcluster_num":
-            g_opts.oldclusternum = value
-        else:
-            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"] % key)
-
+        initCommandPara(key, value)
         Parameter.checkParaVaild(key, value)
+
+
+def initCommandPara(key, value):
+    """
+    function: The given value save to global variables
+    :param key:
+    :param value:
+    """
+
+    if key == "--help":
+        usage()
+        sys.exit(0)
+    parseShortOptions(key, value)
+    parseLongOptions(key, value)
+
+
+def parseShortOptions(key, value):
+    """
+    parse short options like "-X"
+    """
+    if key == "-t":
+        g_opts.action = value
+    elif key == "-U":
+        g_opts.user = value
+    elif key == "-R":
+        g_opts.appPath = value
+    elif key == "-l":
+        g_opts.logFile = os.path.realpath(value)
+    elif key == "-V":
+        g_opts.oldVersion = value
+    elif key == "-X":
+        g_opts.xmlFile = os.path.realpath(value)
+
+
+def parseLongOptions(key, value):
+    """
+    parse short options like "--force"
+    """
+    if key == "--upgrade_bak_path":
+        g_opts.upgrade_bak_path = os.path.normpath(value)
+    elif key == "--script_type":
+        g_opts.scriptType = os.path.normpath(value)
+    elif key == "--old_cluster_app_path":
+        g_opts.oldClusterAppPath = os.path.normpath(value)
+    elif key == "--oldcluster_num":
+        g_opts.oldclusternum = value
+    elif key == "--new_cluster_app_path":
+        g_opts.newClusterAppPath = os.path.normpath(value)
+    elif key == "--rollback":
+        g_opts.rollback = True
+    elif key == "--rolling":
+        g_opts.rolling = True
+    elif key == "--guc_string":
+        if "=" in value and len(value.split("=")) == 2 and "'" not in value.split("=")[1]:
+            value = value.split("=")[0] + "=" + "'%s'" % value.split("=")[1]
+        g_opts.gucStr = value
+    elif key == "--fromFile":
+        g_opts.fromFile = True
+    elif key == "--setType":
+        g_opts.setType = value
+    elif key == "--HA":
+        g_opts.isSingleInst = True
 
 
 def checkParameter():
@@ -355,7 +398,7 @@ def checkParameter():
     output: NA
     """
     # check mpprc file path
-    g_opts.mpprcFile = DefaultValue.getMpprcFile()
+    g_opts.mpprcFile = EnvUtil.getMpprcFile()
     # the value of "-t" can not be ""
     if g_opts.action == "":
         GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % "t" + ".")
@@ -393,11 +436,11 @@ def checkParameter():
         g_opts.user = pwd.getpwuid(os.getuid()).pw_name
     # Check the incoming parameter -l
     if g_opts.logFile == "":
-        g_opts.logFile = DefaultValue.getOMLogPath(DefaultValue.LOCAL_LOG_FILE,
+        g_opts.logFile = ClusterLog.getOMLogPath(ClusterConstants.LOCAL_LOG_FILE,
                                                    g_opts.user, "")
 
     global g_gausshome
-    g_gausshome = DefaultValue.getInstallDir(g_opts.user)
+    g_gausshome = ClusterDir.getInstallDir(g_opts.user)
     if g_gausshome == "":
         GaussLog.exitWithError(
             ErrorCode.GAUSS_518["GAUSS_51800"] % "$GAUSSHOME")
@@ -412,7 +455,7 @@ def switchBin():
     """
     if g_opts.forceRollback:
         if not os.path.exists(g_opts.appPath):
-            g_file.createDirectory(g_opts.appPath, True,
+            FileUtil.createDirectory(g_opts.appPath, True,
                                    DefaultValue.KEY_DIRECTORY_MODE)
     g_logger.log("Switch to %s." % g_opts.appPath)
     if g_opts.appPath == g_gausshome:
@@ -522,6 +565,11 @@ def syncPostgresqlconf(dbInstance):
                            'parallel_tuple_cost', 'parctl_min_cost', 'tcp_recv_timeout',
                            'transaction_sync_naptime', 'transaction_sync_timeout',
                            'twophase_clean_workers', 'wal_compression']
+        temp_del_guc = readDeleteGuc()
+        g_logger.debug("readDeleteGuc: %s" % temp_del_guc)
+        if 'datanode' in temp_del_guc:
+            internalGucList += temp_del_guc['datanode']
+            
         for gucName in internalGucList:
             if gucName in gucParamDict.keys():
                 del gucParamDict[gucName]
@@ -529,7 +577,6 @@ def syncPostgresqlconf(dbInstance):
         if dbInstance.instanceRole == DefaultValue.INSTANCE_ROLE_DATANODE:
             # rebuild replconninfo
             connInfo1 = None
-            dummyStandbyInst = None
             peerInsts = g_clusterInfo.getPeerInstance(dbInstance)
             if len(peerInsts) > 0:
                 (connInfo1, _) = ClusterInstanceConfig.\
@@ -561,22 +608,22 @@ def syncPostgresqlconf(dbInstance):
         # Do not modify the write file operation.
         # Escape processing of special characters in the content
         cmd = "echo \"%s\" > %s" % (gucCmd, gucTempFile)
-        (status, output) = DefaultValue.retryGetstatusoutput(cmd)
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd)
         if status != 0:
             g_logger.debug("Command: %s. Error: \n%s" % (cmd, output))
             g_logger.logExit(
                 ErrorCode.GAUSS_502["GAUSS_50205"] % gucTempFile
                 + " Error: \n%s" % str(
                     output))
-        g_file.changeOwner(g_opts.user, gucTempFile)
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE, gucTempFile)
+        FileUtil.changeOwner(g_opts.user, gucTempFile)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, gucTempFile)
 
         # replace old guc file with sample file
         newPostgresConf = "%s/share/postgresql/postgresql.conf.sample" \
                           % g_opts.newClusterAppPath
         if os.path.exists(newPostgresConf):
-            g_file.cpFile(newPostgresConf, oldPostgresConf)
-            g_file.changeMode(DefaultValue.KEY_FILE_MODE, oldPostgresConf)
+            FileUtil.cpFile(newPostgresConf, oldPostgresConf)
+            FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, oldPostgresConf)
 
         # set guc param
         cmd = "sh %s" % gucTempFile
@@ -591,9 +638,9 @@ def syncPostgresqlconf(dbInstance):
             g_logger.debug(
                 "Set the GUC value %s to synchronous_standby_names for %s" % (
                     synchronousStandbyNames, oldPostgresConf))
-            g_file.deleteLine(oldPostgresConf,
+            FileUtil.deleteLine(oldPostgresConf,
                               "^\\s*synchronous_standby_names\\s*=.*$")
-            g_file.writeFile(
+            FileUtil.writeFile(
                 oldPostgresConf,
                 ["synchronous_standby_names "
                  "= %s # standby servers that provide sync rep"
@@ -626,63 +673,6 @@ def syncClusterConfig():
             g_logger.logExit(str(e))
 
 
-def syncInstanceConfig(oldCmFile, newCmFile):
-    """
-    function: sync instance config
-    input: NA
-    output:NA
-    """
-    oldCmConfig = {}
-    newCmConfig = {}
-    newConfigItem = {}
-    try:
-        if not os.path.exists(oldCmFile):
-            g_logger.logExit(ErrorCode.GAUSS_502["GAUSS_50201"] % oldCmFile)
-        if not os.path.exists(newCmFile):
-            g_logger.logExit(ErrorCode.GAUSS_502["GAUSS_50201"] % newCmFile)
-        # Read and save old config file
-        with open(oldCmFile, 'r') as fp:
-            oldConfig = fp
-            for eachLine in oldConfig:
-                ParameterConfig = eachLine.strip()
-                index = ParameterConfig.find("=")
-                if index > 0 and ParameterConfig[0] != "#":
-                    key = ParameterConfig[:index].strip()
-                    value = ParameterConfig[index + 1:].strip()
-                    oldCmConfig[key] = value
-        # Read and save new config file
-        with open(newCmFile, 'r') as fp:
-            newConfig = fp
-            for eachLine in newConfig:
-                ParameterConfig = eachLine.strip()
-                index = ParameterConfig.find("=")
-                if index > 0 and ParameterConfig[0] != "#":
-                    key = ParameterConfig[:index].strip()
-                    value = ParameterConfig[index + 1:].strip()
-                    newCmConfig[key] = value
-
-        # Filter new configuration parameters
-        for newConfig in newCmConfig.keys():
-            keyExist = False
-            for oldConfig in oldCmConfig.keys():
-                if oldConfig == newConfig:
-                    keyExist = True
-                    break
-            if not keyExist:
-                newConfigItem[newConfig] = newCmConfig[newConfig]
-        # Write new config item to old config file
-        if len(newConfigItem) > 0:
-            with open(oldCmFile, "a") as fp:
-                for ConfigItem in newConfigItem.keys():
-                    fp.write("\n%s = %s" % (ConfigItem,
-                                            newConfigItem[ConfigItem]))
-                fp.write("\n")
-                fp.flush()
-
-    except Exception as e:
-        g_logger.logExit(str(e))
-
-
 def touchInstanceInitFile():
     """
     function: touch upgrade init file for every primary and standby instance
@@ -695,8 +685,8 @@ def touchInstanceInitFile():
         # find all DB instances need to touch
         if len(g_dbNode.datanodes) != 0:
             for eachInstance in g_dbNode.datanodes:
-                if (eachInstance.instanceType == MASTER_INSTANCE
-                        or eachInstance.instanceType == STANDBY_INSTANCE):
+                if eachInstance.instanceType in \
+                        [MASTER_INSTANCE, STANDBY_INSTANCE, CASCADE_STANDBY]:
                     InstanceList.append(eachInstance)
 
         # touch each instance parallelly
@@ -715,6 +705,19 @@ def touchInstanceInitFile():
     except Exception as e:
         g_logger.logExit(str(e))
 
+
+def reloadCmagent():
+    """
+    reload the cm_agent instance, make the guc parameter working
+    """
+    cmd = "ps ux | grep '%s/bin/cm_agent' | grep -v grep | awk '{print $2}' | " \
+          "xargs -r -n 100 kill -1" % g_clusterInfo.appPath
+    g_logger.debug("Command for reload cm_agent:%s" % cmd)
+    (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
+    if status == 0:
+        g_logger.log("Successfully reload cmagent.")
+    else:
+        raise Exception("Failed to reload cmagent.")
 
 def initDbInfo():
     """
@@ -783,7 +786,7 @@ def touchOneInstanceInitFile(instance):
         (status, output) = ClusterCommand.execSQLCommand(get_db_list_sql,
                                                          g_opts.user, "",
                                                          instance.port,
-                                                         "postgres", False,
+                                                         "postgres",
                                                          "-m",
                                                          IsInplaceUpgrade=True)
         if status != 0:
@@ -812,7 +815,7 @@ def touchOneInstanceInitFile(instance):
                 g_opts.user, "",
                 instance.port,
                 each_db["dbname"],
-                False, "-m",
+                "-m",
                 IsInplaceUpgrade=True)
             if status != 0 or not output.isdigit():
                 raise Exception(
@@ -827,14 +830,28 @@ def touchOneInstanceInitFile(instance):
         % instance.datadir)
 
 
+def is_dcf_mode():
+    """
+    is dcf mode or not
+    """
+    try:
+        if g_clusterInfo.enable_dcf != "on":
+            g_logger.debug("Current cluster is not in dcf mode. ")
+            return False
+        else:
+            g_logger.debug("Current cluster is in dcf mode")
+            return True
+    except Exception as er:
+        raise Exception(str(er))
+
+
 def getInstanceName(instance):
     """
     get master instance name
     """
     instance_name = ""
-    if instance.instanceRole == INSTANCE_ROLE_COODINATOR:
-        instance_name = "cn_%s" % instance.instanceId
-    elif instance.instanceRole == INSTANCE_ROLE_DATANODE:
+
+    if instance.instanceRole == INSTANCE_ROLE_DATANODE:
         if g_clusterInfo.isSingleInstCluster():
             # the instance type must be master or standby dn
             peerInsts = g_clusterInfo.getPeerInstance(instance)
@@ -873,35 +890,6 @@ def getInstanceName(instance):
     return instance_name.strip()
 
 
-def getStandbyInstance(instance):
-    """
-    function: get standby instance of input master instance
-    input: NA
-    output: NA
-    """
-    if instance.instanceType != MASTER_INSTANCE:
-        raise Exception(ErrorCode.GAUSS_529["GAUSS_52940"]
-                        % instance.instanceType)
-
-    if instance.instanceRole != INSTANCE_ROLE_DATANODE:
-        raise Exception(ErrorCode.GAUSS_529["GAUSS_52941"] %
-                        instance.instanceRole)
-
-    peerInsts = g_clusterInfo.getPeerInstance(instance)
-    if len(peerInsts) == 0:
-        return
-    standbyInst = None
-    for i in iter(peerInsts):
-        if i.instanceType == STANDBY_INSTANCE:
-            standbyInst = i
-    if not standbyInst:
-        raise Exception(
-            "Can not find standby instance of instance [%s]!"
-            % instance.datadir)
-
-    return standbyInst
-
-
 def getJsonFile(instance, backup_path):
     """
     function: get json file
@@ -916,8 +904,7 @@ def getJsonFile(instance, backup_path):
                 "%s/cn_db_and_catalog_info_%s.json" % (
                     backup_path, instance_name)
         elif instance.instanceRole == INSTANCE_ROLE_DATANODE:
-            if instance.instanceType == MASTER_INSTANCE or\
-                    instance.instanceType == STANDBY_INSTANCE:
+            if instance.instanceType in [MASTER_INSTANCE, STANDBY_INSTANCE, CASCADE_STANDBY]:
                 db_and_catalog_info_file_name = \
                     "%s/dn_db_and_catalog_info_%s.json" % (
                         backup_path, instance_name)
@@ -976,14 +963,28 @@ def __backup_base_folder(instance):
             raise Exception(
                 "Can not find any catalog in database %s" % each_db["dbname"])
         for each_catalog in each_db["CatalogList"]:
+            cmd = ""
             # main/vm/fsm  -- main.1 ..
             main_file = "%s/%d" % (
                 pg_catalog_base_dir, int(each_catalog['relfilenode']))
-            if not os.path.isfile(main_file):
+            # for unlog table, maybe not have data file on slave DN
+            if os.path.isfile(main_file):
+                cmd = "cp -f -p '%s' '%s_bak'" % (main_file, main_file)
+                g_logger.debug("{0} needs to be backed up to {0}_bak".format(main_file))
+            elif each_catalog['relpersistence'] != 'u':
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50210"] % main_file)
-            cmd = "cp -f -p '%s' '%s_bak'" % (main_file, main_file)
-            g_logger.debug(
-                "{0} needs to be backed up to {0}_bak".format(main_file))
+
+            # for unlog table, such as statement_history, need copy the init file
+            if each_catalog['relpersistence'] == 'u':
+                main_init_file = main_file + '_init'
+                if not os.path.isfile(main_init_file):
+                    raise Exception(ErrorCode.GAUSS_502["GAUSS_50210"] % main_init_file)
+                if cmd == "":
+                    cmd = "cp -f -p '%s' '%s_bak'" % (main_init_file, main_init_file)
+                else:
+                    cmd += "&& cp -f -p '%s' '%s_bak'" % (main_init_file, main_init_file)
+                g_logger.debug("{0} needs to be backed up to {0}_bak".format(main_init_file))
+
             seg_idx = 1
             while 1:
                 seg_file = "%s/%d.%d" % (pg_catalog_base_dir,
@@ -1007,7 +1008,7 @@ def __backup_base_folder(instance):
                 cmd += "&& cp -f -p '%s' '%s_bak'" % (fsm_file, fsm_file)
             g_logger.debug(
                 "{0} needs to be backed up to {0}_bak".format(fsm_file))
-            (status, output) = DefaultValue.retryGetstatusoutput(cmd, 2, 5)
+            (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
                                 "\nOutput:%s" % output)
@@ -1035,7 +1036,7 @@ def __backup_base_folder(instance):
             g_logger.debug("{0} needs to be backed up to {0}_bak".format(
                 pg_internal_init_file))
         if cmd != 0:
-            (status, output) = DefaultValue.retryGetstatusoutput(cmd, 2, 5)
+            (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
                                 "\nOutput:%s" % output)
@@ -1047,45 +1048,37 @@ def __backup_base_folder(instance):
 def __restore_base_folder(instance):
     """
     """
-    g_logger.debug("Restore instance base folders. "
-                   "Instance data dir: {0}".format(instance.datadir))
+    g_logger.debug("Restore instance base folders. Instance data dir: {0}".format(instance.datadir))
     backup_path = "%s/oldClusterDBAndRel/" % g_opts.upgrade_bak_path
     # get instance name
     instance_name = getInstanceName(instance)
 
     # load db and catalog info from json file
-    if instance.instanceRole == INSTANCE_ROLE_COODINATOR:
-        db_and_catalog_info_file_name = \
-            "%s/cn_db_and_catalog_info_%s.json" % (backup_path, instance_name)
-    elif instance.instanceRole == INSTANCE_ROLE_DATANODE:
-        if instance.instanceType == MASTER_INSTANCE or \
-                instance.instanceType == STANDBY_INSTANCE:
-            db_and_catalog_info_file_name = \
-                "%s/dn_db_and_catalog_info_%s.json" % (
-                    backup_path, instance_name)
+    if instance.instanceRole == INSTANCE_ROLE_DATANODE:
+        if instance.instanceType in [MASTER_INSTANCE, STANDBY_INSTANCE, CASCADE_STANDBY]:
+            db_and_catalog_info_file_name = "%s/dn_db_and_catalog_info_%s.json" % \
+                                            (backup_path, instance_name)
         else:
             raise Exception("Invalid instance type:%s" % instance.instanceType)
     else:
         raise Exception("Invalid instance role:%s" % instance.instanceRole)
     fp = open(db_and_catalog_info_file_name, 'r')
-    dbInfoStr = fp.read()
+    db_info_str = fp.read()
     fp.close()
-    dbInfoDict = json.loads(dbInfoStr)
+    db_info_dict = json.loads(db_info_str)
 
     # restore base folder
-    for each_db in dbInfoDict["dblist"]:
+    for each_db in db_info_dict["dblist"]:
         if each_db["spclocation"] != "":
             if each_db["spclocation"].startswith('/'):
                 tbsBaseDir = each_db["spclocation"]
             else:
-                tbsBaseDir = "%s/pg_location/%s" % (
-                    instance.datadir, each_db["spclocation"])
-            pg_catalog_base_dir = "%s/%s_%s/%d" % (
-                tbsBaseDir, DefaultValue.TABLESPACE_VERSION_DIRECTORY,
-                instance_name, int(each_db["dboid"]))
+                tbsBaseDir = "%s/pg_location/%s" % (instance.datadir, each_db["spclocation"])
+            pg_catalog_base_dir = "%s/%s_%s/%d" % (tbsBaseDir,
+                                                   DefaultValue.TABLESPACE_VERSION_DIRECTORY,
+                                                   instance_name, int(each_db["dboid"]))
         else:
-            pg_catalog_base_dir = "%s/base/%d" % (
-                instance.datadir, int(each_db["dboid"]))
+            pg_catalog_base_dir = "%s/base/%d" % (instance.datadir, int(each_db["dboid"]))
         # for base folder, template0 need handle specially
         if each_db["dbname"] == 'template0':
             pg_catalog_base_back_dir = "%s_bak" % pg_catalog_base_dir
@@ -1097,32 +1090,44 @@ def __restore_base_folder(instance):
 
         # handle other db's base folder
         if len(each_db["CatalogList"]) <= 0:
-            raise Exception("Can not find any catalog in database %s" %
-                            each_db["dbname"])
+            raise Exception("Can not find any catalog in database %s" % each_db["dbname"])
 
         for each_catalog in each_db["CatalogList"]:
+            cmd = ""
             # main/vm/fsm  -- main.1 ..
-            main_file = "%s/%d" % (pg_catalog_base_dir,
-                                   int(each_catalog['relfilenode']))
+            main_file = "%s/%d" % (pg_catalog_base_dir, int(each_catalog['relfilenode']))
             if not os.path.isfile(main_file):
-                g_logger.debug("Instance data dir: %s, database: %s, "
-                               "relnodefile: %s does not exists." \
-                               % (instance.datadir, each_db["dbname"],
-                                  main_file))
+                g_logger.debug("Instance data dir: %s, database: %s, relnodefile: %s does not "
+                               "exists." % (instance.datadir, each_db["dbname"], main_file))
 
-            cmd = "cp -f -p '%s_bak' '%s'" % (main_file, main_file)
-            g_logger.debug(
-                "{0} needs to be restored from {0}_bak".format(main_file))
+            # for unlog table, maybe not have data file on slave DN
+            if os.path.isfile(main_file + '_bak'):
+                cmd = "cp -f -p '%s_bak' '%s'" % (main_file, main_file)
+                g_logger.debug("{0} needs to be restored from {0}_bak".format(main_file))
+            elif each_catalog['relpersistence'] != 'u':
+                raise Exception(ErrorCode.GAUSS_502["GAUSS_50210"] % (main_file + '_bak'))
+
+            # for unlog table, such as statement_history, need copy back the init file
+            if each_catalog['relpersistence'] == 'u':
+                main_init_file = main_file + '_init'
+                if not os.path.isfile(main_init_file):
+                    g_logger.debug("Instance data dir: %s, database: %s, "
+                                   "relnodefile: %s does not exists." %
+                                   (instance.datadir, each_db["dbname"], main_init_file))
+                if cmd == "":
+                    cmd = "cp -f -p '%s_bak' '%s'" % (main_init_file, main_init_file)
+                else:
+                    cmd += "&& cp -f -p '%s_bak' '%s'" % (main_init_file, main_init_file)
+                g_logger.debug("{0} needs to be restored from {0}_bak".format(main_init_file))
+
             seg_idx = 1
             while 1:
                 seg_file = "%s/%d.%d" % (pg_catalog_base_dir,
-                                         int(each_catalog['relfilenode']),
-                                         seg_idx)
+                                         int(each_catalog['relfilenode']), seg_idx)
                 seg_file_bak = "%s_bak" % seg_file
                 if os.path.isfile(seg_file):
                     if os.path.isfile(seg_file_bak):
-                        cmd += "&& cp -f -p '%s' '%s'" % (seg_file_bak,
-                                                          seg_file)
+                        cmd += "&& cp -f -p '%s' '%s'" % (seg_file_bak, seg_file)
                     else:
                         cmd += "&& rm -f '%s'" % seg_file
                     seg_idx += 1
@@ -1130,62 +1135,50 @@ def __restore_base_folder(instance):
                     break
             g_logger.debug("seg_file needs to be restored")
 
-            vm_file = "%s/%d_vm" % (pg_catalog_base_dir,
-                                    int(each_catalog['relfilenode']))
+            vm_file = "%s/%d_vm" % (pg_catalog_base_dir, int(each_catalog['relfilenode']))
             vm_file_bak = "%s_bak" % vm_file
             if os.path.isfile(vm_file):
                 if os.path.isfile(vm_file_bak):
                     cmd += "&& cp -f -p '%s' '%s'" % (vm_file_bak, vm_file)
                 else:
                     cmd += "&& rm -f '%s'" % vm_file
-            g_logger.debug(
-                "{0} needs to be restored from {0}_bak".format(vm_file))
-            fsm_file = "%s/%d_fsm" % (pg_catalog_base_dir,
-                                      int(each_catalog['relfilenode']))
+            g_logger.debug("{0} needs to be restored from {0}_bak".format(vm_file))
+            fsm_file = "%s/%d_fsm" % (pg_catalog_base_dir, int(each_catalog['relfilenode']))
             fsm_file_bak = "%s_bak" % fsm_file
             if os.path.isfile(fsm_file):
                 if os.path.isfile(fsm_file_bak):
                     cmd += "&& cp -f -p '%s' '%s'" % (fsm_file_bak, fsm_file)
                 else:
                     cmd += "&& rm -f '%s'" % fsm_file
-            g_logger.debug("{0} needs to be restored from {0}_bak".format(
-                fsm_file))
-            (status, output) = DefaultValue.retryGetstatusoutput(cmd, 2, 5)
+            g_logger.debug("{0} needs to be restored from {0}_bak".format(fsm_file))
+            (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
             if status != 0:
-                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
-                                "\nOutput:%s" % output)
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + "\nOutput:%s" % output)
 
         # special files pg_filenode.map pg_internal.init
         cmd = ""
         pg_filenode_map_file = "%s/pg_filenode.map" % pg_catalog_base_dir
         if os.path.isfile(pg_filenode_map_file):
             if cmd == "":
-                cmd = "cp -f -p '%s_bak' '%s'" % (pg_filenode_map_file,
-                                                  pg_filenode_map_file)
+                cmd = "cp -f -p '%s_bak' '%s'" % (pg_filenode_map_file, pg_filenode_map_file)
             else:
-                cmd += "&& cp -f -p '%s_bak' '%s'" % (pg_filenode_map_file,
-                                                      pg_filenode_map_file)
-            g_logger.debug("{0} needs to be restored from {0}_bak".format(
-                pg_filenode_map_file))
+                cmd += "&& cp -f -p '%s_bak' '%s'" % (pg_filenode_map_file, pg_filenode_map_file)
+            g_logger.debug("{0} needs to be restored from {0}_bak".format(pg_filenode_map_file))
 
         pg_internal_init_file = "%s/pg_internal.init" % pg_catalog_base_dir
         if os.path.isfile(pg_internal_init_file):
             if cmd == "":
-                cmd = "cp -f -p '%s_bak' '%s'" % (pg_internal_init_file,
-                                                  pg_internal_init_file)
+                cmd = "cp -f -p '%s_bak' '%s'" % (pg_internal_init_file, pg_internal_init_file)
             else:
-                cmd += "&& cp -f -p '%s_bak' '%s'" % (pg_internal_init_file,
-                                                      pg_internal_init_file)
-            g_logger.debug("{0} needs to be restored from {0}_bak".format(
-                pg_internal_init_file))
+                cmd += "&& cp -f -p '%s_bak' '%s'" % (pg_internal_init_file, pg_internal_init_file)
+            g_logger.debug("{0} needs to be restored from {0}_bak".format(pg_internal_init_file))
 
         if cmd != 0:
-            (status, output) = DefaultValue.retryGetstatusoutput(cmd, 2, 5)
+            (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
             if status != 0:
-                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
-                                "\nOutput:%s" % output)
-    g_logger.debug("Successfully restore instance base folders. Instance data "
-                   "dir: {0}".format(instance.datadir))
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + "\nOutput:%s" % output)
+    g_logger.debug("Successfully restore instance base folders. "
+                   "Instance data dir: {0}".format(instance.datadir))
 
 
 def cleanBackUpDir(backupDir):
@@ -1198,22 +1191,20 @@ def cleanBackUpDir(backupDir):
     bakDir = "%s_bak" % backupDir
     backcmd = "cp -r -p %s %s" % (backupDir, bakDir)
     killCmd = DefaultValue.killInstProcessCmd(backcmd, False, 9, False)
-    DefaultValue.execCommandLocally(killCmd)
+    CmdExecutor.execCommandLocally(killCmd)
     # Then do clean
     if os.path.isdir(bakDir):
-        g_file.removeDirectory(bakDir)
+        FileUtil.removeDirectory(bakDir)
 
 
-def checkExistsVersion(instanceNames, cooInst, curCommitid):
+def checkExistsVersion(cooInst, curCommitid):
     """
     function: check exits version
     input  : instanceNames, cooInst, curCommitid
     output : needKill False/True
     """
     needKill = False
-    sql = ""
-    for name in instanceNames:
-        sql += "execute direct on (%s) 'select version()';" % name
+    sql = "select version();"
     (status, output) = ClusterCommand.remoteSQLCommand(
         sql, g_opts.user,
         cooInst.hostname,
@@ -1221,7 +1212,7 @@ def checkExistsVersion(instanceNames, cooInst, curCommitid):
         DefaultValue.DEFAULT_DB_NAME,
         IsInplaceUpgrade=True)
     g_logger.debug("Command to check version: %s" % sql)
-    if status != 0 or ClusterCommand.findErrorInSql(output):
+    if status != 0 or SqlResult.findErrorInSql(output):
         raise Exception(
             ErrorCode.GAUSS_513["GAUSS_51300"] % sql + " Error: \n%s" % str(
                 output))
@@ -1232,6 +1223,9 @@ def checkExistsVersion(instanceNames, cooInst, curCommitid):
     for record in resList:
         versionInBrackets = re.findall(pattern, record)
         commitid = versionInBrackets[0].split(" ")[-1]
+        g_logger.debug(
+            "checkExistsVersion commitid {0} record {1} brackets {2}".format(commitid, record,
+                                                                             versionInBrackets))
         if commitid != curCommitid:
             needKill = True
             break
@@ -1280,7 +1274,7 @@ def backupConfig():
         cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s';fi)" % (
             logicalNameFile, logicalNameFile, bakPath)
         g_logger.debug("Backup command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # Backup libcgroup config
         MAX_PARA_NUMBER = 20
@@ -1308,8 +1302,8 @@ def backupConfig():
         if cmdCgroup != "":
             cmdList.append(cmdCgroup)
         for exeCmd in cmdList:
-            g_logger.debug("Backup command: %s" % cmd)
-            DefaultValue.execCommandLocally(exeCmd[3:])
+            g_logger.debug("Backup command: %s" % exeCmd)
+            CmdExecutor.execCommandLocally(exeCmd[3:])
 
         # Backup libsimsearch etc files and libs files
         searchConfigFile = "%s/etc/searchletConfig.yaml" % clusterAppPath
@@ -1322,7 +1316,7 @@ def backupConfig():
                "then cp -r '%s/lib/libsimsearch' '%s';fi)" % (
                    clusterAppPath, clusterAppPath, bakPath)
         g_logger.debug("Backup command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # Backup library file and database size file
         cmd = "cp -r '%s'/lib/postgresql/pg_plugin '%s'" % (
@@ -1332,7 +1326,7 @@ def backupConfig():
         cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s';fi)" % (
             backup_dbsize, backup_dbsize, bakPath)
         g_logger.debug("Backup command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # sync kerberos conf files
         krbConfigFile = "%s/kerberos" % clusterAppPath
@@ -1342,10 +1336,12 @@ def backupConfig():
                " cp -r '%s/var/krb5kdc' '%s/var/';fi)" % (
                    clusterAppPath, bakPath, clusterAppPath, bakPath)
         g_logger.debug("Grey upgrade sync command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # backup obsserver.key.cipher/obsserver.key.rand and server.key.
-        # cipher/server.key.rand and datasource.key.cipher/datasource.key.rand
+        # cipher/server.key.rand and datasource.key.cipher/datasource.key.rand.
+        # usermapping.key.cipher/usermapping.key.rand and subscription.key.cipher
+        # subscription.key.rand
         OBS_cipher_key_bak_file = \
             "%s/bin/obsserver.key.cipher" % clusterAppPath
         cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s';fi)" % (
@@ -1382,18 +1378,30 @@ def backupConfig():
         datasource_rand = "%s/bin/datasource.key.rand" % clusterAppPath
         cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s';fi)" % (
             datasource_rand, datasource_rand, bakPath)
+        usermapping_cipher = "%s/bin/usermapping.key.cipher" % clusterAppPath
+        cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s';fi)" % (
+            usermapping_cipher, usermapping_cipher, bakPath)
+        usermapping_rand = "%s/bin/usermapping.key.rand" % clusterAppPath
+        cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s';fi)" % (
+            usermapping_rand, usermapping_rand, bakPath)
+        subscription_cipher = "%s/bin/subscription.key.cipher" % clusterAppPath
+        cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s';fi)" % (
+            subscription_cipher, subscription_cipher, bakPath)
+        subscription_rand = "%s/bin/subscription.key.rand" % clusterAppPath
+        cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s';fi)" % (
+            subscription_rand, subscription_rand, bakPath)
         tde_key_cipher = "%s/bin/gs_tde_keys.cipher" % clusterAppPath
         cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s';fi)" % (
             tde_key_cipher, tde_key_cipher, bakPath)
         g_logger.debug("Backup command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # backup utilslib
         utilslib = "%s/utilslib" % clusterAppPath
         cmd = "if [ -d '%s' ];then cp -r '%s' '%s';fi" % (
             utilslib, utilslib, bakPath)
         g_logger.debug("Backup command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # backup ca.key,etcdca.crt, client.key and client.crt
         CA_key_file = "%s/share/sslcert/etcd/ca.key" % clusterAppPath
@@ -1426,14 +1434,14 @@ def backupConfig():
             cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s';fi)" % (
                 etcd_key_rand_file, etcd_key_rand_file, bakPath)
         g_logger.debug("Backup command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # backup java UDF
         javadir = "'%s'/lib/postgresql/java" % clusterAppPath
         cmd = "if [ -d '%s' ];then cp -r '%s' '%s';fi" % (
             javadir, javadir, bakPath)
         g_logger.debug("Backup command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # backup postGIS
         cmdPostGis = ""
@@ -1446,7 +1454,7 @@ def backupConfig():
         # skip " &&"
         cmd = cmdPostGis[3:]
         g_logger.debug("Backup command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # backup extension library and config files
         hadoop_odbc_connector = \
@@ -1469,7 +1477,7 @@ def backupConfig():
         cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s';fi)" % (
             extension_config03, extension_config03, bakPath)
         g_logger.debug("Backup command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # backup dict file and grpc files
         dictFileDir = "'%s'/share/postgresql/tsearch_data" % clusterAppPath
@@ -1481,7 +1489,7 @@ def backupConfig():
                                                            grpcFileDir,
                                                            bakPath)
         g_logger.debug("Backup command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # backup gtm.control and gtm.sequence
         if len(g_dbNode.gtms) > 0:
@@ -1494,9 +1502,89 @@ def backupConfig():
                    "then cp -f -p '%s' '%s/gtm.sequence.bak';fi)" % \
                    (gtm_sequence, gtm_sequence, bakPath)
             g_logger.debug("Backup command: %s" % cmd)
-            DefaultValue.execCommandLocally(cmd)
+            CmdExecutor.execCommandLocally(cmd)
     except Exception as e:
         raise Exception(str(e))
+
+
+def get_local_node(cluster_info):
+    """
+    Get local node information object from DbClusterInfo object.
+    """
+    for node in cluster_info.dbNodes:
+        if node.name == NetUtil.GetHostIpOrName():
+            return node
+    return None
+
+
+def install_cm_agent(node_info, gauss_home):
+    """
+    Install CM agent instance
+    """
+    g_logger.debug("Start install cm_agent instance.")
+    agent_component = CM_OLAP()
+    agent_component.instInfo = node_info.cmagents[0]
+    agent_component.logger = g_logger
+    agent_component.binPath = os.path.realpath(os.path.join(gauss_home, "bin"))
+    agent_component.setMonitor(g_opts.user)
+    agent_component.initInstance()
+    g_logger.debug("Install cm_agent instance successfully.")
+
+
+def install_cm_server(node_info, gauss_home):
+    """
+    Install CM agent instance
+    """
+    g_logger.debug("Start install cm_server instance.")
+    server_component = CM_OLAP()
+    server_component.instInfo = node_info.cmservers[0]
+    server_component.logger = g_logger
+    server_component.binPath = os.path.realpath(os.path.join(gauss_home, "bin"))
+    server_component.initInstance()
+    g_logger.debug("Install cm_server instance successfully.")
+
+
+def set_manual_start(node_info, gauss_home):
+    """
+    create manual_start file
+    """
+    all_inst_id_list = [dn_inst.instanceId for dn_inst in node_info.datanodes]
+    manual_start_file = os.path.realpath(os.path.join(gauss_home, "bin", "cluster_manual_start"))
+    if not os.path.isfile(manual_start_file):
+        FileUtil.createFile(manual_start_file)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, manual_start_file)
+        g_logger.debug("Create %s file successfully." % manual_start_file)
+    for dn_inst_id in all_inst_id_list:
+        dn_manual_start_file = \
+            os.path.realpath(os.path.join(gauss_home,
+                                          "bin",
+                                          "instance_manual_start_%s" % dn_inst_id))
+        if not os.path.isfile(dn_manual_start_file):
+            FileUtil.createFile(dn_manual_start_file)
+            FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, dn_manual_start_file)
+            g_logger.debug("Create %s file for datanode instance "
+                           "successfully." % dn_manual_start_file)
+    g_logger.debug("Set manual start file successfully.")
+
+
+def install_cm_instance(static_config_file):
+    """
+    Install CM on node.
+    """
+    # 1. cluster_menu_start
+    # 2. set monitor cron tab
+    # 3. init cm instance
+    g_logger.debug("Start install cluster management instance.")
+    new_cluster_info = dbClusterInfo()
+    new_cluster_info.initFromStaticConfig(g_opts.user, static_config_file)
+    local_node = get_local_node(new_cluster_info)
+    if not local_node:
+        raise Exception("Cluster Information object error. Not obtain local node.")
+    # Set manual start
+    set_manual_start(local_node, g_opts.newClusterAppPath)
+    install_cm_agent(local_node, g_opts.newClusterAppPath)
+    install_cm_server(local_node, g_opts.newClusterAppPath)
+    g_logger.debug("Cluster management instance install successfully.")
 
 
 def restoreConfig():
@@ -1508,30 +1596,34 @@ def restoreConfig():
         bakPath = g_opts.upgrade_bak_path
         clusterAppPath = g_opts.newClusterAppPath
         # init old cluster config
-        oldStaticConfigFile = os.path.join(
+        old_static_config_file = os.path.join(
             g_opts.oldClusterAppPath, "bin/cluster_static_config")
         oldStaticClusterInfo = dbClusterInfo()
         oldStaticClusterInfo.initFromStaticConfig(g_opts.user,
-                                                  oldStaticConfigFile)
+                                                  old_static_config_file)
         # flush new static configuration
-        newStaticConfig = os.path.join(
+        new_static_config_file = os.path.join(
             clusterAppPath, "bin/cluster_static_config")
-        if not os.path.isfile(newStaticConfig):
+        if not os.path.isfile(new_static_config_file):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] %
-                            os.path.realpath(newStaticConfig))
-        g_file.removeFile(newStaticConfig)
-        newStaticClusterInfo = dbClusterInfo()
-        newStaticClusterInfo.saveToStaticConfig(
-            newStaticConfig, oldStaticClusterInfo.localNodeId,
-            oldStaticClusterInfo.dbNodes, upgrade=True)
-        # restore dynamic configuration
-        dynamic_config = "%s/cluster_dynamic_config" % bakPath
-        cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
-            dynamic_config, dynamic_config, clusterAppPath)
-        # no need to restore alarm.conf at here,
-        # because it has been done on upgradeNodeApp
-        g_logger.debug("Restore command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+                            os.path.realpath(new_static_config_file))
+
+        if DefaultValue.check_add_cm(old_static_config_file, new_static_config_file, g_logger):
+            install_cm_instance(new_static_config_file)
+        else:
+            FileUtil.removeFile(new_static_config_file)
+            newStaticClusterInfo = dbClusterInfo()
+            newStaticClusterInfo.saveToStaticConfig(
+                new_static_config_file, oldStaticClusterInfo.localNodeId,
+                oldStaticClusterInfo.dbNodes, upgrade=True)
+            # restore dynamic configuration
+            dynamic_config = "%s/cluster_dynamic_config" % bakPath
+            cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+                dynamic_config, dynamic_config, clusterAppPath)
+            # no need to restore alarm.conf at here,
+            # because it has been done on upgradeNodeApp
+            g_logger.debug("Restore command: %s" % cmd)
+            CmdExecutor.execCommandLocally(cmd)
 
         # restore libsimsearch etc files and libsimsearch libs files
         searchConfigFile = "%s/searchletConfig.yaml" % bakPath
@@ -1546,7 +1638,7 @@ def restoreConfig():
                "then cp -r '%s/libsimsearch' '%s/lib/';fi)" % (
                    bakPath, bakPath, clusterAppPath)
         g_logger.debug("Restore command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # restore library file,
         # database size file and initialized configuration parameters files
@@ -1556,7 +1648,7 @@ def restoreConfig():
         cmd += " && (if [ -f '%s' ];then cp '%s' '%s/bin';fi)" % (
             backup_dbsize, backup_dbsize, clusterAppPath)
         g_logger.debug("Restore command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # sync kerberos conf files
         cmd = "(if [ -d '%s/kerberos' ];then cp -r '%s/kerberos' '%s/';fi)" % (
@@ -1565,11 +1657,13 @@ def restoreConfig():
                "then mkdir %s/var; cp -r '%s/var/krb5kdc' '%s/var/';fi)" % (
                    bakPath, clusterAppPath, bakPath, clusterAppPath)
         g_logger.debug("Restore command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # restore obsserver.key.cipher/obsserver.key.rand
         # and server.key.cipher/server.key.rand
         # and datasource.key.cipher/datasource.key.rand
+        # and usermapping.key.cipher/usermapping.key.rand
+        # and subscription.key.cipher/subscription.key.rand
         OBS_cipher_key_bak_file = "%s/obsserver.key.cipher" % bakPath
         cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
             OBS_cipher_key_bak_file, OBS_cipher_key_bak_file, clusterAppPath)
@@ -1604,11 +1698,23 @@ def restoreConfig():
         datasource_rand = "%s/datasource.key.rand" % bakPath
         cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
             datasource_rand, datasource_rand, clusterAppPath)
+        usermapping_cipher = "%s/usermapping.key.cipher" % bakPath
+        cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+            usermapping_cipher, usermapping_cipher, clusterAppPath)
+        usermapping_rand = "%s/usermapping.key.rand" % bakPath
+        cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+            usermapping_rand, usermapping_rand, clusterAppPath)
+        subscription_cipher = "%s/subscription.key.cipher" % bakPath
+        cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+            subscription_cipher, subscription_cipher, clusterAppPath)
+        subscription_rand = "%s/subscription.key.rand" % bakPath
+        cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+            subscription_rand, subscription_rand, clusterAppPath)
         tde_key_cipher = "%s/gs_tde_keys.cipher" % bakPath
         cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
             tde_key_cipher, tde_key_cipher, clusterAppPath)
         g_logger.debug("Restore command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # restore utilslib
         utilslib = "%s/utilslib" % bakPath
@@ -1619,7 +1725,7 @@ def restoreConfig():
         cmd += " else mkdir -p '%s'/utilslib -m %s; fi " % (
             clusterAppPath, DefaultValue.DIRECTORY_MODE)
         g_logger.debug("Restore command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # restore ca.key,etcdca.crt, client.key and client.crt
         CA_key_file = "%s/ca.key" % bakPath
@@ -1659,7 +1765,7 @@ def restoreConfig():
                    "then cp -f -p '%s' '%s/share/sslcert/etcd/';fi)" % (
                        etcd_key_rand_file, etcd_key_rand_file, clusterAppPath)
         g_logger.debug("Restore command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # restore javaUDF
         # lib/postgresql/java/pljava.jar use new package, no need to restore.
@@ -1669,7 +1775,7 @@ def restoreConfig():
               "then rm -f '%s/pljava.jar'&&cp -r '%s' '%s' ;fi" % (
                   javadir, javadir, javadir, desPath)
         g_logger.debug("Restore command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # restore postGIS
         cmdPostGis = ""
@@ -1691,7 +1797,7 @@ def restoreConfig():
         # skip " &&"
         cmd = cmdPostGis[3:]
         g_logger.debug("Restore command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # restore extension library and config files
         hadoop_odbc_connector = \
@@ -1720,7 +1826,7 @@ def restoreConfig():
             "-p '%s/share/postgresql/extension/' '%s';fi)" % (
                 extension_config03, extension_config03, clusterAppPath)
         g_logger.debug("Restore command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # restore dict file and grpc file
         dictFileDir = "'%s'/tsearch_data" % bakPath
@@ -1732,7 +1838,7 @@ def restoreConfig():
         cmd += "if [ -d '%s' ];then cp -r '%s' '%s/' ;fi" % (
             grpcFileDir, grpcFileDir, grpcDesPath)
         g_logger.debug("Restore command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
     except Exception as e:
         raise Exception(str(e))
 
@@ -1748,18 +1854,18 @@ def restoreDynamicConfigFile():
     oldClusterAppPath = g_opts.oldClusterAppPath
     # cp new dynamic config file to new app path
     newDynamicConfigFile = "%s/bin/cluster_dynamic_config" % oldClusterAppPath
-    g_file.removeFile("%s/bin/cluster_dynamic_config" % newClusterAppPath)
+    FileUtil.removeFile("%s/bin/cluster_dynamic_config" % newClusterAppPath)
     cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
         newDynamicConfigFile, newDynamicConfigFile, newClusterAppPath)
     g_logger.debug("Restore command: %s" % cmd)
-    DefaultValue.execCommandLocally(cmd)
+    CmdExecutor.execCommandLocally(cmd)
     # cp old dynamic config file to old app path
     dynamic_config = "%s/cluster_dynamic_config" % bakPath
-    g_file.removeFile(newDynamicConfigFile)
+    FileUtil.removeFile(newDynamicConfigFile)
     cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
         dynamic_config, dynamic_config, oldClusterAppPath)
     g_logger.debug("Restore command: %s" % cmd)
-    DefaultValue.execCommandLocally(cmd)
+    CmdExecutor.execCommandLocally(cmd)
 
 
 def inplaceBackup():
@@ -1775,7 +1881,7 @@ def inplaceBackup():
               "then chmod 600 -R '%s'/*; cp -r '%s' '%s';fi)" % (
                   gdspath, gdspath, gdspath, bakPath)
         g_logger.debug("Inplace backup command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
         # backup gsql files
         bakPath = g_opts.upgrade_bak_path
@@ -1783,7 +1889,7 @@ def inplaceBackup():
         cmd = "(if [ -d '%s' ];then chmod 600 -R '%s'/*; cp -r '%s' '%s';fi)" %\
               (gsqlpath, gsqlpath, gsqlpath, bakPath)
         g_logger.debug("Inplace backup command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
     except Exception as e:
         raise Exception(str(e))
 
@@ -1800,7 +1906,7 @@ def inplaceRestore():
         cmd = "(if [ -d '%s' ];then cp -r '%s' '%s';fi)" % (
             gdsbackup, gdsbackup, gdspath)
         g_logger.debug("Inplace restore command: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
     except Exception as e:
         raise Exception(str(e))
 
@@ -1812,7 +1918,10 @@ def checkGucValue():
     output : NA
     """
     try:
-        checkGucValueByShowing()
+        if g_opts.fromFile:
+            checkGucValueFromFile()
+        else:
+            checkGucValueByShowing()
     except Exception as e:
         g_logger.debug("Failed to check dn guc paramter by "
                         "showing. Error is:{0}."
@@ -1846,11 +1955,12 @@ def checkOneInstanceGucValueByShowing(instance):
     sql = "show %s;" % key
     g_logger.debug("Command to check value is: %s" % sql)
     retryTimes = 300
-    for i in range(retryTimes):
+    for _ in range(retryTimes):
         (status, output) = \
             ClusterCommand.execSQLCommand(
                 sql, g_opts.user, "", instance.port, "postgres",
-                False, "-m", IsInplaceUpgrade=True)
+                "-m", IsInplaceUpgrade=True)
+        g_logger.debug("SQL [{0}] perform output: {1}".format(sql, output))
         if status == 0 and output != "":
             g_logger.debug("Output is: %s" % output)
             checkValue = output.strip()
@@ -1867,59 +1977,89 @@ def getDnInstance():
     instance_list = []
     if len(g_dbNode.datanodes) != 0:
         for eachInstance in g_dbNode.datanodes:
-            if eachInstance.instanceType == MASTER_INSTANCE or\
-                    eachInstance.instanceType == STANDBY_INSTANCE:
+            if eachInstance.instanceType in [MASTER_INSTANCE, STANDBY_INSTANCE, CASCADE_STANDBY]:
                 instance_list.append(eachInstance)
     return instance_list
 
 
 def checkGucValueFromFile():
     """
-    check guc value from conf file
+    check cm guc value from conf file
+    by now, it is only used for upgrade_from
     """
-    key = g_opts.gucStr.split(':')[0].strip()
-    value = g_opts.gucStr.split(':')[1].strip()
-    if value in const.VALUE_OFF:
-        value = const.VALUE_OFF
-    if value in const.VALUE_ON:
-        value = const.VALUE_ON
-    if key in const.DN_GUC:
-        instances = g_dbNode.datanodes
-        fileName = "postgresql.conf"
-    else:
-        raise Exception(ErrorCode.GAUSS_529["GAUSS_52942"])
-    for inst in instances:
-        configFile = "%s/%s" % (inst.datadir, fileName)
-        cmd = "sed 's/\t/ /g' %s " \
-              "| grep '^[ ]*\<%s\>[ ]*=' " \
-              "| awk -F '=' '{print $2}'" % (configFile, key)
-        g_logger.debug("Command for checking guc:%s" % cmd)
-        retryTimes = 100
-        for i in range(retryTimes):
-            (status, output) = subprocess.getstatusoutput(cmd)
+    try:
+        key = g_opts.gucStr.split(':')[0].strip()
+        value = g_opts.gucStr.split(':')[1].strip()
+        value, instances, fileName = getGucInfo(key, value)
+        if key in [const.ENABLE_STREAM_REPLICATION_NAME]:
+            g_logger.debug("Jump to check paremeter: {0}".format(key))
+            return
+        if key in ["upgrade_mode"]:
+            sql = "show {0};".format(key)
+            cmd = "gsql -p {0} -d postgres -c '{1}'".format(instances[0].port, sql)
+            (status, output) = CmdUtil.retryGetstatusoutput(cmd)
             if status != 0:
-                time.sleep(3)
-                g_logger.debug(
-                    ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                    + " Output: \n%s" % output)
-                continue
-            if output == "":
-                time.sleep(3)
-                g_logger.debug(
-                    ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                    + " There is no %s in %s" % (key, configFile))
-                continue
-            realValue = output.split('\n')[0].strip()
-            if '#' in realValue:
-                realValue = realValue.split('#')[0].strip()
-            g_logger.debug("[key:%s]: Realvalue %s, ExpectValue %s" % (
-                key, str(realValue), str(value)))
-            if str(realValue) not in str(value):
-                raise Exception(
-                    ErrorCode.GAUSS_521["GAUSS_52102"] % key
-                    + " Real value %s, expect value %s"
-                    % (str(realValue), str(value)))
-            break
+                g_logger.debug("Gsql check GUC parameter [{0}] failed. "
+                               "output:{1}".format(key, output))
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd)
+            gsql_result_list = output.strip().split("\n")
+            g_logger.debug("Check GUC parameter from database result: "
+                           "{0}".format(gsql_result_list))
+            if gsql_result_list and gsql_result_list[0].strip() != key:
+                g_logger.debug("Check GUC parameter result error, first line is : "
+                               "{0}".format(gsql_result_list[0].strip()))
+                raise Exception("Check GUC parameter result error, first line is : "
+                                "{0}".format(gsql_result_list[0].strip()))
+            if str(gsql_result_list[2].strip()) not in str(value):
+                raise Exception(ErrorCode.GAUSS_521["GAUSS_52102"] % key +
+                                " Real value %s, expect value %s" % (
+                                    str(gsql_result_list[2].strip()), str(value)))
+            return
+        for inst in instances:
+            configFile = "%s/%s" % (inst.datadir, fileName)
+            cmd = "sed 's/\t/ /g' %s | grep '^[ ]*\<%s\>[ ]*=' | awk -F '=' '{print $2}'" % \
+                  (configFile, key)
+            g_logger.debug("Command for checking guc:%s" % cmd)
+            retryTimes = 10
+            for _ in range(retryTimes):
+                (status, output) = CmdUtil.retryGetstatusoutput(cmd)
+                if status != 0:
+                    time.sleep(3)
+                    g_logger.debug(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
+                                   " Output: \n%s" % output)
+                    continue
+                if "" == output:
+                    raise Exception(
+                        ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " There is no %s in %s" %
+                        (key, configFile))
+                realValue = output.split('\n')[0].strip().strip("'")
+                if '#' in realValue:
+                    realValue = realValue.split('#')[0].strip().strip("'")
+                g_logger.debug("[key:%s]: Realvalue %s, ExpectValue %s" % (key, str(realValue),
+                                                                           str(value)))
+                if str(realValue) not in str(value):
+                    raise Exception(ErrorCode.GAUSS_521["GAUSS_52102"] % key +
+                                    " Real value %s, expect value %s" % (
+                        str(realValue), str(value)))
+                break
+    except Exception as er:
+        raise Exception(str(er))
+
+
+def get_dn_instance():
+    """
+    get all cn and dn instance in this node
+    """
+    try:
+        InstanceList = []
+        if len(g_dbNode.datanodes) != 0:
+            for eachInstance in g_dbNode.datanodes:
+                if eachInstance.instanceType in \
+                        [MASTER_INSTANCE, STANDBY_INSTANCE, CASCADE_STANDBY]:
+                    InstanceList.append(eachInstance)
+        return InstanceList
+    except Exception as er:
+        raise Exception(str(er))
 
 
 def backupInstanceHotpatchConfig(instanceDataDir):
@@ -2007,8 +2147,8 @@ def readDeleteGuc():
                                  "upgrade_sql/set_guc/delete_guc")
     # Create tmp dir for delete_guc
     delete_guc_tmp = "%s/upgrade_sql/set_guc" % g_opts.upgrade_bak_path
-    g_file.createDirectory(delete_guc_tmp)
-    g_file.createFileInSafeMode(deleteGucFile)
+    FileUtil.createDirectory(delete_guc_tmp)
+    FileUtil.createFileInSafeMode(deleteGucFile)
     if not os.path.isfile(deleteGucFile):
         raise Exception(ErrorCode.GAUSS_502["GAUSS_50210"] % deleteGucFile)
     g_logger.debug("Get the delete GUC from file %s." % deleteGucFile)
@@ -2046,7 +2186,7 @@ def  cleanInstallPath():
         cmd = "(if [ -d '%s' ]; then rm -rf '%s'; fi)" % (
             installPath, installPath)
         g_logger.log("Command for cleaning install path: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
         return
     if g_opts.forceRollback and not os.path.islink(g_gausshome):
         g_logger.log(
@@ -2056,7 +2196,7 @@ def  cleanInstallPath():
     elif os.path.samefile(installPath, g_gausshome):
         g_logger.log("The install path is $GAUSSHOME, cannot clean.")
         return
-    tmpDir = DefaultValue.getTmpDirFromEnv(g_opts.user)
+    tmpDir = EnvUtil.getTmpDirFromEnv(g_opts.user)
     if tmpDir == "":
         raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$PGHOST")
     # under upgrade, we will change the mode to read and execute
@@ -2068,14 +2208,21 @@ def  cleanInstallPath():
     pluginPath = "%s/lib/postgresql/pg_plugin" % installPath
     cmd = "(if [ -d '%s' ]; then chmod -R %d '%s'; fi)" % (
         pluginPath, DefaultValue.KEY_DIRECTORY_MODE, pluginPath)
+    cm_cert_dir = os.path.realpath(os.path.join(installPath, "share", "sslcert", "cm"))
+    cmd += " && (if [ -d '%s' ]; then chmod -R %d '%s'; fi)" % (cm_cert_dir, 
+                                                                DefaultValue.KEY_DIRECTORY_MODE, 
+                                                                cm_cert_dir)
     appBakPath = "%s/to_be_delete" % tmpDir
+    cmd += " && (if [ -d '%s' ]; then chmod -R %d '%s'; fi)" % (appBakPath, 
+                                                                DefaultValue.KEY_DIRECTORY_MODE, 
+                                                                appBakPath)
     cmd += " && (if [ ! -d '%s' ]; then mkdir -p '%s'; fi)" % (
         appBakPath, appBakPath)
     cmd += " && (if [ -d '%s' ]; then cp -r '%s/' '%s/to_be_delete/'; fi)" % (
         installPath, installPath, tmpDir)
     g_logger.debug(
         "Command for change permission and backup install path: %s" % cmd)
-    DefaultValue.execCommandLocally(cmd)
+    CmdExecutor.execCommandLocally(cmd)
 
     cmd = "(if [ -d '%s/bin' ]; then rm -rf '%s/bin'; fi) &&" % \
           (installPath, installPath)
@@ -2101,9 +2248,11 @@ def  cleanInstallPath():
            % (installPath, installPath)
     cmd += "(if [ -d '%s/simpleInstall' ]; then rm -rf '%s/simpleInstall';" \
            " fi) &&" % (installPath, installPath)
-    cmd += "(if [ -e '%s/version.cfg' ]; then rm -rf '%s/version.cfg'; fi)"\
+    cmd += "(if [ -e '%s/version.cfg' ]; then rm -rf '%s/version.cfg'; fi) &&"\
            % (installPath, installPath)
-    DefaultValue.execCommandLocally(cmd)
+    cmd += "(if [ -e '%s/.gaussUDF.socket' ]; then rm -rf '%s/.gaussUDF.socket'; fi)" \
+           % (installPath, installPath)
+    CmdExecutor.execCommandLocally(cmd)
     if os.listdir(installPath):
         g_logger.log(
             "The path %s has personal file ot directory, please remove it."
@@ -2112,7 +2261,7 @@ def  cleanInstallPath():
         cmd = "(if [ -d '%s' ]; then rm -rf '%s'; fi)" % (
             installPath, installPath)
         g_logger.log("Command for cleaning install path: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
 
 
 def copyCerts():
@@ -2127,17 +2276,17 @@ def copyCerts():
     oldOmSslCerts = os.path.join(g_opts.oldClusterAppPath, "share/sslcert/om")
     newOmSslCerts = os.path.join(g_opts.newClusterAppPath, "share/sslcert/om")
 
-    g_file.cpFile("%s/server.key.cipher" % oldBinPath, "%s/" % newBinPath)
-    g_file.cpFile("%s/server.key.rand" % oldBinPath, "%s/" % newBinPath)
+    FileUtil.cpFile("%s/server.key.cipher" % oldBinPath, "%s/" % newBinPath)
+    FileUtil.cpFile("%s/server.key.rand" % oldBinPath, "%s/" % newBinPath)
     for certFile in DefaultValue.SERVER_CERT_LIST:
-        g_file.cpFile("%s/%s" % (oldOmSslCerts, certFile), "%s/" %
+        FileUtil.cpFile("%s/%s" % (oldOmSslCerts, certFile), "%s/" %
                       newOmSslCerts)
 
-    g_file.changeMode(DefaultValue.KEY_FILE_MODE, "%s/server.key.cipher" %
+    FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, "%s/server.key.cipher" %
                       newBinPath)
-    g_file.changeMode(DefaultValue.KEY_FILE_MODE, "%s/server.key.rand" %
+    FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, "%s/server.key.rand" %
                       newBinPath)
-    g_file.changeMode(DefaultValue.KEY_FILE_MODE, "%s/*" %
+    FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, "%s/*" %
                       newOmSslCerts)
 
 
@@ -2167,8 +2316,8 @@ def prepareUpgradeSqlFolder():
             upgrade_sql_gz_file, upgrade_sql_sha256_file))
 
     g_logger.debug("Checking the SHA256 value of upgrade sql folder.")
-    sha256Actual = g_file.getFileSHA256(upgrade_sql_gz_file)
-    sha256Record = g_file.readFile(upgrade_sql_sha256_file)
+    sha256Actual = FileUtil.getFileSHA256(upgrade_sql_gz_file)
+    sha256Record = FileUtil.readFile(upgrade_sql_sha256_file)
     if sha256Actual.strip() != sha256Record[0].strip():
         raise Exception(ErrorCode.GAUSS_516["GAUSS_51635"] + \
                         " The SHA256 value is different: \nTar file: "
@@ -2179,7 +2328,7 @@ def prepareUpgradeSqlFolder():
     # self.context.upgradeBackupPath just recreated at last step,
     # it should not has upgrade_sql folder, so no need do clean
     g_logger.debug("Extracting upgrade sql folder.")
-    g_file.decompressFiles(upgrade_sql_gz_file, g_opts.upgrade_bak_path)
+    CompressUtil.decompressFiles(upgrade_sql_gz_file, g_opts.upgrade_bak_path)
     g_logger.debug("Successfully prepared upgrade sql folder.")
 
 
@@ -2223,7 +2372,7 @@ def getLocalPrimaryDNInstance():
     output: NA
     """
     g_logger.log("We will find all primary dn instance in the local node.")
-    tmpFile = os.path.join(DefaultValue.getTmpDirFromEnv(
+    tmpFile = os.path.join(EnvUtil.getTmpDirFromEnv(
         g_opts.user), const.TMP_DYNAMIC_DN_INFO)
     primaryDNList = []
     try:
@@ -2246,6 +2395,29 @@ def getLocalPrimaryDNInstance():
         raise Exception(str(er))
 
 
+def getGucInfo(key, value):
+    """
+
+    :return:
+    """
+    if value in const.VALUE_OFF:
+        value = const.VALUE_OFF
+    if value in const.VALUE_ON:
+        value = const.VALUE_ON
+    if key in const.CMA_GUC:
+        instances = g_dbNode.cmagents
+        fileName = "cm_agent.conf"
+    elif key in const.CMS_GUC:
+        instances = g_dbNode.cmservers
+        fileName = "cm_server.conf"
+    elif key in const.DN_GUC:
+        instances = g_dbNode.datanodes
+        fileName = "postgresql.conf"
+    else:
+        raise Exception("No such key to check guc value.")
+    return value, instances, fileName
+
+
 def backupOneInstanceOldClusterDBAndRel(instance):
     """
         backup db and catalog info for one old cluster instance
@@ -2255,7 +2427,7 @@ def backupOneInstanceOldClusterDBAndRel(instance):
         connect each database, get catalog info
         save to file
         """
-    tmpDir = DefaultValue.getTmpDirFromEnv(g_opts.user)
+    tmpDir = EnvUtil.getTmpDirFromEnv(g_opts.user)
     if tmpDir == "":
         raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$PGHOST")
     g_logger.debug(
@@ -2276,7 +2448,7 @@ def backupOneInstanceOldClusterDBAndRel(instance):
                                                          g_opts.user, "",
                                                          instance.port,
                                                          "postgres",
-                                                         False, "-m",
+                                                         "-m",
                                                          IsInplaceUpgrade=True)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_513[
@@ -2296,15 +2468,17 @@ def backupOneInstanceOldClusterDBAndRel(instance):
             dbInfoDict["dbnum"] += 1
 
         # connect each database, get catalog info
-        get_catalog_list_sql =\
-            """SELECT p.oid, n.nspname, p.relname, 
-            pg_catalog.pg_relation_filenode(p.oid) AS relfilenode, 
-            p.reltablespace, pg_catalog.pg_tablespace_location(t.oid) AS 
-            spclocation FROM pg_catalog.pg_class p INNER JOIN 
-            pg_catalog.pg_namespace n ON (p.relnamespace = n.oid) LEFT OUTER 
-            JOIN pg_catalog.pg_tablespace t ON (p.reltablespace = t.oid) WHERE 
-            p.oid < 16384 AND p.relkind IN ('r', 'i', 't') AND
-             p.relisshared= false AND p.relpersistence != 'u' ORDER BY 1;"""
+        get_catalog_list_sql = """SELECT p.oid, n.nspname, p.relname, 
+                    pg_catalog.pg_relation_filenode(p.oid) AS relfilenode, 
+                    p.reltablespace, pg_catalog.pg_tablespace_location(t.oid) AS 
+                    spclocation, p.relpersistence
+                    FROM pg_catalog.pg_class p INNER JOIN pg_catalog.pg_namespace n ON 
+                    (p.relnamespace = n.oid) 
+                    LEFT OUTER JOIN pg_catalog.pg_tablespace t ON (p.reltablespace = t.oid) 
+                    WHERE p.oid < 16384 AND 
+                    p.relkind IN ('r', 'i', 't') AND 
+                    p.relisshared= false
+                     ORDER BY 1;"""
         g_logger.debug("Get catalog info command: \n%s" % get_catalog_list_sql)
         for each_db in dbInfoDict["dblist"]:
             # template0 need handle specially, skip it here
@@ -2312,7 +2486,7 @@ def backupOneInstanceOldClusterDBAndRel(instance):
                 continue
             (status, output) = ClusterCommand.execSQLCommand(
                 get_catalog_list_sql, g_opts.user, "", instance.port,
-                each_db["dbname"], False, "-m", IsInplaceUpgrade=True)
+                each_db["dbname"], "-m", IsInplaceUpgrade=True)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_513[
                                     "GAUSS_51300"] % get_catalog_list_sql +
@@ -2324,54 +2498,44 @@ def backupOneInstanceOldClusterDBAndRel(instance):
             resList = output.split('\n')
             for each_line in resList:
                 tmpCatalogInfo = initCatalogInfo()
-                (oid, nspname, relname, relfilenode, reltablespace,
-                 spclocation) = each_line.split('|')
+                (oid, nspname, relname, relfilenode, reltablespace, spclocation, relpersistence) = \
+                    each_line.split('|')
                 tmpCatalogInfo['oid'] = oid.strip()
                 tmpCatalogInfo['relname'] = relname.strip()
                 tmpCatalogInfo['relfilenode'] = relfilenode.strip()
+                tmpCatalogInfo['relpersistence'] = relpersistence.strip()
                 each_db["CatalogList"].append(tmpCatalogInfo)
                 each_db["CatalogNum"] += 1
 
         # save db and catlog info into file
         instance_name = getInstanceName(instance)
-        if instance.instanceRole == INSTANCE_ROLE_COODINATOR:
-            # handle cn instance
-            cn_db_and_catalog_info_file_name = \
-                "%s/cn_db_and_catalog_info_%s.json" % (
-                    backup_path, instance_name)
-            DbInfoStr = json.dumps(dbInfoDict, indent=2)
-            fp = open(cn_db_and_catalog_info_file_name, 'w')
-            fp.write(DbInfoStr)
-            fp.flush()
-            fp.close()
-        else:
-            # handle master dn instance
-            dn_db_and_catalog_info_file_name = \
-                "%s/dn_db_and_catalog_info_%s.json" % (
-                    backup_path, instance_name)
-            DbInfoStr = json.dumps(dbInfoDict, indent=2)
-            fp = open(dn_db_and_catalog_info_file_name, 'w')
-            fp.write(DbInfoStr)
-            fp.flush()
-            fp.close()
 
-            standbyInstLst = []
-            peerInsts = g_clusterInfo.getPeerInstance(instance)
-            for i in range(len(peerInsts)):
-                if peerInsts[i].instanceType == DefaultValue.MASTER_INSTANCE\
-                        or peerInsts[i].instanceType == \
-                        DefaultValue.STANDBY_INSTANCE:
-                    standbyInstLst.append(peerInsts[i])
-            for standbyInstance in standbyInstLst:
-                cmd = "pscp -H %s %s %s" % (
-                standbyInstance.hostname, dn_db_and_catalog_info_file_name,
-                dn_db_and_catalog_info_file_name)
-                g_logger.debug("exec cmd is: %s" % cmd)
-                (status, output) = DefaultValue.retryGetstatusoutput(cmd, 2, 5)
-                if status != 0:
-                    raise Exception(ErrorCode.GAUSS_514[
-                                        "GAUSS_51400"] % cmd +
-                                    "\nOutput:%s" % output)
+        # handle master dn instance
+        dn_db_and_catalog_info_file_name = \
+            "%s/dn_db_and_catalog_info_%s.json" % (
+                backup_path, instance_name)
+        DbInfoStr = json.dumps(dbInfoDict, indent=2)
+        fp = open(dn_db_and_catalog_info_file_name, 'w')
+        fp.write(DbInfoStr)
+        fp.flush()
+        fp.close()
+
+        standbyInstLst = []
+        peerInsts = g_clusterInfo.getPeerInstance(instance)
+        for i in range(len(peerInsts)):
+            if peerInsts[i].instanceType in \
+                    [MASTER_INSTANCE, STANDBY_INSTANCE, CASCADE_STANDBY]:
+                standbyInstLst.append(peerInsts[i])
+        for standbyInstance in standbyInstLst:
+            cmd = "pscp -H %s %s %s" % (
+            standbyInstance.hostname, dn_db_and_catalog_info_file_name,
+            dn_db_and_catalog_info_file_name)
+            g_logger.debug("exec cmd is: %s" % cmd)
+            (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_514[
+                                    "GAUSS_51400"] % cmd +
+                                "\nOutput:%s" % output)
 
     except Exception as e:
         raise Exception(str(e))
@@ -2495,14 +2659,14 @@ def execSQLFile(dbname, sqlFile, cn_port):
     """
     exec sql file
     """
-    gsql_cmd = ClusterCommand.getSQLCommandForInplaceUpgradeBackup(
+    gsql_cmd = SqlCommands.getSQLCommandForInplaceUpgradeBackup(
         cn_port, dbname.replace('$', '\$'))
     cmd = "%s -X --echo-queries --set ON_ERROR_STOP=on -f %s" % (
         gsql_cmd, sqlFile)
     (status, output) = subprocess.getstatusoutput(cmd)
     g_logger.debug("Catalog modification log for database %s:\n%s." % (
         dbname, output))
-    if status != 0 or ClusterCommand.findErrorInSqlFile(sqlFile, output):
+    if status != 0 or SqlFile.findErrorInSqlFile(sqlFile, output):
         g_logger.debug(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd)
         raise Exception("Failed to update catalog. Error: %s" % str(output))
 
@@ -2559,6 +2723,8 @@ def backupOneInstanceOldClusterCatalogPhysicalFiles(instance):
             g_logger.debug("There is no need to backup catalog. "
                            "Instance data dir: %s" % instance.datadir)
             return
+        if is_dcf_mode():
+            __backup_dcf_file(instance)
         __backup_xlog_file(instance)
         __backup_cbm_file(instance)
         __backup_base_folder(instance)
@@ -2586,6 +2752,46 @@ def __backup_global_dir(instance):
         g_logger.debug("Successfully backed up global_dir")
     except Exception as e:
         raise Exception(str(e))
+
+
+def __backup_dcf_file(instance):
+    """
+    backup dcf files for in-place upgrade.
+    """
+    try:
+        g_logger.debug("Backup instance dcf files. Instance data_dir: %s" % instance.datadir)
+        dcf_back_dir = os.path.join(instance.datadir, "dcf_data_bak")
+        cmd = "rm -rf '%s' " % dcf_back_dir
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + "\nOutput:%s" % output)
+
+        dcf_dir = os.path.join(instance.datadir, "dcf_data")
+        if not os.path.exists(dcf_dir):
+            g_logger.debug("There is no dcf dir to backup for %d." % instance.instanceId)
+            return
+
+        # backup dcf data dir
+        cpDirectory(dcf_dir, dcf_back_dir)
+
+        # backup dcf apply index
+        dcf_index = "paxosindex"
+        dcf_index_back = dcf_index + ".backup"
+        dcf_index_file = os.path.join(instance.datadir, dcf_index)
+        dcf_index_back_file = os.path.join(instance.datadir, dcf_index_back)
+        if not os.path.exists(dcf_index_file) or not os.path.exists(dcf_index_back_file):
+            raise Exception("These is no paxos index file for instance %d, dir is: %s" \
+                            % (instance.instanceId, instance.datadir))
+
+        dest_dcf_index_file = os.path.join(instance.datadir, dcf_index + "_upgrade_backup")
+        dest_dcf_index_back_file = os.path.join(instance.datadir, \
+                                                dcf_index_back + "_upgrade_backup")
+        shutil.copy2(dcf_index_file, dest_dcf_index_file)
+        shutil.copy2(dcf_index_back_file, dest_dcf_index_back_file)
+        g_logger.debug("Successfully backuped instance dcf files. "
+                       "Instance data dir: %s" % instance.datadir)
+    except Exception as er:
+        raise Exception(str(er))
 
 
 def __backup_xlog_file(instance):
@@ -2632,7 +2838,7 @@ def __backup_xlog_file(instance):
         xlog_backup_info['backup_xlog_list'] = backup_xlog_list
         xlog_backup_info_target_file = os.path.join(xlog_dir,
                                                     const.XLOG_BACKUP_INFO)
-        g_file.createFileInSafeMode(xlog_backup_info_target_file)
+        FileUtil.createFileInSafeMode(xlog_backup_info_target_file)
         with open(xlog_backup_info_target_file, "w") as fp:
             json.dump(xlog_backup_info, fp)
 
@@ -2649,7 +2855,7 @@ def __get_latest_checkpoint_location(instance):
         cmd = "pg_controldata '%s'" % instance.datadir
         if g_opts.mpprcFile != "" and g_opts.mpprcFile is not None:
             cmd = "source %s; %s" % (g_opts.mpprcFile, cmd)
-        (status, output) = DefaultValue.retryGetstatusoutput(cmd, 2, 5)
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
         g_logger.debug("Command for get control data:%s.Output:\n%s." % (
             cmd, output))
         if status != 0:
@@ -2704,7 +2910,7 @@ def __backup_cbm_file(instance):
                        "Instance data dir: %s" % instance.datadir)
         cbm_back_dir = os.path.join(instance.datadir, "pg_cbm_back")
         cmd = "rm -rf '%s' " % cbm_back_dir
-        (status, output) = DefaultValue.retryGetstatusoutput(cmd, 2, 5)
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
                             "\nOutput:%s" % output)
@@ -2770,12 +2976,13 @@ def restoreOneInstanceOldClusterCatalogPhysicalFiles(instance):
             # clean pg_xlog folder of dummy standby dn instance and return
             pg_xlog_dir = "%s/pg_xlog" % instance.datadir
             cmd = "find '%s' -type f | xargs -r -n 100 rm -f" % pg_xlog_dir
-            DefaultValue.execCommandLocally(cmd)
+            CmdExecutor.execCommandLocally(cmd)
 
             # restore list folder
             __restore_global_dir(instance)
             return
-
+        if is_dcf_mode():
+            __restore_dcf_file(instance)
         __restore_global_dir(instance)
         __restore_xlog_file(instance)
         __restore_cbm_file(instance)
@@ -2801,6 +3008,43 @@ def __restore_global_dir(instance):
         g_logger.debug("Successfully restored global_dir")
     except Exception as e:
         raise Exception(str(e))
+
+
+def __restore_dcf_file(instance):
+    """
+    """
+    try:
+        g_logger.debug("restore instance dcf files. Instance data dir: %s" % instance.datadir)
+        dcf_dir = os.path.join(instance.datadir, "dcf_data")
+        dcf_back_dir = os.path.join(instance.datadir, "dcf_data_bak")
+        if not os.path.exists(dcf_back_dir):
+            g_logger.debug("There is no dcf dir to restore for %d." % instance.instanceId)
+            return
+        cmd = "rm -rf '%s' " % dcf_dir
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + "\nOutput:%s" % output)
+        cpDirectory(dcf_back_dir, dcf_dir)
+
+        # backup dcf apply index
+        dcf_index = "paxosindex"
+        dcf_index_back = dcf_index + ".backup"
+        src_dcf_index_file = os.path.join(instance.datadir, dcf_index + "_upgrade_backup")
+        src_dcf_index_back_file = os.path.join(instance.datadir, dcf_index_back + "_upgrade_backup")
+        if not os.path.exists(src_dcf_index_file) or not os.path.exists(src_dcf_index_back_file):
+            raise Exception("There is no paxos index backup files, " \
+                            "but they should be exist at this step." \
+                            "instance is %d, data dir is: %s" \
+                            % (instance.instanceId, instance.datadir))
+        dcf_index_file = os.path.join(instance.datadir, dcf_index)
+        dcf_index_back_file = os.path.join(instance.datadir, dcf_index_back)
+        shutil.copy2(src_dcf_index_file, dcf_index_file)
+        shutil.copy2(src_dcf_index_back_file, dcf_index_back_file)
+
+        g_logger.debug("Successfully restored instance dcf files. "
+                       "Instance data dir: %s" % instance.datadir)
+    except Exception as er:
+        raise Exception(str(er))
 
 
 def __restore_xlog_file(instance):
@@ -2860,7 +3104,7 @@ def __restore_cbm_file(instance):
                        "Instance data dir: %s" % instance.datadir)
         cbm_dir = os.path.join(instance.datadir, "pg_cbm")
         cmd = "rm -rf '%s' " % cbm_dir
-        (status, output) = DefaultValue.retryGetstatusoutput(cmd, 2, 5)
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
                             "\nOutput:%s" % output)
@@ -2936,19 +3180,20 @@ def cleanOneInstanceOldClusterCatalogPhysicalFiles(instance):
             if float(g_opts.oldclusternum) < float(
                     const.UPGRADE_VERSION_64bit_xid) and \
                     os.path.isdir(pg_csnlog_dir):
-                g_file.removeDirectory(pg_csnlog_dir)
+                FileUtil.removeDirectory(pg_csnlog_dir)
         else:
             pg_subtrans_dir = os.path.join(instance.datadir, "pg_subtrans")
             # when do commit, remove the pg_subtrans directory
             if os.path.isdir(pg_subtrans_dir):
-                g_file.removeDirectory(pg_subtrans_dir)
+                FileUtil.removeDirectory(pg_subtrans_dir)
 
         if instance.instanceRole == INSTANCE_ROLE_DATANODE and \
                 instance.instanceType == DUMMY_STANDBY_INSTANCE:
             g_logger.debug("There is no need to clean catalog. "
                            "Instance data dir: %s" % instance.datadir)
             return
-
+        if is_dcf_mode():
+            __clean_dcf_file(instance)
         __clean_xlog_file(instance)
         __clean_cbm_file(instance)
         __clean_base_folder(instance)
@@ -2965,7 +3210,7 @@ def __clean_global_dir(instance):
     # clean pg_internal.init*
     g_logger.debug("Start to clean global_dir")
     cmd = "rm -f %s/global/pg_internal.init*" % instance.datadir
-    DefaultValue.execCommandLocally(cmd)
+    CmdExecutor.execCommandLocally(cmd)
 
     backup_dir_list = const.BACKUP_DIR_LIST_BASE + const.BACKUP_DIR_LIST_64BIT_XID
     for name in backup_dir_list:
@@ -2974,13 +3219,26 @@ def __clean_global_dir(instance):
     g_logger.debug("Successfully cleaned global_dir")
 
 
+def __clean_dcf_file(instance):
+    """
+    """
+    # clean dcf backup files
+    dcf_back_dir = os.path.join(instance.datadir, "dcf_data_bak")
+    cmd = "rm -rf '%s' && rm -rf '%s'/*_upgrade_backup" % (dcf_back_dir, instance.datadir)
+    (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
+    if status != 0:
+        raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + "\nOutput:%s" % output)
+    g_logger.debug("Successfully clean instance dcf files. " \
+                   "Instance data dir: {0}".format(instance.datadir))
+
+
 def __clean_xlog_file(instance):
     """
     """
     # clean *.upgrade_backup files
     cmd = "rm -f '%s'/pg_xlog/*_upgrade_backup && rm -f '%s'/pg_xlog/%s" % \
           (instance.datadir, instance.datadir, const.XLOG_BACKUP_INFO)
-    DefaultValue.execCommandLocally(cmd)
+    CmdExecutor.execCommandLocally(cmd)
     g_logger.debug("Successfully clean instance xlog files. "
                    "Instance data dir: {0}".format(instance.datadir))
 
@@ -2991,7 +3249,7 @@ def __clean_cbm_file(instance):
     # clean pg_cbm_back files
     cbm_back_dir = os.path.join(instance.datadir, "pg_cbm_back")
     cmd = "rm -rf '%s' " % cbm_back_dir
-    (status, output) = DefaultValue.retryGetstatusoutput(cmd, 2, 5)
+    (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
     if status != 0:
         raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
                         "\nOutput:%s" % output)
@@ -3012,8 +3270,7 @@ def __clean_base_folder(instance):
         db_and_catalog_info_file_name = \
             "%s/cn_db_and_catalog_info_%s.json" % (backup_path, instance_name)
     elif instance.instanceRole == INSTANCE_ROLE_DATANODE:
-        if instance.instanceType == MASTER_INSTANCE or \
-                instance.instanceType == STANDBY_INSTANCE:
+        if instance.instanceType in [MASTER_INSTANCE, STANDBY_INSTANCE, CASCADE_STANDBY]:
             db_and_catalog_info_file_name = \
                 "%s/dn_db_and_catalog_info_%s.json" % (
                     backup_path, instance_name)
@@ -3049,7 +3306,7 @@ def __clean_base_folder(instance):
         if each_db["dbname"] == 'template0':
             cmd = "rm -rf '%s_bak' && rm -f %s/pg_internal.init*" % \
                   (pg_catalog_base_dir, pg_catalog_base_dir)
-            (status, output) = DefaultValue.retryGetstatusoutput(cmd, 2, 5)
+            (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
                                 "\nOutput:%s" % output)
@@ -3061,7 +3318,7 @@ def __clean_base_folder(instance):
         cmd = "rm -f %s/*_bak && rm -f %s/pg_internal.init*" % (
             pg_catalog_base_dir, pg_catalog_base_dir)
         g_logger.debug("{0} needs to be cleaned".format(pg_catalog_base_dir))
-        (status, output) = DefaultValue.retryGetstatusoutput(cmd, 2, 5)
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
                             "\nOutput:%s" % output)
@@ -3081,8 +3338,8 @@ def replacePgprocFile():
         # find all DB instances need to replace pg_proc
         if len(g_dbNode.datanodes) != 0:
             for eachInstance in g_dbNode.datanodes:
-                if (eachInstance.instanceType == MASTER_INSTANCE
-                        or eachInstance.instanceType == STANDBY_INSTANCE):
+                if eachInstance.instanceType \
+                        in [MASTER_INSTANCE, STANDBY_INSTANCE, CASCADE_STANDBY]:
                     InstanceList.append(eachInstance)
 
         # replace each instance pg_proc
@@ -3128,8 +3385,8 @@ def replaceOneInstancePgprocFile(instance):
             if not os.path.exists(pg_proc_temp_data_file):
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] %
                     pg_proc_temp_data_file)
-            g_file.removeFile(pg_proc_data_file)
-            g_file.cpFile(pg_proc_temp_data_file, pg_proc_data_file)
+            FileUtil.removeFile(pg_proc_data_file)
+            FileUtil.cpFile(pg_proc_temp_data_file, pg_proc_data_file)
 
     except Exception as e:
         raise Exception(str(e))
@@ -3272,9 +3529,8 @@ def createNewCsvFile():
     standbyInstLst = []
     peerInsts = g_clusterInfo.getPeerInstance(dnInst)
     for i in range(len(peerInsts)):
-        if peerInsts[i].instanceType == DefaultValue.MASTER_INSTANCE \
-                or peerInsts[i].instanceType == \
-                DefaultValue.STANDBY_INSTANCE:
+        if peerInsts[i].instanceType in \
+                [MASTER_INSTANCE,STANDBY_INSTANCE, CASCADE_STANDBY]:
             standbyInstLst.append(peerInsts[i])
     for standbyInstance in standbyInstLst:
         standbyCsvFilePath = \
@@ -3283,7 +3539,7 @@ def createNewCsvFile():
             standbyInstance.hostname, new_pg_proc_csv_path,
             standbyCsvFilePath)
         g_logger.debug("exec cmd is: %s" % cmd)
-        (status, output) = DefaultValue.retryGetstatusoutput(cmd, 2, 5)
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514[
                                 "GAUSS_51400"] % cmd +
@@ -3338,13 +3594,13 @@ def greySyncInstanceGuc(dbInstance):
     #  try to deleted, but not finished,
     # so cannot copy again, this oldConfig file may have deleted the old GUC
     if not os.path.exists(oldTempFileBak):
-        g_file.cpFile(oldConfig, oldTempFileBak)
+        FileUtil.cpFile(oldConfig, oldTempFileBak)
     # if do not have delete line, no need to deal with old .conf
     if instanceName in g_deleteGucDict.keys():
         gucNames = g_deleteGucDict[instanceName]
     else:
         # the rename must be the last, which is the finish flag
-        g_file.rename(oldTempFileBak, oldFileBak)
+        FileUtil.rename(oldTempFileBak, oldFileBak)
         g_logger.debug("No need to sync %s guc with %s." % (
             instanceName, oldConfig))
         return
@@ -3387,24 +3643,24 @@ def greySyncInstanceGuc(dbInstance):
 
             if deleteLineNoList:
                 g_logger.debug("Deleting line number: %s." % deleteLineNoList)
-                g_file.createFile(bakFile, True, DefaultValue.KEY_FILE_MODE)
+                FileUtil.createFile(bakFile, True, DefaultValue.KEY_FILE_MODE)
                 deleteContent = []
                 for lineno in deleteLineNoList:
                     deleteContent.append(resList[lineno])
                     resList[lineno] = ''
                 with open(bakFile, 'w') as bak:
                     bak.writelines(resList)
-                g_file.rename(bakFile, oldConfig)
+                FileUtil.rename(bakFile, oldConfig)
                 g_logger.debug("Deleting guc content: %s" % deleteContent)
         # the rename must be the last, which is the finish flag
-        g_file.rename(oldTempFileBak, oldFileBak)
+        FileUtil.rename(oldTempFileBak, oldFileBak)
         if f:
             f.close()
     except Exception as e:
         if f:
             f.close()
         if bakFile:
-            g_file.removeFile(bakFile)
+            FileUtil.removeFile(bakFile)
         raise Exception(str(e))
     g_logger.debug("Successfully dealt with %s." % oldConfig)
 
@@ -3420,18 +3676,34 @@ def greyUpgradeSyncConfig():
         g_logger.debug("Current version is the new version, "
                        "no need to sync old configure to new install path.")
         return
-    # synchronize static and dynamic configuration files
-    static_config = "%s/bin/cluster_static_config" % srcDir
-    cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
-        static_config, static_config, destDir)
-    dynamic_config = "%s/bin/cluster_dynamic_config" % srcDir
-    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
-        dynamic_config, dynamic_config, destDir)
+    
+    old_static_config_file = os.path.join(g_opts.oldClusterAppPath, "bin/cluster_static_config")
+    old_static_cluster_info = dbClusterInfo()
+    old_static_cluster_info.initFromStaticConfig(g_opts.user, old_static_config_file)
+    new_static_config_file = os.path.join(g_opts.newClusterAppPath, "bin/cluster_static_config")
+    if not os.path.isfile(new_static_config_file):
+        raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % 
+                        os.path.realpath(new_static_config_file))
+    if DefaultValue.check_add_cm(old_static_config_file, new_static_config_file, g_logger):
+        install_cm_instance(new_static_config_file)
+        cmd = ""
+    else:
+        g_logger.debug("No need to install CM component for grey upgrade sync config.")
+        # synchronize static and dynamic configuration files
+        static_config = "%s/bin/cluster_static_config" % srcDir
+        cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+            static_config, static_config, destDir)
+        dynamic_config = "%s/bin/cluster_dynamic_config" % srcDir
+        cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi) && " % (
+            dynamic_config, dynamic_config, destDir)
     # sync obsserver.key.cipher/obsserver.key.rand and
     #  server.key.cipher/server.key.rand and
     # datasource.key.cipher/datasource.key.rand
+    # usermapping.key.cipher/usermapping.key.rand
+    # subscription.key.cipher/subscription.key.rand
+    
     OBS_cipher_key_bak_file = "%s/bin/obsserver.key.cipher" % srcDir
-    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+    cmd += "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
         OBS_cipher_key_bak_file, OBS_cipher_key_bak_file, destDir)
     OBS_rand_key_bak_file = "%s/bin/obsserver.key.rand" % srcDir
     cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
@@ -3472,11 +3744,23 @@ def greyUpgradeSyncConfig():
     datasource_rand = "%s/bin/datasource.key.rand" % srcDir
     cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
         datasource_rand, datasource_rand, destDir)
+    usermapping_cipher = "%s/bin/usermapping.key.cipher" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        usermapping_cipher, usermapping_cipher, destDir)
+    usermapping_rand = "%s/bin/usermapping.key.rand" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        usermapping_rand, usermapping_rand, destDir)
+    subscription_cipher = "%s/bin/subscription.key.cipher" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        subscription_cipher, subscription_cipher, destDir)
+    subscription_rand = "%s/bin/subscription.key.rand" % srcDir
+    cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        subscription_rand, subscription_rand, destDir)
     tde_key_cipher = "%s/bin/gs_tde_keys.cipher" % srcDir
     cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
         tde_key_cipher, tde_key_cipher, destDir)
     g_logger.debug("Grey upgrade sync command: %s" % cmd)
-    DefaultValue.execCommandLocally(cmd)
+    CmdExecutor.execCommandLocally(cmd)
 
     # sync ca.key,etcdca.crt, client.key and client.crt
     CA_key_file = "%s/share/sslcert/etcd/ca.key" % srcDir
@@ -3515,7 +3799,7 @@ def greyUpgradeSyncConfig():
                "'%s/share/sslcert/etcd/';fi)" % (
             etcd_key_rand_file, etcd_key_rand_file, destDir)
     g_logger.debug("Grey upgrade sync command: %s" % cmd)
-    DefaultValue.execCommandLocally(cmd)
+    CmdExecutor.execCommandLocally(cmd)
 
     # sync gsql certs
     gsqlOldpath = "%s/share/sslcert/gsql/" % srcDir
@@ -3523,21 +3807,22 @@ def greyUpgradeSyncConfig():
     cmd = "(if [ -d '%s' ];then cp -r '%s' '%s';fi)" % (
         gsqlOldpath, gsqlOldpath, gsqlNewDir)
     g_logger.debug("Inplace restore command: %s" % cmd)
-    DefaultValue.execCommandLocally(cmd)
+    CmdExecutor.execCommandLocally(cmd)
     # sync gds certs
     gdsOldpath = "%s/share/sslcert/gds/" % srcDir
     gdsNewDir = "%s/share/sslcert/" % destDir
     cmd = "(if [ -d '%s' ];then cp -r '%s' '%s';fi)" % (
         gdsOldpath, gdsOldpath, gdsNewDir)
     g_logger.debug("Inplace restore command: %s" % cmd)
-    DefaultValue.execCommandLocally(cmd)
+
+    CmdExecutor.execCommandLocally(cmd)
     # sync grpc certs
     grpcOldpath = "%s/share/sslcert/grpc/" % srcDir
     grpcNewDir = "%s/share/sslcert/" % destDir
     cmd = "(if [ -d '%s' ];then cp -r '%s' '%s';fi)" % (
     grpcOldpath, grpcOldpath, grpcNewDir)
     g_logger.debug("Inplace restore command: %s" % cmd)
-    DefaultValue.execCommandLocally(cmd)
+    CmdExecutor.execCommandLocally(cmd)
 
     # sync java UDF
     javadir = "%s/lib/postgresql/java" % srcDir
@@ -3546,7 +3831,7 @@ def greyUpgradeSyncConfig():
           "'%s'&&cp -r '%s' '%s'&&mv '%s/pljava.jar' '%s/java/';fi)" % \
           (javadir, desPath, desPath, javadir, desPath, desPath, desPath)
     g_logger.debug("Grey upgrade sync command: %s" % cmd)
-    DefaultValue.execCommandLocally(cmd)
+    CmdExecutor.execCommandLocally(cmd)
 
     # sync postGIS
     cmdPostGis = ""
@@ -3558,7 +3843,7 @@ def greyUpgradeSyncConfig():
     # skip " &&"
     cmd = cmdPostGis[3:]
     g_logger.debug("Grey upgrade sync command: %s" % cmd)
-    DefaultValue.execCommandLocally(cmd)
+    CmdExecutor.execCommandLocally(cmd)
     # sync library file
 
     # sync libsimsearch etc files
@@ -3578,7 +3863,7 @@ def greyUpgradeSyncConfig():
     cmd += " && (if [-f '%s/bin/initdb_param'];" \
            "then cp -f -p '%s/bin/initdb_param' '%s/bin/';fi)" % (
         srcDir, srcDir, destDir)
-    DefaultValue.execCommandLocally(cmd)
+    CmdExecutor.execCommandLocally(cmd)
 
     # sync kerberos conf files
     krbConfigFile = "%s/kerberos" % srcDir
@@ -3588,18 +3873,82 @@ def greyUpgradeSyncConfig():
            " cp -r '%s/var/krb5kdc' '%s/var/';fi)" % (
         srcDir, destDir, srcDir, destDir)
     g_logger.debug("Grey upgrade sync command: %s" % cmd)
-    DefaultValue.execCommandLocally(cmd)
+    CmdExecutor.execCommandLocally(cmd)
 
     # the pg_plugin should be the last to sync, because user may
     # create C function, it may increase file under upgrade,
     # after switch new bin, we will restore the file mode to original mode,
     #  it can write the C function
-    g_file.changeMode(DefaultValue.SPE_FILE_MODE,
+    FileUtil.changeMode(DefaultValue.SPE_FILE_MODE,
                       '%s/lib/postgresql/pg_plugin' % srcDir, True)
     cmd = "(cp -r '%s/lib/postgresql/pg_plugin' '%s/lib/postgresql')" % (
         srcDir, destDir)
     g_logger.debug("Grey upgrade sync command: %s" % cmd)
-    DefaultValue.execCommandLocally(cmd)
+    CmdExecutor.execCommandLocally(cmd)
+
+    cm_cert_old_dir = os.path.realpath(os.path.join(srcDir, "share", "sslcert", "cm"))
+    cm_cert_dest_dir = os.path.realpath(os.path.join(destDir, "share", "sslcert"))
+    restore_cm_cert_file_cmd = "(if [ -d '%s' ];" \
+                               "then cp -r '%s' '%s/';fi)" % (cm_cert_old_dir, 
+                                                              cm_cert_old_dir, 
+                                                              cm_cert_dest_dir)
+    g_logger.debug("Restore CM cert files for grey upgrade cmd: " \
+                   "{0}".format(restore_cm_cert_file_cmd))
+    CmdExecutor.execCommandLocally(restore_cm_cert_file_cmd)
+    g_logger.debug("Restore CM cert files for grey upgrade successfully.")
+
+
+def setGucValue():
+    """
+    set cn dn guc value
+    """
+    if g_opts.setType == "reload":
+        dn_standby_instance_list = []
+
+        success_instance = []
+        # find all DN instances need to touch
+        if len(g_dbNode.datanodes) != 0:
+            dn_primary_instance_list = getLocalPrimaryDNInstance()
+            for each_instance in g_dbNode.datanodes:
+                if each_instance.instanceType in \
+                        [MASTER_INSTANCE, STANDBY_INSTANCE, CASCADE_STANDBY]:
+                    dn_standby_instance_list.append(each_instance)
+            dn_standby_instance_list = [instance for instance in dn_standby_instance_list if
+                                        instance not in dn_primary_instance_list]
+            try:
+                if len(dn_standby_instance_list) != 0:
+                    pool = ThreadPool(len(dn_standby_instance_list))
+                    pool.map(setOneInstanceGuc, dn_standby_instance_list)
+                    pool.close()
+                    pool.join()
+            except Exception as er:
+                g_logger.debug("Command for setting GUC parameter: %s" % str(er))
+
+            success_instance = dn_primary_instance_list
+    else:
+        success_instance = get_dn_instance()
+
+    if len(success_instance) != 0:
+        pool = ThreadPool(len(success_instance))
+        pool.map(setOneInstanceGuc, success_instance)
+        pool.close()
+        pool.join()
+
+
+def setOneInstanceGuc(instance):
+    """
+    set guc value for one instance
+    :return:
+    """
+    if not instance:
+        return
+    cmd = "gs_guc %s -N %s -Z %s -D %s -c \"%s\"" % (g_opts.setType, instance.hostname,
+                                                     const.INST_TYPE_MAP[instance.instanceRole],
+                                                     instance.datadir, g_opts.gucStr)
+    g_logger.debug("Set guc cmd [%s]." % cmd)
+    (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 10)
+    if status != 0:
+        raise Exception(ErrorCode.GAUSS_500["GAUSS_50007"] % cmd + " Error: \n%s" % str(output))
 
 
 def switchDnNodeProcess():
@@ -3635,7 +3984,7 @@ def switchFencedUDFProcess():
         "gaussdb fenced UDF master process")
     g_logger.log(
         "Command to kill gaussdb fenced UDF master process: %s" % killCmd)
-    (status, _) = DefaultValue.retryGetstatusoutput(killCmd, 3, 5)
+    (status, _) = CmdUtil.retryGetstatusoutput(killCmd, 3, 5)
     if status == 0:
         g_logger.log("Successfully killed gaussdb fenced UDF master process.")
     else:
@@ -3673,7 +4022,7 @@ def isNeedSwitch(process, dataDir=""):
               r"else echo 'False'; fi; done"
         cmd = cmd % (process, g_gausshome, path)
     g_logger.log("Command for finding if need switch: %s" % cmd)
-    (status, output) = DefaultValue.retryGetstatusoutput(cmd, 2, 5)
+    (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
     if status != 0:
         raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % str(cmd) +
                         " Error: \n%s" % str(output))
@@ -3700,7 +4049,7 @@ def switchDn():
         if killCmd.startswith("&&"):
             killCmd = killCmd[2:]
         g_logger.log("Command to kill other process: %s" % killCmd)
-        (status, output) = DefaultValue.retryGetstatusoutput(killCmd, 3, 5)
+        (status, output) = CmdUtil.retryGetstatusoutput(killCmd, 3, 5)
         if status == 0:
             g_logger.log("Successfully killed DN processes.")
         else:
@@ -3716,7 +4065,7 @@ def isKillDn():
     needKillDn = False
     try:
         cmd = "gaussdb -V"
-        (status, output) = DefaultValue.retryGetstatusoutput(cmd, 2, 5)
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
         if status != 0 and output != "":
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
                             "\nError: " + str(output))
@@ -3734,7 +4083,7 @@ def isKillDn():
             if dnInst.hostname not in primaryDnNode:
                 continue
             break
-        localHost = DefaultValue.GetHostIpOrName()
+        localHost = NetUtil.GetHostIpOrName()
         if int(g_opts.oldVersion) >= 92069:
             sql = "select node_name, node_type from pg_catalog.pgxc_node " \
                   "where node_host = '%s';" % localHost
@@ -3750,7 +4099,7 @@ def isKillDn():
             sql, g_opts.user,
             dnInst.hostname, dnInst.port, False,
             DefaultValue.DEFAULT_DB_NAME, IsInplaceUpgrade=True)
-        if status != 0 or ClusterCommand.findErrorInSql(output):
+        if status != 0 or SqlResult.findErrorInSql(output):
             raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
                             " Error: \n%s" % str(output))
         resList = output.split('\n')
@@ -3762,7 +4111,7 @@ def isKillDn():
         g_logger.debug("isKillDn dnName:{0} "
                        "commitid:{1}".format(dnNames, curCommitid))
         # execute on the dn and cn to get the exists process version
-        needKillDn = checkExistsVersion(dnNames, dnInst, curCommitid)
+        needKillDn = checkExistsVersion(dnInst, curCommitid)
         return needKillDn
     except Exception as e:
         g_logger.debug("Cannot query the exists dn process "
@@ -3802,7 +4151,7 @@ def getLsnInfo():
             getLsnSqlPath = os.path.join(
                 g_opts.upgrade_bak_path, const.GET_LSN_SQL_FILE)
             if not os.path.exists(getLsnSqlPath):
-                g_file.createFileInSafeMode(getLsnSqlPath)
+                FileUtil.createFileInSafeMode(getLsnSqlPath)
                 lsnSql = "select pg_current_xlog_location(), " \
                          "pg_xlogfile_name(pg_current_xlog_location()), " \
                          "pg_xlogfile_name_offset(pg_current_xlog_location());"
@@ -3851,7 +4200,7 @@ def greyRestoreConfig():
     # but not switch to new bin, we need to restore the mode
     oldPluginDir = "%s/lib/postgresql/pg_plugin" % g_opts.oldClusterAppPath
     if os.path.exists(oldPluginDir):
-        g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE, oldPluginDir, True)
+        FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, oldPluginDir, True)
 
     if not os.path.exists(newDir):
         g_logger.log(ErrorCode.GAUSS_502["GAUSS_50201"] % newDir +
@@ -3860,13 +4209,21 @@ def greyRestoreConfig():
     if os.path.samefile(g_opts.oldClusterAppPath, g_gausshome):
         g_logger.log("Current version is old version, nothing need to do.")
         return
-    static_config = "%s/bin/cluster_static_config" % newDir
-    cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
-        static_config, static_config, oldDir)
+    old_static_config_file = os.path.realpath(os.path.join(g_opts.oldClusterAppPath, 
+                                                           "bin", "cluster_static_config"))
+    new_static_config_file = os.path.realpath(os.path.join(g_opts.newClusterAppPath, 
+                                                           "bin", "cluster_static_config"))
+    if DefaultValue.check_add_cm(old_static_config_file, new_static_config_file, g_logger):
+        g_logger.log("There is no need to copy static and dynamic config file.")
+        return
+    g_logger.log("Start to copy static and dynamic config file.")
+    cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (new_static_config_file, 
+                                                                new_static_config_file, 
+                                                                oldDir)
     dynamic_config = "%s/bin/cluster_dynamic_config" % newDir
     cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
         dynamic_config, dynamic_config, oldDir)
-    DefaultValue.execCommandLocally(cmd)
+    CmdExecutor.execCommandLocally(cmd)
 
     mergePlugin()
 
@@ -3884,7 +4241,7 @@ def mergePlugin():
         g_logger.log(ErrorCode.GAUSS_502["GAUSS_50201"] % newDir +
                      " No need to sync pg_plugin.")
         return
-    g_file.changeMode(DefaultValue.SPE_FILE_MODE, newDir, True)
+    FileUtil.changeMode(DefaultValue.SPE_FILE_MODE, newDir, True)
     oldLines = os.listdir(oldDir)
     newLines = os.listdir(newDir)
     newAdd = [i for i in newLines if i not in oldLines]
@@ -3901,7 +4258,7 @@ def mergePlugin():
     if cmd != "":
         cmd = cmd[:-3]
         g_logger.debug("Command to sync plugin: %s" % cmd)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
     else:
         g_logger.log("No need to sync pg_plugin.")
 
@@ -3936,10 +4293,10 @@ def greyRestoreInstanceGuc(dbInstance):
             "specified", dbInstance.instanceRole))
     # record the guc without delete guc
     bakFile = oldConfig + ".bak.upgrade"
-    g_file.removeFile(bakFile)
+    FileUtil.removeFile(bakFile)
     oldBakFile = oldConfig + ".bak.old"
     oldTempFileBak = oldBakFile + ".temp"
-    g_file.removeFile(oldTempFileBak)
+    FileUtil.removeFile(oldTempFileBak)
     if not os.path.exists(oldConfig):
         if g_opts.forceRollback:
             g_logger.warn(ErrorCode.GAUSS_502["GAUSS_50201"] % oldConfig)
@@ -3967,7 +4324,7 @@ def greyRestoreInstanceGuc(dbInstance):
                 f = open(lockFile, 'r+')
                 fcntl.lockf(f.fileno(), fcntl.LOCK_EX)
         # if user has set in the configure file, cannot sync, use the user set
-        g_file.rename(oldBakFile, oldConfig)
+        FileUtil.rename(oldBakFile, oldConfig)
         if f:
             f.close()
     except Exception as e:
@@ -3988,6 +4345,41 @@ def cleanConfBakOld():
     pool.join()
 
 
+def kill_cm_server_process(gauss_home):
+    """
+    kill cm_server process
+    """
+    cmd = "ps ux | grep '{0}' | grep -v grep | awk '{print $2}' | " \
+          "xargs kill -9".format(os.path.join(gauss_home, "bin", "cm_server"))
+    subprocess.getstatusoutput(cmd)
+    g_logger.debug("Kill cm_server finish.")
+
+
+def clean_cm_instance():
+    """
+    Clean all CM instance
+    """
+    g_logger.debug("Local clean CM instance start.")
+    current_user = pwd.getpwuid(os.getuid()).pw_name
+    gauss_home = EnvUtil.getEnvironmentParameterValue("GAUSSHOME", current_user)
+    static_config_file = os.path.join(gauss_home, "bin", "cluster_static_config")
+    cluster_info = dbClusterInfo()
+    cluster_info.initFromStaticConfig(current_user, static_config_file)
+    local_node = [node for node in cluster_info.dbNodes
+                  if node.name == NetUtil.GetHostIpOrName()][0]
+    clean_dir = os.path.dirname(local_node.cmagents[0].datadir)
+    if local_node.cmservers:
+        server_component = CM_OLAP()
+        server_component.instInfo = local_node.cmservers[0]
+        server_component.logger = g_logger
+        server_component.killProcess()
+        FileUtil.cleanDirectoryContent(local_node.cmservers[0].datadir)
+        g_logger.debug("Clean cm_server instance successfully.")
+    if os.path.isdir(local_node.cmagents[0].datadir):
+        FileUtil.cleanDirectoryContent(local_node.cmagents[0].datadir)
+    g_logger.debug("Local clean CM instance directory [{0}] successfully.".format(clean_dir))
+
+
 def cleanOneInstanceConfBakOld(dbInstance):
     """
     clean conf.bak.old files in one instance
@@ -4000,7 +4392,7 @@ def cleanOneInstanceConfBakOld(dbInstance):
             "WARNING: " + ErrorCode.GAUSS_502["GAUSS_50201"] % oldConfig)
     else:
         cmd = "(if [ -f '%s' ]; then rm -f '%s'; fi)" % (oldConfig, oldConfig)
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
         g_logger.debug("Successfully cleaned up %s." % oldConfig)
 
 
@@ -4017,6 +4409,7 @@ def checkAction():
              const.ACTION_SYNC_CONFIG,
              const.ACTION_BACKUP_CONFIG,
              const.ACTION_RESTORE_CONFIG,
+             const.ACTION_RELOAD_CMAGENT,
              const.ACTION_INPLACE_BACKUP,
              const.ACTION_INPLACE_RESTORE,
              const.ACTION_CHECK_GUC,
@@ -4039,7 +4432,9 @@ def checkAction():
              const.ACTION_GET_LSN_INFO,
              const.ACTION_GREY_RESTORE_CONFIG,
              const.ACTION_GREY_RESTORE_GUC,
-             const.ACTION_CLEAN_CONF_BAK_OLD]:
+             const.ACTION_CLEAN_CONF_BAK_OLD,
+             const.ACTION_SET_GUC_VALUE,
+             const.ACTION_CLEAN_CM]:
         GaussLog.exitWithError(
             ErrorCode.GAUSS_500["GAUSS_50004"] % 't'
             + " Value: %s" % g_opts.action)
@@ -4068,6 +4463,7 @@ def main():
             const.ACTION_RESTORE_CONFIG: restoreConfig,
             const.ACTION_INPLACE_BACKUP: inplaceBackup,
             const.ACTION_INPLACE_RESTORE: inplaceRestore,
+            const.ACTION_RELOAD_CMAGENT: reloadCmagent,
             const.ACTION_CHECK_GUC: checkGucValue,
             const.ACTION_BACKUP_HOTPATCH: backupHotpatch,
             const.ACTION_ROLLBACK_HOTPATCH: rollbackHotpatch,
@@ -4093,7 +4489,9 @@ def main():
             const.ACTION_GET_LSN_INFO: getLsnInfo,
             const.ACTION_GREY_RESTORE_CONFIG: greyRestoreConfig,
             const.ACTION_GREY_RESTORE_GUC: greyRestoreGuc,
-            const.ACTION_CLEAN_CONF_BAK_OLD: cleanConfBakOld}
+            const.ACTION_CLEAN_CONF_BAK_OLD: cleanConfBakOld,
+            const.ACTION_SET_GUC_VALUE: setGucValue,
+            const.ACTION_CLEAN_CM: clean_cm_instance}
         func = funcs[g_opts.action]
         func()
     except Exception as e:

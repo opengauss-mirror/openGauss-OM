@@ -15,7 +15,6 @@
 # MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 # See the Mulan PSL v2 for more details.
 #############################################################################
-import sys
 import pwd
 import time
 import subprocess
@@ -23,6 +22,7 @@ import logging.handlers
 import os
 from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
+from base_utils.common.constantsbase import ConstantsBase
 
 # max log file size
 # 16M
@@ -136,16 +136,6 @@ class LoggerFactory():
             return False
 
     @staticmethod
-    def getScriptLogger():
-        filePath = os.path.split(os.path.realpath(__file__))[0]
-        afilename = "%s/../output/log/script_%s.log" % (
-            filePath, DefaultValue.GetHostIpOrName())
-
-        log = logging.getLogger()
-        LoggerFactory._addFileHandle(log, afilename)
-        return log
-
-    @staticmethod
     def _addFileHandle(log, fileName):
         # create log file
         if not os.path.exists(os.path.dirname(fileName)):
@@ -153,7 +143,7 @@ class LoggerFactory():
             os.makedirs(os.path.dirname(fileName), mode=dir_permission)
         else:
             if oct(os.stat(fileName).st_mode)[-3:] != '600':
-                os.chmod(fileName, DefaultValue.KEY_FILE_PERMISSION)
+                os.chmod(fileName, ConstantsBase.KEY_FILE_PERMISSION)
 
         fmt = logging.Formatter(
             '[%(asctime)s][%(filename)s][line:%(lineno)d][%(levelname)s] '

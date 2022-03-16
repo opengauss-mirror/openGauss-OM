@@ -19,13 +19,18 @@ import subprocess
 import os
 import sys
 
+
 sys.path.append(sys.path[0] + "/../../")
 from gspylib.common.Common import DefaultValue
 from gspylib.common.OMCommand import OMCommand
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.os.gsfile import g_file
-from gspylib.os.gsOSlib import g_OSlib
 from impl.backup.BackupImpl import BackupImpl
+from base_utils.executor.local_remote_cmd import LocalRemoteCmd
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from base_utils.os.net_util import NetUtil
+from base_utils.common.constantsbase import ConstantsBase
 
 
 class BackupImplOLAP(BackupImpl):
@@ -86,9 +91,9 @@ class BackupImplOLAP(BackupImpl):
         output: NA
         """
         self.context.logger.log("Performing remote backup.")
-        localHostName = DefaultValue.GetHostIpOrName()
+        localHostName = NetUtil.GetHostIpOrName()
         tmp_backupDir = "%s/backupTemp_%d" % (
-            DefaultValue.getTmpDirFromEnv(), os.getpid())
+            EnvUtil.getTmpDirFromEnv(), os.getpid())
         cmd = "%s -U %s --nodeName %s -P %s -B %s  -l %s --ingore_miss" % \
               (OMCommand.getLocalScript("Local_Backup"),
                self.context.user,
@@ -107,19 +112,19 @@ class BackupImplOLAP(BackupImpl):
         try:
             if not os.path.exists(tmp_backupDir):
                 os.makedirs(tmp_backupDir,
-                            DefaultValue.KEY_DIRECTORY_PERMISSION)
+                            ConstantsBase.KEY_DIRECTORY_PERMISSION)
             self._runCmd(cmd)
             if self.context.isParameter:
                 self.__distributeBackupFile(tmp_backupDir, "parameter")
             if self.context.isBinary:
                 self.__distributeBackupFile(tmp_backupDir, "binary")
 
-            DefaultValue.cleanFileDir(tmp_backupDir, self.context.sshTool)
+            LocalRemoteCmd.cleanFileDir(tmp_backupDir, self.context.sshTool)
 
             self.context.logger.log("Remote backup succeeded.")
             self.context.logger.log("Successfully backed up cluster files.")
         except Exception as e:
-            DefaultValue.cleanFileDir(tmp_backupDir, self.context.sshTool)
+            LocalRemoteCmd.cleanFileDir(tmp_backupDir, self.context.sshTool)
             raise Exception(str(e))
 
     def __distributeBackupFile(self, tmp_backupDir, flag):
@@ -151,12 +156,12 @@ class BackupImplOLAP(BackupImpl):
         # send backup package to the specified node from the local node
         originalFile = "'%s'/%s.tar" % (tmp_backupDir, flag)
         if flag == "parameter":
-            if self.context.nodename != [g_OSlib.getHostName()]:
+            if self.context.nodename != [NetUtil.getHostName()]:
                 self.context.sshTool.scpFiles(
                     originalFile,
                     self.context.backupDir, self.context.nodename)
             else:
-                g_file.cpFile(originalFile, self.context.backupDir)
+                FileUtil.cpFile(originalFile, self.context.backupDir)
         else:
             targetFile = "'%s'/%s.tar" % (self.context.backupDir, flag)
             cmd = g_file.SHELL_CMD_DICT["copyFile"] % (

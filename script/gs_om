@@ -24,16 +24,19 @@ import os
 import sys
 import pwd
 
-from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.ParameterParsecheck import Parameter
 from gspylib.common.Common import DefaultValue
 from gspylib.common.ParallelBaseOM import ParallelBaseOM
-from gspylib.os.gsOSlib import g_OSlib
 from gspylib.threads.SshTool import SshTool
 from impl.om.OLAP.OmImplOLAP import OmImplOLAP
-from gspylib.common.VersionInfo import VersionInfo
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from base_utils.os.user_util import UserUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
 # action type
 ACTION_START = "start"
@@ -100,6 +103,10 @@ class CmdOptions():
         self.kerberosType = ""
         self.clusterToolPath = ""
 
+        # change_static
+        self.old_values = []
+        self.new_values = []
+
 
 ###########################################
 class OperationManager(ParallelBaseOM):
@@ -123,18 +130,20 @@ Usage:
   gs_om -V | --version
   OLAP scene:
     gs_om -t start [-h HOSTNAME] [-D dataDir] [--time-out=SECS]
-                   [--security-mode=MODE] [-l LOGFILE]
+                   [--security-mode=MODE] [--cluster-number=None] [-l LOGFILE]
     gs_om -t stop [-h HOSTNAME] [-D dataDir]  [--time-out=SECS] [-m MODE]
                   [-l LOGFILE]
     gs_om -t restart [-h HOSTNAME] [-D dataDir] [--time-out=SECS]
                    [--security-mode=MODE] [-l LOGFILE] [-m MODE]
-    gs_om -t status [-h HOSTNAME] [-o OUTPUT] [--detail] [--all] [-l LOGFILE]
+    gs_om -t status [-h HOSTNAME] [-o OUTPUT] [--detail] [--all] [--az=AZ] [-l LOGFILE]
+                    [--time-out=SECS]
     gs_om -t generateconf -X XMLFILE [--distribute] [-l LOGFILE]
+    gs_om -t generateconf --old-values=old --new-values=new [--distribute] [-l LOGFILE]
     gs_om -t cert [--cert-file=CERTFILE | --rollback] [-L] [-l LOGFILE]
     gs_om -t kerberos -m [install|uninstall] -U USER [-l LOGFILE]
                          [--krb-server|--krb-client]
     gs_om -t view [-o OUTPUT]
-    gs_om -t query [-o OUTPUT]
+    gs_om -t query [-o OUTPUT] [--time-out=SECS]
     gs_om -t refreshconf
 
 General options:
@@ -152,25 +161,42 @@ Options for start
       --security-mode=MODE        database start with security mode: on or off
                                         on: start with security mode
                                         off: start without security mode
+      --cluster-number            database start with kernel version corresponding
+                                  to version.cfg
 
 Options for stop
   -h                              Name of the host to be shut down.
   -m, --mode=MODE                 Shutdown mode. It can be f (fast),
                                   or i (immediate).
   -D                              Path of dn
-    --time-out=SECS              Maximum waiting time when start the cluster
+      --time-out=SECS             Maximum waiting time when start the cluster
                                  or node.
+
+Options for restart
+  -h                              Name of the host to be started.
+  -m, --mode=MODE                 Shutdown mode. It can be f (fast),
+                                  or i (immediate).
+  -D                              Path of dn
+      --time-out=SECS             Maximum waiting time when start the
+                                  cluster or node.
+      --security-mode=MODE        database start with security mode: on or off
+                                        on: start with security mode
+                                        off: start without security mode
+
 Options for status
   -h                              Name of the host whose status is to be
                                   queried.
-  --az                            Name of the single az whose status is to
+  --az=AZ                         Name of the single az whose status is to
                                   be queried.
   -o                              Save the result to the specified file.
       --detail                    Show detailed status information.
       --all                       Show all database node status information.
+      --time-out=SECS             Maximum waiting time when query cluster status.
 
 Options for generating configuration files
   -X                              Path of the XML configuration file.
+  --old-values                    IP or hostname or port like "host1,ip1,port1"
+  --new-values                    IP or hostname or port like "host1,ip1,port1"
       --distribute                Distribute the static configuration file
                                   to installation directory of cluster nodes.
 
@@ -205,13 +231,13 @@ Install options:
             self.logFile = self.g_opts.logFile
             self.initLogger(self.g_opts.action)
             if (os.getuid() != 0):
-                DefaultValue.modifyFileOwnerFromGPHOME(self.logger.logFile)
+                FileUtil.modifyFileOwnerFromGPHOME(self.logger.logFile)
 
             dirName = os.path.dirname(self.g_opts.logFile)
             self.g_opts.localLog = os.path.join(dirName,
-                                                DefaultValue.LOCAL_LOG_FILE)
+                                                ClusterConstants.LOCAL_LOG_FILE)
 
-            if (self.g_opts.action == ACTION_REBUID):
+            if self.g_opts.action == ACTION_REBUID and self.g_opts.confFile:
                 self.initClusterInfo()
             else:
                 # Initialize the self.clusterInfo variable
@@ -220,16 +246,9 @@ Install options:
                 else:
                     self.initClusterInfoFromStaticFile(self.g_opts.user)
 
-            # Check --az with single-primary-multi-standby
-            if (self.g_opts.azName):
-                raise Exception(
-                    ErrorCode.GAUSS_500["GAUSS_50002"] % '-az' +
-                    ". This parameter is used in single primary multi "
-                    "standby.")
-
             # Obtain the owner and group of the cluster installation directory
             if self.g_opts.action != ACTION_KERBEROS:
-                (self.g_opts.user, self.g_opts.group) = g_OSlib.getPathOwner(
+                (self.g_opts.user, self.g_opts.group) = UserUtil.getPathOwner(
                     self.clusterInfo.appPath)
                 if self.g_opts.user == "" or self.g_opts.group == "":
                     raise Exception(ErrorCode.GAUSS_503["GAUSS_50308"])
@@ -257,7 +276,8 @@ Install options:
         """
         if (self.g_opts.action == ACTION_START or
                 self.g_opts.action == ACTION_STOP or
-                self.g_opts.action == ACTION_STATUS):
+                self.g_opts.action == ACTION_STATUS or
+                self.g_opts.action == ACTION_RESTART):
             if (ParaDict.__contains__("nodename")):
                 nodename = ParaDict.get("nodename")
                 self.g_opts.estimateNodeName = nodename
@@ -277,12 +297,23 @@ Install options:
 
             if ("dataDir" in ParaDict.keys()):
                 self.g_opts.dataDir = ParaDict.get("dataDir")
+    
+    def parseAZ(self, ParaDict):
+        """
+        
+        """
+        if self.g_opts.action == ACTION_STATUS:
+            if (ParaDict.__contains__("az_name")):
+                azname = ParaDict.get("az_name")
+                self.g_opts.azName = azname
+        
 
     def parseTimeOut(self, ParaDict):
         """
         """
         if self.g_opts.action == ACTION_START or self.g_opts.action == \
-                ACTION_STOP:
+                ACTION_STOP or self.g_opts.action == ACTION_RESTART \
+                    or self.g_opts.action == ACTION_STATUS or self.g_opts.action == ACTION_QUERY:
             if (ParaDict.__contains__("time_out")):
                 self.g_opts.time_out = ParaDict.get("time_out")
 
@@ -332,7 +363,8 @@ Install options:
     def parseStart(self, ParaDict):
         """
         """
-        if (self.g_opts.action == ACTION_START):
+        if (self.g_opts.action == ACTION_START) \
+            or self.g_opts.action == ACTION_RESTART:
             # The start query can specify az name
             if ParaDict.__contains__("az_name"):
                 self.g_opts.azName = ParaDict.get("az_name")
@@ -344,7 +376,8 @@ Install options:
     def parseStop(self, ParaDict):
         """
         """
-        if (self.g_opts.action == ACTION_STOP):
+        if (self.g_opts.action == ACTION_STOP) \
+            or self.g_opts.action == ACTION_RESTART:
             # The start query can specify az name for OLAP
             if (ParaDict.__contains__("az_name")):
                 self.g_opts.azName = ParaDict.get("az_name")
@@ -356,6 +389,10 @@ Install options:
             # Changeip, managecn, and generateconf require the -X parameter
             if (ParaDict.__contains__("confFile")):
                 self.g_opts.confFile = ParaDict.get("confFile")
+            if ParaDict.__contains__("old_values"):
+                self.g_opts.old_values = ParaDict.get("old_values")
+            if ParaDict.__contains__("new_values"):
+                self.g_opts.new_values = ParaDict.get("new_values")
 
     def parseGenerateconf(self, ParaDict):
         """
@@ -462,6 +499,8 @@ Install options:
         self.parseKerberos(ParaDict)
         # Parse log parameter
         self.parseLog(ParaDict)
+        # Parse Az info
+        self.parseAZ(ParaDict)
 
     ###########################################################################
     # Check parameters for all operations
@@ -485,9 +524,10 @@ Install options:
         elif (self.g_opts.action == ACTION_STOP):
             self.checkStopParameter()
         elif (self.g_opts.action == ACTION_RESTART):
-            pass
+            self.checkRestartParameter()
         elif (self.g_opts.action == ACTION_STATUS):
             self.checkOutFileParameter()
+            self.checkTimeOutParam()
         elif (self.g_opts.action == ACTION_REBUID):
             self.checkGenerateConfParameter()
         elif (self.g_opts.action == ACTION_CERT):
@@ -498,13 +538,14 @@ Install options:
             self.checkOutFileParameter()
         elif (self.g_opts.action == ACTION_QUERY):
             self.checkOutFileParameter()
+            self.checkTimeOutParam()
         elif (self.g_opts.action == ACTION_REFRESHCONF):
             pass
         else:
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % "t")
 
         # check mpprc file path
-        self.g_opts.mpprcFile = DefaultValue.getMpprcFile()
+        self.g_opts.mpprcFile = EnvUtil.getMpprcFile()
 
         # check if user exist and is the right user
         if (self.g_opts.user == ""):
@@ -514,7 +555,7 @@ Install options:
                                        "U" + ".")
 
         # Check user on installed cluster
-        DefaultValue.checkUser(self.g_opts.user)
+        ClusterUser.checkUser(self.g_opts.user)
         # Check whether the current user is consistent with -U if no root
         if (os.getuid() != 0):
             cmd = "id -un"
@@ -524,12 +565,12 @@ Install options:
                     ErrorCode.GAUSS_530["GAUSS_53033"] % self.g_opts.user)
 
         self.OM_PARAMETER_DIR = "%s/om_parameter_dir" % \
-                                DefaultValue.getTmpDirFromEnv(self.g_opts.user)
+                                EnvUtil.getTmpDirFromEnv(self.g_opts.user)
 
         # check log file
         if (self.g_opts.logFile == ""):
-            self.g_opts.logFile = DefaultValue.getOMLogPath(
-                DefaultValue.OM_LOG_FILE, self.g_opts.user, "",
+            self.g_opts.logFile = ClusterLog.getOMLogPath(
+                ClusterConstants.OM_LOG_FILE, self.g_opts.user, "",
                 action=self.g_opts.action)
         if (not os.path.isabs(self.g_opts.logFile)):
             GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"] % "log")
@@ -587,6 +628,23 @@ Install options:
         if (self.g_opts.mode not in [STOP_MODE_FAST, STOP_MODE_IMMEDIATE,
                                      "f", "i"]):
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % "m")
+    
+    def checkRestartParameter(self):
+        """
+        Check parameter for restart cluster and node.
+        Restart parameters are same with start and stop.
+        input : NA
+        output: NA
+        """
+        self.checkStartParameter()
+
+        if (self.g_opts.mode == ""):
+            self.g_opts.mode = STOP_MODE_FAST
+        # Specifies that the stop type must be f, i or s
+        if (self.g_opts.mode not in [STOP_MODE_FAST, STOP_MODE_IMMEDIATE,
+                                     "f", "i"]):
+            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % "m")
+
 
     def checkOutFileParameter(self):
         """
@@ -604,14 +662,18 @@ Install options:
         input : NA
         output: NA
         """
-
-        # check xml file
-        if (self.g_opts.confFile == ""):
-            GaussLog.exitWithError(
-                ErrorCode.GAUSS_500["GAUSS_50001"] % 'X' + ".")
-        if (not os.path.isfile(self.g_opts.confFile)):
-            GaussLog.exitWithError(
-                ErrorCode.GAUSS_502["GAUSS_50210"] % self.g_opts.confFile)
+        if self.g_opts.old_values.__len__() == 0:
+            # check xml file
+            if self.g_opts.confFile == "":
+                GaussLog.exitWithError(
+                    ErrorCode.GAUSS_500["GAUSS_50001"] % 'X' + ".")
+            if not os.path.isfile(self.g_opts.confFile):
+                GaussLog.exitWithError(
+                    ErrorCode.GAUSS_502["GAUSS_50210"] % self.g_opts.confFile)
+        else:
+            if self.g_opts.old_values.__len__() != self.g_opts.new_values.__len__():
+                GaussLog.exitWithError(
+                    ErrorCode.GAUSS_512["GAUSS_51230"] % ("old-values", "equal to new-values"))
 
     def checkCertParameter(self):
         """
@@ -646,7 +708,7 @@ Install options:
                                    % self.g_opts.kerberosMode)
 
         # get user info
-        self.user = g_OSlib.getUserInfo()['name']
+        self.user = UserUtil.getUserInfo()['name']
         if (self.g_opts.clusterUser == ""):
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % 'U')
         if self.g_opts.clusterUser != self.user:
@@ -698,7 +760,6 @@ def main():
     main function
     """
     try:
-        REPEAT = False
         # Objectize class
         manager = OperationManager()
         # parse cmd lines
@@ -709,18 +770,9 @@ def main():
         # init global variables
         manager.initGlobal()
         # set action flag file
-        DefaultValue.setActionFlagFile(manager.g_opts.action, manager.logger)
+        DefaultValue.setActionFlagFile(manager.g_opts.action)
     except Exception as e:
-        if (manager.g_opts.action in (ACTION_STATUS, ACTION_STOP,
-                                      ACTION_START)):
-            actionDict = {ACTION_STATUS: DefaultValue.TASK_QUERY_STATUS,
-                          ACTION_STOP: DefaultValue.TASK_STOP,
-                          ACTION_START: DefaultValue.TASK_START}
-            if REPEAT:
-                manager.sshTool = SshTool(
-                    manager.clusterInfo.getClusterNodeNames(), manager.logFile,
-                    timeout=DefaultValue.TIMEOUT_PSSH_COMMON)
-        manager.logger.logExit(str(e))
+        GaussLog.exitWithError(str(e))
 
     try:
         impl = OmImplOLAP(manager)
@@ -771,7 +823,7 @@ def main():
     except Exception as e:
         manager.logger.logExit(str(e))
     finally:
-        DefaultValue.setActionFlagFile("gs_om", None, False)
+        DefaultValue.setActionFlagFile("gs_om", False)
 
 
 if __name__ == '__main__':

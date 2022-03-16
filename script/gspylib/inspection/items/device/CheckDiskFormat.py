@@ -16,7 +16,7 @@
 # ----------------------------------------------------------------------------
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.hardware.gsdisk import g_disk
+from base_utils.os.disk_util import DiskUtil
 
 
 class CheckDiskFormat(BaseItem):
@@ -29,7 +29,7 @@ class CheckDiskFormat(BaseItem):
         xfs_mounts = list()
         expectedOption = "inode64"
 
-        allDiskList = g_disk.getMountInfo()
+        allDiskList = DiskUtil.getMountInfo()
         for disk in allDiskList:
             if (disk.fstype == 'xfs'):
                 xfs_mounts.append(disk)

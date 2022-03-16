@@ -21,29 +21,30 @@ import time
 
 sys.path.append(sys.path[0] + "/../../")
 
-from gspylib.common.GaussLog import GaussLog
 from gspylib.common.Common import DefaultValue
-from gspylib.common.VersionInfo import VersionInfo
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.OMCommand import OMCommand
-from gspylib.os.gsfile import g_file
+from base_utils.executor.cmd_executor import CmdExecutor
+from base_utils.os.compress_util import CompressUtil
+from base_utils.os.file_util import FileUtil
+from domain_utils.cluster_file.package_info import PackageInfo
+from domain_utils.cluster_file.version_info import VersionInfo
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from base_utils.os.net_util import NetUtil
 from impl.preinstall.PreinstallImpl import PreinstallImpl
+
 
 # action name
 # set the user environment variable
 ACTION_SET_USER_ENV = "set_user_env"
 # set the tools environment variable
 ACTION_SET_TOOL_ENV = "set_tool_env"
-# set core path
-ACTION_SET_CORE_PATH = "set_core_path"
 #set cgroup service
 ACTION_SET_CGROUP = "set_cgroup"
 # set virtual Ip
 ACTION_SET_VIRTUALIP = "set_virtualIp"
 # clean virtual Ip
 ACTION_CLEAN_VIRTUALIP = "clean_virtualIp"
-# check platform arm
-ACTION_CHECK_PLATFORM_ARM = "check_platform_arm"
 # set arm optimization
 ACTION_SET_ARM_OPTIMIZATION = "set_arm_optimization"
 
@@ -67,14 +68,6 @@ class PreinstallImplOLAP(PreinstallImpl):
         function: constructor
         """
         super(PreinstallImplOLAP, self).__init__(preinstall)
-
-    def makeCompressedToolPackage(self, path):
-        """
-        function: make compressed tool package
-        input: NA
-        output: NA
-        """
-        DefaultValue.makeCompressedToolPackage(path)
 
     def installToolsPhase1(self):
         """
@@ -106,8 +99,8 @@ class PreinstallImplOLAP(PreinstallImpl):
                             oldPackPath, oldPackPath, newPackPath)
                         self.context.logger.debug(
                             "Command for rename bak-package: %s." % cmd)
-                        DefaultValue.execCommandWithMode(
-                            cmd, "backup bak-package files",
+                        CmdExecutor.execCommandWithMode(
+                            cmd,
                             self.context.sshTool,
                             self.context.localMode or self.context.isSingle,
                             self.context.mpprcFile)
@@ -116,7 +109,7 @@ class PreinstallImplOLAP(PreinstallImpl):
                 # check mpprc file
                 self.checkMpprcFile()
             # check the package is not matches the system
-            DefaultValue.checkPackageOS()
+            PackageInfo.checkPackageOS()
             # get the package path
             dirName = os.path.dirname(os.path.realpath(__file__))
             packageDir = os.path.join(dirName, "./../../../../")
@@ -124,23 +117,22 @@ class PreinstallImplOLAP(PreinstallImpl):
 
             # change logPath owner
             self.context.logger.debug("Modifying logPath owner")
-            dirName = os.path.dirname(self.context.logFile)
-            topDirFile = "%s/topDirPath.dat" % dirName
+            top_dir_file = ClusterConstants.TOP_DIR_FILE
             keylist = []
             if (self.context.localMode):
-                if (os.path.exists(topDirFile)):
-                    keylist = g_file.readFile(topDirFile)
+                if (os.path.exists(top_dir_file)):
+                    keylist = FileUtil.readFile(top_dir_file)
                     if (keylist != []):
                         for key in keylist:
                             if (os.path.exists(key.strip())):
-                                g_file.changeOwner(self.context.user,
-                                                   key.strip(), True, "shell")
+                                FileUtil.changeOwner(self.context.user,
+                                                   key.strip(), True, "shell", link=True)
                             else:
                                 self.context.logger.debug(
                                     "Warning: Can not find the "
                                     "path in topDirPath.dat.")
 
-                    g_file.removeFile(topDirFile)
+                    FileUtil.removeFile(top_dir_file)
             self.context.logger.debug("Successfully modified logPath owner")
 
             # Delete the old bak package in GPHOME before copy the new one.
@@ -149,19 +141,20 @@ class PreinstallImplOLAP(PreinstallImpl):
                 if (os.path.isfile(bakFile)):
                     self.context.logger.debug(
                         "Remove old bak-package: %s." % bakFile)
-                    g_file.removeFile(bakFile)
+                    FileUtil.removeFile(bakFile)
 
-            DefaultValue.makeCompressedToolPackage(packageDir)
+            PackageInfo.makeCompressedToolPackage(packageDir)
 
             # check and create tool package dir
             global toolTopPath
             ownerPath = self.context.clusterToolPath
+            FileUtil.checkLink(self.context.clusterToolPath)
             clusterToolPathExistAlready = True
             # if clusterToolPath exist,
             # set the clusterToolPathExistAlready False
             if (not os.path.exists(ownerPath)):
                 clusterToolPathExistAlready = False
-                ownerPath = DefaultValue.getTopPathNotExist(ownerPath)
+                ownerPath = FileUtil.getTopPathNotExist(ownerPath)
                 toolTopPath = ownerPath
             # append clusterToolPath to self.context.needFixOwnerPaths
             # self.context.needFixOwnerPaths will be checked the ownet
@@ -170,8 +163,8 @@ class PreinstallImplOLAP(PreinstallImpl):
             # if clusterToolPath is not exist, then create it
 
             if not os.path.exists(self.context.clusterToolPath):
-                g_file.createDirectory(self.context.clusterToolPath)
-                g_file.changeMode(DefaultValue.MAX_DIRECTORY_MODE,
+                FileUtil.createDirectory(self.context.clusterToolPath)
+                FileUtil.changeMode(DefaultValue.MAX_DIRECTORY_MODE,
                                   self.context.clusterToolPath, True, "shell")
 
             # change the clusterToolPath permission
@@ -179,37 +172,37 @@ class PreinstallImplOLAP(PreinstallImpl):
                 #check the localMode
                 if self.context.localMode:
                     #local mode,change the owner
-                    g_file.changeMode(DefaultValue.DIRECTORY_MODE, ownerPath,
-                                      recursive=True, cmdType="shell")
-                    g_file.changeOwner(self.context.user, ownerPath,
-                                       recursive=True, cmdType="shell")
+                    FileUtil.changeMode(DefaultValue.DIRECTORY_MODE, ownerPath,
+                                      recursive=True, cmd_type="shell")
+                    FileUtil.changeOwner(self.context.user, ownerPath,
+                                       recursive=True, cmd_type="shell", link=True)
                 #not localMode, only change the permission
                 else:
-                    g_file.changeMode(DefaultValue.MAX_DIRECTORY_MODE,
+                    FileUtil.changeMode(DefaultValue.MAX_DIRECTORY_MODE,
                                       ownerPath, recursive=True,
-                                      cmdType="shell")
+                                      cmd_type="shell")
             else:
-                g_file.changeMode(DefaultValue.DIRECTORY_MODE, ownerPath,
-                                  recursive=False, cmdType="shell")
+                FileUtil.changeMode(DefaultValue.DIRECTORY_MODE, ownerPath,
+                                  recursive=False, cmd_type="shell")
 
             # Send compressed package to local host
             if (packageDir != self.context.clusterToolPath):
                 # copy the package to clusterToolPath
-                g_file.cpFile(os.path.join(
+                FileUtil.cpFile(os.path.join(
                     packageDir,
-                    DefaultValue.get_package_back_name()),
+                    PackageInfo.get_package_back_name()),
                     self.context.clusterToolPath)
 
             # Decompress package on local host
-            g_file.decompressFiles(os.path.join(
+            CompressUtil.decompressFiles(os.path.join(
                 self.context.clusterToolPath,
-                DefaultValue.get_package_back_name()),
+                PackageInfo.get_package_back_name()),
                 self.context.clusterToolPath)
 
             # change mode of packages
-            g_file.changeMode(DefaultValue.DIRECTORY_MODE,
+            FileUtil.changeMode(DefaultValue.DIRECTORY_MODE,
                               self.context.clusterToolPath, recursive=True,
-                              cmdType="shell")
+                              cmd_type="shell")
 
             # get the top path of mpprc file need to be created on local node
             # this is used to fix the newly created path owner later
@@ -269,7 +262,7 @@ class PreinstallImplOLAP(PreinstallImpl):
                 self.context.clusterInfo.appPath)
             if self.context.mpprcFile != "":
                 cmd += " -s '%s'" % self.context.mpprcFile
-            self.context.sshTool.executeCommand(cmd, "check disk space")
+            self.context.sshTool.executeCommand(cmd)
         except Exception as e:
             raise Exception(str(e))
 
@@ -303,9 +296,8 @@ class PreinstallImplOLAP(PreinstallImpl):
                 "Command for setting user's environmental variables: %s" % cmd)
 
             # set user's environmental variables
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "set user's environmental variables.",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle,
                 self.context.mpprcFile)
@@ -329,11 +321,10 @@ class PreinstallImplOLAP(PreinstallImpl):
             # this is used to fix the newly created path owner later
             ownerPath = self.context.clusterInfo.corePath
             if not os.path.exists(self.context.clusterInfo.corePath):
-                ownerPath = DefaultValue.getTopPathNotExist(ownerPath)
+                ownerPath = FileUtil.getTopPathNotExist(ownerPath)
             cmd = "ulimit -c unlimited; ulimit -c unlimited -S"
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "set core file size.",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle)
             cmd = "echo 1 > /proc/sys/kernel/core_uses_pid && "
@@ -343,12 +334,11 @@ class PreinstallImplOLAP(PreinstallImpl):
                 self.context.clusterInfo.corePath,
                 self.context.clusterInfo.corePath,
                 DefaultValue.DIRECTORY_MODE)
-            cmd += " && chown %s:%s %s -R" % (
+            cmd += " && chown %s:%s %s -R -h" % (
                 self.context.user, self.context.group,
                 ownerPath)
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "set core file path.",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle)
         except Exception as e:
@@ -392,9 +382,8 @@ class PreinstallImplOLAP(PreinstallImpl):
                            DefaultValue.MAX_DIRECTORY_MODE, secbox_path,
                            DefaultValue.MAX_DIRECTORY_MODE, secbox_path,
                            DefaultValue.MAX_DIRECTORY_MODE, secbox_path)
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "set pssh file.",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle)
         except Exception as e:
@@ -407,21 +396,20 @@ class PreinstallImplOLAP(PreinstallImpl):
         input  : NA
         output : NA
         """
-        self.context.logger.log("Setting pssh path", "addStep")
+        self.context.logger.log("Setting host ip env", "addStep")
         try:
             # remove HOST_IP info with /etc/profile and environ
             cmd = "sed -i '/^export[ ]*HOST_IP=/d' /etc/profile"
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "set host_ip env.",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle)
             if "HOST_IP" in os.environ.keys():
                 os.environ.pop("HOST_IP")
         except Exception as e:
             raise Exception(str(e))
-        self.context.logger.log("Successfully set core path.", "constant")
-    
+        self.context.logger.log("Successfully set host ip env.", "constant")
+
     def setCgroup(self):
         """
         function: setting Cgroup
@@ -431,25 +419,25 @@ class PreinstallImplOLAP(PreinstallImpl):
         self.context.logger.log("Setting Cgroup.", "addStep")
         try:
             # set the cgroup
-            cmd = "%s -t %s -u %s -X '%s' -l '%s' -Q %s" % (OMCommand.getLocalScript("Local_PreInstall"), 
-                                                               ACTION_SET_CGROUP, 
-                                                               self.context.user, 
-                                                               self.context.xmlFile, 
-                                                               self.context.localLog, 
-                                                               self.context.clusterToolPath)
+            cmd = "%s -t %s -u %s -X '%s' -l '%s' -Q %s" % (
+                OMCommand.getLocalScript("Local_PreInstall"),
+                ACTION_SET_CGROUP,
+                self.context.user,
+                self.context.xmlFile,
+                self.context.localLog,
+                self.context.clusterToolPath)
             self.context.logger.debug("Command for setting Cgroup: %s." % cmd)
             # exec cmd fro set cgroup
-            DefaultValue.execCommandWithMode(cmd, 
-                                             "set Cgroup", 
-                                             self.context.sshTool, 
-                                             self.context.localMode or self.context.isSingle, 
-                                             self.context.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.localMode or self.context.isSingle,
+                                            self.context.mpprcFile)
         except Exception as e:
             # failed set Cgroup
             self.context.logger.log("Error: Failed to set Cgroup.")
             self.context.logger.logExit(str(e))
         # Successfully set Cgroup
-        self.context.logger.log("Successfully set Cgroup.", "constant")    
+        self.context.logger.log("Successfully set Cgroup.", "constant")
 
     def setArmOptimization(self):
         """
@@ -479,9 +467,8 @@ class PreinstallImplOLAP(PreinstallImpl):
                 self.context.clusterToolPath)
             self.context.logger.debug("Command for set platform ARM: %s" % cmd)
 
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "set platform ARM",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle,
                 self.context.mpprcFile)
@@ -527,9 +514,8 @@ class PreinstallImplOLAP(PreinstallImpl):
             self.context.logger.debug(
                 "Command for setting virtual IP: %s." % setCmd)
             # exec cmd for set virtual IP
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 setCmd,
-                "set virtual IP",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle,
                 self.context.mpprcFile)
@@ -555,17 +541,15 @@ class PreinstallImplOLAP(PreinstallImpl):
                         self.context.xmlFile,
                         tmpFile)
                     # exec the cmd for clean virtual IP service
-                    DefaultValue.execCommandWithMode(
+                    CmdExecutor.execCommandWithMode(
                         cleanCmd,
-                        "rollback to clean virtual IP service",
                         self.context.sshTool,
                         self.context.localMode or self.context.isSingle,
                         self.context.mpprcFile)
                     # remove the temporary files
                     cmd = "rm -rf '%s'" % tmpFile
-                    DefaultValue.execCommandWithMode(
+                    CmdExecutor.execCommandWithMode(
                         cmd,
-                        "rollback to delete temporary file",
                         self.context.sshTool,
                         self.context.localMode or self.context.isSingle,
                         self.context.mpprcFile)
@@ -576,9 +560,8 @@ class PreinstallImplOLAP(PreinstallImpl):
             # failed set virtual IP service
             # remove the temporary files
             cmd = "rm -rf '%s'" % tmpFile
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "delete temporary file",
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle,
                 self.context.mpprcFile)
@@ -597,10 +580,10 @@ class PreinstallImplOLAP(PreinstallImpl):
             current_path = self.get_package_path()
             script = os.path.join(current_path, "script")
             hostList = self.context.clusterInfo.getClusterNodeNames()
-            hostList.remove(DefaultValue.GetHostIpOrName())
+            hostList.remove(NetUtil.GetHostIpOrName())
             if not self.context.localMode and hostList:
                 cmd = "rm -f %s/gs_*" % script
-                self.context.sshTool.executeCommand(cmd, "",
+                self.context.sshTool.executeCommand(cmd,
                                                     DefaultValue.SUCCESS,
                                                     hostList,
                                                     self.context.mpprcFile)
@@ -629,11 +612,10 @@ class PreinstallImplOLAP(PreinstallImpl):
                 cmd += " -s %s" % self.context.mpprcFile
             self.context.logger.debug("Fix server pkg cmd: %s" % cmd)
             # exec the cmd
-            DefaultValue.execCommandWithMode(cmd,
-                                             "fix server package owner",
-                                             self.context.sshTool,
-                                             self.context.localMode,
-                                             self.context.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.localMode,
+                                            self.context.mpprcFile)
 
             self.del_remote_pkgpath()
         except Exception as e:

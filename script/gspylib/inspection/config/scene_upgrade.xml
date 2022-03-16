@@ -23,7 +23,6 @@
                 version=V1R7C00
             </threshold>
         </item>
-        <item name="CheckNoCheckSum"/>
         <item name="CheckGUCValue"/>
         <item name="CheckStack"/>
         <item name="CheckDiskFormat"/>

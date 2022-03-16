@@ -30,19 +30,33 @@ import pwd
 import grp
 import configparser
 
+
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.ParameterParsecheck import Parameter
-from gspylib.common.Common import DefaultValue, ClusterCommand
+from gspylib.common.Common import DefaultValue
 from gspylib.common.OMCommand import OMCommand
 from gspylib.common.LocalBaseOM import LocalBaseOM
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.os.gsfile import g_file
+from os_platform.gsservice import g_service
+from base_utils.executor.cmd_executor import CmdExecutor
+from domain_utils.cluster_file.cluster_config_file import ClusterConfigFile
+from base_utils.os.cmd_util import CmdUtil
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from base_utils.os.file_util import FileUtil
+from domain_utils.cluster_file.profile_file import ProfileFile
+from domain_utils.cluster_file.version_info import VersionInfo
+from domain_utils.cluster_file.package_info import PackageInfo
+from base_utils.os.sshd_config import SshdConfig
+from base_utils.os.net_util import NetUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from os_platform.linux_distro import LinuxDistro
+from domain_utils.cluster_os.cluster_user import ClusterUser
+from gspylib.common.aes_cbc_util import AesCbcUtil
+from base_utils.os.user_util import UserUtil
 from gspylib.os.gsOSlib import g_OSlib
-from gspylib.common.VersionInfo import VersionInfo
-from gspylib.os.gsplatform import g_Platform
-from gspylib.os.gsservice import g_service
-from gspylib.os.gsnetwork import g_network
 
 ACTION_PREPARE_PATH = "prepare_path"
 ACTION_CHECK_OS_VERSION = "check_os_Version"
@@ -55,7 +69,6 @@ ACTION_SET_TOOL_ENV = "set_tool_env"
 ACTION_PREPARE_USER_CRON_SERVICE = "prepare_user_cron_service"
 ACTION_PREPARE_USER_SSHD_SERVICE = "prepare_user_sshd_service"
 ACTION_SET_LIBRARY = "set_library"
-ACTION_SET_SCTP = "set_sctp"
 ACTION_SET_VIRTUALIP = "set_virtualIp"
 ACTION_CHECK_HOSTNAME_MAPPING = "check_hostname_mapping"
 ACTION_INIT_GAUSSLOG = "init_gausslog"
@@ -67,33 +80,15 @@ ACTION_CHECK_OS_SOFTWARE = "check_os_software"
 ACTION_FIX_SERVER_PACKAGE_OWNER = "fix_server_package_owner"
 ACTION_CHANGE_TOOL_ENV = "change_tool_env"
 ACTION_SET_CGROUP = "set_cgroup"
+ACTION_CHECK_CONFIG = "check_config"
 
 g_nodeInfo = None
 envConfig = {}
 configuredIps = []
 checkOSUser = False
-g_component_list = []
 instance_type_set = ()
 software_list = ["bzip2"]
 
-#####################################################
-# syslog variables
-#####################################################
-RSYSLOG = "rsyslog"
-SYSLOG_NG = "syslog-ng"
-RSYSLOG_CONFIG_FILE = "/etc/rsyslog.conf"
-SYSLOG_NG_CONFIG_FILE = "/etc/syslog-ng/syslog-ng.conf"
-SYSLOG_NG_CONFIG_FILE_SERVER = "/etc/sysconfig/syslog"
-SYSTEMD_JOURNALD_CONF = "/etc/systemd/journald.conf"
-RSYSLOG_FACILITY_LEVEL = "local3.*"
-AP_RSYSLOG_FACILITY_LEVEL = ":msg,contains,\"MPPDB\""
-SYSLOG_NG_FACILITY = "local3"
-SYSLOG_NG_LEVEL = "debug..emerg"
-AP_SERVER_SYSLOG_FILE = "/var/log/syslog_MPPDB"
-IMJOURNAL_RATELIMIT_INTERVAL = 1
-IMJOURNAL_RATELIMIT_BURST = 50000
-SYSTEMLOG_RATELIMIT_INTERVAL = 1
-SYSTEMLOG_RATELIMIT_BURST = 50000
 ARM_PLATE = False
 
 
@@ -157,7 +152,7 @@ class PreInstall(LocalBaseOM):
         """
         global g_nodeInfo
 
-        hostName = DefaultValue.GetHostIpOrName()
+        hostName = NetUtil.GetHostIpOrName()
         g_nodeInfo = self.clusterInfo.getDbNodeByName(hostName)
         if g_nodeInfo is None:
             self.logger.logExit(ErrorCode.GAUSS_516["GAUSS_51620"]
@@ -252,19 +247,19 @@ Common options:
                     or self.action == ACTION_CREATE_CLUSTER_PATHS
                     or self.action == ACTION_SET_FINISH_FLAG
                     or self.action == ACTION_SET_USER_ENV):
-                DefaultValue.checkUser(self.user, False)
+                ClusterUser.checkUser(self.user, False)
         except Exception as e:
             GaussLog.exitWithError(str(e))
         parameter_list = [ACTION_CHECK_OS_VERSION, ACTION_SET_FINISH_FLAG,
                           ACTION_SET_USER_ENV, ACTION_SET_LIBRARY, \
-                          ACTION_SET_SCTP, ACTION_PREPARE_USER_CRON_SERVICE,
+                          ACTION_PREPARE_USER_CRON_SERVICE,
                           ACTION_PREPARE_USER_SSHD_SERVICE, \
                           ACTION_SET_VIRTUALIP, ACTION_INIT_GAUSSLOG,
                           ACTION_CHECK_ENVFILE, ACTION_CHECK_OS_SOFTWARE, \
                           ACTION_SET_ARM_OPTIMIZATION,
                           ACTION_CHECK_DISK_SPACE, ACTION_SET_WHITELIST,
                           ACTION_FIX_SERVER_PACKAGE_OWNER,
-                          ACTION_CHANGE_TOOL_ENV]
+                          ACTION_CHANGE_TOOL_ENV, ACTION_CHECK_CONFIG]
         if self.action == "":
             GaussLog.exitWithError(
                 ErrorCode.GAUSS_500["GAUSS_50001"] % 't' + ".")
@@ -303,8 +298,8 @@ Common options:
                         ErrorCode.GAUSS_502["GAUSS_50201"] % self.mpprcFile)
 
         if self.logFile == "":
-            self.logFile = DefaultValue.getOMLogPath(
-                DefaultValue.LOCAL_LOG_FILE, self.user, "")
+            self.logFile = ClusterLog.getOMLogPath(
+                ClusterConstants.LOCAL_LOG_FILE, self.user, "")
 
     def prepareMpprcFile(self):
         """
@@ -325,21 +320,21 @@ Common options:
         try:
             # for internal useage, we should set
             # mpprc file permission to 644 here, and change to 640 later.
-            g_file.createDirectory(mpprcFilePath, True)
+            FileUtil.createDirectory(mpprcFilePath, True)
             if os.path.exists(self.mpprcFile):
                 pass
             else:
-                g_file.createFile(self.mpprcFile, False)
-            g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE, ownerPath, True,
+                FileUtil.createFile(self.mpprcFile, False)
+            FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, ownerPath, True,
                               "shell")
-            g_file.changeMode(DefaultValue.HOSTS_FILE, self.mpprcFile, False,
+            FileUtil.changeMode(DefaultValue.HOSTS_FILE, self.mpprcFile, False,
                               "shell")
 
             # if given group info in cmdline,
             # we will change the mpprc file owner, otherwise,
             # will not change the mpprc file owner.
             if self.group != "":
-                g_file.changeOwner(self.user, ownerPath, True, "shell")
+                FileUtil.changeOwner(self.user, ownerPath, True, "shell", link=True)
         except Exception as e:
             raise Exception(str(e))
 
@@ -368,15 +363,6 @@ Common options:
         if self.group == "":
             GaussLog.exitWithError(
                 ErrorCode.GAUSS_500["GAUSS_50001"] % 'g' + ".")
-    
-    def checkSetCgroupParameter(self):
-        """
-        function: check whether SetCgroup parameter is right
-        input : NA
-        output: NA 
-        """
-        if(self.clusterToolPath == ""):
-            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % 'Q' + ".")
 
     def checkCreateClusterPathsParameter(self):
         """
@@ -495,9 +481,9 @@ Common options:
                         ErrorCode.GAUSS_502["GAUSS_50202"] % onePath)
             # check the owner of 'onepath' whether it is exist; if not,
             # change it's owner to the cluster user
-            DefaultValue.checkPathandChangeOwner(
+            FileUtil.checkPathandChangeOwner(
                 onePath, self.user,
-                self.group, DefaultValue.KEY_DIRECTORY_MODE)
+                DefaultValue.KEY_DIRECTORY_MODE)
         else:
             while True:
                 # find the top path to be created
@@ -517,12 +503,13 @@ Common options:
         # then change mode with -R
         # will cause an error
         try:
+            FileUtil.checkLink(ownerPath)
             if ownerPath != onePath:
-                g_file.changeOwner(self.user, ownerPath, True, "shell")
-                g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE, ownerPath,
+                FileUtil.changeOwner(self.user, ownerPath, True, "shell", link=True)
+                FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, ownerPath,
                                   True, "shell")
             else:
-                g_file.changeOwner(self.user, ownerPath, False, "shell")
+                FileUtil.changeOwner(self.user, ownerPath, False, "shell", link=True)
         except Exception as e:
             raise Exception(str(e))
         # check permission
@@ -537,7 +524,7 @@ Common options:
                     ErrorCode.GAUSS_501["GAUSS_50102"] % (onePath, self.user))
         # check path size
         if checkSize:
-            diskSizeInfo = DefaultValue.checkDirSize(
+            DefaultValue.checkDirSize(
                 onePath,
                 DefaultValue.INSTANCE_DISK_SIZE, self.logger)
 
@@ -553,7 +540,7 @@ Common options:
         retry = 1
         try_flag = False
         while True:
-            try_flag = g_file.createDirectory(onePath, True, dirMode)
+            try_flag = FileUtil.createDirectory(onePath, True, dirMode)
             if try_flag:
                 break
             if retry >= retryTimes:
@@ -580,8 +567,7 @@ Common options:
         # the owner of GPHOME path becomes no owner;
         # when execute gs_preinstall secondly,
         # report permisson error about GPHOME
-        DefaultValue.checkPathandChangeOwner(originalPath, self.user,
-                                             self.group,
+        FileUtil.checkPathandChangeOwner(originalPath, self.user,
                                              DefaultValue.KEY_DIRECTORY_MODE)
         cmd = "su - %s -c \"cd '%s'\"" % (username, originalPath)
         status = subprocess.getstatusoutput(cmd)[0]
@@ -622,8 +608,8 @@ Common options:
         self.logger.debug("Checking hostname mapping.")
         try:
             self.logger.debug("Change file[/etc/hosts] mode.")
-            g_file.changeMode(DefaultValue.HOSTS_FILE, "/etc/hosts")
-            OMCommand.checkHostnameMapping(self.clusterInfo, self.logFile)
+            FileUtil.changeMode(DefaultValue.HOSTS_FILE, "/etc/hosts")
+            OMCommand.checkHostnameMapping(self.clusterInfo)
         except Exception as e:
             self.logger.logExit(str(e))
 
@@ -664,7 +650,7 @@ Common options:
         """
         try:
             if os.path.isfile(filename):
-                g_file.removeFile(filename, "shell")
+                FileUtil.removeFile(filename, "shell")
         except Exception as e:
             raise Exception(str(e))
 
@@ -682,7 +668,7 @@ Common options:
         sshd_config = "/etc/ssh/sshd_config"
         allow_item_cmd = "cat " + sshd_config + " | grep '\\<%s\\>'" % allow_item
         (status, output) = subprocess.getstatusoutput(allow_item_cmd)
- 
+
         # No results found. "grep" returns non-zero if nothing grepped.
         # AllowItem in sshd_config is disabled.
         if (status != 0) and (output is None or len(output) == 0):
@@ -706,7 +692,7 @@ Common options:
                 if status != 0:
                     self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % set_allow_item_cmd +
                                         " Error:\n%s" % output)
-                g_Platform.setKeyValueInSshd(allow_item_res, item_value)
+                SshdConfig.setKeyValueInSshd(allow_item_res, item_value)
         # Attention: here we will not restart sshd service,
         # as it will be done in "prepareUserSshdService".
         self.logger.debug("item_value '%s' added to '%s' of %s successfully." %
@@ -740,7 +726,7 @@ Common options:
             userHomePath = "/home/%s" % self.user
             if os.path.exists(userHomePath):
                 try:
-                    homePathUser = g_file.getfileUser(userHomePath)[0]
+                    homePathUser = FileUtil.getfileUser(userHomePath)[0]
                     if homePathUser != self.user:
                         needChgOwner = True
                 except Exception:
@@ -757,7 +743,7 @@ Common options:
 
         # user exists and input group not exists
         if userstatus == 0 and groupstatus != 0:
-            self.logger.logExit(ErrorCode.GAUSS_503["GAUSS_50305"])
+            self.logger.logExit(ErrorCode.GAUSS_503["GAUSS_50305"] % self.group)
 
         # user exists and group exists
         if userstatus == 0 and groupstatus == 0:
@@ -775,7 +761,8 @@ Common options:
             return
 
         if checkOSUser:
-            self.logger.logExit(ErrorCode.GAUSS_503["GAUSS_50305"])
+            self.logger.debug("checkOSUser is[%s] and abnormal exit!" %checkOSUser)
+            sys.exit(1)
 
         # user does not exist and group does not exist
         if userstatus != 0 and groupstatus != 0:
@@ -800,7 +787,7 @@ Common options:
                     ErrorCode.GAUSS_502["GAUSS_50206"] % 'OS user'
                     + " Command: %s. Error: \n%s" % (cmd, output))
         if needChgOwner:
-            userProfile = "/home/%s/.bashrc" % self.user
+            userProfile = ClusterConstants.HOME_USER_BASHRC % self.user
             if not os.path.exists(userProfile):
                 cmd = g_file.SHELL_CMD_DICT["copyFile"] % \
                       ("/etc/skel/.bash*", "/home/%s/" % self.user)
@@ -808,7 +795,7 @@ Common options:
                 if status != 0:
                     self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50214"]
                                         % userProfile + " Error: " + output)
-            g_file.changeOwner(self.user, "/home/%s/" % self.user, True)
+            FileUtil.changeOwner(self.user, "/home/%s/" % self.user, True)
 
         self.logger.debug("Changing user password.")
         try:
@@ -822,11 +809,11 @@ Common options:
             self.logger.logExit(ErrorCode.GAUSS_503["GAUSS_50311"] % "user")
 
         cmd = "echo '%s:%s' | chpasswd" % (self.user, password)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        (status, output) = CmdUtil.getstatusoutput_by_fast_popen(cmd)
         if status != 0:
             self.logger.logExit(
                 ErrorCode.GAUSS_503["GAUSS_50311"] % self.user
-                + " Error: \n%s" % output)
+                + " Error: \n%s" % (std_out+std_err))
 
     def createClusterPaths(self):
         """
@@ -859,17 +846,6 @@ Common options:
 
         self.logger.debug("Successfully created paths for cluster.")
 
-    def prepareGsdbHomePath(self, needCheckEmpty):
-        """
-        function: Prepare GsdbHome Path
-        input : NA
-        output: NA
-        """
-        self.logger.debug("Creating gsdb_home path.")
-        gsdbHomePath = "/home/%s/gsdb_home/protect" % self.user
-        self.prepareGivenPath(gsdbHomePath, needCheckEmpty)
-        self.logger.debug("Successfully create gsdb_home path.")
-
     def prepareGaussLogPath(self):
         """
         function: Prepare Gausslog Path
@@ -887,9 +863,10 @@ Common options:
 
         try:
             # change gaussdb dir mode
-            g_file.changeMode(DefaultValue.DIRECTORY_MODE, gaussdb_dir, False,
+            FileUtil.checkLink(gaussdb_dir)
+            FileUtil.changeMode(DefaultValue.DIRECTORY_MODE, gaussdb_dir, False,
                               "shell")
-            g_file.changeOwner(self.user, gaussdb_dir, False, "shell")
+            FileUtil.changeOwner(self.user, gaussdb_dir, False, "shell", link=True)
         except Exception as e:
             raise Exception(str(e))
 
@@ -908,12 +885,12 @@ Common options:
                                     "GAUSS_50201"] % user_dir
                                 + " Error:\n%s" % diroutput)
         # change the file permission
-        ClusterCommand.getchangeFileModeCmd(user_dir)
+        FileUtil.getchangeFileModeCmd(user_dir)
 
         # change user log dir owner
         try:
-            g_file.changeOwner(self.user, user_dir, True, "shell",
-                               retryFlag=True, retryTime=15, waiteTime=1)
+            FileUtil.changeOwner(self.user, user_dir, True, "shell",
+                               retry_flag=True, retry_time=15, waite_time=1, link=True)
         except Exception as e:
             raise Exception(str(e))
         self.logger.debug("Successfully created log path.")
@@ -936,6 +913,18 @@ Common options:
         output: NA
         """
         self.logger.debug("Creating data path.")
+
+        self.logger.debug("Checking CM datadir.")
+        if g_nodeInfo.cmDataDir:
+            self.prepareGivenPath(g_nodeInfo.cmDataDir, False)
+
+            self.logger.debug("Checking CMAgent configuration.")
+            for cmaInst in g_nodeInfo.cmagents:
+                self.prepareGivenPath(cmaInst.datadir, needCheckEmpty)
+
+            self.logger.debug("Checking CMServer configuration")
+            for cmsInst in g_nodeInfo.cmservers:
+                self.prepareGivenPath(cmsInst.datadir, needCheckEmpty)
 
         self.logger.debug("Checking database node configuration.")
         for dnInst in g_nodeInfo.datanodes:
@@ -971,7 +960,7 @@ Common options:
         if not needCheckEmpty:
             # check the upgrade app directory, if we set up a new
             # directory for upgrade, we must check empty
-            gaussHome = DefaultValue.getInstallDir(self.user)
+            gaussHome = ClusterDir.getInstallDir(self.user)
             if os.path.islink(gaussHome):
                 actualPath = os.path.realpath(gaussHome)
                 oldCommitId = actualPath[-8:]
@@ -1007,8 +996,7 @@ Common options:
         if not needCheckEmpty:
             return
         upperDir = os.path.dirname(installPath)
-        cmd = "su - %s -c \"python3 -c \\\"import os;" \
-              "print(os.access('%s',os.W_OK))\\\"\"" % (
+        cmd = "su - %s -c \"if [ -w %s ];then echo 1; else echo 0;fi\"" % (
                   self.user, upperDir)
         self.logger.debug(
             "Command to check if we have write permission for upper path:"
@@ -1018,7 +1006,7 @@ Common options:
             self.logger.logExit(
                 ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + "Error: \n%s" % str(
                     output))
-        if output == "True":
+        if output == "1":
             return
         fileList = os.listdir(upperDir)
         if installPath in fileList:
@@ -1034,7 +1022,7 @@ Common options:
                                    self.clusterInfo.appPath, installPath))
         self.logger.log("The path [%s] is empty, change the owner to %s." % (
             upperDir, self.user))
-        g_file.changeOwner(self.user, upperDir, False, "shell")
+        FileUtil.changeOwner(self.user, upperDir, False, "shell", link=True)
         self.logger.log("Successfully change the owner.")
 
     def prepareUserCronService(self):
@@ -1057,8 +1045,8 @@ Common options:
                 ErrorCode.GAUSS_502["GAUSS_50210"] % crontabFile)
 
         # attention:crontab file permission should be 755
-        g_file.changeOwner("root", crontabFile)
-        g_file.changeMode(DefaultValue.MAX_DIRECTORY_MODE, crontabFile)
+        FileUtil.changeOwner("root", crontabFile)
+        FileUtil.changeMode(DefaultValue.MAX_DIRECTORY_MODE, crontabFile)
         cmd = "chmod u+s '%s'" % crontabFile
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
@@ -1070,12 +1058,12 @@ Common options:
         ##2.make sure user have permission to use cron
         cron_allow_file = "/etc/cron.allow"
         if not os.path.isfile(cron_allow_file):
-            g_file.createFile(cron_allow_file)
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE, cron_allow_file)
-        g_file.changeOwner("root", cron_allow_file)
+            FileUtil.createFile(cron_allow_file)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, cron_allow_file)
+        FileUtil.changeOwner("root", cron_allow_file)
 
-        g_file.deleteLine(cron_allow_file, "^\\s*%s\\s*$" % self.user)
-        g_file.writeFile(cron_allow_file, [self.user])
+        FileUtil.deleteLine(cron_allow_file, "^\\s*%s\\s*$" % self.user)
+        FileUtil.writeFile(cron_allow_file, [self.user])
 
         ##3.restart cron service
         self.logger.debug("Restarting CRON service.")
@@ -1119,7 +1107,7 @@ Common options:
                 self.logger.logExit(ErrorCode.GAUSS_514[
                                         "GAUSS_51400"] % cmd
                                     + " Error:\n%s" % output)
-            g_Platform.setKeyValueInSshd('MaxStartups', '1000')
+            SshdConfig.setKeyValueInSshd('MaxStartups', '1000')
             self.logger.debug("Write MaxStartups value.")
             sshdNeedReload = True
 
@@ -1127,7 +1115,7 @@ Common options:
         OsVersionFlag = False
         rdsFlag = False
         chrootFlag = False
-        distname = g_Platform.dist()[0]
+        distname = LinuxDistro.linux_distribution()[0]
         if distname in "euleros":
             OsVersionFlag = True
         if os.path.exists("/rds/"):
@@ -1151,13 +1139,13 @@ Common options:
                 self.logger.logExit(ErrorCode.GAUSS_514[
                                         "GAUSS_51400"] % cmd
                                     + " Error:\n%s" % output)
-            g_Platform.setKeyValueInSshd('ClientAliveInterval', '0')
+            SshdConfig.setKeyValueInSshd('ClientAliveInterval', '0')
             self.logger.debug("Write ClientAliveInterval value.")
             sshdNeedReload = True
 
         # 3. add cluster owner to 'AllowUsers' or 'AllowGroups' to
         # /etc/ssh/sshd_config if necessary.
-        if self.addAllowItemValue(allow_item="AllowUsers", item_value=self.user) > 0:    
+        if self.addAllowItemValue(allow_item="AllowUsers", item_value=self.user) > 0:
             sshdNeedReload = True
 
         if self.addAllowItemValue(allow_item="AllowGroups", item_value=self.group) > 0:
@@ -1205,7 +1193,7 @@ Common options:
                                     + " Error:\n%s" % output)
 
             # check if user profile exist
-            userProfile = "/home/%s/.bashrc" % self.user
+            userProfile = ClusterConstants.HOME_USER_BASHRC % self.user
             if not os.path.exists(userProfile):
                 self.logger.logExit(ErrorCode.GAUSS_502[
                                         "GAUSS_50201"] % 'user profile'
@@ -1216,23 +1204,31 @@ Common options:
         DefaultValue.cleanUserEnvVariable(userProfile,
                                           cleanGS_CLUSTER_NAME=False)
         self.logger.debug("Successfully delete user's environmental variable.")
+        if self.mpprcFile:
+            #import environment variable separation scene to bashrc
+            FileUtil.deleteLine(ClusterConstants.HOME_USER_BASHRC % self.user,
+                                "^\\s*export\\s*%s=.*$" % DefaultValue.MPPRC_FILE_ENV)
+            context = "export %s=%s" %(DefaultValue.MPPRC_FILE_ENV, self.mpprcFile)
+            FileUtil.writeFile(ClusterConstants.HOME_USER_BASHRC % self.user, [context])
+            self.logger.debug("Successfully flush 'export MPPRC' in bashrc")
 
         # user's environmental variable
         self.logger.debug("Seting user's environmental variable.")
         installPath = self.clusterInfo.appPath
-        tmpPath = self.clusterInfo.readClusterTmpMppdbPath(self.user,
+        tmpPath = ClusterConfigFile.readClusterTmpMppdbPath(self.user,
                                                            self.clusterConfig)
         logPath = "%s/%s" % (
-            self.clusterInfo.readClusterLogPath(self.clusterConfig), self.user)
+            ClusterConfigFile.readClusterLogPath(self.clusterConfig), self.user)
         agentPath = self.clusterInfo.agentPath
         agentLogPath = self.clusterInfo.agentLogPath
+        FileUtil.checkLink(userProfile)
         DefaultValue.setUserEnvVariable(userProfile, installPath, tmpPath,
                                         logPath, agentPath, agentLogPath)
 
         if (os.path.exists('/var/chroot/') and os.path.exists(
                 '/rds/datastore/')):
             clusterName = self.clusterInfo.name
-            DefaultValue.updateUserEnvVariable(userProfile, "GS_CLUSTER_NAME",
+            ProfileFile.updateUserEnvVariable(userProfile, "GS_CLUSTER_NAME",
                                                clusterName)
 
         self.logger.debug("Successfully set user's environmental variable.")
@@ -1243,7 +1239,7 @@ Common options:
         OsVersionFlag = False
         rdsFlag = False
         chrootFlag = False
-        distname, version, idnum = g_Platform.dist()
+        distname, version, idnum = LinuxDistro.linux_distribution()
         # check if OS version is Euler
         if distname in "euleros":
             OsVersionFlag = True
@@ -1255,14 +1251,14 @@ Common options:
         self.logger.debug("Changing the owner of Gausslog.")
         user_dir = "%s/%s" % (self.clusterInfo.logPath, self.user)
         self.logger.debug("Changing the owner of GPHOME: %s." % user_dir)
-        g_file.changeOwner(self.user, user_dir, True, "shell", retryFlag=True,
-                           retryTime=15, waiteTime=1)
+        FileUtil.changeOwner(self.user, user_dir, True, "shell", retry_flag=True,
+                           retry_time=15, waite_time=1, link=True)
         omLogPath = os.path.dirname(self.logFile)
         self.logger.debug(
             "Changing the owner of preinstall log path: %s." % omLogPath)
         if os.path.exists(omLogPath):
-            g_file.changeOwner(self.user, omLogPath, True, "shell",
-                               retryFlag=True, retryTime=15, waiteTime=1)
+            FileUtil.changeOwner(self.user, omLogPath, True, "shell",
+                               retry_flag=True, retry_time=15, waite_time=1, link=True)
         self.logger.debug("Checking the permission of GPHOME: %s." % user_dir)
         cmd = g_file.SHELL_CMD_DICT["checkUserPermission"] % (
             self.user, user_dir)
@@ -1285,7 +1281,7 @@ Common options:
         ENVNUM = output.split("\n")[0]
         # set finish flag
         if str(ENVNUM) != "2":
-            DefaultValue.updateUserEnvVariable(userProfile, "GAUSS_ENV", "1")
+            ProfileFile.updateUserEnvVariable(userProfile, "GAUSS_ENV", "1")
 
         self.logger.debug("Successfully set finish flag.")
 
@@ -1350,7 +1346,7 @@ Common options:
                                     + " Error:\n%s" % output)
 
             # check if user profile exist
-            userProfile = "/home/%s/.bashrc" % self.user
+            userProfile = ClusterConstants.HOME_USER_BASHRC % self.user
             if not os.path.exists(userProfile):
                 self.logger.debug(
                     "User profile does not exist. Please create %s."
@@ -1367,7 +1363,7 @@ Common options:
         # clean ENV in user bashrc file
         self.logger.debug("User profile exist. Deleting crash old ENV.")
         for env in userEnvConfig:
-            g_file.deleteLine(userProfile, "^\\s*export\\s*%s=.*$" % env)
+            FileUtil.deleteLine(userProfile, "^\\s*export\\s*%s=.*$" % env)
             self.logger.debug("Deleting %s in user profile" % env)
 
         # set ENV in user bashrc file
@@ -1375,7 +1371,7 @@ Common options:
             "Successfully deleted crash old ENV. Setting new ENV.")
         for env in userEnvConfig:
             context = "export %s=%s" % (env, userEnvConfig[env])
-            g_file.writeFile(userProfile, [context])
+            FileUtil.writeFile(userProfile, [context])
 
         self.logger.debug("Successfully set user profile.")
 
@@ -1391,37 +1387,13 @@ Common options:
             userProfile = self.mpprcFile
         else:
             # check if os profile exist
-            userProfile = "/etc/profile"
+            userProfile = ClusterConstants.ETC_PROFILE
             if not os.path.exists(userProfile):
                 self.logger.debug(
                     "Profile does not exist. Please create %s." % userProfile)
-                g_file.createFile(userProfile)
-                g_file.changeMode(DefaultValue.DIRECTORY_MODE, userProfile)
+                FileUtil.createFile(userProfile)
+                FileUtil.changeMode(DefaultValue.DIRECTORY_MODE, userProfile)
         return userProfile
-
-    def setOSProfile(self, OSEnvConfig):
-        """
-        function: set env into /etc/profile
-        input : OSEnvConfig
-        output: NA
-        """
-        self.logger.debug("Setting OS profile.")
-
-        userProfile = self.getUserProfile()
-
-        # clean ENV in os profile
-        self.logger.debug("OS profile exists. Deleting crash old ENV.")
-        for env in OSEnvConfig:
-            g_file.deleteLine(userProfile, "^\\s*export\\s*%s=.*$" % env)
-            self.logger.debug("Deleting crash [%s] in OS profile." % env)
-
-        # set ENV in os profile
-        self.logger.debug("Successfully deleted old ENV. Setting new env.")
-        for env in OSEnvConfig:
-            context = "export %s=%s" % (env, OSEnvConfig[env])
-            g_file.writeFile(userProfile, [context])
-
-        self.logger.debug("Successfully set OS profile.")
 
     def setDBUerProfile(self):
         """
@@ -1465,7 +1437,7 @@ Common options:
         self.logger.debug("OS profile exists. Deleting crash old tool ENV.")
         # clean MPPRC FILE PATH
         if self.mpprcFile != "":
-            g_file.deleteLine(userProfile,
+            FileUtil.deleteLine(userProfile,
                               "^\\s*export\\s*%s=.*$"
                               % DefaultValue.MPPRC_FILE_ENV)
             self.logger.debug(
@@ -1473,34 +1445,34 @@ Common options:
                 " user environment variables.")
 
         # clean GPHOME
-        g_file.deleteLine(userProfile, "^\\s*export\\s*GPHOME=.*$")
+        FileUtil.deleteLine(userProfile, "^\\s*export\\s*GPHOME=.*$")
         self.logger.debug(
             "Deleting crash GPHOME in user environment variables.")
 
         # clean LD_LIBRARY_PATH
-        g_file.deleteLine(userProfile,
+        FileUtil.deleteLine(userProfile,
                           "^\\s*export\\s*LD_LIBRARY_PATH=\\$GPHOME\\/script"
                           "\\/gspylib\\/clib:\\$LD_LIBRARY_PATH$")
-        g_file.deleteLine(userProfile,
+        FileUtil.deleteLine(userProfile,
                           "^\\s*export\\s*LD_LIBRARY_PATH=\\$GPHOME\\/lib:"
                           "\\$LD_LIBRARY_PATH$")
         self.logger.debug(
             "Deleting crash LD_LIBRARY_PATH in user environment variables.")
 
         # clean PATH
-        g_file.deleteLine(userProfile,
+        FileUtil.deleteLine(userProfile,
                           "^\\s*export\\s*PATH=\\$GPHOME\\/pssh-2.3.1\\/bin:"
                           "\\$GPHOME\\/script:\\$PATH$")
-        g_file.deleteLine(userProfile,
+        FileUtil.deleteLine(userProfile,
                           "^\\s*export\\s*PATH=\\$GPHOME\\/script\\/gspylib\\"
                           "/pssh\\/bin:\\$GPHOME\\/script:\\$PATH$")
-        g_file.deleteLine(userProfile,
+        FileUtil.deleteLine(userProfile,
                           "^\\s*export\\s*PATH=\\/root\\/gauss_om\\/%s\\"
                           "/script:\\$PATH$" % self.user)
         self.logger.debug("Deleting crash PATH in user environment variables.")
 
         # clean PYTHONPATH
-        g_file.deleteLine(userProfile,
+        FileUtil.deleteLine(userProfile,
                           "^\\s*export\\s*PYTHONPATH=\\$GPHOME\\/lib")
         self.logger.debug(
             "Deleting crash PYTHONPATH in user environment variables.")
@@ -1511,395 +1483,36 @@ Common options:
         # set env in user profile
         try:
             # check if the file is a link
-            g_OSlib.checkLink(userProfile)
+            FileUtil.checkLink(userProfile)
             # set mpprc file
             if self.mpprcFile != "":
                 context = "export %s=%s" % (
                     DefaultValue.MPPRC_FILE_ENV, self.mpprcFile)
-                g_file.writeFile(userProfile, [context])
+                FileUtil.writeFile(userProfile, [context])
             # set GPHOME
-            g_file.writeFile(userProfile,
+            FileUtil.writeFile(userProfile,
                              ["export GPHOME=%s" % self.clusterToolPath])
             # set PATH
-            g_file.writeFile(userProfile, [
+            FileUtil.writeFile(userProfile, [
                 "export PATH=$GPHOME/script/gspylib/pssh/bin:"
                 "$GPHOME/script:$PATH"])
             # set LD_LIBRARY_PATH
-            g_file.writeFile(userProfile, [
+            FileUtil.writeFile(userProfile, [
                 "export LD_LIBRARY_PATH="
                 "$GPHOME/script/gspylib/clib:$LD_LIBRARY_PATH"])
-            g_file.writeFile(userProfile, [
+            FileUtil.writeFile(userProfile, [
                 "export LD_LIBRARY_PATH=$GPHOME/lib:$LD_LIBRARY_PATH"])
             # set PYTHONPATH
-            g_file.writeFile(userProfile, ["export PYTHONPATH=$GPHOME/lib"])
+            FileUtil.writeFile(userProfile, ["export PYTHONPATH=$GPHOME/lib"])
             # set om root script path
             om_root_path = "%s/%s/script" % (DefaultValue.ROOT_SCRIPTS_PATH,
                                              self.user)
-            g_file.writeFile(userProfile,
+            FileUtil.writeFile(userProfile,
                              ["export PATH=%s:$PATH" % om_root_path])
 
         except Exception as e:
             self.logger.logExit(str(e))
         self.logger.debug("Successfully set tool ENV.")
-
-    def cleanWarningEnv(self):
-        """
-        function: Deleting crash rsyslog or syslog-ng log ENV
-        input : NA
-        output: NA
-        """
-        self.logger.debug("Deleting crash system log ENV.")
-        # judge the syslog type on the local host is rsyslog or syslog-ng
-        syslogType = self.judgeSyslogType()
-        if syslogType == SYSLOG_NG:
-            self.cleanWarningEnvForSyslogng()
-        elif syslogType == RSYSLOG:
-            self.cleanWarningEnvForRsyslog()
-        self.logger.debug("Successfully deleted crash system log ENV.")
-
-    def cleanWarningEnvForSyslogng(self):
-        """
-        function: Deleting crash syslog-ng ENV
-        input : NA
-        output: NA
-        """
-        # clean client syslog-ng configure
-        cmd = "(if [ -s '%s' ]; then " % SYSLOG_NG_CONFIG_FILE
-        cmd += "sed -i -e '/^filter f_gaussdb.*$/d' %s " \
-               % SYSLOG_NG_CONFIG_FILE
-        cmd += "-e '/^destination d_gaussdb.*$/d' %s " % SYSLOG_NG_CONFIG_FILE
-        cmd += "-e '/^log { source(src); filter(f_gaussdb);" \
-               " destination(d_gaussdb); };$/d' %s;fi;) " \
-               % SYSLOG_NG_CONFIG_FILE
-        self.logger.debug("Command for deleting crash client system log: %s."
-                          % cmd)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50207"]
-                                % 'crash client system log'
-                                + " Error: \n%s" % output)
-
-        # clean server syslog-ng configure
-        cmd = "(if [ -s '%s' ]; then " % SYSLOG_NG_CONFIG_FILE
-        cmd += "sed -i -e '/^template t_gaussdb.*$/d' %s " \
-               % SYSLOG_NG_CONFIG_FILE
-        cmd += "-e '/^source s_gaussdb.*$/d' %s " % SYSLOG_NG_CONFIG_FILE
-        cmd += "-e '/^filter f_gaussdb.*$/d' %s " % SYSLOG_NG_CONFIG_FILE
-        cmd += "-e '/^destination d_gaussdb.*$/d' %s " % SYSLOG_NG_CONFIG_FILE
-        cmd += "-e '/^log { source(s_gaussdb); filter(f_gaussdb);" \
-               " destination(d_gaussdb); };$/d' %s;fi; " \
-               % SYSLOG_NG_CONFIG_FILE
-        cmd += "if [ -s '%s' ]; then " % SYSLOG_NG_CONFIG_FILE_SERVER
-        cmd += "sed -i -e '/^SYSLOGD_OPTIONS=\\\"-r -m 0\\\"/d' %s " \
-               % SYSLOG_NG_CONFIG_FILE_SERVER
-        cmd += "-e '/^KLOGD_OPTIONS=\\\"-x\\\"/d' %s; " \
-               % SYSLOG_NG_CONFIG_FILE_SERVER
-        cmd += "fi) "
-        self.logger.debug("Command for cleaning crash server system log: %s."
-                          % cmd)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50207"]
-                                % 'crash server system log'
-                                + " Error: \n%s" % output)
-
-        # restart the syslog service
-        self.logger.debug("Restart syslog service.")
-        (status, output) = g_service.manageOSService("syslog", "restart")
-        if status != 0:
-            self.logger.logExit(ErrorCode.GAUSS_508["GAUSS_50802"]
-                                % "restart syslog" + " Error: \n%s" % output)
-
-    def cleanWarningEnvForRsyslog(self):
-        """
-        function: Deleting crash rsyslog ENV
-        input : NA
-        output: NA
-        """
-        # clean rsyslog config on client and server
-        cmd = "(if [ -s %s ]; then " % RSYSLOG_CONFIG_FILE
-        cmd += "sed -i -e '/^$ModLoad imjournal.*$/d' %s " \
-               % RSYSLOG_CONFIG_FILE
-        cmd += "-e '/^$ModLoad imudp.*$/d' %s " % RSYSLOG_CONFIG_FILE
-        cmd += "-e '/^$UDPServerRun 514.*$/d' %s " % RSYSLOG_CONFIG_FILE
-        cmd += "-e '/^$imjournalRatelimitInterval.*$/d' %s " \
-               % RSYSLOG_CONFIG_FILE
-        cmd += "-e '/^$imjournalRatelimitBurst.*$/d' %s " \
-               % RSYSLOG_CONFIG_FILE
-        cmd += "-e '/^$SystemLogRateLimitInterval.*$/d' %s " \
-               % RSYSLOG_CONFIG_FILE
-        cmd += "-e '/^$SystemLogRateLimitBurst.*$/d' %s " \
-               % RSYSLOG_CONFIG_FILE
-        cmd += "-e '/^%s.*$/d' %s; " % (AP_RSYSLOG_FACILITY_LEVEL,
-                                        RSYSLOG_CONFIG_FILE)
-        cmd += "fi) "
-        self.logger.debug("Command for cleaning crash rsyslog: %s." % cmd)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50207"]
-                                % 'crash rsyslog' + " Error: \n%s" % output)
-
-        # restart the rsyslog service
-        self.logger.debug("Restart rsyslog service.")
-        (status, output) = g_service.manageOSService("rsyslog", "restart")
-        if status != 0:
-            self.logger.logExit(ErrorCode.GAUSS_508["GAUSS_50802"]
-                                % "restart rsyslog" + " Error: \n%s" % output)
-
-    def setClientWarningEnv(self):
-        """
-        function: Setting client warning ENV for rsyslog or syslog-ng
-        input : NA
-        output: NA
-        """
-        self.logger.debug("Setting client warning ENV.")
-        # judge the syslog type on the local host is rsyslog or syslog-ng
-        syslogType = self.judgeSyslogType()
-        if syslogType == SYSLOG_NG:
-            self.setClientWarningEnvForSyslogng()
-        elif syslogType == RSYSLOG:
-            self.setJournalRateLimiting()
-            self.setClientWarningEnvForRsyslog()
-        self.logger.debug("Successfully set client warning ENV.")
-
-    def setJournalRateLimiting(self):
-        """
-        function: Setting Systemd Journal Rate Limiting
-        input : NA
-        output: NA
-        """
-        # set SYSTEMD_JOURNALD_CONF configure
-        if os.path.isfile(SYSTEMD_JOURNALD_CONF):
-            self.logger.debug("Setting Systemd Journal Rate Limiting.")
-            # clean old RateLimitInterval and RateLimitBurst
-            g_file.deleteLine(SYSTEMD_JOURNALD_CONF,
-                              "^\\s*RateLimitInterval\\s*=.*")
-            g_file.deleteLine(SYSTEMD_JOURNALD_CONF,
-                              "^\\s*RateLimitBurst\\s*=.*")
-            # set RateLimitInterval and RateLimitBurst
-            g_file.writeFile(SYSTEMD_JOURNALD_CONF, ["RateLimitInterval=0"])
-            g_file.writeFile(SYSTEMD_JOURNALD_CONF, ["RateLimitBurst=0"])
-            # restart systemd-journald, make it working
-            self.logger.debug("Restart systemd-journald service.")
-            (status, output) = g_service.manageOSService("systemd-journald",
-                                                         "restart")
-            if status != 0:
-                self.logger.logExit(ErrorCode.GAUSS_508["GAUSS_50802"]
-                                    % "restart systemd-journald"
-                                    + " Error: \n%s" % output)
-
-    def setClientWarningEnvForSyslogng(self):
-        """
-        function: Setting client warning ENV for syslog-ng
-        input : NA
-        output: NA
-        """
-        # set client syslog-ng configure
-        client_filter = "filter f_gaussdb    { level(err,  crit)" \
-                        " and match('MPPDB'); };"
-        client_destination = "destination d_gaussdb" \
-                             " { udp(\"%s\"  port(514) ); };" % self.warningIp
-        client_log = "log { source(src); filter(f_gaussdb);" \
-                     " destination(d_gaussdb); };"
-
-        if (os.path.exists(SYSLOG_NG_CONFIG_FILE) and
-                os.path.getsize(SYSLOG_NG_CONFIG_FILE) > 0):
-            cmdFileter = "'%s'" % client_filter
-            self.logger.debug("Setting syslog-ng client configuration: %s"
-                              + client_filter)
-            g_file.echoLineToFile(cmdFileter, SYSLOG_NG_CONFIG_FILE)
-            cmdDestination = "'%s'" % client_destination
-            self.logger.debug("Setting syslog-ng client configuration: %s"
-                              + client_destination)
-            g_file.echoLineToFile(cmdDestination, SYSLOG_NG_CONFIG_FILE)
-            cmdLog = "'%s'" % client_log
-            self.logger.debug("Setting syslog-ng client configuration: %s"
-                              + client_log)
-            g_file.echoLineToFile(cmdLog, SYSLOG_NG_CONFIG_FILE)
-
-        self.logger.debug("Restart client syslog service.")
-        (status, output) = g_service.manageOSService("syslog", "restart")
-        if status != 0:
-            self.logger.logExit(ErrorCode.GAUSS_508["GAUSS_50802"]
-                                % "restart syslog" + " Error: \n%s" % output)
-
-    def setClientWarningEnvForRsyslog(self):
-        """
-        function: Setting client warning ENV for rsyslog
-        input : NA
-        output: NA
-        """
-        # set client rsyslog configure
-        client_journal = "$ModLoad imjournal"
-        client_udp = "$ModLoad imudp"
-        client_port = "$UDPServerRun 514"
-        # to prevent from losing log when there are mass logs,
-        # set the $imjournalRatelimitInterval and $imjournalRatelimitBurst
-        client_imjournal_ratelimit_interval = "$imjournalRatelimitInterval " \
-                                              "%d" \
-                                              % IMJOURNAL_RATELIMIT_INTERVAL
-        client_imjournal_ratelimit_burst = "$imjournalRatelimitBurst %d" \
-                                           % IMJOURNAL_RATELIMIT_BURST
-        client_systemlog_ratelimit_interval = "$SystemLogRateLimitInterval " \
-                                              "%d" \
-                                              % SYSTEMLOG_RATELIMIT_INTERVAL
-        client_systemlog_ratelimit_burst = "$SystemLogRateLimitBurst %d" \
-                                           % SYSTEMLOG_RATELIMIT_BURST
-        client_filter_destination = "%s    @%s:514" % \
-                                    (AP_RSYSLOG_FACILITY_LEVEL,
-                                     self.warningIp)
-
-        if (os.path.exists(RSYSLOG_CONFIG_FILE) and
-                os.path.getsize(RSYSLOG_CONFIG_FILE) > 0):
-            self.logger.debug("Setting rsyslog client configuration.")
-            cmdJournalUdp = "'%s'" % client_journal
-            g_file.echoLineToFile(cmdJournalUdp, RSYSLOG_CONFIG_FILE)
-            cmdCientUdp = "'%s'" % client_udp
-            g_file.echoLineToFile(cmdCientUdp, RSYSLOG_CONFIG_FILE)
-            cmdCientPort = "'%s'" % client_port
-            g_file.echoLineToFile(cmdCientPort, RSYSLOG_CONFIG_FILE)
-            cmdCientInterval = "'%s'" % client_imjournal_ratelimit_interval
-            g_file.echoLineToFile(cmdCientInterval, RSYSLOG_CONFIG_FILE)
-            cmdCientBurst = "'%s'" % client_imjournal_ratelimit_burst
-            g_file.echoLineToFile(cmdCientBurst, RSYSLOG_CONFIG_FILE)
-            cmdCientSyslogInterval = "'%s'" \
-                                     % client_systemlog_ratelimit_interval
-            g_file.echoLineToFile(cmdCientSyslogInterval, RSYSLOG_CONFIG_FILE)
-            cmdCientSyslogBurst = "'%s'" % client_systemlog_ratelimit_burst
-            g_file.echoLineToFile(cmdCientSyslogBurst, RSYSLOG_CONFIG_FILE)
-            cmdCientFilterDest = "'%s'" % client_filter_destination
-            g_file.echoLineToFile(cmdCientFilterDest, RSYSLOG_CONFIG_FILE)
-
-        # restart the rsyslog service
-        self.logger.debug("Restart rsyslog service.")
-        (status, output) = g_service.manageOSService("rsyslog", "restart")
-        if status != 0:
-            self.logger.logExit(ErrorCode.GAUSS_508["GAUSS_50802"]
-                                % "restart rsyslog" + " Error: \n%s" % output)
-
-    def setServerWarningEnv(self):
-        """
-        function: Setting server warning ENV for rsyslog or syslog-ng
-        input : NA
-        output: NA
-        """
-        self.logger.debug("Setting server warning ENV.")
-        # judge the syslog type on the local host is rsyslog or syslog-ng
-        syslogType = self.judgeSyslogType()
-        if syslogType == SYSLOG_NG:
-            self.setServerWarningEnvForSyslogng()
-        elif syslogType == RSYSLOG:
-            self.setServerWarningEnvForRsyslog()
-        self.logger.debug("Successfully set server warning ENV.")
-
-    def setServerWarningEnvForSyslogng(self):
-        """
-        function: Setting server warning ENV for syslog-ng
-        input : NA
-        output: NA
-        """
-        # set server syslog-ng configure
-        server_template = "template t_gaussdb" \
-                          " {template(\"$DATE $SOURCEIP $MSGONLY\\n\");" \
-                          " template_escape(no); };"
-        server_source = "source s_gaussdb{ udp(); };"
-        server_filter = "filter f_gaussdb    { level(err,  crit) and" \
-                        " match('MPPDB'); };"
-        server_destination = "destination d_gaussdb" \
-                             " { file(\"%s\", template(t_gaussdb)); };" \
-                             % AP_SERVER_SYSLOG_FILE
-        server_log = "log { source(s_gaussdb); filter(f_gaussdb);" \
-                     " destination(d_gaussdb); };"
-
-        if (os.path.exists(SYSLOG_NG_CONFIG_FILE) and
-                os.path.getsize(SYSLOG_NG_CONFIG_FILE) > 0):
-            cmdTemplate = "'%s'" % server_template
-            self.logger.debug("Setting syslog-ng server configuration: %s"
-                              + server_template)
-            g_file.echoLineToFile(cmdTemplate, SYSLOG_NG_CONFIG_FILE)
-            cmdSource = "'%s'" % server_source
-            self.logger.debug("Setting syslog-ng server configuration: %s"
-                              + server_source)
-            g_file.echoLineToFile(cmdSource, SYSLOG_NG_CONFIG_FILE)
-            cmdFilter = "'%s'" % server_filter
-            self.logger.debug("Setting syslog-ng server configuration: %s"
-                              + server_filter)
-            g_file.echoLineToFile(cmdFilter, SYSLOG_NG_CONFIG_FILE)
-            cmdDestination = "'%s'" % server_destination
-            self.logger.debug("Setting syslog-ng server configuration: %s"
-                              + server_destination)
-            g_file.echoLineToFile(cmdDestination, SYSLOG_NG_CONFIG_FILE)
-            cmdLog = "'%s'" % server_log
-            self.logger.debug("Setting syslog-ng server configuration: %s"
-                              + server_log)
-            g_file.echoLineToFile(cmdLog, SYSLOG_NG_CONFIG_FILE)
-
-        # set server sysconfig configure
-        server_sysconfig_syslogd = "SYSLOGD_OPTIONS=\"-r -m 0\""
-        server_sysconfig_klogd = "KLOGD_OPTIONS=\"-x\""
-
-        if (os.path.exists(SYSLOG_NG_CONFIG_FILE_SERVER) and
-                os.path.getsize(SYSLOG_NG_CONFIG_FILE_SERVER) > 0):
-            cmdConfigLog = "'%s'" % server_sysconfig_syslogd
-            self.logger.debug("Setting sys-config server configuration: %s"
-                              + server_sysconfig_syslogd)
-            g_file.echoLineToFile(cmdConfigLog, SYSLOG_NG_CONFIG_FILE_SERVER)
-            cmdConfigKLog = "'%s'" % server_sysconfig_klogd
-            self.logger.debug("Setting sys-config server configuration: %s"
-                              + server_sysconfig_klogd)
-            g_file.echoLineToFile(cmdConfigKLog, SYSLOG_NG_CONFIG_FILE_SERVER)
-
-        self.logger.debug("Restart server syslog service.")
-        (status, output) = g_service.manageOSService("syslog", "restart")
-        if status != 0:
-            self.logger.logExit(ErrorCode.GAUSS_508["GAUSS_50802"]
-                                % "restart syslog" + " Error: \n%s" % output)
-
-    def setServerWarningEnvForRsyslog(self):
-        """
-        function: Setting server warning ENV for rsyslog
-        input : NA
-        output: NA
-        """
-        # set server rsyslog configure
-        server_filter_destination = "%s    %s" % (AP_RSYSLOG_FACILITY_LEVEL,
-                                                  AP_SERVER_SYSLOG_FILE)
-
-        if (os.path.exists(RSYSLOG_CONFIG_FILE) and
-                os.path.getsize(RSYSLOG_CONFIG_FILE) > 0):
-            # clean RSYSLOG_FACILITY_LEVEL
-            cmd = "sed -i -e '/^%s.*$/d' %s" % (AP_RSYSLOG_FACILITY_LEVEL,
-                                                RSYSLOG_CONFIG_FILE)
-            self.logger.debug("Command for cleaning crash rsyslog: %s." % cmd)
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50207"] %
-                                    'crash rsyslog' + " Error: \n%s" % output)
-
-            self.logger.debug("Setting rsyslog server configuration.")
-            cmdFilterDest = "'%s'" % server_filter_destination
-            g_file.echoLineToFile(cmdFilterDest, RSYSLOG_CONFIG_FILE)
-
-        self.logger.debug("Restart server syslog service.")
-        (status, output) = g_service.manageOSService("syslog", "restart")
-        if status != 0:
-            self.logger.logExit(ErrorCode.GAUSS_508["GAUSS_50802"]
-                                % "restart syslog" + " Error: \n%s" % output)
-
-    def judgeSyslogType(self):
-        """
-        function: judge syslog type
-        input : NA
-        output: NA
-        """
-        self.logger.debug("judging the syslog type is rsyslog or syslog-ng.")
-        if os.path.isfile(RSYSLOG_CONFIG_FILE):
-            return RSYSLOG
-        elif os.path.isfile(SYSLOG_NG_CONFIG_FILE):
-            return SYSLOG_NG
-        else:
-            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50219"] +
-                                " \nError: Failed to judge the syslog type.")
 
     def setLibrary(self):
         """
@@ -1911,7 +1524,7 @@ Common options:
         config_file_dir = "/etc/ld.so.conf"
         alreadySet = False
         # check if the file is a link
-        g_OSlib.checkLink(config_file_dir)
+        FileUtil.checkLink(config_file_dir)
         if os.path.isfile(config_file_dir):
             with open(config_file_dir, "r") as fp:
                 libs = fp.read()
@@ -1936,34 +1549,36 @@ Common options:
                 False    #need to set cgroup
         """
         #Determine whether action is expansion.
-        hostName = DefaultValue.GetHostIpOrName()
-        if (len(self.clusterInfo.newNodes) == 0):
+        hostName = NetUtil.GetHostIpOrName()
+        if len(self.clusterInfo.newNodes) == 0:
             return False
         #Determine whether the current node is a new node
         for node in self.clusterInfo.newNodes:
-            if (hostName == node.name):
+            if hostName == node.name:
                 return False
         self.logger.debug("The current node is the old node for expansion, no need to set cgroup.")
         return True
 
     def decompressPkg2Cgroup(self):
         """
-        function: decompress server package to libcgroup path. gs_cgroup will be used in preinstall step.
+        function: decompress server package to libcgroup path. gs_cgroup will be used in preinstall
+                  step.
         input: NA
         output: NA
         """
         self.logger.debug("decompress server package to libcgroup path.")
 
-        bz2FileName = g_OSlib.getBz2FilePath()
+        bz2FileName = PackageInfo.get_package_file_path()
         curPath = os.path.dirname(os.path.realpath(__file__))
         libCgroupPath = os.path.realpath("%s/../../libcgroup" % curPath)
         if not os.path.exists(libCgroupPath):
             os.makedirs(libCgroupPath)
-        
+
         cmd = "tar -xf %s -C %s" % (bz2FileName, libCgroupPath)
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
-            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50217"] % bz2FileName + " Error: \n%s" % output)
+            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50217"] % bz2FileName +
+                                " Error: \n%s" % output)
 
         # load library path env
         ld_path = os.path.join(libCgroupPath, "lib")
@@ -1980,7 +1595,7 @@ Common options:
         input : NA
         output: NA
         """
-        if (self.needSetCgroup()):
+        if self.needSetCgroup():
             return
         self.logger.debug("Setting Cgroup.")
         # decompress server pakcage
@@ -1991,52 +1606,66 @@ Common options:
         libcgroup_dir = os.path.realpath("%s/../../libcgroup/lib/libcgroup.so" % dirName)
         cgroup_exe_dir = os.path.realpath("%s/../../libcgroup/bin/gs_cgroup" % dirName)
         cmd = "rm -rf '%s/%s'" % (self.clusterToolPath, self.user)
-        (status, output) = DefaultValue.retryGetstatusoutput(cmd)
-        if(status != 0):
-            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50207"] % 'crash Cgroup congiguration file' + " Error: \n%s" % output)
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd)
+        if status != 0:
+            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50207"] %
+                                'crash Cgroup congiguration file' + " Error: \n%s" % output)
         cmd = "if [ ! -d '%s' ];then mkdir -p '%s' && " % (cgroup_etc_dir, cgroup_etc_dir)
-        cmd += "chmod %s '%s'/../ -R && chown %s:%s '%s'/../ -R -h;fi" % (DefaultValue.KEY_DIRECTORY_MODE, cgroup_etc_dir, self.user, self.group, cgroup_etc_dir)
+        cmd += "chmod %s '%s'/../ -R && chown %s:%s '%s'/../ -R -h;fi" %\
+               (DefaultValue.KEY_DIRECTORY_MODE, cgroup_etc_dir,
+                self.user, self.group, cgroup_etc_dir)
         (status, output) = subprocess.getstatusoutput(cmd)
-        if(status != 0):
-            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50208"] % cgroup_etc_dir + " Error: \n%s" % output)
+        if status != 0:
+            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50208"] %
+                                cgroup_etc_dir + " Error: \n%s" % output)
 
         # check or prepare libcgroup lib
         libcgroup_target = "/usr/local/lib/libcgroup.so.1"
         cmd = "ldd %s | grep 'libcgroup.so.1'" % cgroup_exe_dir
         (status, output) = subprocess.getstatusoutput(cmd)
-        if(status != 0):
+        if status != 0:
             self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error: \n%s" % output)
         elif str(output).find("not found") != -1:
             cmd = "cp '%s' '%s' && ldconfig" % (libcgroup_dir, libcgroup_target)
-            self.logger.debug("Need copy libcgroup.so.1 from %s to %s." % (libcgroup_dir, libcgroup_target))
+            self.logger.debug("Need copy libcgroup.so.1 from %s to %s." %
+                              (libcgroup_dir, libcgroup_target))
             (status, output) = subprocess.getstatusoutput(cmd)
-            if(status != 0):
-                self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50214"] % libcgroup_target + " Error: \n%s" % output) 
+            if status != 0:
+                self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50214"] % libcgroup_target +
+                                    " Error: \n%s" % output)
 
-        GPHOME_cgroupCfgFile = "%s/%s/etc/gscgroup_%s.cfg" % (self.clusterToolPath, self.user, self.user)
+        GPHOME_cgroupCfgFile = "%s/%s/etc/gscgroup_%s.cfg" % (self.clusterToolPath, self.user,
+                                                              self.user)
         GAUSSHOME_cgroupCfgFile = "%s/etc/gscgroup_%s.cfg" % (self.clusterInfo.appPath, self.user)
 
-        cmd = "(if [ -f '%s' ]; then cp '%s' '%s';fi)" % (GAUSSHOME_cgroupCfgFile, GAUSSHOME_cgroupCfgFile, GPHOME_cgroupCfgFile)
-        self.logger.debug("Command for copying GAUSSHOME gscgroup's config file to GPHOME: %s\n" % cmd)
+        cmd = "(if [ -f '%s' ]; then cp '%s' '%s';fi)" % (GAUSSHOME_cgroupCfgFile,
+                                                          GAUSSHOME_cgroupCfgFile,
+                                                          GPHOME_cgroupCfgFile)
+        self.logger.debug("Command for copying GAUSSHOME gscgroup's config file to GPHOME: %s\n"
+                          % cmd)
         (status, output) = subprocess.getstatusoutput(cmd)
-        if(status != 0):
-            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50214"] % GAUSSHOME_cgroupCfgFile + " Error:\n%s" % output)
+        if status != 0:
+            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50214"] % GAUSSHOME_cgroupCfgFile +
+                                " Error:\n%s" % output)
 
         #create cgroup log file.
         binPath = self.clusterInfo.logPath + "/%s/bin/gs_cgroup/" % self.user
-        if (not os.path.exists(binPath)):
-            g_file.createDirectory(binPath)
+        if not os.path.exists(binPath):
+            FileUtil.createDirectory(binPath)
         cgroupLog = binPath + "gs_cgroup.log"
         c_logger = GaussLog(cgroupLog, "gs_cgroup")
 
         #Get OS startup file
         initFile = DefaultValue.getOSInitFile()
         if initFile == "":
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % "startup file of current OS" + "The startup file for euleros OS is /etc/rc.d/rc.local.")
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % "startup file of current OS" +
+                            "The startup file for euleros OS is /etc/rc.d/rc.local.")
 
         # call cgroup
-        # generate cgroup config file under cluster tool path. and then copy it to GAUSSHOME path in gs_install step.
-        execute_cmd = "%s -U %s --upgrade -c -H %s/%s" % (cgroup_exe_dir, self.user, self.clusterToolPath, self.user)
+        # generate cgroup config file under cluster tool path.
+        # and then copy it to GAUSSHOME path in gs_install step.
+        execute_cmd = "%s -U %s --upgrade -c -H %s/%s" % (cgroup_exe_dir, self.user,
+                                                          self.clusterToolPath, self.user)
         c_logger.debug("Command for executing gs_cgroup: %s\n" % execute_cmd)
         (status, output) = subprocess.getstatusoutput(execute_cmd)
         c_logger.debug("The result of execute gs_cgroup is:\n%s." % output)
@@ -2053,15 +1682,15 @@ Common options:
         c_logger.debug("The result of init gs_cgroup is:\n%s." % output)
         c_logger.debug(str(output))
         #Change the owner and permission.
-        g_OSlib.checkLink(binPath)
-        g_file.changeOwner(self.user, binPath, True, retryFlag = True)
-        g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE, binPath, retryFlag = True)
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE, (binPath + "*"), retryFlag = True)
+        FileUtil.checkLink(binPath)
+        FileUtil.changeOwner(self.user, binPath, True, retry_flag=True, link=True)
+        FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, binPath, retry_flag=True)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, (binPath + "*"), retry_flag=True)
         if self.clusterInfo.logPath.strip() != "":
             pre_bin_path = self.clusterInfo.logPath + "/%s/bin" % self.user
-            g_file.changeOwner(self.user, pre_bin_path, True, retryFlag = True)
+            FileUtil.changeOwner(self.user, pre_bin_path, True, retry_flag=True, link=True)
         c_logger.closeLog()
-        if(status != 0):
+        if status != 0:
             self.logger.logExit(str(output))
 
         self.logger.debug("Successfully set Cgroup.")
@@ -2070,16 +1699,57 @@ Common options:
         # check libaio.so file exist
         cmd = "ls /usr/local/lib | grep '^libaio.so' | wc -l"
         (status, output) = subprocess.getstatusoutput(cmd)
-        if (status != 0):
+        if status != 0:
             self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error: \n%s" % output)
         elif int(output) == 0:
             cmd = "ls /usr/lib64 | grep '^libaio.so' | wc -l"
             (status, output) = subprocess.getstatusoutput(cmd)
-            if (status != 0):
-                self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error: \n%s" % output)
+            if status != 0:
+                self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
+                                    " Error: \n%s" % output)
             elif int(output) == 0:
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % "libaio.so or libaio.so.*")
 
+    def check_config(self):
+        """
+        function: Check the XML file information on the remote execution node.
+        input : NA
+        output: NA
+        """
+        self.initNodeInfo()
+        app_path = self.clusterInfo.appPath
+        tmp_path = ClusterConfigFile.readClusterTmpMppdbPath(self.user, self.clusterConfig)
+        log_path = ClusterConfigFile.readClusterLogPath(self.clusterConfig)
+        tool_path = self.clusterToolPath
+        for path in [app_path, tmp_path, log_path, tool_path]:
+            UserUtil.check_path_owner(path)
+        # check cm, cn, gtm, etcd, dn
+        # check cm
+        UserUtil.check_path_owner(g_nodeInfo.cmDataDir)
+        for cma_inst in g_nodeInfo.cmagents:
+            UserUtil.check_path_owner(cma_inst.datadir)
+        for cms_inst in g_nodeInfo.cmservers:
+            UserUtil.check_path_owner(cms_inst.datadir)
+        # check gtm
+        for gtm_inst in g_nodeInfo.gtms:
+            UserUtil.check_path_owner(gtm_inst.datadir)
+        # check cn
+        for coo_inst in g_nodeInfo.coordinators:
+            UserUtil.check_path_owner(coo_inst.datadir)
+            if len(coo_inst.ssdDir) != 0:
+                UserUtil.check_path_owner(coo_inst.ssdDir)
+        # check dn
+        for dn_inst in g_nodeInfo.datanodes:
+            UserUtil.check_path_owner(dn_inst.datadir)
+            if len(dn_inst.ssdDir) != 0:
+                UserUtil.check_path_owner(dn_inst.ssdDir)
+        # check dn xlog
+        for dn_inst in g_nodeInfo.datanodes:
+            if dn_inst.xlogdir != '':
+                UserUtil.check_path_owner(dn_inst.xlogdir)
+        # check etcd
+        for etcd_inst in g_nodeInfo.etcds:
+            UserUtil.check_path_owner(etcd_inst.datadir)
 
     def checkPlatformArm(self):
         """
@@ -2138,88 +1808,6 @@ Common options:
             self.logger.logExit(str(e))
         self.logger.debug("Successfully set ARM Optimization.")
 
-    def setSctp(self):
-        """
-        function: Setting SCTP
-        input : NA
-        output: NA
-        """
-        self.logger.debug("Setting SCTP.")
-        try:
-
-            key = "install ipv6 \/bin\/true"
-            confFile = "/etc/modprobe.d/*ipv6.conf"
-
-            initFile = DefaultValue.getOSInitFile()
-            cmd = "ls %s" % confFile
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status == 0:
-                cmd = "sed -i 's/^.*\(%s.*\)/#\\1/g' %s" % (key, confFile)
-                (status, output) = subprocess.getstatusoutput(cmd)
-                if status != 0:
-                    self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50223"]
-                                        % confFile + " Error: \n%s" % output)
-            cmd = "modprobe ipv6"
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                                    + " Error: \n%s" % output)
-            cmd = "modprobe sctp"
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                                    + " Error: \n%s" % output)
-
-            cmd = "uname -r"
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                                    + " Error: \n%s" % output)
-
-            # Since redhat7.4 kernel module files ending in .xz
-            stcpFile = "/lib/modules/%s/kernel/net/sctp/sctp.ko" \
-                       % output.strip()
-            stcpFileXz = "/lib/modules/%s/kernel/net/sctp/sctp.ko.xz" \
-                         % output.strip()
-            if (not os.path.exists(stcpFile)) and \
-                    (not os.path.exists(stcpFileXz)):
-                output = stcpFile + " and " + stcpFileXz
-                self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50201"]
-                                    % output)
-
-            cmd_insmod = "insmod %s >/dev/null 2>&1" % stcpFileXz
-            (status, output) = subprocess.getstatusoutput(cmd_insmod)
-
-            cmd_insmod = "insmod %s >/dev/null 2>&1" % stcpFile
-            (status, output) = subprocess.getstatusoutput(cmd_insmod)
-
-            cmd = "lsmod | grep 'sctp ' | wc -l"
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if not str(output.strip()).isdigit() or int(output.strip()) == 0:
-                self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                                    + " Error: \n%s" % output)
-
-            init_cmd = "sed -i '/^modprobe sctp$/d' %s &&" % initFile
-            init_cmd += "echo \"modprobe sctp\" >> %s &&" % initFile
-            init_cmd += "sed -i '/^insmod.*sctp.ko/d' %s &&" % initFile
-            init_cmd += "echo \"%s\" >> %s" % (cmd_insmod, initFile)
-            (status, output) = subprocess.getstatusoutput(init_cmd)
-            if status != 0:
-                self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"]
-                                    % init_cmd + " Error: \n%s" % output)
-
-            cmd = "sed -i \"/^sysctl -p/d\" %s &&" % initFile
-            cmd += "echo \"sysctl -p\" >> %s" % initFile
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                                    + " Error: \n%s" % output)
-
-        except Exception as e:
-            self.logger.logExit(str(e))
-
-        self.logger.debug("Successfully set Sctp.")
-
     def checkVirtualIp(self):
         """
         function: Checking virtual IP
@@ -2233,7 +1821,7 @@ Common options:
 
             # check the self.hostnameList values are whether or not local IPs
             #  obtain the all local IPs
-            localAddrs = DefaultValue.getIpAddressList()
+            localAddrs = NetUtil.getIpAddressList()
             for ip in g_nodeInfo.virtualIp:
                 if (ip not in configuredIps) and (ip not in localAddrs):
                     self.logger.logExit(ErrorCode.GAUSS_512["GAUSS_51224"]
@@ -2282,7 +1870,7 @@ Common options:
         # Add temporary files, save the virtual IP The actual
         # configuration for the failure rollback
         if os.path.exists(self.tmpFile):
-            g_file.removeFile(self.tmpFile)
+            FileUtil.removeFile(self.tmpFile)
         tmpFileFp = None
         # If this node is not configured virtual IP, exit
         if g_nodeInfo.virtualIp == []:
@@ -2296,11 +1884,11 @@ Common options:
         self.logger.debug("Start setting virtual IP...")
         try:
             # check if the file is a link
-            g_OSlib.checkLink(self.tmpFile)
+            FileUtil.checkLink(self.tmpFile)
             tmpFileFp = open(self.tmpFile, "w+")
             # Obtain network interface card of backIp,
             # get this virtual IP network adapter card through it.
-            backIpNIC = DefaultValue.getNICNum(g_nodeInfo.backIps[0])
+            backIpNIC = NetUtil.getNICNum(g_nodeInfo.backIps[0])
 
             # Get this node netcard identifier already existing netcard
             cmd = "/sbin/ifconfig -a | grep '%s' | awk '{print $1}'" \
@@ -2328,7 +1916,7 @@ Common options:
             for backIp in g_nodeInfo.backIps:
                 # Get backIP subnet mask
                 subnetMask = ""
-                allNetworkInfo = g_network.getAllNetworkInfo()
+                allNetworkInfo = NetUtil.getAllNetworkInfo()
                 for network in allNetworkInfo:
                     if backIp == network.ipAddress:
                         subnetMask = network.networkMask
@@ -2342,7 +1930,7 @@ Common options:
             backIp = g_nodeInfo.backIps[0]
             # get network startup file
             # On SuSE12.X there is no /etc/init.d/network. so skip it
-            distname, version = g_Platform.dist()[0:2]
+            distname, version = LinuxDistro.linux_distribution()[0:2]
             if not (distname == "SuSE" and version == "12"):
                 network_startupFile = "/etc/init.d/network"
                 if not os.path.exists(network_startupFile):
@@ -2387,7 +1975,7 @@ Common options:
                 # Virtual IP configuration write OS startup file
                 lineInfo = '^\\/sbin\\/ifconfig .* %s netmask .* up$' \
                            % configuredIp
-                g_file.deleteLine(OS_initFile, lineInfo)
+                FileUtil.deleteLine(OS_initFile, lineInfo)
                 if distname == "SuSE":
                     if version == "11":
                         # get configure virtual IP line number position
@@ -2402,7 +1990,7 @@ Common options:
                         LineNumber = int(outputlist[0].split(":")[0])
                         lineInfo = '[ ]*\\/sbin\\/ifconfig .* %s netmask' \
                                    ' .* up$' % configuredIp
-                        g_file.deleteLine(network_startupFile, lineInfo)
+                        FileUtil.deleteLine(network_startupFile, lineInfo)
                         cmd = "sed -i \"%di\                        %s\" %s \
                             " % (LineNumber + 1, cmd, network_startupFile)
                         (status, output) = subprocess.getstatusoutput(cmd)
@@ -2433,7 +2021,7 @@ Common options:
                     nicFile = "/etc/sysconfig/network-scripts/ifcfg-%s" \
                               % vip_nic
                     networkConfiguredFile = \
-                        DefaultValue.getNetworkConfiguredFile(configuredIp)
+                        NetUtil.getNetworkConfiguredFile(configuredIp)
                     if networkConfiguredFile == "":
                         networkConfiguredFile = nicFile
                     cmd = "rm -rf '%s' && touch '%s' && chmod %s '%s' \
@@ -2451,7 +2039,7 @@ Common options:
                 vipNo += 1
             tmpFileFp.flush()
             tmpFileFp.close()
-            g_file.changeMode(DefaultValue.KEY_FILE_MODE, self.tmpFile)
+            FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, self.tmpFile)
         except Exception as e:
             if tmpFileFp:
                 tmpFileFp.close()
@@ -2472,7 +2060,7 @@ Common options:
         networkfile = '/etc/sysconfig/network/ifcfg-' + backIpNIC
         LABEL = "LABEL_" + str(i) + "=" + str(i)
         # check if the file is a link
-        g_OSlib.checkLink(networkfile)
+        FileUtil.checkLink(networkfile)
         with open(networkfile, "r") as fp:
             for line in fp:
                 if line.split("=")[1].strip() == configuredIp:
@@ -2506,8 +2094,8 @@ Common options:
         ipcPath = "/etc/systemd/logind.conf"
         if not os.path.exists(ipcPath):
             return
-        distname, version = g_Platform.dist()[0:2]
-        ipcList = g_file.readFile(ipcPath)
+        distname, version = LinuxDistro.linux_distribution()[0:2]
+        ipcList = FileUtil.readFile(ipcPath)
         ipcFlag = False
         noFlag = False
         for line in ipcList:
@@ -2563,7 +2151,7 @@ Common options:
         coreFile = "/proc/sys/kernel/core_pattern"
         coreFlag = False
 
-        coreList = g_file.readFile(sysFile)
+        coreList = FileUtil.readFile(sysFile)
         for line in coreList:
             if "kernel.core_pattern" in line and not line.startswith("#"):
                 coreFlag = True
@@ -2577,7 +2165,7 @@ Common options:
                                           "abrt-hook-ccpp in sysctl file.")
 
         if not coreFlag:
-            coreList = g_file.readFile(coreFile)
+            coreList = FileUtil.readFile(coreFile)
             for line in coreList:
                 if ("|" in line and "abrt-hook-ccpp" in line and
                         not line.startswith("#")):
@@ -2689,9 +2277,9 @@ Common options:
             self.logger.debug("Outter white list is %s"
                               % self.white_list['outter'])
             for ip in self.white_list['inner']:
-                DefaultValue.isIpValid(ip)
+                NetUtil.isIpValid(ip)
             for ip in self.white_list['outter']:
-                DefaultValue.isIpValid(ip)
+                NetUtil.isIpValid(ip)
             compare_list = [ip for ip in self.white_list['inner']
                             if ip in self.white_list['outter']]
             if len(compare_list) > 0:
@@ -2858,13 +2446,13 @@ Common options:
         if os.path.exists(dest_path):
             shutil.rmtree(dest_path)
         os.makedirs(dest_path)
-        g_file.changeOwner("root", dest_path)
+        FileUtil.changeOwner("root", dest_path)
 
         # cp $GPHOME script lib to /root/gauss_om/xxx
         cmd = ("cp -rf %s/script %s/lib %s/version.cfg %s"
                % (self.clusterToolPath, self.clusterToolPath,
                   self.clusterToolPath, dest_path))
-        DefaultValue.execCommandLocally(cmd)
+        CmdExecutor.execCommandLocally(cmd)
         root_scripts = ["gs_postuninstall", "gs_preinstall",
                         "gs_checkos"]
         common_scripts = ["gs_sshexkey", "killall", "gs_checkperf"]
@@ -2878,8 +2466,8 @@ Common options:
         for root_file in root_om_files:
             if root_file.startswith("gs_"):
                 if root_file not in root_save_files:
-                    g_file.removeFile("%s/%s" % (om_root_path, root_file))
-        g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE,
+                    FileUtil.removeFile("%s/%s" % (om_root_path, root_file))
+        FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE,
                           dest_path, recursive=True)
 
         self.logger.debug("Delete root scripts in om user path.")
@@ -2889,7 +2477,7 @@ Common options:
         for user_file in user_om_files:
             if user_file.startswith("gs_"):
                 if user_file in root_scripts or user_file in not_in_env_scripts:
-                    g_file.removeFile("%s/%s" % (om_user_path, user_file))
+                    FileUtil.removeFile("%s/%s" % (om_user_path, user_file))
         self.logger.debug("Delete cluster decompress package in root path.")
 
     def fixop_xml_and_mpp_file(self):
@@ -2899,13 +2487,14 @@ Common options:
         """
         self.logger.log("change '%s' files permission and owner."
                         % self.clusterConfig)
-        g_file.changeOwner(self.user, self.clusterConfig)
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE, self.clusterConfig)
+        FileUtil.changeOwner(self.user, self.clusterConfig, link=True)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, self.clusterConfig)
         if self.mpprcFile:
             self.logger.log("change '%s' files permission and owner."
                             % self.mpprcFile)
-            g_file.changeMode(DefaultValue.KEY_FILE_MODE, self.mpprcFile)
-            g_file.changeOwner(self.user, self.mpprcFile)
+            FileUtil.checkLink(self.mpprcFile)
+            FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, self.mpprcFile)
+            FileUtil.changeOwner(self.user, self.mpprcFile, link=True)
 
     def fixop_tool_path(self):
         """
@@ -2914,16 +2503,16 @@ Common options:
         """
         toolPath = self.clusterToolPath
         self.logger.log("change '%s' files permission and owner." % toolPath)
-        g_file.changeOwner(self.user, toolPath, recursive=True)
-        g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE,
+        FileUtil.changeOwner(self.user, toolPath, recursive=True, link=True)
+        FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE,
                           toolPath, recursive=True)
-        g_file.changeMode(DefaultValue.SPE_FILE_MODE,
+        FileUtil.changeMode(DefaultValue.SPE_FILE_MODE,
                           "%s/script/gs_*" % toolPath)
-        g_file.changeMode(DefaultValue.MIN_FILE_MODE, "%s/*.sha256" % toolPath)
-        g_file.changeMode(DefaultValue.MIN_FILE_MODE, "%s/*.tar.gz" % toolPath)
-        g_file.changeMode(DefaultValue.MIN_FILE_MODE, "%s/*.tar.bz2" %
+        FileUtil.changeMode(DefaultValue.MIN_FILE_MODE, "%s/*.sha256" % toolPath)
+        FileUtil.changeMode(DefaultValue.MIN_FILE_MODE, "%s/*.tar.gz" % toolPath)
+        FileUtil.changeMode(DefaultValue.MIN_FILE_MODE, "%s/*.tar.bz2" %
                           toolPath)
-        g_file.changeMode(DefaultValue.MIN_FILE_MODE, "%s/version.cfg" %
+        FileUtil.changeMode(DefaultValue.MIN_FILE_MODE, "%s/version.cfg" %
                           toolPath)
 
     def fixop_package_path(self):
@@ -2936,19 +2525,17 @@ Common options:
         gsom_path = os.path.dirname(package_path)
         if gsom_path != DefaultValue.ROOT_SCRIPTS_PATH:
             self.logger.log("Change file mode in path %s" % package_path)
-            g_file.changeOwner("root", package_path, recursive=True)
-            g_file.changeMode(DefaultValue.MAX_DIRECTORY_MODE, package_path)
-            g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE,
+            FileUtil.changeOwner("root", package_path, recursive=True, link=True)
+            FileUtil.changeMode(DefaultValue.MAX_DIRECTORY_MODE, package_path)
+            FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE,
                               "%s/script" % package_path, recursive=True)
-            g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE,
-                              "%s/lib" % package_path, recursive=True)
-            g_file.changeMode(DefaultValue.MIN_FILE_MODE, "%s/*.sha256" %
+            FileUtil.changeMode(DefaultValue.MIN_FILE_MODE, "%s/*.sha256" %
                               package_path)
-            g_file.changeMode(DefaultValue.MIN_FILE_MODE, "%s/*.tar.gz" %
+            FileUtil.changeMode(DefaultValue.MIN_FILE_MODE, "%s/*.tar.gz" %
                               package_path)
-            g_file.changeMode(DefaultValue.MIN_FILE_MODE, "%s/*.tar.bz2" %
+            FileUtil.changeMode(DefaultValue.MIN_FILE_MODE, "%s/*.tar.bz2" %
                               package_path)
-            g_file.changeMode(DefaultValue.MIN_FILE_MODE, "%s/version.cfg" %
+            FileUtil.changeMode(DefaultValue.MIN_FILE_MODE, "%s/version.cfg" %
                               package_path)
 
     def fix_owner_and_permission(self):
@@ -2974,8 +2561,6 @@ Common options:
         function: change software tool env path
         :return:
         """
-        osProfile = "/etc/profile"
-        self.clean_tool_env(osProfile)
         userpath = pwd.getpwnam(self.user).pw_dir
         userProfile = os.path.join(userpath, ".bashrc")
         if not os.path.exists(userProfile):
@@ -2984,48 +2569,48 @@ Common options:
                                 + " Please create %s." % userProfile)
         self.clean_tool_env(userProfile)
         # set GPHOME
-        g_file.writeFile(userProfile,
+        FileUtil.writeFile(userProfile,
                          ["export GPHOME=%s" % self.clusterToolPath])
         # set PATH
-        g_file.writeFile(userProfile, [
+        FileUtil.writeFile(userProfile, [
             "export PATH=$GPHOME/script/gspylib/pssh/bin:"
             "$GPHOME/script:$PATH"])
         # set LD_LIBRARY_PATH
-        g_file.writeFile(userProfile, [
+        FileUtil.writeFile(userProfile, [
             "export LD_LIBRARY_PATH="
             "$GPHOME/script/gspylib/clib:$LD_LIBRARY_PATH"])
-        g_file.writeFile(userProfile, [
+        FileUtil.writeFile(userProfile, [
             "export LD_LIBRARY_PATH=$GPHOME/lib:$LD_LIBRARY_PATH"])
         # set PYTHONPATH
-        g_file.writeFile(userProfile, ["export PYTHONPATH=$GPHOME/lib"])
+        FileUtil.writeFile(userProfile, ["export PYTHONPATH=$GPHOME/lib"])
 
     def clean_tool_env(self, userProfile):
         # clean GPHOME
-        g_file.deleteLine(userProfile, "^\\s*export\\s*GPHOME=.*$")
+        FileUtil.deleteLine(userProfile, "^\\s*export\\s*GPHOME=.*$")
         self.logger.debug(
             "Deleting crash GPHOME in user environment variables.")
 
         # clean LD_LIBRARY_PATH
-        g_file.deleteLine(userProfile,
+        FileUtil.deleteLine(userProfile,
                           "^\\s*export\\s*LD_LIBRARY_PATH=\\$GPHOME\\/script"
                           "\\/gspylib\\/clib:\\$LD_LIBRARY_PATH$")
-        g_file.deleteLine(userProfile,
+        FileUtil.deleteLine(userProfile,
                           "^\\s*export\\s*LD_LIBRARY_PATH=\\$GPHOME\\/lib:"
                           "\\$LD_LIBRARY_PATH$")
         self.logger.debug(
             "Deleting crash LD_LIBRARY_PATH in user environment variables.")
 
         # clean PATH
-        g_file.deleteLine(userProfile,
+        FileUtil.deleteLine(userProfile,
                           "^\\s*export\\s*PATH=\\$GPHOME\\/pssh-2.3.1\\/bin:"
                           "\\$GPHOME\\/script:\\$PATH$")
-        g_file.deleteLine(userProfile,
+        FileUtil.deleteLine(userProfile,
                           "^\\s*export\\s*PATH=\\$GPHOME\\/script\\/gspylib\\"
                           "/pssh\\/bin:\\$GPHOME\\/script:\\$PATH$")
         self.logger.debug("Deleting crash PATH in user environment variables.")
 
         # clean PYTHONPATH
-        g_file.deleteLine(userProfile,
+        FileUtil.deleteLine(userProfile,
                           "^\\s*export\\s*PYTHONPATH=\\$GPHOME\\/lib")
         self.logger.debug(
             "Deleting crash PYTHONPATH in user environment variables.")
@@ -3072,10 +2657,8 @@ Common options:
                 self.prepareUserSshdService()
             elif self.action == ACTION_SET_LIBRARY:
                 self.setLibrary()
-            elif self.action == ACTION_SET_SCTP:
-                self.setSctp()
             elif self.action == ACTION_SET_VIRTUALIP:
-                DefaultValue.modifyFileOwnerFromGPHOME(self.logger.logFile)
+                FileUtil.modifyFileOwnerFromGPHOME(self.logger.logFile)
                 self.setVirtualIp()
             elif self.action == ACTION_INIT_GAUSSLOG:
                 self.initGaussLog()
@@ -3090,7 +2673,7 @@ Common options:
                                       " skip set arm options.")
             elif self.action == ACTION_CHECK_ENVFILE:
                 (checkstatus, checkoutput) = \
-                    DefaultValue.checkEnvFile(self.mpprcFile)
+                    ProfileFile.check_env_file(self.mpprcFile)
                 if self.mpprcFile != "":
                     envfile = self.mpprcFile + " and /etc/profile"
                 else:
@@ -3121,6 +2704,8 @@ Common options:
             elif self.action == ACTION_SET_CGROUP:
                 self.checkaio()
                 self.setCgroup()
+            elif self.action == ACTION_CHECK_CONFIG:
+                self.check_config()
             else:
                 self.logger.logExit(ErrorCode.GAUSS_500["GAUSS_50000"]
                                     % self.action)

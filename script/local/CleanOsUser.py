@@ -19,15 +19,18 @@
 # Description  : CleanOsUser.py is a utility to clean OS user.
 #############################################################################
 import getopt
+import os
 import sys
 import subprocess
 
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.ParameterParsecheck import Parameter
-from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.LocalBaseOM import LocalBaseOM
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
 
 class CleanOsUser(LocalBaseOM):
@@ -98,12 +101,12 @@ class CleanOsUser(LocalBaseOM):
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % 'U'
                                    + ".")
         try:
-            DefaultValue.checkUser(self.user, False)
+            ClusterUser.checkUser(self.user, False)
         except Exception as e:
             GaussLog.exitWithError(str(e))
 
         if (logFile == ""):
-            logFile = DefaultValue.getOMLogPath(DefaultValue.LOCAL_LOG_FILE,
+            logFile = ClusterLog.getOMLogPath(ClusterConstants.LOCAL_LOG_FILE,
                                                 self.user, "")
 
         self.logger = GaussLog(logFile, "CleanOsUser")
@@ -145,11 +148,13 @@ class CleanOsUser(LocalBaseOM):
                                     % self.user + " Error: \n%s" % output)
 
             # delete path
-            status, output = subprocess.getstatusoutput("rm -rf '%s'"
-                                                        % gaussHome)
-            if (status != 0):
-                self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50209"]
-                                    % gaussHome + " Error: \n%s" % output)
+            if os.path.isdir(gaussHome):
+                if os.stat(gaussHome).st_uid != 0:
+                    status, output = subprocess.getstatusoutput("rm -rf '%s'"
+                                                                % gaussHome)
+                    if (status != 0):
+                        self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50209"]
+                                            % gaussHome + " Error: \n%s" % output)
 
         except Exception as e:
             self.logger.logExit(str(e))

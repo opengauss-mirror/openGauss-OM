@@ -28,7 +28,7 @@ function print_help()
     echo "Usage: $0 [OPTION]
     -?|--help                         show help information
     -U|--user_name                    cluster user
-    -h|--host_ip                      intranet ip address of the host in the backend storage network(host1,host2)
+    -H|--host_ip                      intranet ip address of the host in the backend storage network(host1,host2)
     -G|--user_grp                     group of the cluster user(default value dbgrp)
     -p|--port                         database server port(default value 20050)
     -D|--install_location             installation directory of the openGauss program(default value ~/cluser)

@@ -17,7 +17,7 @@
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
 from gspylib.common.ErrorCode import ErrorCode
-from gspylib.os.gsfile import g_file
+from base_utils.os.file_util import FileUtil
 
 
 class CheckPortRange(BaseItem):
@@ -35,7 +35,6 @@ class CheckPortRange(BaseItem):
         self.ip_local_port_range = self.threshold['ip_local_port_range']
 
     def getPort(self):
-        cooInst = None
         portList = {}
         dbNode = self.cluster.getDbNodeByName(self.host)
         for dnInst in dbNode.datanodes:
@@ -51,7 +50,7 @@ class CheckPortRange(BaseItem):
                     4: "DATANODE", 5: "CMAGENT"}
         portList = self.getPort()
         # Check the port range
-        output = g_file.readFile('/proc/sys/net/ipv4/ip_local_port_range')[
+        output = FileUtil.readFile('/proc/sys/net/ipv4/ip_local_port_range')[
             0].strip()
         smallValue = output.split('\t')[0].strip()
         bigValue = output.split('\t')[1].strip()

@@ -22,17 +22,23 @@ import grp
 import pwd
 import getpass
 
+from script.base_utils.os.user_util import UserUtil
+
 sys.path.append(sys.path[0] + "/../")
 from gspylib.threads.parallelTool import parallelTool
-from gspylib.common.DbClusterInfo import initParserXMLFile, \
-    readOneClusterConfigItem
 from gspylib.common.Common import DefaultValue, ClusterCommand
 from gspylib.common.OMCommand import OMCommand
 from gspylib.common.ErrorCode import ErrorCode
-from gspylib.os.gsfile import g_file
-from gspylib.os.gsfile import g_Platform
-from gspylib.common.VersionInfo import VersionInfo
 import impl.upgrade.UpgradeConst as Const
+from base_utils.executor.cmd_executor import CmdExecutor
+from domain_utils.cluster_file.cluster_config_file import ClusterConfigFile
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from base_utils.os.file_util import FileUtil
+from domain_utils.cluster_file.profile_file import ProfileFile
+from domain_utils.cluster_file.version_info import VersionInfo
+from base_utils.os.net_util import NetUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from os_platform.linux_distro import LinuxDistro
 
 sys.path.append(sys.path[0] + "/../../../lib/")
 DefaultValue.doConfigForParamiko()
@@ -79,21 +85,21 @@ class PostUninstallImpl:
         try:
             self.logger.log("Check log file path.", "addStep")
             # get tool path
-            clusterPath.append(DefaultValue.getClusterToolPath(self.user))
+            clusterPath.append(ClusterDir.getClusterToolPath(self.user))
 
             # get tmp path
             tmpDir = DefaultValue.getTmpDir(self.user, self.xmlFile)
             clusterPath.append(tmpDir)
 
             # get cluster  path
-            hostName = DefaultValue.GetHostIpOrName()
+            hostName = NetUtil.GetHostIpOrName()
             dirs = self.clusterInfo.getClusterDirectorys(hostName, False)
             for checkdir in dirs.values():
                 clusterPath.extend(checkdir)
 
             self.logger.debug("Cluster paths %s." % clusterPath)
             # check directory
-            g_file.checkIsInDirectory(self.logFile, clusterPath)
+            FileUtil.checkIsInDirectory(self.logFile, clusterPath)
             self.logger.log("Successfully checked log file path.", "constant")
         except Exception as e:
             self.logger.logExit(str(e))
@@ -130,14 +136,13 @@ class PostUninstallImpl:
         self.logger.debug("Do clean Environment succeeded.", "constant")
 
     def setOrCleanGphomeEnv(self, setGphomeenv=True):
-        osProfile = "/etc/profile"
+        osProfile = ClusterConstants.ETC_PROFILE
         if setGphomeenv:
-            GphomePath = DefaultValue.getPreClusterToolPath(self.user,
-                                                            self.xmlFile)
+            GphomePath = ClusterDir.getPreClusterToolPath(self.xmlFile)
             # set GPHOME
-            g_file.writeFile(osProfile, ["export GPHOME=%s" % GphomePath])
+            FileUtil.writeFile(osProfile, ["export GPHOME=%s" % GphomePath])
         else:
-            g_file.deleteLine(osProfile, "^\\s*export\\s*GPHOME=.*$")
+            FileUtil.deleteLine(osProfile, "^\\s*export\\s*GPHOME=.*$")
             self.logger.debug(
                 "Deleting crash GPHOME in user environment variables.")
 
@@ -149,9 +154,8 @@ class PostUninstallImpl:
         """
         self.logger.log("Checking unpreinstallation.")
         if not self.localMode:
-            DefaultValue.checkAllNodesMpprcFile(
-                self.clusterInfo.getClusterNodeNames(),
-                self.clusterInfo.appPath, self.mpprcFile)
+            ProfileFile.checkAllNodesMpprcFile(
+                self.clusterInfo.getClusterNodeNames(), self.mpprcFile)
 
         cmd = "%s -t %s -u %s -l '%s' -X '%s'" % (
             OMCommand.getLocalScript("Local_UnPreInstall"),
@@ -161,9 +165,9 @@ class PostUninstallImpl:
             self.xmlFile)
         self.logger.debug("Command for checking unpreinstall: %s" % cmd)
         # check if do postuninstall in all nodes
-        DefaultValue.execCommandWithMode(cmd, "check unpreinstall",
-                                         self.sshTool, self.localMode,
-                                         self.mpprcFile)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.sshTool, self.localMode,
+                                        self.mpprcFile)
         self.logger.log("Successfully checked unpreinstallation.")
 
     def cleanDirectory(self):
@@ -173,7 +177,7 @@ class PostUninstallImpl:
         output: NA
         """
         # clean instance path
-        hostName = DefaultValue.GetHostIpOrName()
+        hostName = NetUtil.GetHostIpOrName()
         dbNodeInfo = self.clusterInfo.getDbNodeByName(hostName)
         instanceDirs = []
         # get DB instance
@@ -202,9 +206,9 @@ class PostUninstallImpl:
             cmd = "rm -rf '%s'" % self.clusterInfo.appPath
             self.logger.debug(
                 "Command for deleting the installation path: %s" % cmd)
-            DefaultValue.execCommandWithMode(cmd, "delete install path",
-                                             self.sshTool, self.localMode,
-                                             self.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.sshTool, self.localMode,
+                                            self.mpprcFile)
             self.logger.log("Successfully deleted the installation directory.")
 
         # clean tmp dir
@@ -214,9 +218,9 @@ class PostUninstallImpl:
               % tmpDir
         self.logger.debug(
             "Command for deleting the temporary directory: %s" % cmd)
-        DefaultValue.execCommandWithMode(cmd, "delete the temporary directory",
-                                         self.sshTool, self.localMode,
-                                         self.mpprcFile)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.sshTool, self.localMode,
+                                        self.mpprcFile)
         self.logger.log("Successfully deleted the temporary directory.")
 
     def CleanInstanceDir(self):
@@ -230,18 +234,17 @@ class PostUninstallImpl:
             OMCommand.getLocalScript("Local_Clean_Instance"), self.user,
             self.localLog, self.xmlFile)
         self.logger.debug("Command for deleting the instance: %s" % cmd)
-        DefaultValue.execCommandWithMode(cmd, "delete the instances data",
-                                         self.sshTool, self.localMode,
-                                         self.mpprcFile)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.sshTool, self.localMode,
+                                        self.mpprcFile)
 
         # clean upgrade temp backup path
-        cmd = "rm -rf '%s'" % DefaultValue.getBackupDir(self.user, "upgrade")
+        cmd = "rm -rf '%s'" % ClusterDir.getBackupDir("upgrade", self.user)
         self.logger.debug(
             "Command for deleting the upgrade temp backup path: %s" % cmd)
-        DefaultValue.execCommandWithMode(cmd,
-                                         "delete backup directory for upgrade",
-                                         self.sshTool, self.localMode,
-                                         self.mpprcFile)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.sshTool, self.localMode,
+                                        self.mpprcFile)
 
         self.logger.log("Successfully deleted the instance's directory.")
 
@@ -257,16 +260,17 @@ class PostUninstallImpl:
 
         if (not self.deleteUser):
             # clean static config file
-            cmd = "rm -rf '%s'" % self.clusterInfo.appPath
-            DefaultValue.execCommandWithMode(cmd, "delete install directory",
-                                             self.sshTool, self.localMode,
-                                             self.mpprcFile)
+            if os.stat(os.path.dirname(self.clusterInfo.appPath)).st_uid != 0:
+                cmd = "rm -rf '%s'" % self.clusterInfo.appPath
+                CmdExecutor.execCommandWithMode(cmd,
+                                            self.sshTool, self.localMode,
+                                            self.mpprcFile)
             return
 
         group = grp.getgrgid(pwd.getpwnam(self.user).pw_gid).gr_name
 
         # get other nodes
-        hostName = DefaultValue.GetHostIpOrName()
+        hostName = NetUtil.GetHostIpOrName()
         otherNodes = self.clusterInfo.getClusterNodeNames()
         for otherNode in otherNodes:
             if (otherNode == hostName):
@@ -278,9 +282,9 @@ class PostUninstallImpl:
             OMCommand.getLocalScript("Local_Clean_OsUser"), self.user,
             self.localLog)
         self.logger.debug("Command for deleting remote OS user: %s" % cmd)
-        DefaultValue.execCommandWithMode(cmd, "delete OS user", self.sshTool,
-                                         self.localMode, self.mpprcFile,
-                                         otherNodes)
+        CmdExecutor.execCommandWithMode(cmd, self.sshTool,
+                                        self.localMode, self.mpprcFile,
+                                        otherNodes)
         self.logger.log("Successfully deleted remote OS user.")
 
         if (self.deleteGroup):
@@ -312,7 +316,7 @@ class PostUninstallImpl:
             "and environmental variables of other nodes.")
         try:
             # get other nodes
-            hostName = DefaultValue.GetHostIpOrName()
+            hostName = NetUtil.GetHostIpOrName()
             otherNodes = self.clusterInfo.getClusterNodeNames()
             for otherNode in otherNodes:
                 if (otherNode == hostName):
@@ -329,9 +333,9 @@ class PostUninstallImpl:
                     self.localLog,
                     self.xmlFile)
                 self.logger.debug("Command for deleting $GAUSS_ENV: %s" % cmd)
-                DefaultValue.execCommandWithMode(cmd, "delete $GAUSS_ENV",
-                                                 self.sshTool, self.localMode,
-                                                 self.mpprcFile, otherNodes)
+                CmdExecutor.execCommandWithMode(cmd,
+                                                self.sshTool, self.localMode,
+                                                self.mpprcFile, otherNodes)
             cmd = "%s -t %s -u %s -l '%s' -X '%s'" % (
                 OMCommand.getLocalScript("Local_UnPreInstall"),
                 ACTION_CLEAN_TOOL_ENV,
@@ -340,12 +344,11 @@ class PostUninstallImpl:
                 self.xmlFile)
             self.logger.debug(
                 "Command for deleting environmental variables: %s" % cmd)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "delete environment variables",
-                                             self.sshTool,
-                                             self.localMode,
-                                             self.mpprcFile,
-                                             otherNodes)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.sshTool,
+                                            self.localMode,
+                                            self.mpprcFile,
+                                            otherNodes.append(hostName))
         except Exception as e:
             self.logger.logExit(str(e))
         self.logger.log(
@@ -364,27 +367,27 @@ class PostUninstallImpl:
         self.logger.log("Deleting logs of other nodes.")
         try:
             # get other nodes
-            hostName = DefaultValue.GetHostIpOrName()
+            hostName = NetUtil.GetHostIpOrName()
             otherNodes = self.clusterInfo.getClusterNodeNames()
             for otherNode in otherNodes:
                 if (otherNode == hostName):
                     otherNodes.remove(otherNode)
 
             # clean log
-            cmd = "rm -rf '%s/%s'; rm -rf /tmp/gauss_*;" % (
-                self.clusterInfo.logPath, self.user)
-            cmd += "rm -rf '%s/Python-2.7.9'" \
-                   % DefaultValue.getClusterToolPath(self.user)
-            self.logger.debug(
-                "Command for deleting logs of other nodes: %s" % cmd)
-            DefaultValue.execCommandWithMode(cmd,
-                                             "delete user log directory",
-                                             self.sshTool,
-                                             self.localMode,
-                                             self.mpprcFile,
-                                             otherNodes)
-            self.logger.debug(
-                "Successfully deleted logs of the nodes: %s." % otherNodes)
+            if os.stat(ClusterDir.getClusterToolPath(self.user)).st_uid != 0 or \
+                    os.stat(self.clusterInfo.logPath).st_uid != 0:
+                cmd = "rm -rf '%s/%s'; rm -rf /tmp/gauss_*;" % (self.clusterInfo.logPath, self.user)
+                python_path = "%s/Python-2.7.9" % ClusterDir.getClusterToolPath(self.user)
+                if DefaultValue.non_root_owner(python_path):
+                    cmd += "rm -rf '%s/Python-2.7.9'" % ClusterDir.getClusterToolPath(self.user)
+                self.logger.debug("Command for deleting logs of other nodes: %s" % cmd)
+                CmdExecutor.execCommandWithMode(cmd,
+                                                self.sshTool,
+                                                self.localMode,
+                                                self.mpprcFile,
+                                                otherNodes)
+                self.logger.debug(
+                    "Successfully deleted logs of the nodes: %s." % otherNodes)
         except Exception as e:
             self.logger.logExit(
                 ErrorCode.GAUSS_502["GAUSS_50207"] % "other nodes log"
@@ -402,37 +405,37 @@ class PostUninstallImpl:
             "Deleting software packages "
             "and environmental variables of the local node.")
         try:
-            self.clusterToolPath = DefaultValue.getClusterToolPath(self.user)
+            self.clusterToolPath = ClusterDir.getClusterToolPath(self.user)
 
             # clean local node environment software
             path = "%s/%s" % (self.clusterToolPath, PSSHDIR)
-            g_file.removeDirectory(path)
+            FileUtil.removeDirectory(path)
             path = "%s/upgrade.sh" % self.clusterToolPath
-            g_file.removeFile(path)
+            FileUtil.removeFile(path)
             path = "%s/version.cfg" % self.clusterToolPath
-            g_file.removeFile(path)
+            FileUtil.removeFile(path)
             path = "%s/GaussDB.py" % self.clusterToolPath
-            g_file.removeFile(path)
+            FileUtil.removeFile(path)
             path = "%s/libcgroup" % self.clusterToolPath
-            g_file.removeDirectory(path)
+            FileUtil.removeDirectory(path)
             path = "%s/unixodbc" % self.clusterToolPath
-            g_file.removeDirectory(path)
+            FileUtil.removeDirectory(path)
             path = "%s/server.key.cipher" % self.clusterToolPath
-            g_file.removeFile(path)
+            FileUtil.removeFile(path)
             path = "%s/server.key.rand" % self.clusterToolPath
-            g_file.removeFile(path)
+            FileUtil.removeFile(path)
             path = "%s/%s*" % (self.clusterToolPath, VersionInfo.PRODUCT_NAME)
-            g_file.removeDirectory(path)
+            FileUtil.removeDirectory(path)
             path = "%s/server.key.rand" % self.clusterToolPath
-            g_file.removeFile(path)
+            FileUtil.removeFile(path)
             path = "%s/Gauss*" % (self.clusterToolPath)
-            g_file.removeDirectory(path)
+            FileUtil.removeDirectory(path)
             path = "%s/sctp_patch" % (self.clusterToolPath)
-            g_file.removeDirectory(path)
-            path = "%s/%s" % (Const.UPGRADE_SQL_FILE, self.clusterToolPath)
-            g_file.removeFile(path)
-            path = "%s/%s" % (Const.UPGRADE_SQL_SHA, self.clusterToolPath)
-            g_file.removeFile(path)
+            FileUtil.removeDirectory(path)
+            path = "%s/%s" % (self.clusterToolPath, Const.UPGRADE_SQL_FILE)
+            FileUtil.removeFile(path)
+            path = "%s/%s" % (self.clusterToolPath, Const.UPGRADE_SQL_SHA)
+            FileUtil.removeFile(path)
             self.logger.debug(
                 "Deleting environmental software of local nodes.")
 
@@ -452,7 +455,7 @@ class PostUninstallImpl:
             if (self.mpprcFile is not None and self.mpprcFile != ""):
                 userProfile = self.mpprcFile
             else:
-                userProfile = "/home/%s/.bashrc" % self.user
+                userProfile = ClusterConstants.HOME_USER_BASHRC % self.user
             if (not os.path.exists(userProfile)):
                 self.logger.debug(
                     "The %s does not exist. "
@@ -461,11 +464,14 @@ class PostUninstallImpl:
             # clean user's environmental variable
             DefaultValue.cleanUserEnvVariable(userProfile,
                                               cleanGAUSS_WARNING_TYPE=True)
+            if os.path.exists(ClusterConstants.HOME_USER_BASHRC % self.user):
+                FileUtil.deleteLine(ClusterConstants.HOME_USER_BASHRC % self.user,
+                                    "^\\s*export\\s*%s=.*$" % DefaultValue.MPPRC_FILE_ENV)
 
             # clean $GAUSS_ENV
             if (not self.deleteUser):
                 envContent = "^\\s*export\\s*GAUSS_ENV=.*$"
-                g_file.deleteLine(userProfile, envContent)
+                FileUtil.deleteLine(userProfile, envContent)
                 self.logger.debug("Command for deleting $GAUSS_ENV: %s" % cmd,
                                   "constant")
 
@@ -483,11 +489,11 @@ class PostUninstallImpl:
         """
         if (not self.deleteUser):
             if (self.localMode):
-                cmd = "rm -rf '%s'" % self.clusterInfo.appPath
-                DefaultValue.execCommandWithMode(cmd,
-                                                 "delete install directory",
-                                                 self.sshTool, self.localMode,
-                                                 self.mpprcFile)
+                if os.stat(os.path.dirname(self.clusterInfo.appPath)).st_uid != 0:
+                    cmd = "rm -rf '%s'" % self.clusterInfo.appPath
+                    CmdExecutor.execCommandWithMode(cmd,
+                                                    self.sshTool, self.localMode,
+                                                    self.mpprcFile)
             return
 
         group = grp.getgrgid(pwd.getpwnam(self.user).pw_gid).gr_name
@@ -528,7 +534,7 @@ class PostUninstallImpl:
         try:
             # clean log
             path = "%s/%s" % (self.clusterInfo.logPath, self.user)
-            g_file.removeDirectory(path)
+            FileUtil.removeDirectory(path)
         except Exception as e:
             self.logger.logExit(
                 ErrorCode.GAUSS_502["GAUSS_50207"]
@@ -545,25 +551,34 @@ class PostUninstallImpl:
         self.logger.debug("Clean mpprc file.", "addStep")
         # check if mpprcfile is null
         if (self.mpprcFile != ""):
-            baseCmd = "rm -rf '%s'" % self.mpprcFile
+            try:
+                UserUtil.check_user_exist(self.user)
+                baseCmd = 'su - %s -c "rm -rf %s"' % (self.user, self.mpprcFile)
+            except Exception as exp:
+                self.logger.debug("Check user [%s] not exist. Error: %s" % (self.user, str(exp)))
+                baseCmd = "if [ -f %s ]; then rm -rf %s; fi" % (self.mpprcFile, self.mpprcFile)
             # check if local mode
-            if (self.localMode):
-                (status, output) = subprocess.getstatusoutput(baseCmd)
-                if (status != 0):
-                    self.logger.logExit(
-                        ErrorCode.GAUSS_502["GAUSS_50207"]
-                        % "MPPRC file"
-                        + " Command: %s. Error: \n%s" % (baseCmd, output))
-            else:
-                dbNodeNames = self.clusterInfo.getClusterNodeNames()
-                for dbNodeName in dbNodeNames:
-                    cmd = "pssh -s -H %s '%s'" % (dbNodeName, baseCmd)
-                    (status, output) = subprocess.getstatusoutput(cmd)
+            if os.stat(self.mpprcFile).st_uid != 0:
+                if (self.localMode):
+                    (status, output) = subprocess.getstatusoutput(baseCmd)
                     if (status != 0):
                         self.logger.logExit(
                             ErrorCode.GAUSS_502["GAUSS_50207"]
                             % "MPPRC file"
-                            + " Command: %s. Error: \n%s" % (cmd, output))
+                            + " Command: %s. Error: \n%s" % (baseCmd, output))
+                else:
+                    dbNodeNames = self.clusterInfo.getClusterNodeNames()
+                    for dbNodeName in dbNodeNames:
+                        cmd = "pssh -s -H %s '%s'" % (dbNodeName, baseCmd)
+                        (status, output) = subprocess.getstatusoutput(cmd)
+                        if (status != 0):
+                            message = output.strip()
+                            err_message = ErrorCode.GAUSS_502["GAUSS_50207"] % "MPPRC file" + \
+                                          " Command: %s. Error: \n%s" % (cmd, output)
+                            if "Permission denied" in message:
+                                self.logger.debug(err_message)
+                            else:
+                                self.logger.logExit(err_message)
         self.logger.debug("Successfully cleaned mpprc file.", "constant")
 
     def cleanScript(self):
@@ -577,9 +592,9 @@ class PostUninstallImpl:
             self.clusterToolPath)
         if self.deleteUser:
             cmd += " -P %s" % self.userHome
-        DefaultValue.execCommandWithMode(cmd, "clean script",
-                                         self.sshTool, self.localMode,
-                                         self.mpprcFile)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.sshTool, self.localMode,
+                                        self.mpprcFile)
         self.logger.debug("Clean script path successfully.")
 
     def cleanSyslogConfig(self):
@@ -590,7 +605,7 @@ class PostUninstallImpl:
         """
         try:
             # only suse11/suse12 can support it
-            distname = g_Platform.dist()[0]
+            distname = LinuxDistro.linux_distribution()[0]
             if (distname.upper() != "SUSE"):
                 return
 
@@ -603,9 +618,8 @@ class PostUninstallImpl:
                 self.xmlFile)
             self.logger.debug(
                 "Command for clean syslog-ng/rsyslog config: %s" % cmd)
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "clean syslog-ng/rsyslog config",
                 self.sshTool,
                 self.localMode,
                 self.mpprcFile,
@@ -619,7 +633,8 @@ class PostUninstallImpl:
         input : host
         output: NA
         """
-        cmd = "rm -rf %s/* && echo 'OKOKOK'" % gphome
+        cmd = "if [ $(stat -c \"%s\" %s) == 0 ];then echo 'OKOKOK';" \
+              "else rm -rf %s/* && echo 'OKOKOK';fi" % ("%u", gphome, gphome)
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect(host, 22, "root", self.sshpwd)
@@ -627,7 +642,6 @@ class PostUninstallImpl:
         output = stdout.read()
         self.logger.debug("%s: %s" % (str(host), str(output)))
         if output.find('OKOKOK') < 0:
-            errMsg = stderr.read()
             raise Exception(
                 ErrorCode.GAUSS_514["GAUSS_51400"]
                 % cmd + "host: %s. Error:\n%s"
@@ -684,8 +698,8 @@ class PostUninstallImpl:
         input : hostname
         output: True/False, hostname
         """
-        (retStatus, retValue) = readOneClusterConfigItem(
-            initParserXMLFile(self.xmlFile), itemName, "cluster")
+        (retStatus, retValue) = ClusterConfigFile.readOneClusterConfigItem(
+            ClusterConfigFile.initParserXMLFile(self.xmlFile), itemName, "cluster")
         if (retStatus != 0):
             raise Exception(
                 ErrorCode.GAUSS_502["GAUSS_50204"]
@@ -751,11 +765,12 @@ class PostUninstallImpl:
                     # SSH trust has not been created
                     # which means clean gphome locally
                     self.verifyCleanGphome()
-                    (status, output) = subprocess.getstatusoutput(cmd)
-                    if status != 0:
-                        raise Exception(
-                            ErrorCode.GAUSS_514["GAUSS_51400"]
-                            % cmd + " Error:\n%s" % output)
+                    if os.stat(gphome).st_uid != 0:
+                        (status, output) = subprocess.getstatusoutput(cmd)
+                        if status != 0:
+                            raise Exception(
+                                ErrorCode.GAUSS_514["GAUSS_51400"]
+                                % cmd + " Error:\n%s" % output)
                 self.logger.logExit("Successfully clean gphome.")
 
         except Exception as e:

@@ -20,7 +20,7 @@ import subprocess
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsfile import g_file
+from base_utils.os.file_util import FileUtil
 
 # Conf file name constant
 POSTGRESQL_CONF = "postgresql.conf"
@@ -81,7 +81,7 @@ class CheckDebugSwitch(BaseItem):
                 paraPath))
             return -1
         # Gets the log_min_messages parameter in the configuration file
-        output = g_file.readFile(paraPath, "log_min_messages")
+        output = FileUtil.readFile(paraPath, "log_min_messages")
         value = None
         for line in output:
             line = line.split('#')[0].strip()

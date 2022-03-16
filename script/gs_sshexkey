@@ -49,7 +49,14 @@ from gspylib.threads.parallelTool import parallelTool
 from gspylib.common.Common import DefaultValue, ClusterCommand
 from gspylib.common.ParameterParsecheck import Parameter
 from gspylib.os.gsfile import g_file
-from gspylib.os.gsOSlib import g_OSlib
+
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from base_utils.os.grep_util import GrepUtil
+from base_utils.os.password_util import PasswordUtil
+from base_utils.os.net_util import NetUtil
+from subprocess import PIPE
+from base_utils.common.fast_popen import FastPopen
 
 DefaultValue.doConfigForParamiko()
 import paramiko
@@ -170,6 +177,8 @@ General options:
   -l                          Path of log file.
       --skip-hostname-set     Whether to skip hostname setting.
                               (The default value is set.)
+      --no-deduplicate        Whether to deduplicate the hostname info in /etc/hosts.
+                              (The default value is deduplicated.)
   -?, --help                  Show help information for this utility,
                               and exit the command line mode.
   -V, --version               Show version information.
@@ -226,7 +235,7 @@ General options:
                                     % 'f' + " It cannot be empty.")
         else:
             for temp_host in self.hostList:
-                if not DefaultValue.isIpValid(temp_host):
+                if not NetUtil.isIpValid(temp_host):
                     GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"]
                                        % temp_host)
         # check logfile
@@ -267,7 +276,7 @@ General options:
                 for readLine in f:
                     hostname = readLine.strip().split("\n")[0]
                     if hostname != "" and hostname not in self.hostList:
-                        if not DefaultValue.isIpValid(hostname):
+                        if not NetUtil.isIpValid(hostname):
                             inValidIp.append(hostname)
                             continue
                         self.hostList.append(hostname)
@@ -502,14 +511,14 @@ General options:
             cmd = "grep -v '" + HOSTS_MAPPING_FLAG + "' /etc/hosts| grep -v '^$'"
             (status, output) = subprocess.getstatusoutput(cmd)
             try:
-                g_file.createFile(tmpHostIpName)
-                g_file.changeMode(DefaultValue.KEY_FILE_MODE, tmpHostIpName)
-                g_file.writeFile(tmpHostIpName, [output])
+                FileUtil.createFile(tmpHostIpName)
+                FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, tmpHostIpName)
+                FileUtil.writeFile(tmpHostIpName, [output])
                 shutil.copyfile(tmpHostIpName, '/etc/hosts')
-                g_file.removeFile(tmpHostIpName)
+                FileUtil.removeFile(tmpHostIpName)
             except Exception as e:
                 if os.path.exists(tmpHostIpName):
-                    g_file.removeFile(tmpHostIpName)
+                    FileUtil.removeFile(tmpHostIpName)
                 raise Exception(str(e))
             if not self.nodeduplicate:
                 ipCompare = []
@@ -527,7 +536,7 @@ General options:
                     hostIPInfo += '%s  %s  %s\n' % (key, value, HOSTS_MAPPING_FLAG)
             hostIPInfo = hostIPInfo[:-1]
             ipInfoList = [hostIPInfo]
-            g_file.writeFile("/etc/hosts", ipInfoList)
+            FileUtil.writeFile("/etc/hosts", ipInfoList)
         if (self.logFile != ""):
             if (not os.path.exists(tmp_files)):
                 self.logger.debug(
@@ -845,7 +854,7 @@ General options:
         output: NA
         """
         self.logOut(6, 0)
-        g_file.createFileInSafeMode(self.authorized_keys_fname)
+        FileUtil.createFileInSafeMode(self.authorized_keys_fname)
         with open(self.authorized_keys_fname, 'a+') as f:
             for line in f:
                 if line.strip() == self.localID:
@@ -854,7 +863,7 @@ General options:
             f.write(self.localID)
             f.write('\n')
         self.logOut(7, 1)
-        g_file.changeMode(DefaultValue.KEY_FILE_MODE,
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE,
                           self.authorized_keys_fname)
 
     def checkAuthentication(self, hostname):

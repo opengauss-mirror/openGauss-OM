@@ -27,10 +27,8 @@ import grp
 import subprocess
 from gspylib.common.CheckPythonVersion import checkPythonVersion
 checkPythonVersion()
-from subprocess import Popen, PIPE
 
-from gspylib.common.DbClusterInfo import dbClusterInfo, \
-    readOneClusterConfigItem, initParserXMLFile
+from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
@@ -38,6 +36,13 @@ from gspylib.common.ParallelBaseOM import ParallelBaseOM
 from gspylib.common.ParameterParsecheck import Parameter
 from impl.preinstall.OLAP.PreinstallImplOLAP import PreinstallImplOLAP
 from gspylib.threads.SshTool import SshTool
+from domain_utils.cluster_file.cluster_config_file import ClusterConfigFile
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from domain_utils.cluster_file.profile_file import ProfileFile
+from domain_utils.cluster_os.cluster_user import ClusterUser
+from base_utils.os.net_util import NetUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from base_utils.os.user_util import UserUtil
 
 #############################################################################
 # Global variables
@@ -61,6 +66,9 @@ class Preinstall(ParallelBaseOM):
         self.passwordsec = ""
         self.corePath = ""
         self.is_new_root_path = False
+        self.ips = ""
+        self.root_ssh_agent_flag = False
+        self.user_ssh_agent_flag = False
 
     def usage(self):
         """
@@ -149,7 +157,7 @@ General options:
         if (ParaDict.__contains__("preMode")):
             self.preMode = ParaDict.get("preMode")
 
-    def checkUserParameter(self, check_clusterInfo):
+    def checkUserParameter(self):
         """
         """
         if (self.user == ""):
@@ -157,9 +165,6 @@ General options:
                 ErrorCode.GAUSS_500["GAUSS_50001"] % 'U' + ".")
         elif (":" in self.user):
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % 'U')
-
-        # check group info
-        self.checkGroupParameter()
 
         # check if user exists
         cmd = "cat /etc/passwd|grep -v nologin|grep -v halt|" \
@@ -179,16 +184,6 @@ General options:
             except Exception as e:
                 GaussLog.exitWithError(str(e))
 
-    def checkGroupParameter(self):
-        """
-        """
-        if (self.group == ""):
-            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"]
-                                   % 'G' + ".")
-        if (self.user == "root" or self.group == "root"):
-            GaussLog.exitWithError(ErrorCode.GAUSS_503["GAUSS_50301"]
-                                   + "User:Group[%s:%s]."
-                                   % (self.user, self.group))
 
     def checkUserAndGroup(self):
         """
@@ -200,39 +195,53 @@ General options:
                                        + "User:Group[%s:%s]"
                                        % (self.user, self.group))
 
-    def checkConfigFile(self):
-        """
-        """
-        if (self.xmlFile == ""):
-            GaussLog.exitWithError(
-                ErrorCode.GAUSS_500["GAUSS_50001"] % 'X' + ".")
-        if (not os.path.exists(self.xmlFile)):
-            GaussLog.exitWithError(
-                ErrorCode.GAUSS_502["GAUSS_50201"] % self.xmlFile)
-        if (not os.path.isabs(self.xmlFile)):
-            GaussLog.exitWithError(
-                ErrorCode.GAUSS_502["GAUSS_50213"] % "configuration file")
+    def check_config_content(self, g_nodeInfo):
+        UserUtil.check_path_owner(ClusterConfigFile.getOneClusterConfigItem("gaussdbAppPath", self.xmlFile))
+        UserUtil.check_path_owner(ClusterConfigFile.getOneClusterConfigItem("gaussdbToolPath", self.xmlFile))
+        UserUtil.check_path_owner(ClusterConfigFile.getOneClusterConfigItem("tmpMppdbPath", self.xmlFile))
+        UserUtil.check_path_owner(ClusterConfigFile.getOneClusterConfigItem("gaussdbLogPath", self.xmlFile))
+        UserUtil.check_path_owner(ClusterConfigFile.getOneClusterConfigItem("corePath", self.xmlFile))
+
+        # check cm
+        UserUtil.check_path_owner(g_nodeInfo.cmDataDir)
+        for cmaInst in g_nodeInfo.cmagents:
+            UserUtil.check_path_owner(cmaInst.datadir)
+        for cmsInst in g_nodeInfo.cmservers:
+            UserUtil.check_path_owner(cmsInst.datadir)
+
+        # check dn
+        for dnInst in g_nodeInfo.datanodes:
+            UserUtil.check_path_owner(dnInst.datadir)
+            if (len(dnInst.ssdDir) != 0):
+                UserUtil.check_path_owner(dnInst.ssdDir)
+        # check dn xlog
+        for dnInst in g_nodeInfo.datanodes:
+            if dnInst.xlogdir != '':
+                UserUtil.check_path_owner(dnInst.xlogdir)
+
 
     def checkEnvValueParameter(self):
         """
         """
         for param in self.envParams:
             # check environmental variables vaild
-            if (param.find("\'") >= 0 or param.find(";") >= 0):
-                GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
-                                       % "-env-var" + " There are illegal"
-                                                      " characters in the"
-                                                      " parameter.")
+            illegal = ["|", ";", "&", "$", ">", "<", "`", "\\", "!", "\n"]
+            if any(ill_char in param for ill_char in illegal):
+                GaussLog.exitWithError(
+                    ErrorCode.GAUSS_500["GAUSS_50004"] % "-env-var" +
+                    " There are illegal characters in the parameter.")
 
     def checkLogFile(self):
         """
         """
         if (self.logFile == ""):
             self.logFile = self.getPreOMLogPath(
-                DefaultValue.PREINSTALL_LOG_FILE, self.xmlFile)
+                ClusterConstants.PREINSTALL_LOG_FILE, self.xmlFile)
         if (not os.path.isabs(self.logFile)):
             GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"]
                                    % self.logFile)
+        UserUtil.check_path_owner(self.logFile)
+
 
     def checkMpprcFile(self):
         """
@@ -246,6 +255,8 @@ General options:
 
         # check mpprc file path
         mpprcFilePath = os.path.normpath(self.mpprcFile)
+        if os.path.islink(mpprcFilePath):
+            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_51251"] % mpprcFilePath)
         if (mpprcFilePath == "/home/%s" % self.user):
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % \
                                    '-sep-env-file' + " The file [%s] can not"
@@ -258,8 +269,8 @@ General options:
                                                      "be a directory."
                                    % self.mpprcFile)
 
-        DefaultValue.checkMpprcFileChange(self.mpprcFile, "", self.mpprcFile)
-        (checkstatus, checkoutput) = DefaultValue.checkEnvFile(self.mpprcFile)
+        ProfileFile.checkMpprcFileChange(self.mpprcFile, "", self.mpprcFile)
+        (checkstatus, checkoutput) = ProfileFile.check_env_file(self.mpprcFile)
         if (not checkstatus):
             if (self.mpprcFile != ""):
                 envfile = self.mpprcFile + " and /etc/profile"
@@ -274,23 +285,30 @@ General options:
         input: NA
         output: NA
         """
+        ClusterUser.checkGroupParameter(self.user, self.group)
         # remove HOST_IP info with /etc/profile and environ
         cmd = "sed -i '/^export[ ]*HOST_IP=/d' /etc/profile"
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50205"]
-                                % "/etc/profile" + "The cmd is %s" % cmd)
+                                % ClusterConstants.ETC_PROFILE + "The cmd is %s" % cmd)
         if "HOST_IP" in os.environ.keys():
             os.environ.pop("HOST_IP")
 
         # check config file
-        self.checkConfigFile()
-        check_clusterInfo = dbClusterInfo()
-        check_clusterInfo.initFromXml(self.xmlFile)
+        ClusterConfigFile.checkConfigFile(self.xmlFile)
         # check user info
-        self.checkUserParameter(check_clusterInfo)
+        self.checkUserParameter()
         # check user group match
         self.checkUserAndGroup()
+        self.initClusterInfo()
+        # check config content
+        hostName = NetUtil.GetHostIpOrName()
+        g_nodeInfo = self.clusterInfo.getDbNodeByName(hostName)
+        if (g_nodeInfo is None):
+            self.logger.logExit(ErrorCode.GAUSS_516["GAUSS_51620"] % "local" +
+                                " It is not a host name %s." % hostName)
+        self.check_config_content(g_nodeInfo)
         # check env-val
         self.checkEnvValueParameter()
         # check mpprc file
@@ -323,13 +341,17 @@ General options:
     def decompressVersioncfg(self):
         package_path = os.path.dirname(os.path.realpath(__file__))
         toolpath = package_path + "/../"
-        cmd = "cd " + toolpath + \
-              " && tar -xpf `head -1 version.cfg`*.tar.bz2 ./version.cfg"
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd = "cd " + toolpath + " && tar -xpf `head -1 version.cfg`*.tar.bz2 ./version.cfg ./bin/encrypt " \
+                                 "&& mv ./bin/encrypt ./script/gspylib/clib && rm -rf ./bin"
+        (status, _) = subprocess.getstatusoutput(cmd)
         if status != 0:
-            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"]
-                                % "version.cfg" + "The cmd is %s. " % cmd +
-                                "The output is %s." % output)
+            cmd = "cd " + toolpath + " && tar -xpf `ls openGauss*.tar.bz2|tail -1` ./version.cfg" \
+                                     " ./bin/encrypt && mv ./bin/encrypt ./script/gspylib/clib" \
+                                     " && rm -rf ./bin"
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"] % "version.cfg"
+                                       + "The cmd is %s. " % cmd + "The output is %s." % output)
 
     # init global variables
     def initGlobals(self):
@@ -342,16 +364,15 @@ General options:
         self.initLogger("gs_preinstall")
 
         # get the clusterToolPath
-        self.clusterToolPath = self.getPreClusterToolPath(self.xmlFile)
-        temp_nodes = self.getOneClusterConfigItem("nodeNames", self.xmlFile)
+        self.clusterToolPath = ClusterDir.getPreClusterToolPath(self.xmlFile)
+        temp_nodes = ClusterConfigFile.getOneClusterConfigItem("nodeNames", self.xmlFile)
         if len(temp_nodes.split(',')) < 2:
             self.isSingle = True
-        os.environ[DefaultValue.TOOL_PATH_ENV] = self.clusterToolPath
+        os.environ[ClusterConstants.TOOL_PATH_ENV] = self.clusterToolPath
 
         self.logger.log("Parsing the configuration file.", "addStep")
         try:
             # parse the configuration file
-            self.initClusterInfo()
             self.sshTool = SshTool(self.clusterInfo.getClusterNodeNames(),
                                    self.logFile,
                                    DefaultValue.TIMEOUT_PSSH_PREINSTALL)
@@ -360,10 +381,10 @@ General options:
             self.logger.logExit(str(e))
 
         # check the local hostname
-        if DefaultValue.GetHostIpOrName() not in \
+        if NetUtil.GetHostIpOrName() not in \
                 self.clusterInfo.getClusterNodeNames():
             self.logger.logExit(ErrorCode.GAUSS_516["GAUSS_51619"]
-                                % DefaultValue.GetHostIpOrName())
+                                % NetUtil.GetHostIpOrName())
         self.logger.log("Successfully parsed the configuration file.",
                         "constant")
 
@@ -376,60 +397,22 @@ General options:
         try:
             fullLogPath = ""
             # get the log path
-            configedLogPath = self.getOneClusterConfigItem("gaussdbLogPath",
+            configedLogPath = ClusterConfigFile.getOneClusterConfigItem("gaussdbLogPath",
                                                            xml)
             DefaultValue.checkPathVaild(configedLogPath)
             # check gaussdbLogPath is not null
             if configedLogPath == "":
                 fullLogPath = "%s/%s/om/%s" % (
-                DefaultValue.GAUSSDB_DIR, self.user, logName)
+                ClusterConstants.GAUSSDB_DIR, self.user, logName)
             else:
                 fullLogPath = "%s/%s/om/%s" % (
                 os.path.normpath(configedLogPath), self.user, logName)
-
+            UserUtil.check_path_owner(fullLogPath)
             return fullLogPath
         except Exception as e:
             GaussLog.exitWithError(str(e))
 
-    def getOneClusterConfigItem(self, item_name, xml):
-        """
-        function: get the item_name's value in xml file
-        input: item_name, xml
-        output: item_name's value in the xml
-        """
-        try:
-            # set the environment variable
-            os.putenv("CLUSTERCONFIGFILE", xml)
-            # get the item_name's value in the xml
-            (retStatus, retValue) = readOneClusterConfigItem(
-                initParserXMLFile(xml), item_name, "cluster")
-            if (retStatus == 0):
-                return os.path.normpath(retValue)
-            elif (retStatus == 2):
-                return ""
-            else:
-                raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"]
-                                % "the cluster configuration item file"
-                                + " Error: \n%s." % retValue)
-        except Exception as e:
-            GaussLog.exitWithError(str(e))
 
-    def getPreClusterToolPath(self, xml):
-        """
-        function: get the cluster tool path
-        input: xml
-        output: configedPath
-        """
-        try:
-            # get the cluster tool path in the xml file
-            configedPath = self.getOneClusterConfigItem("gaussdbToolPath", xml)
-            DefaultValue.checkPathVaild(configedPath)
-            # check the gaussdbToolPath is not null
-            if configedPath == "":
-                configedPath = DefaultValue.CLUSTER_TOOL_PATH
-            return configedPath
-        except Exception as e:
-            self.context.logger.logExit(str(e))
 
     def change_lib_path(self):
         """
@@ -467,14 +450,14 @@ if __name__ == '__main__':
         preinstall = Preinstall()
         # set LD_LIBRARY_PATH
         preinstall.setLibPath()
-        # decompress version.cfg
-        preinstall.decompressVersioncfg()
         # parse cmd lines
         preinstall.parseCommandLine()
         # check parameters
         preinstall.checkParameter()
         # init global variables
         preinstall.initGlobals()
+        # decompress version.cfg
+        preinstall.decompressVersioncfg()
         preinstall.change_lib_path()
         impl = PreinstallImplOLAP(preinstall)
         # Perform the whole extand process

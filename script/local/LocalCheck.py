@@ -27,15 +27,19 @@ import xml.etree.cElementTree as ETree
 
 sys.path.append(sys.path[0] + "/../")
 sys.path.append(os.path.realpath(os.path.dirname(__file__)) + "/../../lib")
-from gspylib.os.gsfile import g_file
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.Common import DefaultValue
-from gspylib.common.VersionInfo import VersionInfo
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.ParameterParsecheck import Parameter
-from gspylib.os.gsOSlib import g_OSlib
-from gspylib.os.gsfile import g_Platform
+from domain_utils.cluster_file.config_param import ConfigParam
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from domain_utils.cluster_file.version_info import VersionInfo
+from base_utils.os.net_util import NetUtil
+from base_utils.os.user_util import UserUtil
+from os_platform.linux_distro import LinuxDistro
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
 actioItemMap = {
     "Check_SysCtl_Parameter": ['/etc/sysctl.conf', False],
@@ -47,8 +51,7 @@ actioItemMap = {
 
 docker_no_need_check = ["net.core.wmem_max", "net.core.rmem_max",
                         "net.core.wmem_default", "net.core.rmem_default",
-                        "net.sctp.sctp_mem", "net.sctp.sctp_rmem",
-                        "net.sctp.sctp_wmem", "net.core.netdev_max_backlog",
+                        "net.core.netdev_max_backlog",
                         "net.ipv4.tcp_max_tw_buckets", "net.ipv4.tcp_tw_reuse",
                         "net.ipv4.tcp_tw_recycle", "net.ipv4.tcp_retries2",
                         "net.ipv4.ip_local_reserved_ports", "net.ipv4.tcp_rmem",
@@ -156,7 +159,7 @@ def checkNetWorkMTU():
         # Init cluster info
         DbClusterInfo = dbClusterInfo()
         DbClusterInfo.initFromStaticConfig(g_opts.user)
-        localHost = DefaultValue.GetHostIpOrName()
+        localHost = NetUtil.GetHostIpOrName()
         nodeIp = None
         for dbnode in DbClusterInfo.dbNodes:
             if (dbnode.name == localHost):
@@ -169,7 +172,7 @@ def checkNetWorkMTU():
             g_logger.log("Abnormal reason: Failed to obtain network"
                          " card MTU value." + " Error: \n%s" % valueStr)
             return 1
-        netParameter = DefaultValue.getConfigFilePara(configFile,
+        netParameter = ConfigParam.getConfigFilePara(configFile,
                                                       '/sbin/ifconfig')
         if (int(valueStr) != int(g_opts.mtuValue)):
             g_logger.log("        Abnormal: network '%s' 'mtu' value[%s:%s]"
@@ -203,7 +206,7 @@ def checkSysctlParameter(kernelParameter, isSet):
     patchlevel = ""
 
     # get the suggest parameters and updata kernelParameter
-    suggestParameterList = DefaultValue.getConfigFilePara(
+    suggestParameterList = ConfigParam.getConfigFilePara(
         configFile, 'SUGGEST:%s' % actioItemMap["Check_SysCtl_Parameter"][0])
     kernelParameter.update(suggestParameterList)
 
@@ -214,7 +217,7 @@ def checkSysctlParameter(kernelParameter, isSet):
                      "'gs_checkos -i A10' or 'gs_checkos -i B4'.")
         kernelParameter.pop("fs.aio-max-nr")
     # Get OS version
-    distname, version = g_Platform.dist()[0:2]
+    distname, version = LinuxDistro.linux_distribution()[0:2]
     if (distname == "SuSE" and version == "11"):
         cmd = "grep -i 'PATCHLEVEL' /etc/SuSE-release  |" \
               " awk -F '=' '{print $2}'"
@@ -239,12 +242,7 @@ def checkSysctlParameter(kernelParameter, isSet):
             continue
         if (DefaultValue.checkDockerEnv() and key in docker_no_need_check):
             continue
-        # The parameter sctpchecksumerrors check method is independent
-        if (key == "sctpchecksumerrors"):
-            cmd = "cat /proc/net/sctp/snmp | grep SctpChecksumErrors" \
-                  " | awk '{print $2}'"
-        else:
-            cmd = "cat %s" % ("/proc/sys/%s" % key.replace('.', '/'))
+        cmd = "cat %s" % ("/proc/sys/%s" % key.replace('.', '/'))
         (status, output) = subprocess.getstatusoutput(cmd)
         if (status == 0):
             if (key == "vm.min_free_kbytes"
@@ -315,15 +313,6 @@ def setOSParameter(setParameterList, patchlevel):
     # vm.extfrag_threshold parameter, skip set
     if ("vm.extfrag_threshold" in setParameterList and patchlevel == "1"):
         setParameterList.pop("vm.extfrag_threshold")
-    # The parameter sctpchecksumerrors set method is independent
-    if ("sctpchecksumerrors" in setParameterList):
-        cmd = "echo 1 > /sys/module/sctp/parameters/no_checksums"
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if (status != 0):
-            g_logger.debug("The cmd is %s " % cmd)
-            g_logger.log("        Failed to enforce sysctl kernel variable"
-                         " 'sctpchecksumerrors'. Error: %s" % output)
-        setParameterList.pop("sctpchecksumerrors")
 
     if (len(setParameterList) != 0):
         g_logger.debug("Setting sysctl parameter.")
@@ -332,7 +321,7 @@ def setOSParameter(setParameterList, patchlevel):
             g_logger.log("        Set variable '%s' to '%s'"
                          % (key, setParameterList[key]))
         cmd = "sysctl -p"
-        (status, output) = subprocess.getstatusoutput(cmd)
+        (status, _) = subprocess.getstatusoutput(cmd)
         if (status != 0):
             cmderrorinfo = "sysctl -p | grep 'No such file or directory'"
             (status, outputresult) = subprocess.getstatusoutput(cmderrorinfo)
@@ -463,7 +452,7 @@ def checkLimitsParameter(limitPara, isSet):
                 limitPath = '/etc/security/limits.d/'
                 nofiles = glob.glob("/etc/security/limits.d/*.conf")
                 for conf in nofiles:
-                    g_file.changeMode(DefaultValue.HOSTS_FILE, conf)
+                    FileUtil.changeMode(DefaultValue.HOSTS_FILE, conf)
                     SetLimitsConf(key[0], key[1],
                                   table[key].value_expected, conf)
                 if os.path.isfile(os.path.join(limitPath, '91-nofile.conf')):
@@ -558,7 +547,7 @@ def getClusterUser():
     if not gphome or not os.path.exists(gphome):
         user = "*"
         return user
-    user = g_OSlib.getPathOwner(gphome)[0]
+    user = UserUtil.getPathOwner(gphome)[0]
     return user
 
 
@@ -576,10 +565,10 @@ def CheckSection(section, isSetting=False):
     # get the parameter and value about section from configuration file
     if (section == '/etc/security/limits.conf'):
         checkList = ['open files', 'pipe size']
-        commParameterList = DefaultValue.getConfigFilePara(configFile,
+        commParameterList = ConfigParam.getConfigFilePara(configFile,
                                                            section, checkList)
     else:
-        commParameterList = DefaultValue.getConfigFilePara(configFile,
+        commParameterList = ConfigParam.getConfigFilePara(configFile,
                                                            section)
 
     # checking or setting the parameter what in the commParameterList
@@ -646,8 +635,8 @@ def checkParameter():
 
     # check if user exist and is the right user
     if (g_opts.user != ''):
-        DefaultValue.checkUser(g_opts.user)
-        tmpDir = DefaultValue.getTmpDirFromEnv(g_opts.user)
+        ClusterUser.checkUser(g_opts.user)
+        tmpDir = EnvUtil.getTmpDirFromEnv(g_opts.user)
         if (not os.path.exists(tmpDir)):
             GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50201"]
                                    % ("temporary directory[" + tmpDir + "]"))

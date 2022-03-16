@@ -21,6 +21,9 @@ sys.path.append(sys.path[0] + "/../../")
 from gspylib.common.Common import DefaultValue
 from gspylib.os.gsfile import g_file
 from impl.uninstall.UninstallImpl import UninstallImpl
+from base_utils.os.file_util import FileUtil
+from base_utils.os.net_util import NetUtil
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
 
 class UninstallImplOLAP(UninstallImpl):
@@ -29,30 +32,6 @@ class UninstallImplOLAP(UninstallImpl):
     save command line parameter values
     """
 
-    def __init__(self, unstallation):
-        self.logFile = unstallation.logFile
-        self.cleanInstance = unstallation.cleanInstance
-
-        self.localLog = unstallation.localLog
-        self.user = unstallation.user
-        self.group = unstallation.group
-        self.mpprcFile = unstallation.mpprcFile
-        self.localMode = unstallation.localMode
-        self.logger = unstallation.logger
-        self.sshTool = unstallation.sshTool
-        self.tmpDir = DefaultValue.getTmpDirFromEnv(self.user)
-        try:
-            # Initialize the unstallation.clusterInfo variable
-            unstallation.initClusterInfoFromStaticFile(self.user)
-            self.clusterInfo = unstallation.clusterInfo
-            nodeNames = self.clusterInfo.getClusterNodeNames()
-            # Initialize the self.sshTool variable
-            unstallation.initSshTool(nodeNames,
-                                     DefaultValue.TIMEOUT_PSSH_UNINSTALL)
-            self.sshTool = unstallation.sshTool
-        except Exception as e:
-            self.logger.logExit(str(e))
-
     def checkEnv(self):
         """
         function: check if GAUSS_ENV is 2
@@ -60,7 +39,7 @@ class UninstallImplOLAP(UninstallImpl):
         output: NA
         """
         try:
-            DefaultValue.checkUser(self.user)
+            ClusterUser.checkUser(self.user)
         except Exception as e:
             self.logger.exitWithError(str(e))
 
@@ -77,12 +56,12 @@ class UninstallImplOLAP(UninstallImpl):
 
         if (self.localMode):
             for dbnode in self.clusterInfo.dbNodes:
-                if (dbnode.name == DefaultValue.GetHostIpOrName()):
+                if (dbnode.name == NetUtil.GetHostIpOrName()):
                     if (len(dbnode.etcds) > 0):
                         etcdDir = dbnode.etcds[0].datadir
                         self.logger.debug("Clean etcd path %s in node: %s." % (
                             etcdDir, dbnode.name))
-                        g_file.cleanDirectoryContent(etcdDir)
+                        FileUtil.cleanDirectoryContent(etcdDir)
         else:
             for dbnode in self.clusterInfo.dbNodes:
                 if (len(dbnode.etcds) > 0):

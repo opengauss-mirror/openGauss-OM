@@ -18,11 +18,7 @@
 # Description  : ThreadPool.py is utility to support parallel control by
 #                multiprocess
 #############################################################################
-import threading
 import multiprocessing
-import subprocess
-import sys
-
 from multiprocessing.dummy import Pool as ThreadPool
 
 
@@ -71,25 +67,3 @@ class parallelTool:
         return results
 
 
-class CommandThread(threading.Thread):
-    """
-    The class is used to execute command in thread
-    """
-
-    def __init__(self, cmd):
-        '''
-        Constructor
-        '''
-        threading.Thread.__init__(self)
-        self.command = cmd
-        self.cmdStauts = 0
-        self.cmdOutput = ""
-
-    def run(self):
-        """
-        function: Run command
-        input : NA
-        output: NA
-        """
-        (self.cmdStauts, self.cmdOutput) = subprocess.getstatusoutput(
-            self.command)

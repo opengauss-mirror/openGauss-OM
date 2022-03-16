@@ -14,10 +14,9 @@
 # MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------
-from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsOSlib import g_OSlib
+from base_utils.os.date_util import DateUtil
 
 
 class CheckTimeZone(BaseItem):
@@ -25,7 +24,7 @@ class CheckTimeZone(BaseItem):
         super(CheckTimeZone, self).__init__(self.__class__.__name__)
 
     def doCheck(self):
-        output = g_OSlib.getDate()
+        output = DateUtil.getDate()
         timeZone = output.split()[-1]
         self.result.rst = ResultStatus.OK
         self.result.raw = output

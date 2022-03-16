@@ -30,6 +30,10 @@ from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.LocalBaseOM import LocalBaseOM
 from gspylib.threads.parallelTool import parallelTool
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.net_util import NetUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
 
 ########################################################################
 # Global variables define
@@ -125,7 +129,7 @@ def checkParameter():
         GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % 'U' + ".")
 
     if g_opts.ignorepgHbaMiss:
-        gaussHome = DefaultValue.getEnv("GAUSSHOME")
+        gaussHome = EnvUtil.getEnv("GAUSSHOME")
         if not gaussHome:
             GaussLog.exitWithError(ErrorCode.GAUSS_518["GAUSS_51802"]
                                    % "GAUSSHOME")
@@ -140,8 +144,8 @@ def checkParameter():
                                    % g_opts.clusterConf)
 
     if (g_opts.logFile == ""):
-        g_opts.logFile = DefaultValue.getOMLogPath(
-            DefaultValue.LOCAL_LOG_FILE, g_opts.clusterUser, "")
+        g_opts.logFile = ClusterLog.getOMLogPath(
+            ClusterConstants.LOCAL_LOG_FILE, g_opts.clusterUser, "")
 
 
 class ConfigHba(LocalBaseOM):
@@ -212,7 +216,7 @@ class ConfigHba(LocalBaseOM):
             parallelTool.parallelExecute(self.__configAnInstance,
                                          componentList)
             self.logger.log("Successfully configured all instances"
-                            " on node[%s]." % DefaultValue.GetHostIpOrName())
+                            " on node[%s]." % NetUtil.GetHostIpOrName())
         except Exception as e:
             raise Exception(str(e))
 

@@ -60,7 +60,8 @@ def parse_command():
     parser.add_option('-i', dest='inline', action='store_true',
                       help='aggregated output and error for each server')
     parser.add_option('-O', dest='opt', action='append',
-                      help='Additional scp parameters')
+                      help='Additional ssh parameters')
+    parser.add_option('', '--trace-id', dest='trace_id', help='trace id')
     return parser
 
 
@@ -89,7 +90,7 @@ def run(hosts):
     input : hosts
     output: NA
     """
-
+    trace_id = opts.trace_id or "-"
     manager = TaskPool(opts)
     for host in hosts:
         env_dist = os.environ

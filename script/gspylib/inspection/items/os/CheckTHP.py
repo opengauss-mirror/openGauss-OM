@@ -19,7 +19,7 @@ import subprocess
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsfile import g_file
+from base_utils.os.file_util import FileUtil
 
 THPFile = "/sys/kernel/mm/transparent_hugepage/enabled"
 
@@ -30,7 +30,7 @@ class CheckTHP(BaseItem):
 
     def collectTHPServer(self):
         if (os.path.exists(THPFile)):
-            output = g_file.readFile(THPFile)[0]
+            output = FileUtil.readFile(THPFile)[0]
             self.result.raw = output
             if (output.find('[never]') > 0):
                 THPstatus = "disabled"

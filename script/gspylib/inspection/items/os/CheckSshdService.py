@@ -17,7 +17,7 @@
 
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsservice import g_service
+from os_platform.gsservice import g_service
 
 
 class CheckSshdService(BaseItem):

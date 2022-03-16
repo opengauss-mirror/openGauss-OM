@@ -19,8 +19,8 @@ import subprocess
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsplatform import g_Platform
 from gspylib.common.ErrorCode import ErrorCode
+from base_utils.os.cmd_util import CmdUtil
 
 
 class CheckCrontabLeft(BaseItem):
@@ -37,7 +37,7 @@ class CheckCrontabLeft(BaseItem):
 
     def doCheck(self):
         parRes = ""
-        cmd = g_Platform.getAllCrontabCmd()
+        cmd = CmdUtil.getAllCrontabCmd()
         allCrontab = SharedFuncs.runShellCmd(cmd, self.user)
         for crontabService in allCrontab.split('\n'):
             if crontabService.find('om_monitor') >= 0:

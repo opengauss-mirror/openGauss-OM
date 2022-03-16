@@ -23,11 +23,9 @@ import subprocess
 import os
 import sys
 import re
-import getopt
 import getpass
 import time
 import pwd
-import grp
 import pickle
 package_path = os.path.dirname(os.path.realpath(__file__))
 ld_path = package_path + "/gspylib/clib"
@@ -40,21 +38,16 @@ if not os.environ.get('LD_LIBRARY_PATH').startswith(ld_path):
     os.execve(os.path.realpath(__file__), sys.argv, os.environ)
 
 import xml.etree.cElementTree as ETree
-from itertools import combinations
 from datetime import datetime, timedelta
 from multiprocessing.dummy import Pool as ThreadPool
 from gspylib.inspection.common.Exception import CheckException, \
-    ParameterException, UnknownParameterException, \
-    EmptyParameterException, \
-    UseBothParameterException, AvailableParameterException, \
+    UseBothParameterException, \
     SceneNotFoundException, ParseItemException, \
     NotEmptyException, \
     NotExistException, InterruptException, ThreadCheckException, \
     ContextDumpException, ContextLoadException, \
     TimeoutException
 from gspylib.common.Common import DefaultValue
-from gspylib.common.GaussLog import GaussLog
-from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.ParameterParsecheck import Parameter
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.Log import LoggerFactory
@@ -63,10 +56,11 @@ from gspylib.inspection.common.CheckResult import CheckResult, ItemResult
 from gspylib.inspection.common.CheckItem import CheckItemFactory
 from gspylib.inspection.common.ProgressBar import MultiProgressManager, \
     LineProgress
-from gspylib.os.gsfile import g_file
-from gspylib.os.gsplatform import g_Platform
-from gspylib.common.VersionInfo import VersionInfo
 from gspylib.common.DbClusterInfo import dbClusterInfo
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from base_utils.os.net_util import NetUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
 
 
 #############################################################################
@@ -93,13 +87,13 @@ DEFAULT_TIMEOUT = 1500
 # because single clusters don't need to perform consistency checks and
 # internal communication class checks
 SINGLE_SKIP = ["CheckTimeZone", "CheckEncoding", "CheckKernelVer",
-               "CheckNTPD", "CheckNoCheckSum", "CheckCpuCount",
+               "CheckNTPD", "CheckCpuCount",
                "CheckMemInfo", "CheckDiskConfig",
                "CheckUpVer", "CheckPgxcgroup", "CheckPing",
                "CheckNetWorkDrop", "CheckNetSpeed"]
 
 SETITEM_SKIP = ["CheckCPU", "CheckTimeZone", "CheckOSVer", "CheckNTPD",
-                "CheckSshdService", "CheckNoCheckSum", "CheckEtcHosts",
+                "CheckSshdService", "CheckEtcHosts",
                 "CheckCpuCount", "CheckHyperThread", "CheckMemInfo",
                 "CheckKernelVer", "CheckEncoding", "CheckBootItems",
                 "CheckDropCache", "CheckFilehandle", "CheckKeyProAdj",
@@ -149,6 +143,7 @@ class CmdOptions():
         self.skipItems = []
         self.LCName = None
         self.ShrinkNodes = None
+        self.nonPrinting = False
 
 
 class CheckContext():
@@ -443,6 +438,7 @@ General options:
       --skip-items                  Skip the specified check item or setting
                                     item with scene check
                                     Example: --skip-items CheckCPU,CheckMTU
+      --non-print                   Do not print output result.
   -?, --help                        Show help information for this utility,
                                     and exit the command line mode.
   -V, --version                     Show version information.
@@ -519,7 +515,7 @@ def parseCommandLine():
     if "user" in list(ParaDict.keys()):
         g_context.user = ParaDict["user"]
     if "hostfile" in list(ParaDict.keys()):
-        for node in g_file.readFile(ParaDict["hostfile"]):
+        for node in FileUtil.readFile(ParaDict["hostfile"]):
             g_opts.nodes.append(node.strip())
     if "cid" in list(ParaDict.keys()):
         g_context.setCheckID(ParaDict["cid"])
@@ -556,7 +552,8 @@ def parseCommandLine():
             raise CheckException(
                 "Format %s is not available,the valid format is %s" % (
                     g_opts.format, ",".join(formatList)))
-
+    if "nonPrinting" in list(ParaDict.keys()):
+        g_opts.nonPrinting = True
 
 def checkParameter():
     ##########################################################
@@ -616,9 +613,9 @@ def checkuser():
         # Check cluster user trust
         dbNameList = g_opts.cluster.getClusterNodeNames()
         if (len(dbNameList) == 1 and
-                dbNameList[0] == DefaultValue.GetHostIpOrName()):
+                dbNameList[0] == NetUtil.GetHostIpOrName()):
             return
-        appPath = DefaultValue.getEnv('GPHOME', g_opts.cluster.appPath)
+        appPath = EnvUtil.getEnv('GPHOME', g_opts.cluster.appPath)
         psshPath = os.path.join(appPath, 'script/gspylib/pssh/bin/pssh')
         cmd = "%s -H %s 'id' " % (psshPath, " -H ".join(dbNameList))
         (status, output) = subprocess.getstatusoutput(cmd)
@@ -647,21 +644,21 @@ def checkuser():
 
 
 def createPath(path, user=""):
-    if path == "/dev/null":
+    if path == ClusterConstants.DEV_NULL:
         return
     if os.path.isdir(path):
         # test write permissions
-        if not g_file.checkDirWriteable(path):
+        if not FileUtil.checkDirWriteable(path):
             raise CheckException(
                 "Failed to create or delete file in the [%s]." % path)
     elif os.path.isfile(path):
         raise CheckException("The out path [%s] must be a directory." % path)
     else:
         # path is not exist. recursively create the path
-        g_file.createDirectory(path, True, DefaultValue.KEY_DIRECTORY_MODE)
+        FileUtil.createDirectory(path, True, DefaultValue.KEY_DIRECTORY_MODE)
     # Modify the file owner
     if __isRoot() and user:
-        g_file.changeOwner(user, path)
+        FileUtil.changeOwner(user, path)
 
 
 def getTmpPath():
@@ -809,7 +806,7 @@ def parseCheckContext():
                 g_context.routing = g_opts.routing
             elif g_opts.cluster:
                 workIP = g_opts.cluster.getDbNodeByName(
-                    DefaultValue.GetHostIpOrName()).backIps[0]
+                    NetUtil.GetHostIpOrName()).backIps[0]
                 g_context.routing = "%s:%s" % (
                     workIP, SharedFuncs.getMaskByIP(workIP))
             else:
@@ -858,9 +855,8 @@ def parseCheckContext():
             if flag.upper() in ("Y", "YES"):
                 pass
             if flag.upper() in ("N", "NO"):
-                for Item in g_context.newItems:
+                for Item in items_all:
                     if Item['name'] in list(confirmItem.keys()):
-                        g_context.newItems.remove(Item)
                         g_context.skipSetItem.append(Item['name'])
                 __printOnScreen(
                     'Skip the settings for [%s]'
@@ -926,7 +922,7 @@ def __getLocalNode(nodes):
         for n in nodes:
             if SharedFuncs.is_local_node(n):
                 return n
-    return DefaultValue.GetHostIpOrName()
+    return NetUtil.GetHostIpOrName()
 
 
 def __getSeparatedValue(value, separator=","):
@@ -977,10 +973,10 @@ def __getMpprcFile():
     function: get separated environment variables
     """
     # get mpprc file
-    envValue = DefaultValue.getEnv("MPPDB_ENV_SEPARATE_PATH")
+    envValue = EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH")
     if envValue is not None and os.path.isfile(envValue):
         return envValue
-    elif not __isRoot() and DefaultValue.getEnv('GAUSS_ENV'):
+    elif not __isRoot() and EnvUtil.getEnv('GAUSS_ENV'):
         cmd = "echo ~ 2>/dev/null"
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
@@ -1276,7 +1272,7 @@ def analysisResult(item):
             outputPath, itemName, g_context.hostMapping[n], checkID)
         files.append(fileName)
     for f in files:
-        content += "".join(g_file.readFile(f))
+        content += "".join(FileUtil.readFile(f))
     itemResult = __analysisResult(content, itemName)
     g_itemResult[itemName] = [itemResult, itemResult.formatOutput()]
 
@@ -1452,13 +1448,13 @@ def doRunCheck():
         fileName = "%s/%s_%s_%s.out" % (
             outputPath, item['name'], localHost, g_context.checkID)
 
-        content += "".join(g_file.readFile(fileName))
+        content += "".join(FileUtil.readFile(fileName))
         itemResult = __analysisResult(content, item['name'])
         g_result.append(itemResult)
     # run the check process distributing and no need to clean the resource
     if __isDistributing():
         g_logger.debug("run check items done and exit the command")
-    if g_opts.format == 'default':
+    if g_opts.format == 'default' and not g_opts.nonPrinting:
         # Initialize the self.clusterInfo variable
         print(g_result.outputRaw())
 
@@ -1472,14 +1468,14 @@ def doRootCheck():
     # get local node
     host = __getLocalNode(g_context.nodes)
     # prepare the command for running check
-    cmd = __prepareCmd(g_context.items, g_context.user, g_context.checkID)
+    cmd = __prepareCmd(g_context.items, g_context.user, g_context.checkID, True)
     # run root cmd
     output = SharedFuncs.runRootCmd(cmd, g_opts.pwdMap[host][0],
                                     g_opts.pwdMap[host][1], g_context.mpprc)
-    print(output)
+    print(output.decode())
 
 
-def __prepareCmd(items, user, checkid):
+def __prepareCmd(items, user, checkid, print_output=False):
     """
     function: prepare the command for running check
     """
@@ -1488,15 +1484,19 @@ def __prepareCmd(items, user, checkid):
     userParam = ""
     checkIdParam = ""
     routingParam = ""
+    printParam = ""
+    if not print_output:
+        printParam = "--non-print"
+
     if user:
         userParam = " -U %s " % user
     if checkid:
         checkIdParam = " --cid=%s " % checkid
     if g_context.routing:
         routingParam = "--routing %s" % g_context.routing
-    cmd = "%s/gs_check -i %s %s %s -L %s -o %s -l %s" % (
+    cmd = "%s/gs_check -i %s %s %s -L %s -o %s -l %s %s" % (
         cmdPath, ",".join(itemsName), userParam, checkIdParam,
-        routingParam, g_context.tmpPath, g_context.logFile)
+        routingParam, g_context.tmpPath, g_context.logFile, printParam)
     return cmd
 
 
@@ -1568,11 +1568,11 @@ def formatOutput():
         # output the result to a file
         resultFile = os.path.join(g_context.tmpPath,
                                   "CheckResult_%s" % g_context.checkID)
-        g_file.createFile(resultFile, True)
-        g_file.writeFile(resultFile, [g_result.outputResult()])
+        FileUtil.createFile(resultFile, True)
+        FileUtil.writeFile(resultFile, [g_result.outputResult()])
     except Exception as e:
         if os.path.exists(resultFile):
-            g_file.removeFile(resultFile)
+            FileUtil.removeFile(resultFile)
         g_logger.info("Warning! Generate check result output file failed.")
         g_logger.debug(str(e))
 
@@ -1587,11 +1587,11 @@ def formatOutput():
     tmpLog = os.path.join(g_context.tmpPath, "log/gs_check.log")
     # Get the log file
     if g_opts.logFile or g_opts.cluster:
-        g_file.cpFile(g_context.logFile, tmpLog[:-4] + "_" +
-                      DefaultValue.GetHostIpOrName() + ".log")
+        FileUtil.cpFile(g_context.logFile, tmpLog[:-4] + "_" +
+                      NetUtil.GetHostIpOrName() + ".log")
     else:
-        g_file.moveFile(g_context.logFile, tmpLog[:-4] + "_" +
-                        DefaultValue.GetHostIpOrName() + ".log")
+        FileUtil.moveFile(g_context.logFile, tmpLog[:-4] + "_" +
+                        NetUtil.GetHostIpOrName() + ".log")
     hosts = __getRemoteNodes(g_context.nodes)
     if hosts:
         try:
@@ -1612,7 +1612,7 @@ def formatOutput():
     SharedFuncs.runShellCmd(cmd, g_context.user)
 
     # No check result is generated when the output is specified as /dev/null
-    if g_context.outPath == "/dev/null":
+    if g_context.outPath == ClusterConstants.DEV_NULL:
         print(g_result.outputStatistic())
         print("The inspection report has been cleared by /dev/null.")
         return

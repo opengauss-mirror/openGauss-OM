@@ -20,7 +20,7 @@
         <PARAM name="azPriority" value="1"/>
         <PARAM name="dataNum" value="1"/>
         <PARAM name="dataPortBase" value="@{port}"/>
-        <PARAM name="dataNode1" value="@{installPath}data/dn1,@{nodeName2},@{installPath}/data/dn1"/>
+        <PARAM name="dataNode1" value="@{installPath}/data/dn1,@{nodeName2},@{installPath}/data/dn1"/>
     </DEVICE>
     <DEVICE sn="@{nodeName2}">
         <PARAM name="name" value="@{nodeName2}"/>

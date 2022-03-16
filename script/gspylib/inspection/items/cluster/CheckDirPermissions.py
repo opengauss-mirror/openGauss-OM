@@ -15,13 +15,10 @@
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------
 import os
-import pwd
-import grp
-import subprocess
-from gspylib.common.Common import DefaultValue
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsfile import g_file
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
 
 DIRECTORY_MODE = 750
 g_result = []
@@ -75,14 +72,6 @@ class CheckDirPermissions(BaseItem):
 
         return (DirLength, dataDirList)
 
-    def checkDirWriteable(self, dirPath, user, flag=""):
-        """
-        function : Check if target directory is writeable for user.
-        input : String,String
-        output : boolean
-        """
-        return os.access(dirPath, os.W_OK)
-
     def checkSingleDirectoryPermission(self, singledir, desc,
                                        INDENTATION_VALUE_INT):
         """
@@ -100,7 +89,7 @@ class CheckDirPermissions(BaseItem):
         # Gets the folder permissions
         currentPremission = int(oct(os.stat(singledir).st_mode)[-3:])
         # Check the write access and compare the permission size
-        if (self.checkDirWriteable(singledir, self.user)
+        if (FileUtil.checkDirWriteable(singledir)
                 and currentPremission <= DIRECTORY_MODE):
 
             g_result.append(
@@ -130,9 +119,9 @@ class CheckDirPermissions(BaseItem):
         resultList = []
         g_result = []
         nodeInfo = self.cluster.getDbNodeByName(self.host)
-        tmpDir = DefaultValue.getEnv("PGHOST")
-        logDir = DefaultValue.getEnv("GAUSSLOG")
-        toolDir = DefaultValue.getEnv("GPHOME")
+        tmpDir = EnvUtil.getEnv("PGHOST")
+        logDir = EnvUtil.getEnv("GAUSSLOG")
+        toolDir = EnvUtil.getEnv("GPHOME")
         (intervalLen, instList) = self.obtainDataDirLength(nodeInfo)
         if intervalLen < len(self.cluster.appPath):
             intervalLen = len(self.cluster.appPath)
@@ -180,8 +169,7 @@ class CheckDirPermissions(BaseItem):
             self.result.val = self.result.val + '%s\n' % detail
 
     def doSet(self):
-        resultStr = ""
         for dirName in g_chList:
-            g_file.changeOwner(self.user, dirName, True)
-            g_file.changeMode(DIRECTORY_MODE, dirName)
+            FileUtil.changeOwner(self.user, dirName, True)
+            FileUtil.changeMode(DIRECTORY_MODE, dirName)
         self.result.val = "Set DirPermissions completely."

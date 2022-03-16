@@ -66,7 +66,6 @@ class CheckProStartTime(BaseItem):
                 self.result.val = output
 
     def postAnalysis(self, itemResult):
-        errors = []
         timedic = {}
         valdic = {}
         allhost = []

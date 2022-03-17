@@ -855,9 +855,8 @@ def parseCheckContext():
             if flag.upper() in ("Y", "YES"):
                 pass
             if flag.upper() in ("N", "NO"):
-                for Item in g_context.newItems:
+                for Item in items_all:
                     if Item['name'] in list(confirmItem.keys()):
-                        g_context.newItems.remove(Item)
                         g_context.skipSetItem.append(Item['name'])
                 __printOnScreen(
                     'Skip the settings for [%s]'

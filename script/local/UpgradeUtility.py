@@ -4396,6 +4396,89 @@ def cleanOneInstanceConfBakOld(dbInstance):
         g_logger.debug("Successfully cleaned up %s." % oldConfig)
 
 
+def doFuncForAllNode(func):
+    """
+    execute a specific func in all nodes
+    """
+    oldVersion = int(g_opts.oldVersion)
+    relmap4kVersion = int(float(const.RELMAP_4K_VERSION) * 1000)
+    if oldVersion >= relmap4kVersion:
+        g_logger.debug("no need to operate global relmap file, old version: %s" % g_opts.oldVersion)
+        return
+
+    if len(g_dbNode.datanodes) != 0:
+        for dn in g_dbNode.datanodes:
+            func(dn.datadir)
+
+
+def doRestoreGlobalRelmapFile(datadir):
+    """
+    does the really work of restore global/pg_filenode.old.map
+    """
+    oldRelmapFileName = os.path.join(datadir, "global/pg_filenode.old.map")
+    if not os.path.exists(oldRelmapFileName):
+        raise Exception("Failed to restore global relmap file. Error: \n%s doesn't exist" % oldRelmapFileName)
+
+    relmapFileName = os.path.join(datadir, "global/pg_filenode.map")
+    relmapBackFileName = os.path.join(datadir, "global/pg_filenode.map.backup")
+    cmd =  "cp '%s' '%s' && cp '%s' '%s'"  % (oldRelmapFileName, relmapFileName, \
+        oldRelmapFileName, relmapBackFileName)
+
+    g_logger.debug("restore global relmap file, cmd: %s" % cmd)
+    (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
+    if status != 0:
+        raise Exception("Failed to restore global relmap file. Error: \n%s" % str(output))
+
+
+def restoreGlobalRelmapFile():
+    """
+    restore global relmap file when rollback
+    :return:
+    """
+    doFuncForAllNode(doRestoreGlobalRelmapFile)
+
+
+def doCleanTmpGlobalRelmapFile(datadir):
+    """
+    does the really work of clean temp global relmap file
+    """
+    oldRelmapFileName = os.path.join(datadir, "global/pg_filenode.old.map")
+    cmd = "(if [ -f '%s' ];then rm '%s' -f;fi)" % (oldRelmapFileName, oldRelmapFileName)
+    g_logger.debug("remove tmp global relmap file, cmd: %s" % cmd)
+    (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
+    if status != 0:
+        raise Exception("Failed to clean tmp global relmap file. Error: \n%s" % str(output))
+
+
+def cleanTmpGlobalRelmapFile():
+    """
+    clean temp global relmap file
+    """
+    doFuncForAllNode(doCleanTmpGlobalRelmapFile)
+
+
+def doBackupGlobalRelmapFile(datadir):
+    """
+    does the really work of backup global relmap file
+    """
+    relmapFileName = os.path.join(datadir, "global/pg_filenode.map")
+    oldRelmapFileName = os.path.join(datadir, "global/pg_filenode.old.map")
+    cmd = "(if [ -f '%s' ];then cp '%s' '%s';fi)" \
+        % (relmapFileName, relmapFileName, oldRelmapFileName)
+    g_logger.debug("backup global relmap file, cmd: %s" % cmd)
+    (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
+    if status != 0:
+        raise Exception("Failed to backup global relmap file. Error: \n%s" % str(output))
+
+
+def backupGlobalRelmapFile():
+    """
+    backup global relmap file before post upgrade
+    :return:
+    """
+    doFuncForAllNode(doBackupGlobalRelmapFile)
+
+
 def checkAction():
     """
     function: check action
@@ -4434,7 +4517,10 @@ def checkAction():
              const.ACTION_GREY_RESTORE_GUC,
              const.ACTION_CLEAN_CONF_BAK_OLD,
              const.ACTION_SET_GUC_VALUE,
-             const.ACTION_CLEAN_CM]:
+             const.ACTION_CLEAN_CM,
+             const.ACTION_CLEAN_TMP_GLOBAL_RELMAP_FILE,
+             const.ACTION_BACKUP_GLOBAL_RELMAP_FILE,
+             const.ACTION_RESTORE_GLOBAL_RELMAP_FILE]:
         GaussLog.exitWithError(
             ErrorCode.GAUSS_500["GAUSS_50004"] % 't'
             + " Value: %s" % g_opts.action)
@@ -4491,7 +4577,10 @@ def main():
             const.ACTION_GREY_RESTORE_GUC: greyRestoreGuc,
             const.ACTION_CLEAN_CONF_BAK_OLD: cleanConfBakOld,
             const.ACTION_SET_GUC_VALUE: setGucValue,
-            const.ACTION_CLEAN_CM: clean_cm_instance}
+            const.ACTION_CLEAN_CM: clean_cm_instance,
+            const.ACTION_CLEAN_TMP_GLOBAL_RELMAP_FILE: cleanTmpGlobalRelmapFile,
+            const.ACTION_BACKUP_GLOBAL_RELMAP_FILE: backupGlobalRelmapFile,
+            const.ACTION_RESTORE_GLOBAL_RELMAP_FILE: restoreGlobalRelmapFile}
         func = funcs[g_opts.action]
         func()
     except Exception as e:

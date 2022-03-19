@@ -14,15 +14,12 @@
 # MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------
-import glob
-import platform
-import os
 import subprocess
-from gspylib.common.Common import DefaultValue
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsfile import g_file
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
 
 g_needRepair = []
 expectedScheduler = "32768"
@@ -37,10 +34,10 @@ class CheckIOrequestqueue(BaseItem):
         for inst in nodeInfo.datanodes:
             dataDirList.append(inst.datadir)
 
-        dataDirList.append(DefaultValue.getEnv("PGHOST"))
-        dataDirList.append(DefaultValue.getEnv("GPHOME"))
-        dataDirList.append(DefaultValue.getEnv("GAUSSHOME"))
-        dataDirList.append(DefaultValue.getEnv("GAUSSLOG"))
+        dataDirList.append(EnvUtil.getEnv("PGHOST"))
+        dataDirList.append(EnvUtil.getEnv("GPHOME"))
+        dataDirList.append(EnvUtil.getEnv("GAUSSHOME"))
+        dataDirList.append(EnvUtil.getEnv("GAUSSLOG"))
         dataDirList.append("/tmp")
         return dataDirList
 
@@ -103,7 +100,7 @@ class CheckIOrequestqueue(BaseItem):
         for d in devices:
             for item in diskDict.items():
                 if d in item[1]:
-                    request = g_file.readFile(
+                    request = FileUtil.readFile(
                         "/sys/block/%s/queue/nr_requests" % item[0])[0]
                     result[item[0]] = request.strip()
 

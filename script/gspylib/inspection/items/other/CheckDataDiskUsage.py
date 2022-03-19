@@ -18,7 +18,7 @@
 import os
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.hardware.gsdisk import g_disk
+from base_utils.os.disk_util import DiskUtil
 
 
 class CheckDataDiskUsage(BaseItem):
@@ -47,7 +47,7 @@ class CheckDataDiskUsage(BaseItem):
                         pathList.append(os.path.realpath(tblspcPath))
 
         for path in pathList:
-            rateNum = g_disk.getDiskSpaceUsage(path)
+            rateNum = DiskUtil.getDiskSpaceUsage(path)
             self.result.raw += "[%s] space usage: %s%%\n" % (path, rateNum)
             if (rateNum > int(self.thresholdDn)):
                 resultStr += \
@@ -57,8 +57,8 @@ class CheckDataDiskUsage(BaseItem):
                         path, rateNum, self.thresholdDn)
                 flag = "Error"
             # Check inode usage
-            diskName = g_disk.getMountPathByDataDir(path)
-            diskType = g_disk.getDiskMountType(diskName)
+            diskName = DiskUtil.getMountPathByDataDir(path)
+            diskType = DiskUtil.getDiskMountType(diskName)
             if (not diskType in ["xfs", "ext3", "ext4", "overlay"]):
                 resultStr += \
                     "Path(%s) inodes usage(%s)     Warning reason: " \
@@ -69,7 +69,7 @@ class CheckDataDiskUsage(BaseItem):
                     flag = "Warning"
                 self.result.raw += "[%s] disk type: %s\n" % (path, diskType)
                 continue
-            rateNum = g_disk.getDiskInodeUsage(path)
+            rateNum = DiskUtil.getDiskInodeUsage(path)
             self.result.raw += "[%s] inode usage: %s%%\n" % (path, rateNum)
             if (rateNum > int(self.thresholdDn)):
                 resultStr += \

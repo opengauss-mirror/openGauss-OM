@@ -20,12 +20,12 @@
 #############################################################################
 import os
 import sys
-import time
 
 sys.path.append(sys.path[0] + "/../../")
 from gspylib.common.Common import DefaultValue, ClusterInstanceConfig
 from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.ErrorCode import ErrorCode
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
 ###########################
 # instance type. only for CN/DN 
@@ -63,6 +63,7 @@ class StatusReport():
         self.gtmDown = 0
         self.dnPrimary = 0
         self.dnStandby = 0
+        self.dn_cascade_standby = 0
         self.dnDummy = 0
         self.dnBuild = 0
         self.dnAbnormal = 0
@@ -120,22 +121,13 @@ class DbInstanceStatus():
             elif self.status == DbClusterStatus.INSTANCE_STATUS_STANDBY:
                 if self.haStatus != DbClusterStatus.HA_STATUS_NORMAL:
                     return False
+            elif self.status == DbClusterStatus.INSTANCE_STATUS_CASCADE_STANDBY:
+                if self.haStatus != DbClusterStatus.HA_STATUS_NORMAL:
+                    return False
             else:
                 return False
 
         return True
-
-    def isCNDeleted(self):
-        """  
-        function : Check if CN instance state is Deleted
-        input : NA
-        output : boolean
-        """
-        # check CN instance
-        if (self.type == DbClusterStatus.INSTANCE_TYPE_COORDINATOR and
-                self.instanceId in g_deletedCNId):
-            return True
-        return False
 
 
 class DbNodeStatus():
@@ -237,6 +229,8 @@ class DbNodeStatus():
                 report.dnDown += 1
             elif (inst.status == DbClusterStatus.INSTANCE_STATUS_DUMMY):
                 report.dnDummy += 1
+            elif inst.status == DbClusterStatus.INSTANCE_STATUS_CASCADE_STANDBY:
+                report.dn_cascade_standby += 1
             else:
                 report.dnAbnormal += 1
 
@@ -259,7 +253,7 @@ class DbNodeStatus():
         global g_instanceInfo
         global g_clusterInfoInitialized
         if not g_clusterInfoInitialized:
-            DefaultValue.checkUser(user)
+            ClusterUser.checkUser(user)
             g_clusterInfo = dbClusterInfo()
             g_clusterInfo.initFromStaticConfig(user)
             g_clusterInfoInitialized = True
@@ -374,59 +368,6 @@ class DbNodeStatus():
             print("%-20s: %s" % ("    instance_state", inst.status),
                   file=stdout)
 
-    def getDnPeerInstance(self, user):
-        """  
-        function :  Get the Peer instance of DN
-        input : user
-        output : Idlist
-        """
-        global g_clusterInfo
-        global g_instanceInfo
-        global g_clusterInfoInitialized
-        if not g_clusterInfoInitialized:
-            DefaultValue.checkUser(user)
-            g_clusterInfo = dbClusterInfo()
-            g_clusterInfo.initFromStaticConfig(user)
-            g_clusterInfoInitialized = True
-        dbNode = g_clusterInfo.getDbNodeByName(self.name)
-        Idlist = {}
-        for dnInst in self.datanodes:
-            # get the instance info
-            g_instanceInfo = None
-            for instInfo in dbNode.datanodes:
-                if instInfo.instanceId == dnInst.instanceId:
-                    g_instanceInfo = instInfo
-                    break
-            if not g_instanceInfo:
-                raise Exception(ErrorCode.GAUSS_516["GAUSS_51620"] % "DN")
-
-            # construct the instance name
-            peerInsts = g_clusterInfo.getPeerInstance(g_instanceInfo)
-            if (len(peerInsts) != 2 and
-                    len(peerInsts) != 1):
-                raise Exception(ErrorCode.GAUSS_516["GAUSS_51603"] %
-                                g_instanceInfo.datadir)
-
-            dnMasterInst = None
-            dnStandbyInst = None
-            if (g_instanceInfo.instanceType == MASTER_INSTANCE):
-                dnMasterInst = g_instanceInfo
-                for instIndex in range(len(peerInsts)):
-                    if (peerInsts[instIndex].instanceType == STANDBY_INSTANCE):
-                        dnStandbyInst = peerInsts[instIndex]
-                        Idlist[dnMasterInst.instanceId] = \
-                            dnStandbyInst.instanceId
-        return Idlist
-
-    def getPrimaryStandby(self):
-        for instance in self.datanodes:
-            if (instance.status == DbClusterStatus.INSTANCE_STATUS_PRIMARY):
-                self.primaryDNs.append(instance)
-            elif (instance.status == DbClusterStatus.INSTANCE_STATUS_STANDBY):
-                self.standbyDNs.append(instance)
-            elif (instance.status == DbClusterStatus.INSTANCE_STATUS_DUMMY):
-                self.dummies.append(instance)
-
 
 class DbClusterStatus():
     """
@@ -434,17 +375,10 @@ class DbClusterStatus():
     """
 
     OM_STATUS_FILE = "gs_om_status.dat"
-    OM_STATUS_KEEPTIME = 1800
     ###################################################################
     # OM status
     ###################################################################
     OM_STATUS_NORMAL = "Normal"
-    OM_STATUS_ABNORMAL = "Abnormal"
-    OM_STATUS_STARTING = "Starting"
-    OM_STATUS_UPGRADE = "Upgrade"
-    OM_STATUS_DILATATION = "Dilatation"
-    OM_STATUS_REPLACE = "Replace"
-    OM_STATUS_REDISTIRBUTE = "Redistributing"
 
     ###################################################################
     # node status
@@ -456,9 +390,7 @@ class DbClusterStatus():
     # cluster status
     ###################################################################
     CLUSTER_STATUS_NORMAL = "Normal"
-    CLUSTER_STATUS_STARTING = "Starting"
     CLUSTER_STATUS_ABNORMAL = "Abnormal"
-    CLUSTER_STATUS_PENDING = "Pending"
     CLUSTER_STATUS_DEGRADED = "Degraded"
     CLUSTER_STATUS_MAP = {
         "Normal": "Normal",
@@ -483,9 +415,9 @@ class DbClusterStatus():
     # instance status
     ###################################################################
     INSTANCE_STATUS_NORMAL = "Normal"
-    INSTANCE_STATUS_UNNORMAL = "Unnormal"
     INSTANCE_STATUS_PRIMARY = "Primary"
     INSTANCE_STATUS_STANDBY = "Standby"
+    INSTANCE_STATUS_CASCADE_STANDBY = "Cascade Standby"
     INSTANCE_STATUS_ABNORMAL = "Abnormal"
     INSTANCE_STATUS_DOWN = "Down"
     INSTANCE_STATUS_DUMMY = "Secondary"
@@ -499,6 +431,7 @@ class DbClusterStatus():
         "Primary": "Primary",
         "Standby": "Standby",
         "Secondary": "Secondary",
+        "Cascade Standby": "Cascade Standby",
         "Pending": "Abnormal",
         "Down": "Down",
         "Unknown": "Abnormal"
@@ -542,8 +475,6 @@ class DbClusterStatus():
     ###################################################################
     # data status
     ###################################################################
-    DATA_STATUS_SYNC = "Sync"
-    DATA_STATUS_ASYNC = "Async"
     DATA_STATUS_Unknown = "Unknown"
     DATA_STATUS_MAP = {
         "Async": "Async",
@@ -577,42 +508,6 @@ class DbClusterStatus():
             retStr += "\n%s" % str(dbNode)
 
         return retStr
-
-    @staticmethod
-    def saveOmStatus(status, sshTool, user):
-        """  
-        function : Save om status to a file
-        input : sshTool, user
-        output : NA
-        """
-        if (sshTool is None):
-            raise Exception(ErrorCode.GAUSS_511["GAUSS_51107"] +
-                            " Can't save status to all nodes.")
-
-        try:
-            statFile = os.path.join(DefaultValue.getTmpDirFromEnv(),
-                                    DbClusterStatus.OM_STATUS_FILE)
-            cmd = "echo \"%s\" > %s" % (status, statFile)
-            sshTool.executeCommand(cmd, "record OM status information")
-        except Exception as e:
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50205"] %
-                            "OM status information" + " Error: \n%s" % str(e))
-
-    @staticmethod
-    def getOmStatus(user):
-        """
-        function : Get om status from file
-        input : String
-        output : NA
-        """
-        # check status file
-        statFile = os.path.join(DefaultValue.getTmpDirFromEnv(),
-                                DbClusterStatus.OM_STATUS_FILE)
-        if (not os.path.isfile(statFile)):
-            return DbClusterStatus.OM_STATUS_NORMAL
-        # get om status from file
-        status = DbClusterStatus.OM_STATUS_NORMAL
-        return status
 
     def getDbNodeStatusById(self, nodeId):
         """  
@@ -648,10 +543,10 @@ class DbClusterStatus():
         input : cluster_normal_status
         output : boolean
         """
-        if (cluster_normal_status is None):
+        if cluster_normal_status is None:
             cluster_normal_status = [DbClusterStatus.CLUSTER_STATUS_NORMAL]
 
-        if (self.clusterStatus not in cluster_normal_status):
+        if self.clusterStatus not in cluster_normal_status:
             return False
 
         for dbNode in self.dbNodes:
@@ -679,6 +574,7 @@ class DbClusterStatus():
             clusterRep.dnPrimary += nodeRep.dnPrimary
             clusterRep.dnStandby += nodeRep.dnStandby
             clusterRep.dnDummy += nodeRep.dnDummy
+            clusterRep.dn_cascade_standby += nodeRep.dn_cascade_standby
             clusterRep.dnBuild += nodeRep.dnBuild
             clusterRep.dnAbnormal += nodeRep.dnAbnormal
             clusterRep.dnDown += nodeRep.dnDown
@@ -687,33 +583,13 @@ class DbClusterStatus():
 
         return clusterRep
 
-    def outputClusterStauts(self, stdout, user, showDetail=False):
-        """ 
-        function : output the status of cluster
-        input : stdout, user
-        output : NA
-        """
-        clusterStat = DbClusterStatus.getOmStatus(user)
-        redistributing_state = self.redistributing
-        balanced_state = self.balanced
-        if (clusterStat == DbClusterStatus.OM_STATUS_NORMAL):
-            clusterStat = self.clusterStatus
-        print("%-20s: %s" % ("cluster_state", clusterStat), file=stdout)
-        print("%-20s: %s" % ("redistributing", redistributing_state),
-              file=stdout)
-        print("%-20s: %s" % ("balanced", balanced_state), file=stdout)
-        print("", file=stdout)
-
-        for dbNode in self.dbNodes:
-            dbNode.outputNodeStatus(stdout, user, showDetail)
-
-    def getClusterStauts(self, user):
+    def getClusterStauts(self):
         """
         function : Get the status of cluster for Healthcheck 
         input : user
         output : statusInfo
         """
-        clusterStat = DbClusterStatus.getOmStatus(user)
+        clusterStat = DbClusterStatus.OM_STATUS_NORMAL
         redistributing_state = self.redistributing
         balanced_state = self.balanced
         if (clusterStat == DbClusterStatus.OM_STATUS_NORMAL):
@@ -734,113 +610,6 @@ class DbClusterStatus():
                     dbNode.name.ljust(22),
                     DbClusterStatus.OM_NODE_STATUS_ABNORMAL)
         return statusInfo
-
-    def getReportInstanceStatus(self, instance):
-        """
-        Get the instance status information required for reporting.
-        """
-        repInstSts = InstanceStatus()
-        repInstSts.nodeId = instance.nodeId
-        repInstSts.ip = instance.nodeIp
-        if instance.type == DbClusterStatus.INSTANCE_TYPE_GTM:
-            repInstSts.detail = instance.detail_conn
-        elif instance.type == DbClusterStatus.INSTANCE_TYPE_DATANODE:
-            repInstSts.detail = instance.detail_ha
-        if instance.detail_status:
-            repInstSts.status = instance.detail_status
-        else:
-            repInstSts.status = instance.status
-        repInstSts.instanceId = instance.instanceId
-        return repInstSts.__dict__
-
-    def getDnInstanceStatus(self, dnInst):
-        """
-        Get datanode instance by instance id.
-        """
-        for dbNode in self.dbNodes:
-            for dn in dbNode.datanodes:
-                if (dn.instanceId == dnInst.instanceId):
-                    return dn
-        return ""
-
-    def getClusterStatusMap(self, user):
-        """
-        Get the cluster status information required for reporting.
-        """
-        repClusterSts = ReportClusterStatus()
-        repClusterSts.status = self.clusterStatusDetail
-        repClusterSts.balanced = self.balanced
-        repClusterSts.redistributing = self.redistributing
-        clusterInfo = dbClusterInfo()
-        clusterInfo.initFromStaticConfig(user)
-        masterInstList = []
-        for dbNodeInfo in clusterInfo.dbNodes:
-            insts = dbNodeInfo.etcds + dbNodeInfo.cmservers + \
-                    dbNodeInfo.datanodes + dbNodeInfo.gtms
-            for inst in insts:
-                if inst.instanceType == 0:
-                    masterInstList.append(inst.instanceId)
-        dnMirrorDict = {}
-        etcdStatus = EtcdGroupStatus()
-        gtmStatus = NodeGroupStatus()
-        cmsStatus = NodeGroupStatus()
-        for dbNode in self.dbNodes:
-            # get cn instance status info
-            for inst in dbNode.coordinators:
-                cnRepSts = self.getReportInstanceStatus(inst)
-                repClusterSts.cns.append(cnRepSts)
-            # get etcds instance status info
-            for inst in dbNode.etcds:
-                if (inst.instanceId in masterInstList):
-                    etcdStatus.leader = self.getReportInstanceStatus(inst)
-                else:
-                    etcdInstStatus = self.getReportInstanceStatus(inst)
-                    etcdStatus.follower.append(etcdInstStatus)
-            # get gtm instance status info
-            for inst in dbNode.gtms:
-                if (inst.instanceId in masterInstList):
-                    gtmStatus.primary = self.getReportInstanceStatus(inst)
-                else:
-                    gtmInstStatus = self.getReportInstanceStatus(inst)
-                    gtmStatus.standby.append(gtmInstStatus)
-            # get cms instance status info
-            for inst in dbNode.cmservers:
-                if (inst.instanceId in masterInstList):
-                    cmsStatus.primary = self.getReportInstanceStatus(inst)
-                else:
-                    cmsInstStatus = self.getReportInstanceStatus(inst)
-
-                    cmsStatus.standby.append(cmsInstStatus)
-
-            for dnInst in dbNode.datanodes:
-                dnNode = clusterInfo.getDbNodeByID(dnInst.nodeId)
-                clusterDnInst = None
-                for dnInstInfo in dnNode.datanodes:
-                    if (dnInst.instanceId == dnInstInfo.instanceId):
-                        clusterDnInst = dnInstInfo
-                if clusterDnInst.mirrorId not in dnMirrorDict.keys():
-                    dnMirrorDict[clusterDnInst.mirrorId] = [dnInst]
-                else:
-                    dnMirrorDict[clusterDnInst.mirrorId].append(dnInst)
-        # get datanodes instance status info
-        for mirrorDNs in dnMirrorDict.keys():
-            dnStatus = NodeGroupStatus()
-            for dnInst in dnMirrorDict[mirrorDNs]:
-                if dnInst.instanceId in masterInstList:
-                    primaryDnSts = self.getDnInstanceStatus(dnInst)
-                    dnStatus.primary = \
-                        self.getReportInstanceStatus(primaryDnSts)
-                else:
-                    peerInstSts = self.getDnInstanceStatus(dnInst)
-                    peerInstStatus = self.getReportInstanceStatus(peerInstSts)
-                    dnStatus.standby.append(peerInstStatus)
-            repClusterSts.dns.append(dnStatus.__dict__)
-
-        repClusterSts.etcds = etcdStatus.__dict__
-        repClusterSts.gtms = gtmStatus.__dict__
-        repClusterSts.cms = cmsStatus.__dict__
-
-        return repClusterSts.__dict__
 
     def initFromFile(self, filePath, isExpandScene=False):
         """
@@ -975,35 +744,3 @@ class DbClusterStatus():
             self.__curInstance.reason = value
 
 
-class ReportClusterStatus():
-
-    def __init__(self):
-        self.status = ""
-        self.balanced = ""
-        self.redistributing = ""
-        self.gtms = ""
-        self.etcds = ""
-        self.cms = ""
-        self.cns = []
-        self.dns = []
-
-
-class NodeGroupStatus():
-    def __init__(self):
-        self.primary = ""
-        self.standby = []
-
-
-class EtcdGroupStatus():
-    def __init__(self):
-        self.leader = ""
-        self.follower = []
-
-
-class InstanceStatus():
-    def __init__(self):
-        self.nodeId = ""
-        self.ip = ""
-        self.status = ""
-        self.instanceId = ""
-        self.detail = ""

@@ -23,10 +23,14 @@ import sys
 sys.path.append(sys.path[0] + "/../../")
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.Common import DefaultValue
+from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.OMCommand import OMCommand
 from gspylib.os.gsfile import g_file
 from gspylib.common.DbClusterInfo import dbNodeInfo, \
     dbClusterInfo, compareObject
+from base_utils.executor.cmd_executor import CmdExecutor
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from base_utils.os.env_util import EnvUtil
 
 #############################################################################
 # Const variables
@@ -37,8 +41,6 @@ from gspylib.common.DbClusterInfo import dbNodeInfo, \
 #   STEP_CONFIG: the signal about install
 #   STEP_START: the signal about install
 #############################################################################
-INSTALL_STEP = ""
-STEPBACKUP_DIR = ""
 STEP_INIT = "Init Install"
 STEP_INSTALL = "Install cluster"
 STEP_CONFIG = "Config cluster"
@@ -55,9 +57,6 @@ ACTION_INSTALL_CLUSTER = "install_cluster"
 ACTION_START_CLUSTER = "start_cluster"
 ACTION_BUILD_STANDBY = "build_standby"
 ACTION_BUILD_CASCADESTANDBY = "build_cascadestandby"
-
-# exit code
-EXEC_SUCCESS = 0
 
 
 #############################################################################
@@ -95,6 +94,8 @@ class InstallImpl:
             self.checkGaussenvFlag()
             # check the clueter status
             self.checkClusterStatus()
+            # check CM server node number
+            self.check_cm_server_node_number()
             # creating the backup directory
             self.prepareBackDir()
             # Check time consistency(only TP use it must less 2s)
@@ -136,6 +137,12 @@ class InstallImpl:
         function: Check if cluster is running
         input : NA
         output: NA
+        """
+        pass
+
+    def check_cm_server_node_number(self):
+        """
+        Check CM server node number
         """
         pass
 
@@ -231,7 +238,7 @@ class InstallImpl:
         # read the install setp from INSTALL_STEP
         self.context.logger.debug("Installing application")
         # compare xmlconfigInfo with staticConfigInfo
-        gaussHome = DefaultValue.getInstallDir(self.context.user)
+        gaussHome = ClusterDir.getInstallDir(self.context.user)
         commonStaticConfigFile = "%s/bin/cluster_static_config" % gaussHome
         if os.path.exists(commonStaticConfigFile):
             self.context.oldClusterInfo = dbClusterInfo()
@@ -314,12 +321,17 @@ class InstallImpl:
             "Command for installing application: %s" % cmd)
 
         # exec the cmd for install application on all nodes
-        DefaultValue.execCommandWithMode(cmd,
-                                         "Install applications",
-                                         self.context.sshTool,
-                                         self.context.isSingle,
-                                         self.context.mpprcFile)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle,
+                                        self.context.mpprcFile)
         self.context.logger.log("Successfully installed APP.")
+
+    def create_ca_for_cm(self):
+        """
+        Create CM CA file
+        """
+        pass
 
     def doInstall(self):
         """
@@ -351,7 +363,9 @@ class InstallImpl:
             self.context.genCipherAndRandFile(None, initPasswd)
             self.context.logger.log("begin to create CA cert files")
             self.context.createServerCa()
-            if not self.context.localMode:
+            self.create_ca_for_cm()
+            if DefaultValue.is_create_grpc(self.context.logger,
+                                           self.context.clusterInfo.appPath):
                 self.context.createGrpcCa()
 
         except Exception as e:
@@ -441,13 +455,6 @@ class InstallImpl:
         """
         pass
 
-    def distributeRackInfo(self):
-        """
-        function: Distributing the rack Information File
-        input : NA
-        output: NA
-        """
-        pass
 
     def doConfig(self):
         """
@@ -462,7 +469,6 @@ class InstallImpl:
             self.prepareConfigCluster()
             self.initNodeInstance()
             self.configInstance()
-            self.distributeRackInfo()
             DefaultValue.enableWhiteList(
                 self.context.sshTool,
                 self.context.mpprcFile,
@@ -474,6 +480,38 @@ class InstallImpl:
         # Configuration is completed
         self.context.logger.log("Configuration is completed.", "constant")
 
+    def cm_start_cluster(self):
+        """
+        function: start cluster
+        input : NA
+        output: NA
+        """
+        # check the --autostart parameter
+        self.context.logger.debug("The start mode is yes, delete cms_need_to_switchover file.")
+        home_bin_path = self.context.clusterInfo.appPath + "/bin/"
+        cmFile = home_bin_path + "cms_need_to_switchover"
+        cmd = g_file.SHELL_CMD_DICT["deleteFile"] % (cmFile, cmFile)
+        self.context.logger.debug("The command of delete file is: %s." % cmd)
+        (status, output) = self.context.sshTool.getSshStatusOutput(cmd)
+        for ret in list(status.values()):
+            if ret != DefaultValue.SUCCESS:
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
+                                " Error: \n%s" % str(output))
+        self.context.logger.debug("Successfully deleting cms_need_to_switchover file.")
+        # Start cluster applications
+        if self.context.clusterInfo.enable_dcf != 'on':
+            self.context.cmCons[0].startCluster(self.context.user,
+                                            0,
+                                            self.context.time_out,
+                                            isSwitchOver=True,
+                                            isSingle=self.context.isSingle)
+        else:
+            self.context.cmCons[0].startCluster(self.context.user,
+                                                0,
+                                                self.context.time_out,
+                                                isSwitchOver=False,
+                                                isSingle=self.context.isSingle)
+
     def startCluster(self):
         """
         function: start cluster
@@ -481,6 +519,12 @@ class InstallImpl:
         output: NA
         """
         # Start cluster applications
+        if DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo) == 0:
+            self.context.logger.debug("No CM configuration, start cluster with openGauss om.")
+        else:
+            self.context.logger.debug("Start Cluster with cm_ctl tool.")
+            self.cm_start_cluster()
+            return
         cmd = "source %s;" % self.context.mpprcFile
         cmd += "%s -t %s -U %s -X %s -R %s -c %s -l %s %s" % (
             OMCommand.getLocalScript("Local_Install"),
@@ -491,14 +535,11 @@ class InstallImpl:
             self.context.clusterInfo.name, self.context.localLog,
             self.getCommandOptions())
         self.context.logger.debug("Command for start cluster: %s" % cmd)
-        DefaultValue.execCommandWithMode(
+        CmdExecutor.execCommandWithMode(
             cmd,
-            "Start cluster",
             self.context.sshTool,
             self.context.isSingle or self.context.localMode,
             self.context.mpprcFile)
-
-        # build stand by
         cmd = "source %s;" % self.context.mpprcFile
         cmd += "%s -t %s -U %s -X %s -R %s -c %s -l %s %s" % (
             OMCommand.getLocalScript("Local_Install"),
@@ -509,14 +550,13 @@ class InstallImpl:
             self.context.clusterInfo.name, self.context.localLog,
             self.getCommandOptions())
         self.context.logger.debug("Command for build standby: %s" % cmd)
-        DefaultValue.execCommandWithMode(
+        CmdExecutor.execCommandWithMode(
             cmd,
-            "Build standby",
             self.context.sshTool,
             self.context.isSingle or self.context.localMode,
             self.context.mpprcFile)
 
-        # build casecadestand by
+        # build casecade stand by
         cmd = "source %s;" % self.context.mpprcFile
         cmd += "%s -t %s -U %s -X %s -R %s -c %s -l %s %s" % (
             OMCommand.getLocalScript("Local_Install"),
@@ -528,9 +568,8 @@ class InstallImpl:
             self.getCommandOptions())
         self.context.logger.debug("Command for build cascade standby: %s" % cmd)
         for hostname in self.context.sshTool.hostNames:
-            DefaultValue.execCommandWithMode(
+            CmdExecutor.execCommandWithMode(
                 cmd,
-                "Build cascade standby",
                 self.context.sshTool,
                 self.context.isSingle or self.context.localMode,
                 self.context.mpprcFile, [hostname])
@@ -546,14 +585,14 @@ class InstallImpl:
         self.context.logger.debug("Start the cluster.", "addStep")
         try:
             tmpGucFile = ""
-            tmpGucPath = DefaultValue.getTmpDirFromEnv(self.context.user)
+            tmpGucPath = EnvUtil.getTmpDirFromEnv(self.context.user)
             tmpGucFile = "%s/tmp_guc" % tmpGucPath
             cmd = g_file.SHELL_CMD_DICT["deleteFile"] % (
                 tmpGucFile, tmpGucFile)
-            DefaultValue.execCommandWithMode(cmd, "Install applications",
-                                             self.context.sshTool,
-                                             self.context.isSingle,
-                                             self.context.mpprcFile)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
             # start cluster in non-native mode
             self.startCluster()
         except Exception as e:

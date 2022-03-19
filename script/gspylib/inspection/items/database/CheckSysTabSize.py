@@ -18,8 +18,8 @@ from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
 import os
-from gspylib.os.gsfile import g_file
-from gspylib.os.gsplatform import g_Platform
+from base_utils.os.cmd_util import CmdUtil
+from base_utils.os.file_util import FileUtil
 
 DUMMY_STANDBY_INSTANCE = 2
 INSTANCE_ROLE_COODINATOR = 3
@@ -68,7 +68,7 @@ class CheckSysTabSize(BaseItem):
             pass
 
         for inst in instance:
-            cmd_dir = g_Platform.getDiskFreeCmd(inst.datadir)
+            cmd_dir = CmdUtil.getDiskFreeCmd(inst.datadir)
             result = SharedFuncs.runShellCmd(cmd_dir, self.user,
                                              self.mpprcFile)
             diskInfo_withspace = result.split("\n")
@@ -115,9 +115,9 @@ class CheckSysTabSize(BaseItem):
                     sumSize = sumSize + float(output)
                 # Calculate the size of datadir
                 strdir = inst.datadir
-                clog = g_file.getDirSize(os.path.join(strdir, 'pg_clog'), "M")
+                clog = FileUtil.getDirSize(os.path.join(strdir, 'pg_clog'), "M")
                 size_clog = int(clog[0].replace("M", ""))
-                xlog = g_file.getDirSize(os.path.join(strdir, 'pg_xlog'), "M")
+                xlog = FileUtil.getDirSize(os.path.join(strdir, 'pg_xlog'), "M")
                 size_xlog = int(xlog[0].replace("M", ""))
                 sumSize = sumSize + size_clog + size_xlog
             if (sumSize == 0):

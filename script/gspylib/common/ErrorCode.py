@@ -175,12 +175,14 @@ class ErrorCode():
                        "the relevant path of the database.",
         'GAUSS_50235': "[GAUSS-50235] : The log file name [%s] can not contain"
                        " more than one '.'.",
-        'GAUSS_50236': "[GAUSS-50236] : %s should be set in scene config "
-                       "file.",
+        'GAUSS_50236': "[GAUSS-50236] : The %s does not exist or "
+                       "the permission on the upper-layer directory is insufficient.",
         'GAUSS_50237': "[GAUSS-50237] : Send result file failed nodes: %s;"
                        " outputMap: %s",
-        'GAUSS_50238': "[GAUSS-50238] : Check integrality of bin "
+        'GAUSS_50238': "[GAUSS-50238] : Check integrality of bin ",
                        "file %s failed."
+        'GAUSS_50239': "[GAUSS-50236] : %s should be set in scene config "
+                                      "file."
 
     }
 
@@ -376,7 +378,8 @@ class ErrorCode():
         'GAUSS_51111': "[GAUSS-51111] : Failed to append local ID to "
                        "authorized_keys on remote node.",
         'GAUSS_51112': "[GAUSS-51112] : Failed to exchange SSH keys "
-                       "for user[%s] using hostname."
+                       "for user[%s] using hostname.",
+        'GAUSS_51113': "[GAUSS-51113] : Failed to generate passphrase keyword."
     }
 
     ###########################################################################
@@ -465,7 +468,8 @@ class ErrorCode():
         'GAUSS_51249': "[GAUSS-51249] : There is no database node instance "
                        "in the current node.",
         'GAUSS_51250': "[GAUSS-51250] : Error: the '%s' is illegal.\nthe path "
-                       "name or file name should be letters, number or -_:."
+                       "name or file name should be letters, number or -_:.",
+        'GAUSS_51251': "[GAUSS-51251] : The %s cannot be a root user group or a link."
 
 
     }
@@ -598,7 +602,9 @@ class ErrorCode():
         'GAUSS_51653': "[GAUSS-51653] : No database objects "
                        "were found in the cluster!",
         'GAUSS_51654': "[GAUSS-51654] : Cannot query instance process"
-                       " version from function."
+                       " version from function.",
+        'GAUSS_51655': "[GAUSS-51655] : There is %s on the cluster when operating on a cluster"
+                       "the %s parameter is not needed."
 
     }
 
@@ -1153,8 +1159,10 @@ class ErrorCode():
                        " no such operation!",
         "GAUSS_35809": "[GAUSS-35809] Some important steps failed to execute. "
                        "Please refer to log for detail!",
-        "GAUSS_35810": "[GAUSS-35810] A same process is already running! "
-
+        "GAUSS_35810": "[GAUSS-35810] A same process is already running! ",
+        "GAUSS_35811": "[GAUSS-35811] In a cluster with the CM component, "
+                       "the number of nodes must be greater than two to "
+                       "perform the drop node operation. "
     }
 
 

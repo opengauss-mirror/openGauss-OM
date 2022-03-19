@@ -15,12 +15,13 @@
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------
 import os
-from gspylib.common.Common import DefaultValue
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsOSlib import g_OSlib
-from gspylib.os.gsfile import g_file
+from base_utils.os.cmd_util import CmdUtil
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from base_utils.os.process_util import ProcessUtil
 
 
 class CheckMaxHandle(BaseItem):
@@ -31,13 +32,13 @@ class CheckMaxHandle(BaseItem):
         flag = True
         parRes = ""
         # Determine if it is an ELK environment
-        elk_env = DefaultValue.getEnv("ELK_SYSTEM_TABLESPACE")
+        elk_env = EnvUtil.getEnv("ELK_SYSTEM_TABLESPACE")
         if (elk_env):
             expand_value = 640000
         else:
             expand_value = 1000000
         # Check system open files parameter
-        output = g_OSlib.getUserLimits('open files')
+        output = CmdUtil.getUserLimits('open files')
         self.result.raw = output
         if (output != ""):
             self.result.val += output + "\n"
@@ -60,7 +61,7 @@ class CheckMaxHandle(BaseItem):
 
         # Check cluster process open files parameter
         if (self.cluster):
-            pidList = g_OSlib.getProcess(
+            pidList = ProcessUtil.getProcess(
                 os.path.join(self.cluster.appPath, 'bin/gaussdb'))
             for pid in pidList:
                 if (not os.path.isfile(
@@ -68,7 +69,7 @@ class CheckMaxHandle(BaseItem):
                     "/proc/%s/limits" % pid, os.R_OK)):
                     continue
                 openFileInfo = \
-                    g_file.readFile('/proc/%s/limits' % pid, 'Max open files')[
+                    FileUtil.readFile('/proc/%s/limits' % pid, 'Max open files')[
                         0]
                 if (openFileInfo):
                     value = openFileInfo.split()[3]
@@ -93,7 +94,7 @@ class CheckMaxHandle(BaseItem):
         else:
             limitFile = '90-nofile.conf'
 
-        elk_env = DefaultValue.getEnv("ELK_SYSTEM_TABLESPACE")
+        elk_env = EnvUtil.getEnv("ELK_SYSTEM_TABLESPACE")
         if (elk_env):
             expand_value = 640000
         else:

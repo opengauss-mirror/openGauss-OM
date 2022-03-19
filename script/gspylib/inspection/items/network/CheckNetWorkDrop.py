@@ -16,11 +16,11 @@
 # ----------------------------------------------------------------------------
 import os
 import time
-import platform
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsplatform import g_Platform
+from os_platform.UserPlatform import g_Platform
+from os_platform.linux_distro import LinuxDistro
 
 
 class CheckNetWorkDrop(BaseItem):
@@ -33,7 +33,7 @@ class CheckNetWorkDrop(BaseItem):
         """
         ipMap = {}
         netWorkInfo = {}
-        distname, version, idnum = g_Platform.dist()
+        distname, version, idnum = LinuxDistro.linux_distribution()
         for nodeInfo in self.cluster.dbNodes:
             ipMap[nodeInfo.sshIps[0]] = nodeInfo.backIps[0]
         for sshIp in ipMap.keys():

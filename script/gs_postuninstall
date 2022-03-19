@@ -24,7 +24,6 @@ import os, sys
 import subprocess
 import grp
 import pwd
-import platform
 
 package_path = os.path.dirname(os.path.realpath(__file__))
 ld_path = package_path + "/gspylib/clib"
@@ -38,13 +37,20 @@ if not os.environ.get('LD_LIBRARY_PATH').startswith(ld_path):
 
 
 from gspylib.common.GaussLog import GaussLog
-from gspylib.os.gsfile import g_Platform
 from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.ParallelBaseOM import ParallelBaseOM
 from gspylib.common.ParameterParsecheck import Parameter
 from impl.postuninstall.OLAP.PostUninstallImplOLAP import \
     PostUninstallImplOLAP
+from domain_utils.cluster_file.cluster_config_file import ClusterConfigFile
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.net_util import NetUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from os_platform.linux_distro import LinuxDistro
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
 
 class Postuninstall(ParallelBaseOM):
@@ -69,6 +75,9 @@ class Postuninstall(ParallelBaseOM):
         self.nodeList = []
         self.clusterToolPath = ""
         self.userHome = ""
+        self.rootPasswd = ""
+        self.ips = []
+        self.root_ssh_agent_flag = False
 
     def usage(self):
         """
@@ -160,9 +169,10 @@ General options:
         # check user
         self.checkUser()
         # check config file
-        self.checkConfigFile()
+        ClusterConfigFile.checkConfigFile(self.xmlFile)
         # check log file
-        self.checkLogFile()
+        self.logFile = ClusterLog.checkLogFile(self.logFile, self.user, self.xmlFile,
+                                               ClusterConstants.UNPREINSTALL_LOG_FILE)
         # check mpprc file if needed, should be done
         # before check preinstall step
         self.checkMpprcFile()
@@ -186,47 +196,13 @@ General options:
             GaussLog.exitWithError(ErrorCode.GAUSS_503["GAUSS_50301"])
 
         try:
-            DefaultValue.checkUser(self.user, False)
+            ClusterUser.checkUser(self.user, False)
         except Exception as e:
             GaussLog.exitWithError(str(e))
 
         if (pwd.getpwnam(self.user).pw_uid == 0):
             GaussLog.exitWithError(ErrorCode.GAUSS_503["GAUSS_50302"])
 
-    def checkConfigFile(self):
-        """
-        function: check Config File
-        input : NA
-        output: NA
-        """
-        # if no config file
-        if (self.xmlFile == ""):
-            GaussLog.exitWithError(
-                ErrorCode.GAUSS_500["GAUSS_50001"] % "X" + ".")
-        # if path not exists
-        if (not os.path.exists(self.xmlFile)):
-            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50201"]
-                                   % "configuration file" + " %s."
-                                   % self.xmlFile)
-        # if not absolute path
-        if (not os.path.isabs(self.xmlFile)):
-            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"]
-                                   % "configure file")
-
-    def checkLogFile(self):
-        """
-        function: check log File
-        input : NA
-        output: NA
-        """
-        # if no log file
-        if (self.logFile == ""):
-            self.logFile = DefaultValue.getOMLogPath(
-                DefaultValue.UNPREINSTALL_LOG_FILE, self.user, "",
-                self.xmlFile)
-        # if not absolute path
-        if (not os.path.isabs(self.logFile)):
-            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"] % "log")
 
     def checkMpprcFile(self):
         """
@@ -235,12 +211,11 @@ General options:
         output: NA
         """
         # get path of MpprcFile
-        self.mpprcFile = DefaultValue.getEnv(DefaultValue.MPPRC_FILE_ENV)
+        self.mpprcFile = EnvUtil.getEnv(DefaultValue.MPPRC_FILE_ENV)
 
         try:
             # get tool path
-            self.clusterToolPath = DefaultValue.getPreClusterToolPath(
-                self.user, self.xmlFile)
+            self.clusterToolPath = ClusterDir.getPreClusterToolPath(self.xmlFile)
         except Exception as e:
             GaussLog.exitWithError(str(e))
         # if MpprcFile is null
@@ -340,7 +315,7 @@ General options:
         try:
             # get user group
             group = grp.getgrgid(pwd.getpwnam(self.user).pw_gid).gr_name
-            distname, version, idnum = g_Platform.dist()
+            distname, version, idnum = LinuxDistro.linux_distribution()
             # check if OS version is redhat or Euler
             if (distname in ("redhat", "euleros", "centos", "openEuler")):
                 if (self.deleteGroup != True and self.deleteUser == True
@@ -384,7 +359,7 @@ General options:
             self.logger.logExit(str(e))
 
         dirName = os.path.dirname(self.logFile)
-        self.localLog = os.path.join(dirName, DefaultValue.LOCAL_LOG_FILE)
+        self.localLog = os.path.join(dirName, ClusterConstants.LOCAL_LOG_FILE)
         self.userHome = DefaultValue.getUserHome(self.user)
 
 if __name__ == '__main__':
@@ -404,7 +379,7 @@ if __name__ == '__main__':
 
         if len(postuninstall.clusterInfo.getClusterNodeNames()) == 1 and \
                 postuninstall.clusterInfo.getClusterNodeNames()[
-                    0] == DefaultValue.GetHostIpOrName():
+                    0] == NetUtil.GetHostIpOrName():
             postuninstall.localMode = True
         impl = PostUninstallImplOLAP(postuninstall)
 

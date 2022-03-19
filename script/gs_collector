@@ -26,7 +26,6 @@ import pwd
 import time
 import json
 from datetime import datetime
-from datetime import timedelta
 
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.Common import DefaultValue
@@ -34,6 +33,11 @@ from gspylib.common.ParallelBaseOM import ParallelBaseOM
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.ParameterParsecheck import Parameter
 from impl.collect.OLAP.CollectImplOLAP import CollectImplOLAP
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from base_utils.os.env_util import EnvUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from domain_utils.cluster_os.cluster_user import ClusterUser
+
 
 def my_obj_pairs_hook(lst):
     result = {}
@@ -101,7 +105,7 @@ Usage:
   gs_collector -? | --help
   gs_collector -V | --version
   gs_collector --begin-time="BEGINTIME" --end-time="ENDTIME" [-h HOSTNAME | -f HOSTFILE] 
-                [--keyword=KEYWORD] [--speed-limit=SPEED] [-o OUTPUT] [-l LOGFILE]
+                [--keyword=KEYWORD] [--speed-limit=SPEED] [-o OUTPUT] [-l LOGFILE] [-C CONFIGFILE]
 
 General options:
       --begin-time=BEGINTIME      Time to start log file collection. Pattern:yyyymmdd hh:mm.
@@ -251,7 +255,7 @@ General options:
         if self.configFile == "":
             self.configFile = "%s/%s" % (
                 os.path.dirname(os.path.realpath(__file__)),
-                DefaultValue.GS_COLLECTOR_CONFIG_FILE)
+                ClusterConstants.GS_COLLECTOR_CONFIG_FILE)
 
         if self.configFile != "":
             # Check if the config file exists
@@ -356,18 +360,18 @@ General options:
             self.duration = diff.days + 1
 
         # check mpprc file path
-        self.mpprcFile = DefaultValue.getMpprcFile()
+        self.mpprcFile = EnvUtil.getMpprcFile()
         # check if user exist and is the right user
         try:
             self.user = pwd.getpwuid(os.getuid()).pw_name
-            DefaultValue.checkUser(self.user)
+            ClusterUser.checkUser(self.user)
         except Exception as e:
             GaussLog.exitWithError(str(e))
 
         # check log file
         if (self.logFile == ""):
-            self.logFile = DefaultValue.getOMLogPath(
-                DefaultValue.GS_COLLECTOR_LOG_FILE, self.user, "")
+            self.logFile = ClusterLog.getOMLogPath(
+                ClusterConstants.GS_COLLECTOR_LOG_FILE, self.user, "")
 
         if (self.speedLimit == 0):
             self.speedLimit = 1024

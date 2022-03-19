@@ -14,10 +14,9 @@
 # MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------
-from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.hardware.gsmemory import g_memory
+from base_utils.os.memory_util import MemoryUtil
 
 
 class CheckMemInfo(BaseItem):
@@ -25,7 +24,7 @@ class CheckMemInfo(BaseItem):
         super(CheckMemInfo, self).__init__(self.__class__.__name__)
 
     def doCheck(self):
-        totalMem_bit = g_memory.getMemTotalSize()
+        totalMem_bit = MemoryUtil.getMemTotalSize()
         totalMem_g = totalMem_bit / 1024 / 1024 / 1024
         self.result.rst = ResultStatus.OK
         self.result.raw = "%s bit" % totalMem_bit

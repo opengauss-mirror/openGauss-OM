@@ -18,20 +18,20 @@
 
 import subprocess
 import os
-import sys
 import time
-import threading
-import glob
-import shutil
+import json
 from functools import cmp_to_key
 
 from gspylib.common.Common import ClusterCommand, DefaultValue
 from gspylib.common.OMCommand import OMCommand
 from gspylib.common.ErrorCode import ErrorCode
-from gspylib.os.gsfile import g_file
 from gspylib.threads.parallelTool import parallelTool
 from impl.checkperf.CheckperfImpl import CheckperfImpl
-from multiprocessing.dummy import Pool as ThreadPool
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from domain_utils.sql_handler.sql_executor import SqlExecutor
+from base_utils.os.net_util import NetUtil
+from base_utils.os.cmd_util import CmdUtil
 
 # Database size inspection interval
 DB_SIZE_CHECK_INTERVAL = 21600
@@ -65,7 +65,7 @@ class CheckperfImplOLAP(CheckperfImpl):
         input : NA
         output: instlist
         """
-        clusterStatus = OMCommand.getClusterStatus(self.opts.user)
+        clusterStatus = OMCommand.getClusterStatus()
         if clusterStatus is None:
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51600"])
 
@@ -103,7 +103,7 @@ class CheckperfImplOLAP(CheckperfImpl):
         """
         self.logger.debug("Checking cluster status.")
 
-        cmd = ClusterCommand.getQueryStatusCmd(self.opts.user, "", "", False)
+        cmd = ClusterCommand.getQueryStatusCmd("", "", False)
         (status, output) = subprocess.getstatusoutput(cmd)
         if (status != 0):
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51600"]
@@ -137,7 +137,7 @@ class CheckperfImplOLAP(CheckperfImpl):
 
     def collectPMKData(
             self, pmk_curr_collect_start_time,
-            pmk_last_collect_start_time, last_snapshot_id, port):
+            pmk_last_collect_start_time, last_snapshot_id, port, host_name_list):
         """
         function: collect PMK data
         input  : pmk_curr_collect_start_time,
@@ -167,12 +167,12 @@ class CheckperfImplOLAP(CheckperfImpl):
 
         cmd += " --flag-num=%d" % os.getpid()
 
-        cmd += " --master-host=%s" % DefaultValue.GetHostIpOrName()
+        cmd += " --master-host=%s" % NetUtil.GetHostIpOrName()
 
         self.logger.debug("Command for executing %s on all hosts" % cmd)
         if (os.getuid() == 0):
             cmd = """su - %s -c \\\"%s\\\" """ % (self.opts.user, cmd)
-        (status, output) = self.sshTool.getSshStatusOutput(cmd)
+        (status, output) = self.sshTool.getSshStatusOutput(cmd, host_name_list)
         for node in status.keys():
             if (status[node] == DefaultValue.SUCCESS):
                 pass
@@ -197,7 +197,7 @@ class CheckperfImplOLAP(CheckperfImpl):
         """
         self.logger.debug("Getting PMK meta data.")
         try:
-            local_host = DefaultValue.GetHostIpOrName()
+            local_host = NetUtil.GetHostIpOrName()
             status = 7
             result = None
             error_output = ""
@@ -208,7 +208,7 @@ class CheckperfImplOLAP(CheckperfImpl):
                 if (hostName == local_host):
                     # execute sql
                     (status, result, error_output) = \
-                        ClusterCommand.excuteSqlOnLocalhost(port, querySql)
+                        SqlExecutor.excuteSqlOnLocalhost(port, querySql)
                 else:
                     # Gets the current time
                     currentTime = time.strftime("%Y-%m-%d_%H:%M:%S")
@@ -217,14 +217,14 @@ class CheckperfImplOLAP(CheckperfImpl):
                         "metadata_%s_%s_%s.json" \
                         % (hostName, pid, currentTime)
                     # Get the temporary directory from PGHOST
-                    tmpDir = DefaultValue.getTmpDirFromEnv(self.opts.user)
+                    tmpDir = EnvUtil.getTmpDirFromEnv(self.opts.user)
                     filepath = os.path.join(tmpDir, outputfile)
                     # execute SQL on remote host
                     ClusterCommand.executeSQLOnRemoteHost(
                         hostName, port, querySql, filepath)
                     # get sql result from outputfile
                     (status, result, error_output) = \
-                        ClusterCommand.getSQLResult(hostName, outputfile)
+                        SqlExecutor.getSQLResult(hostName, outputfile)
 
                 if (status != 2 or error_output != ""):
                     raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] \
@@ -279,13 +279,13 @@ class CheckperfImplOLAP(CheckperfImpl):
         """
         self.logger.debug("Deleting expired snapshots records.")
         try:
-            local_host = DefaultValue.GetHostIpOrName()
+            local_host = NetUtil.GetHostIpOrName()
             # execute sql
             querySql = "SELECT * FROM pmk.delete_expired_snapshots();"
             if (self.DWS_mode):
                 if (hostName == local_host):
                     (status, result, error_output) = \
-                        ClusterCommand.excuteSqlOnLocalhost(port, querySql)
+                        SqlExecutor.excuteSqlOnLocalhost(port, querySql)
                 else:
                     # Gets the current time
                     currentTime = time.strftime("%Y-%m-%d_%H:%M:%S")
@@ -294,14 +294,14 @@ class CheckperfImplOLAP(CheckperfImpl):
                         "deleteSnapshots_%s_%s_%s.json" \
                         % (hostName, pid, currentTime)
                     # Create a temporary file
-                    tmpDir = DefaultValue.getTmpDirFromEnv(self.opts.user)
+                    tmpDir = EnvUtil.getTmpDirFromEnv(self.opts.user)
                     filepath = os.path.join(tmpDir, outputfile)
                     # execute SQL on remote host
                     ClusterCommand.executeSQLOnRemoteHost( \
                         hostName, port, querySql, filepath)
                     # get sql result from outputfile
                     (status, result, error_output) = \
-                        ClusterCommand.getSQLResult(hostName, outputfile)
+                        SqlExecutor.getSQLResult(hostName, outputfile)
                 if (status != 2):
                     raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] \
                                     % querySql \
@@ -334,7 +334,7 @@ class CheckperfImplOLAP(CheckperfImpl):
             % filePath)
         try:
             # read file
-            nodtStat = g_file.readFile(filePath)
+            nodtStat = FileUtil.readFile(filePath)
             # parse node stat
             for line in nodtStat:
                 line = line.strip()
@@ -361,7 +361,7 @@ class CheckperfImplOLAP(CheckperfImpl):
             % filePath)
         try:
             # read file
-            cpuStat = g_file.readFile(filePath)
+            cpuStat = FileUtil.readFile(filePath)
             # parse session cpu stat
             for line in cpuStat:
                 line = line.strip()
@@ -384,7 +384,7 @@ class CheckperfImplOLAP(CheckperfImpl):
             % filePath)
         try:
             # read file
-            MemoryStat = g_file.readFile(filePath)
+            MemoryStat = FileUtil.readFile(filePath)
             for line in MemoryStat:
                 line = line.strip()
                 column = line.split('|')
@@ -405,7 +405,7 @@ class CheckperfImplOLAP(CheckperfImpl):
             "Parsing session IO stat of single host into the file[%s]." \
             % filePath)
         try:
-            IOStat = g_file.readFile(filePath)
+            IOStat = FileUtil.readFile(filePath)
             for line in IOStat:
                 line = line.strip()
                 column = line.split('|')
@@ -431,7 +431,7 @@ class CheckperfImplOLAP(CheckperfImpl):
             # traversing host name
             for hostName in hostNames:
                 recordTempFile = os.path.join(
-                    DefaultValue.getTmpDirFromEnv(self.opts.user),
+                    EnvUtil.getTmpDirFromEnv(self.opts.user),
                     "recordTempFile_%d_%s" % (os.getpid(), hostName))
                 # check if recordTempFile exists
                 if (os.path.exists(recordTempFile)):
@@ -440,9 +440,9 @@ class CheckperfImplOLAP(CheckperfImpl):
                 else:
                     if (self.clusterInfo.isSingleInstCluster()):
                         continue
-                    if (hostName != DefaultValue.GetHostIpOrName()):
+                    if (hostName != NetUtil.GetHostIpOrName()):
                         scpcmd = "pssh -s -H %s 'pscp -H %s %s %s' " \
-                                 % (hostName, DefaultValue.GetHostIpOrName(),
+                                 % (hostName, NetUtil.GetHostIpOrName(),
                                     recordTempFile, recordTempFile)
                         (status, output) = subprocess.getstatusoutput(scpcmd)
                         if (status != 0):
@@ -452,7 +452,7 @@ class CheckperfImplOLAP(CheckperfImpl):
                                 "delivered from node [%s]" \
                                 "by command 'scp';Error:\n%s" % \
                                 (recordTempFile,
-                                 DefaultValue.getTmpDirFromEnv(
+                                 EnvUtil.getTmpDirFromEnv(
                                      self.opts.user),
                                  hostName, output))
                         else:
@@ -462,7 +462,7 @@ class CheckperfImplOLAP(CheckperfImpl):
                             "Lost local file [%s] in current " \
                             "node path [%s]" % \
                             (recordTempFile,
-                             DefaultValue.getTmpDirFromEnv(self.opts.user)))
+                             EnvUtil.getTmpDirFromEnv(self.opts.user)))
             # check if number matches
             if (len(resultFiles) == 0):
                 raise Exception(
@@ -488,14 +488,14 @@ class CheckperfImplOLAP(CheckperfImpl):
 
             # traverse file
             for tempFile in resultFiles:
-                g_file.removeFile(tempFile)
+                FileUtil.removeFile(tempFile)
 
             self.logger.debug("Successfully got node stat of all hosts.")
         except Exception as e:
             # traverse file
             for tempFile in resultFiles:
                 # close and remove temporary file
-                g_file.removeFile(tempFile)
+                FileUtil.removeFile(tempFile)
             raise Exception(str(e))
 
     def getAllSessionCpuStat(self):
@@ -514,7 +514,7 @@ class CheckperfImplOLAP(CheckperfImpl):
             for hostName in hostNames:
                 # get session Cpu Temp File
                 sessionCpuTempFile = os.path.join(
-                    DefaultValue.getTmpDirFromEnv(self.opts.user),
+                    EnvUtil.getTmpDirFromEnv(self.opts.user),
                     "sessionCpuTempFile_%d_%s" \
                     % (os.getpid(), hostName))
                 # check if session Cpu Temp File exists
@@ -539,14 +539,14 @@ class CheckperfImplOLAP(CheckperfImpl):
             # traverse temp File
             for tempFile in resultFiles:
                 # clean temp File
-                g_file.removeFile(tempFile)
+                FileUtil.removeFile(tempFile)
 
             self.logger.debug("Successfully got cpu stat of all sessions.")
         except Exception as e:
             # traverse temp File
             for tempFile in resultFiles:
                 # clean temp File
-                g_file.removeFile(tempFile)
+                FileUtil.removeFile(tempFile)
             raise Exception(str(e))
 
     def getAllSessionMemoryStat(self):
@@ -564,7 +564,7 @@ class CheckperfImplOLAP(CheckperfImpl):
             # traverse host names
             for hostName in hostNames:
                 sessionMemTempFile = os.path.join(
-                    DefaultValue.getTmpDirFromEnv(self.opts.user),
+                    EnvUtil.getTmpDirFromEnv(self.opts.user),
                     "sessionMemTempFile_%d_%s" \
                     % (os.getpid(), hostName))
                 # check if session Mem Temp File exists
@@ -588,14 +588,14 @@ class CheckperfImplOLAP(CheckperfImpl):
 
             # traverse temp File
             for tempFile in resultFiles:
-                g_file.removeFile(tempFile)
+                FileUtil.removeFile(tempFile)
 
             self.logger.debug("Successfully got memory stat of all sessions.")
         except Exception as e:
             # traverse temp File
             for tempFile in resultFiles:
                 # remove temporary file
-                g_file.removeFile(tempFile)
+                FileUtil.removeFile(tempFile)
             raise Exception(str(e))
 
     def getAllSessionIOStat(self):
@@ -613,7 +613,7 @@ class CheckperfImplOLAP(CheckperfImpl):
             # traverse host names
             for hostName in hostNames:
                 sessionIOTempFile = os.path.join(
-                    DefaultValue.getTmpDirFromEnv(self.opts.user),
+                    EnvUtil.getTmpDirFromEnv(self.opts.user),
                     "sessionIOTempFile_%d_%s" % (os.getpid(), hostName))
                 # if session IO Temp File exists
                 if (os.path.exists(sessionIOTempFile)):
@@ -636,14 +636,14 @@ class CheckperfImplOLAP(CheckperfImpl):
             # traverse temp File
             for tempFile in resultFiles:
                 # close and remove temporary file
-                g_file.removeFile(tempFile)
+                FileUtil.removeFile(tempFile)
 
             self.logger.debug("Successfully got IO stat of all sessions.")
         except Exception as e:
             # traverse temp File
             for tempFile in resultFiles:
                 # close and remove temporary file
-                g_file.removeFile(tempFile)
+                FileUtil.removeFile(tempFile)
             raise Exception(str(e))
 
     def getAllHostsPrevNodeStat(self, hostName, port, snapshotId):
@@ -681,24 +681,24 @@ class CheckperfImplOLAP(CheckperfImpl):
                     querySql += "COALESCE(pns.db_cpu_time, 0)FROM " \
                                 "pmk.pmk_snapshot_coordinator_stat pns "
                     querySql += "WHERE pns.snapshot_id = %s" % snapshotId
-                    local_host = DefaultValue.GetHostIpOrName()
+                    local_host = NetUtil.GetHostIpOrName()
 
                     if (local_host == hostName):
                         (status, result, error_output) = \
-                            ClusterCommand.excuteSqlOnLocalhost(port, querySql)
+                            SqlExecutor.excuteSqlOnLocalhost(port, querySql)
                     else:
                         # Gets the current time
                         currentTime = time.strftime("%Y-%m-%d_%H:%M:%S")
                         pid = os.getpid()
                         outputfile = "nodestat_%s_%s_%s.json" \
                                      % (hostName, pid, currentTime)
-                        tmpDir = DefaultValue.getTmpDirFromEnv(self.opts.user)
+                        tmpDir = EnvUtil.getTmpDirFromEnv(self.opts.user)
                         filepath = os.path.join(tmpDir, outputfile)
                         # execute SQL on remote host
                         ClusterCommand.executeSQLOnRemoteHost(
                             hostName, port, querySql, filepath, snapshotId)
                         (status, result, error_output) = \
-                            ClusterCommand.getSQLResult(hostName, outputfile)
+                            SqlExecutor.getSQLResult(hostName, outputfile)
                     if (status != 2):
                         raise Exception(
                             ErrorCode.GAUSS_513["GAUSS_51300"] \
@@ -738,19 +738,19 @@ class CheckperfImplOLAP(CheckperfImpl):
                     querySql += "WHERE pns.snapshot_id = %s" % snapshotId
                     if (local_host == hostName):
                         (status, result, error_output) = \
-                            ClusterCommand.excuteSqlOnLocalhost(port, querySql)
+                            SqlExecutor.excuteSqlOnLocalhost(port, querySql)
                     else:
                         # Gets the current time
                         currentTime = time.strftime("%Y-%m-%d_%H:%M:%S")
                         pid = os.getpid()
                         outputfile = "nodestat_%s_%s_%s.json" \
                                      % (hostName, pid, currentTime)
-                        tmpDir = DefaultValue.getTmpDirFromEnv(self.opts.user)
+                        tmpDir = EnvUtil.getTmpDirFromEnv(self.opts.user)
                         filepath = os.path.join(tmpDir, outputfile)
                         ClusterCommand.executeSQLOnRemoteHost(
                             hostName, port, querySql, filepath, snapshotId)
                         (status, result, error_output) = \
-                            ClusterCommand.getSQLResult(hostName, outputfile)
+                            SqlExecutor.getSQLResult(hostName, outputfile)
                     if (status != 2):
                         raise Exception(
                             ErrorCode.GAUSS_513["GAUSS_51300"] \
@@ -1057,12 +1057,12 @@ class CheckperfImplOLAP(CheckperfImpl):
                 self.logger.debug("tempList: %s" % tempList)
 
                 sessionCpuTempResult = os.path.join(
-                    DefaultValue.getTmpDirFromEnv(self.opts.user),
+                    EnvUtil.getTmpDirFromEnv(self.opts.user),
                     "sessionCpuTempResult_%d_%s" \
                     % (os.getpid(),
-                       DefaultValue.GetHostIpOrName()))
+                       NetUtil.GetHostIpOrName()))
                 # clean the temp file first
-                g_file.createFile(sessionCpuTempResult)
+                FileUtil.createFile(sessionCpuTempResult)
 
                 strCmd = ""
                 for index in range(0, min(10, len(self.sessionCpuColumn))):
@@ -1071,21 +1071,21 @@ class CheckperfImplOLAP(CheckperfImpl):
                                (tempList[index])[2], (tempList[index])[3],
                                (tempList[index])[4], (tempList[index])[5])
 
-                g_file.writeFile(sessionCpuTempResult, [strCmd])
-                if (hostname != DefaultValue.GetHostIpOrName()):
+                FileUtil.writeFile(sessionCpuTempResult, [strCmd])
+                if (hostname != NetUtil.GetHostIpOrName()):
                     self.sshTool.scpFiles(
                         sessionCpuTempResult,
-                        DefaultValue.getTmpDirFromEnv(self.opts.user) \
+                        EnvUtil.getTmpDirFromEnv(self.opts.user) \
                         + "/", [hostname])
 
-                    g_file.removeFile(sessionCpuTempResult)
+                    FileUtil.removeFile(sessionCpuTempResult)
             else:
                 self.logger.debug("There are no session cpu statistics.")
             self.logger.debug(
                 "Successfully handled session cpu stat of all hosts.")
         except Exception as e:
             # close and remove temporary file
-            g_file.removeFile(sessionCpuTempResult)
+            FileUtil.removeFile(sessionCpuTempResult)
             raise Exception(str(e))
 
     def handleSessionMemoryStat(self, hostname):
@@ -1117,11 +1117,11 @@ class CheckperfImplOLAP(CheckperfImpl):
 
                 # get session Mem Temp Result
                 sessionMemTempResult = os.path.join(
-                    DefaultValue.getTmpDirFromEnv(self.opts.user),
+                    EnvUtil.getTmpDirFromEnv(self.opts.user),
                     "sessionMemTempResult_%d_%s" \
-                    % (os.getpid(), DefaultValue.GetHostIpOrName()))
+                    % (os.getpid(), NetUtil.GetHostIpOrName()))
                 # clean the temp file first
-                g_file.createFile(sessionMemTempResult)
+                FileUtil.createFile(sessionMemTempResult)
 
                 strCmd = ""
                 for index in range(0, min(10, len(self.sessionMemoryColumn))):
@@ -1132,21 +1132,21 @@ class CheckperfImplOLAP(CheckperfImpl):
                                (tempList[index])[6], (tempList[index])[7],
                                (tempList[index])[8], (tempList[index])[9])
 
-                g_file.writeFile(sessionMemTempResult, [strCmd])
-                if (hostname != DefaultValue.GetHostIpOrName()):
+                FileUtil.writeFile(sessionMemTempResult, [strCmd])
+                if (hostname != NetUtil.GetHostIpOrName()):
                     self.sshTool.scpFiles(
                         sessionMemTempResult,
-                        DefaultValue.getTmpDirFromEnv(self.opts.user) \
+                        EnvUtil.getTmpDirFromEnv(self.opts.user) \
                         + "/", [hostname])
 
-                    g_file.removeFile(sessionMemTempResult)
+                    FileUtil.removeFile(sessionMemTempResult)
             else:
                 self.logger.debug("There are no session memory statistics.")
             self.logger.debug(
                 "Successfully handled session memory stat of all hosts.")
         except Exception as e:
             # close and remove temporary file
-            g_file.removeFile(sessionMemTempResult)
+            FileUtil.removeFile(sessionMemTempResult)
             raise Exception(str(e))
 
     def handleSessionIOStat(self, hostname):
@@ -1177,11 +1177,11 @@ class CheckperfImplOLAP(CheckperfImpl):
                 self.logger.debug("tempList: %s" % tempList)
 
                 sessionIOTempResult = os.path.join(
-                    DefaultValue.getTmpDirFromEnv(self.opts.user),
+                    EnvUtil.getTmpDirFromEnv(self.opts.user),
                     "sessionIOTempResult_%d_%s" \
-                    % (os.getpid(), DefaultValue.GetHostIpOrName()))
+                    % (os.getpid(), NetUtil.GetHostIpOrName()))
                 # clean the temp file first
-                g_file.createFile(sessionIOTempResult)
+                FileUtil.createFile(sessionIOTempResult)
 
                 strCmd = ""
                 for index in range(0, min(10, len(self.sessionIOColumn))):
@@ -1191,15 +1191,15 @@ class CheckperfImplOLAP(CheckperfImpl):
                                                     (tempList[index])[3],
                                                     (tempList[index])[4])
 
-                g_file.writeFile(sessionIOTempResult, [strCmd])
-                if (hostname != DefaultValue.GetHostIpOrName()):
+                FileUtil.writeFile(sessionIOTempResult, [strCmd])
+                if (hostname != NetUtil.GetHostIpOrName()):
                     self.sshTool.scpFiles(
                         sessionIOTempResult,
-                        DefaultValue.getTmpDirFromEnv(self.opts.user) \
+                        EnvUtil.getTmpDirFromEnv(self.opts.user) \
                         + "/", [hostname])
 
                     # close and remove temporary file
-                    g_file.removeFile(sessionIOTempResult)
+                    FileUtil.removeFile(sessionIOTempResult)
             else:
                 self.logger.debug("There are no session IO statistics.")
             self.logger.debug(
@@ -1207,7 +1207,7 @@ class CheckperfImplOLAP(CheckperfImpl):
         except Exception as e:
 
             # close and remove temporary file
-            g_file.removeFile(sessionIOTempResult)
+            FileUtil.removeFile(sessionIOTempResult)
             raise Exception(str(e))
 
     def launchAsynCollection(self, host, port):
@@ -1286,7 +1286,7 @@ class CheckperfImplOLAP(CheckperfImpl):
                 % self.opts.databaseSizeFile)
             return
 
-        lines = g_file.readFile(self.opts.databaseSizeFile)
+        lines = FileUtil.readFile(self.opts.databaseSizeFile)
 
         if (len(lines) == 0):
             self.logger.debug(
@@ -1312,7 +1312,6 @@ class CheckperfImplOLAP(CheckperfImpl):
         """
         self.logger.debug(
             "Inserting the node stat of all hosts into the cluster.")
-        dnInsts = []
         insertSql = ""
         currTimeTemp = ""
         lastTimeTemp = ""
@@ -1385,46 +1384,45 @@ class CheckperfImplOLAP(CheckperfImpl):
                             " = %s, last_snapshot_collect_time = %s; " % \
                             (snapshotIdTempStr, currTimeTemp)
                 # execute the insert sql
-                local_host = DefaultValue.GetHostIpOrName()
-                error_output = ""
-                if (self.DWS_mode):
-                    if (local_host == hostName):
+                local_host = NetUtil.GetHostIpOrName()
+                if self.DWS_mode:
+                    if local_host == hostName:
                         (status, result,
-                         error_output1) = ClusterCommand.excuteSqlOnLocalhost(
+                         error_output1) = SqlExecutor.excuteSqlOnLocalhost(
                             port, tempSql)
                         (status, result,
-                         error_output2) = ClusterCommand.excuteSqlOnLocalhost(
+                         error_output2) = SqlExecutor.excuteSqlOnLocalhost(
                             port, insertSql)
                         (status, result,
-                         error_output3) = ClusterCommand.excuteSqlOnLocalhost(
+                         error_output3) = SqlExecutor.excuteSqlOnLocalhost(
                             port, updateSql)
                     else:
                         currentTime = time.strftime("%Y-%m-%d_%H:%M:%S")
                         pid = os.getpid()
                         outputfile = "metadata_%s_%s_%s.json" % (
                             hostName, pid, currentTime)
-                        tmpDir = DefaultValue.getTmpDirFromEnv()
+                        tmpDir = EnvUtil.getTmpDirFromEnv()
                         filepath = os.path.join(tmpDir, outputfile)
                         ClusterCommand.executeSQLOnRemoteHost(dnInst.hostname,
                                                               dnInst.port,
                                                               tempSql,
                                                               filepath)
                         (status, result,
-                         error_output1) = ClusterCommand.getSQLResult(
+                         error_output1) = SqlExecutor.getSQLResult(
                             dnInst.hostname, outputfile)
                         ClusterCommand.executeSQLOnRemoteHost(dnInst.hostname,
                                                               dnInst.port,
                                                               insertSql,
                                                               filepath)
                         (status, result,
-                         error_output2) = ClusterCommand.getSQLResult(
+                         error_output2) = SqlExecutor.getSQLResult(
                             dnInst.hostname, outputfile)
                         ClusterCommand.executeSQLOnRemoteHost(dnInst.hostname,
                                                               dnInst.port,
                                                               updateSql,
                                                               filepath)
                         (status, result,
-                         error_output3) = ClusterCommand.getSQLResult(
+                         error_output3) = SqlExecutor.getSQLResult(
                             dnInst.hostname, outputfile)
                     if error_output1 != "":
                         self.logger.debug(
@@ -1503,7 +1501,7 @@ class CheckperfImplOLAP(CheckperfImpl):
             if (self.opts.mpprcFile != ""):
                 cmd = "source %s; %s" % (self.opts.mpprcFile, cmd)
 
-            if (host != DefaultValue.GetHostIpOrName()):
+            if (host != NetUtil.GetHostIpOrName()):
                 cmd = "pssh -s -H %s \'%s\'" % (str(host), cmd)
 
             if (os.getuid() == 0):
@@ -1530,23 +1528,23 @@ class CheckperfImplOLAP(CheckperfImpl):
         """
         try:
             querySql = "DROP SCHEMA IF EXISTS pmk CASCADE;"
-            local_host = DefaultValue.GetHostIpOrName()
+            local_host = NetUtil.GetHostIpOrName()
             if (self.DWS_mode):
                 if (host == local_host):
                     (status, result,
-                     error_output) = ClusterCommand.excuteSqlOnLocalhost(
+                     error_output) = SqlExecutor.excuteSqlOnLocalhost(
                         port, querySql)
                 else:
                     currentTime = time.strftime("%Y-%m-%d_%H:%M:%S")
                     pid = os.getpid()
                     outputfile = "droppmk_%s_%s_%s.json" \
                                  % (host, pid, currentTime)
-                    tmpDir = DefaultValue.getTmpDirFromEnv(self.opts.user)
+                    tmpDir = EnvUtil.getTmpDirFromEnv(self.opts.user)
                     filepath = os.path.join(tmpDir, outputfile)
                     ClusterCommand.executeSQLOnRemoteHost(
                         host, port, querySql, filepath)
                     (status, result, error_output) = \
-                        ClusterCommand.getSQLResult(host, outputfile)
+                        SqlExecutor.getSQLResult(host, outputfile)
                 if (status != 2):
                     raise Exception(
                         ErrorCode.GAUSS_513["GAUSS_51300"] % querySql \
@@ -1574,22 +1572,22 @@ class CheckperfImplOLAP(CheckperfImpl):
             querySql = "SELECT * FROM pmk.pmk_meta_data " \
                        "WHERE last_snapshot_collect_time >= " \
                        "date_trunc('second', current_timestamp);"
-            local_host = DefaultValue.GetHostIpOrName()
+            local_host = NetUtil.GetHostIpOrName()
             if (self.DWS_mode):
                 if (host == local_host):
                     (status, result, error_output) = \
-                        ClusterCommand.excuteSqlOnLocalhost(port, querySql)
+                        SqlExecutor.excuteSqlOnLocalhost(port, querySql)
                 else:
                     currentTime = time.strftime("%Y-%m-%d_%H:%M:%S")
                     pid = os.getpid()
                     outputfile = "checkPMK%s_%s_%s.json" \
                                  % (host, pid, currentTime)
-                    tmpDir = DefaultValue.getTmpDirFromEnv(self.opts.user)
+                    tmpDir = EnvUtil.getTmpDirFromEnv(self.opts.user)
                     filepath = os.path.join(tmpDir, outputfile)
                     ClusterCommand.executeSQLOnRemoteHost(
                         host, port, querySql, filepath)
                     (status, result, error_output) = \
-                        ClusterCommand.getSQLResult(host, outputfile)
+                        SqlExecutor.getSQLResult(host, outputfile)
                 if (status != 2):
                     raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] \
                                     % querySql + " Error: \n%s" \
@@ -1624,39 +1622,107 @@ class CheckperfImplOLAP(CheckperfImpl):
         function: clean temp files
         """
         recordTempFilePattern = os.path.join(
-            DefaultValue.getTmpDirFromEnv(self.opts.user),
+            EnvUtil.getTmpDirFromEnv(self.opts.user),
             'recordTempFile_*_*')
-        g_file.removeFile(recordTempFilePattern)
+        FileUtil.removeFile(recordTempFilePattern)
 
         sessionCpuTempFilePattern = os.path.join(
-            DefaultValue.getTmpDirFromEnv(self.opts.user),
+            EnvUtil.getTmpDirFromEnv(self.opts.user),
             'sessionCpuTempFile_*_*')
-        g_file.removeFile(sessionCpuTempFilePattern)
+        FileUtil.removeFile(sessionCpuTempFilePattern)
 
         sessionMemTempFilePattern = os.path.join(
-            DefaultValue.getTmpDirFromEnv(self.opts.user),
+            EnvUtil.getTmpDirFromEnv(self.opts.user),
             'sessionMemTempFile_*_*')
-        g_file.removeFile(sessionMemTempFilePattern)
+        FileUtil.removeFile(sessionMemTempFilePattern)
 
         sessionIOTempFilePattern = os.path.join(
-            DefaultValue.getTmpDirFromEnv(self.opts.user),
+            EnvUtil.getTmpDirFromEnv(self.opts.user),
             'sessionIOTempFile_*_*')
-        g_file.removeFile(sessionIOTempFilePattern)
+        FileUtil.removeFile(sessionIOTempFilePattern)
 
         sessionCpuTempResultPattern = os.path.join(
-            DefaultValue.getTmpDirFromEnv(self.opts.user),
+            EnvUtil.getTmpDirFromEnv(self.opts.user),
             'sessionCpuTempResult_*_*')
-        g_file.removeFile(sessionCpuTempResultPattern)
+        FileUtil.removeFile(sessionCpuTempResultPattern)
 
         sessionMemTempResultPattern = os.path.join(
-            DefaultValue.getTmpDirFromEnv(self.opts.user),
+            EnvUtil.getTmpDirFromEnv(self.opts.user),
             'sessionMemTempResult_*_*')
-        g_file.removeFile(sessionMemTempResultPattern)
+        FileUtil.removeFile(sessionMemTempResultPattern)
 
         sessionIOTempResultPattern = os.path.join(
-            DefaultValue.getTmpDirFromEnv(self.opts.user),
+            EnvUtil.getTmpDirFromEnv(self.opts.user),
             'sessionIOTempResult_*_*')
-        g_file.removeFile(sessionIOTempResultPattern)
+        FileUtil.removeFile(sessionIOTempResultPattern)
+
+    def get_paxos_replication_info(self, dn_ip, inst_dir):
+        """
+        get Paxos replication info
+        input : primary dnDataDir
+        output: status and dcf_replication_info information
+        """
+        self.logger.debug("starting query dn instance dcf_replication_info.")
+        query_info = []
+        cmd = "pssh -H %s \"source %s && gs_ctl query -D %s | grep 'Paxos replication info' -A " \
+              "10 | grep 'dcf_replication_info'| awk '{print $NF}'\"" % (dn_ip,
+                                                                         self.opts.mpprcFile,
+                                                                         inst_dir)
+        self.logger.debug("dcf gs_ctl query cmd: %s" % cmd)
+        (query_status, query_output) = CmdUtil.retryGetstatusoutput(cmd)
+        self.logger.debug("Query dn dcf_replication_info result: status=%d, "
+                                                 "output: %s." % (query_status, query_output))
+        if query_status == 0:
+            left = query_output.find("{")
+            right = query_output.rfind("}")
+            paxos_str = query_output[left:right + 1]
+            if paxos_str:
+                query_info = json.loads(paxos_str)["nodes"]
+        elif query_status == 1:
+            self.logger.error("Instance %s is unknown." % inst_dir)
+        else:
+            self.logger.error("Failed to query dn %s instance paxos replication info. "
+                                      "Error: \n%s." % (inst_dir, query_output))
+        self.logger.debug("Successfully query dn instance dcf_replication_info: %s." %
+                                  query_info)
+        return query_status, query_info
+
+    def get_paxos_role(self, dn_ip, inst_dir):
+        """
+        get new node role
+        """
+        self.logger.debug("Starting to get paxos role ip.")
+        paxos_role = []
+        try:
+            status, info = self.get_paxos_replication_info(dn_ip, inst_dir)
+            if status != 0:
+                self.logger.error("Failed to obtain %s node information." % inst_dir)
+                raise Exception(ErrorCode.GAUSS_516["GAUSS_51636"] % inst_dir)
+            for paxos_info in info:
+                if paxos_info["role"].upper() == "LOGGER":
+                    paxos_role.append(paxos_info["ip"])
+            self.logger.debug("Successfully to get paxos role ip. node role ip:%s" %
+                                      paxos_role)
+            return paxos_role
+        except Exception as error:
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] % "role" + "Error:\n%s" % str(error))
+
+    def check_enable_dcf(self, dn_ip, inst_dir):
+        """
+        function: Checking the enable_dcf on or off
+        input: NA
+        output: NA
+        """
+        cmd = "pssh -H %s 'source %s && grep \"^enable_dcf.*on\" %s/postgresql.conf'" %\
+              (dn_ip, self.opts.mpprcFile, inst_dir)
+        self.logger.debug("cmd for check dcf: %s." % cmd)
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd)
+        if status != 0:
+            self.logger.debug("Dcf is off, status is %d, output is %s" % (status, output))
+            return False
+        else:
+            self.logger.debug("Dcf is on.")
+            return True
 
     def CheckPMKPerf(self, outputInfo):
         """
@@ -1665,8 +1731,6 @@ class CheckperfImplOLAP(CheckperfImpl):
         output: NA
         """
         self.logger.debug("Checking PMK performance.")
-        cooInst = None
-        failedNodes = []
         tmpFiles = []
         try:
             # clean all the temp files before start
@@ -1677,7 +1741,7 @@ class CheckperfImplOLAP(CheckperfImpl):
             self.checkClusterStatus()
 
             nodeNames = self.clusterInfo.getClusterNodeNames()
-            tmpDir = DefaultValue.getTmpDirFromEnv(self.opts.user)
+            tmpDir = EnvUtil.getTmpDirFromEnv(self.opts.user)
             pid = os.getpid()
             for nodeName in nodeNames:
                 tmpFiles.append(os.path.join(tmpDir, "recordTempFile_%d_%s" % (
@@ -1706,8 +1770,16 @@ class CheckperfImplOLAP(CheckperfImpl):
 
             normalDNs = self.getNormalDatanodes()
             hostname = normalDNs[0].hostname
+            data_dir = normalDNs[0].datadir
             port = normalDNs[0].port
-
+            dn_ip = NetUtil.GetHostIpOrName()
+            if self.check_enable_dcf(dn_ip, data_dir):
+                paxos_logger_role_ip = self.get_paxos_role(dn_ip, data_dir)
+                self.logger.debug("the paxos logger role ip is %s" % paxos_logger_role_ip)
+                if len(paxos_logger_role_ip) != 0:
+                    for logger_ip in paxos_logger_role_ip:
+                        logger_hostname = self.clusterInfo.getNodeNameByBackIp(logger_ip)
+                        nodeNames.remove(logger_hostname)
             # install pmk schema
             self.installPMKSchema(hostname, port)
 
@@ -1723,7 +1795,7 @@ class CheckperfImplOLAP(CheckperfImpl):
             # collect pmk stat
             self.collectPMKData(pmk_curr_collect_start_time,
                                 pmk_last_collect_start_time,
-                                last_snapshot_id, port)
+                                last_snapshot_id, port, nodeNames)
 
             # launch asynchronous collection
             self.launchAsynCollection(hostname, port)
@@ -1777,11 +1849,11 @@ class CheckperfImplOLAP(CheckperfImpl):
 
             cmd += " --flag-num=%d" % os.getpid()
 
-            cmd += " --master-host=%s" % DefaultValue.GetHostIpOrName()
+            cmd += " --master-host=%s" % NetUtil.GetHostIpOrName()
 
             cmd += " --database-size=%s" % str(self.opts.databaseSize)
 
-            if (str(hostname) != DefaultValue.GetHostIpOrName()):
+            if (str(hostname) != NetUtil.GetHostIpOrName()):
                 cmd = "pssh -s -H %s \'%s\'" % (str(hostname), cmd)
 
             if (os.getuid() == 0):
@@ -1802,7 +1874,7 @@ class CheckperfImplOLAP(CheckperfImpl):
             self.logger.debug("Operation succeeded: PMK performance check.")
         except Exception as e:
             for tmpFile in tmpFiles:
-                g_file.removeFile(tmpFile)
+                FileUtil.removeFile(tmpFile)
             raise Exception(str(e))
 
     def CheckSSDPerf(self, outputInfo):

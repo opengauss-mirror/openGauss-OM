@@ -15,9 +15,9 @@
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------
 import os
-from gspylib.common.Common import DefaultValue
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
+from base_utils.os.env_util import EnvUtil
 
 
 class CheckTableSpace(BaseItem):
@@ -44,8 +44,8 @@ class CheckTableSpace(BaseItem):
         clusterPathList = self.getClusterDirectorys(nodeInfo)
         clusterPathList.append(self.cluster.appPath)
         clusterPathList.append(self.cluster.logPath)
-        clusterPathList.append(DefaultValue.getEnv('GPHOME'))
-        clusterPathList.append(DefaultValue.getEnv('PGHOST'))
+        clusterPathList.append(EnvUtil.getEnv('GPHOME'))
+        clusterPathList.append(EnvUtil.getEnv('PGHOST'))
 
         nodeInfo = self.cluster.getDbNodeByName(self.host)
         if self.cluster.isSingleInstCluster():

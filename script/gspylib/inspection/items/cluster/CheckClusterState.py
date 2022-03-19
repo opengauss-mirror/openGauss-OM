@@ -21,8 +21,7 @@ from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
 from gspylib.common.DbClusterStatus import DbClusterStatus
 from gspylib.common.Common import ClusterCommand
-from gspylib.os.gsfile import g_file
-
+from base_utils.os.file_util import FileUtil
 KEY_FILE_MODE = 600
 
 
@@ -37,7 +36,7 @@ class CheckClusterState(BaseItem):
             self.result.val = ""
             self.result.raw = ""
             # Check the cluster status with cm_ctl
-            cmd = ClusterCommand.getQueryStatusCmd(self.user, "", tmpFile)
+            cmd = ClusterCommand.getQueryStatusCmd("", tmpFile)
             output = SharedFuncs.runShellCmd(cmd, self.user, self.mpprcFile)
             self.result.raw += output
             # Check whether the cluster needs to be balanced
@@ -46,7 +45,7 @@ class CheckClusterState(BaseItem):
             clusterStatus = DbClusterStatus()
             clusterStatus.initFromFile(tmpFile)
             # Get the status of cluster
-            statusInfo = clusterStatus.getClusterStauts(self.user)
+            statusInfo = clusterStatus.getClusterStauts()
             self.result.val = statusInfo
             if clusterStatus.isAllHealthy():
                 self.result.rst = ResultStatus.OK
@@ -55,7 +54,7 @@ class CheckClusterState(BaseItem):
                 return
             # If the abnormal node is present, create a temporary file
             # and print out the details
-            g_file.createFile(tmpFileName, True, KEY_FILE_MODE)
+            FileUtil.createFile(tmpFileName, True, KEY_FILE_MODE)
             with open(tmpFileName, "w+") as tmpFileFp:
                 for dbNode in clusterStatus.dbNodes:
                     if not dbNode.isNodeHealthy():

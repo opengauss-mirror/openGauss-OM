@@ -26,14 +26,15 @@ import sys
 import pwd
 import getopt
 
+GPPATH = os.getenv("GPHOME")
+sys.path.insert(0, GPPATH)
 from script.gspylib.common.DbClusterInfo import dbClusterInfo
 from script.gspylib.common.Common import DefaultValue
-GPPATH = os.getenv("GPHOME")
-DefaultValue.checkPathVaild(GPPATH)
-sys.path.insert(0, GPPATH)
 from script.gspylib.common.GaussLog import GaussLog
 from script.gspylib.common.ErrorCode import ErrorCode
 from script.gspylib.threads.SshTool import SshTool
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from domain_utils.domain_common.cluster_constants import ClusterConstants
 
 # source file path
 SRCFILEPATH = ""
@@ -71,7 +72,7 @@ def initGlobals():
     # Init user
     g_clusterUser = pwd.getpwuid(os.getuid()).pw_name
     # Init logger
-    logFile = DefaultValue.getOMLogPath(DefaultValue.LOCAL_LOG_FILE, g_clusterUser, "", "")
+    logFile = ClusterLog.getOMLogPath(ClusterConstants.LOCAL_LOG_FILE, g_clusterUser, "", "")
     g_logger = GaussLog(logFile, "Transfer_C_function_file")
     # Init ClusterInfo
     g_clusterInfo = dbClusterInfo()
@@ -135,7 +136,6 @@ def scpFileToAllHost(srcFile, drcpath):
         g_sshTool.scpFiles(srcFile, drcpath, g_clusterInfo.getClusterNodeNames())
         cmd = "chmod 600 '%s'" % drcpath
         g_sshTool.executeCommand(cmd,
-                                 "Transfer C function file to all hosts.",
                                  DefaultValue.SUCCESS,
                                  g_clusterInfo.getClusterNodeNames())
     except Exception as e:

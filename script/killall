@@ -25,12 +25,10 @@
 import sys
 import os
 import pwd
-import getpass
 import subprocess
 import optparse
-from gspylib.common.Common import DefaultValue
-from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.GaussLog import GaussLog
+from base_utils.os.env_util import EnvUtil
 
 
 class Closelogger():
@@ -47,9 +45,9 @@ class Closelogger():
 def init_logger():
     global logger
     LOG_DEBUG = 1
-    log_path = DefaultValue.getEnv("GAUSSLOG")
+    log_path = EnvUtil.getEnv("GAUSSLOG")
     static_config_file = os.path.realpath("%s/bin/cluster_static_config")\
-                         % DefaultValue.getEnv("GAUSSHOME")
+                         % EnvUtil.getEnv("GAUSSHOME")
     if not os.path.exists(str(log_path)) or \
             not os.path.exists(str(static_config_file)):
         logger = Closelogger()

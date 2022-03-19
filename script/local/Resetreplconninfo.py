@@ -20,14 +20,16 @@
 #############################################################################
 
 import getopt
-import os
 import sys
 import subprocess
+import re
 
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
-from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
+from base_utils.os.net_util import NetUtil
+from base_utils.os.env_util import EnvUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
 
 ########################################################################
 # Global variables define
@@ -114,12 +116,12 @@ class Resetreplconninfo():
         function: configure all instance on local node
         """
         # get mpprc file
-        envfile = os.getenv('MPPDB_ENV_SEPARATE_PATH')
+        envfile = EnvUtil.getEnv('MPPDB_ENV_SEPARATE_PATH')
         if envfile is not None and envfile != "":
             self.userProfile = \
                 envfile.replace("\\", "\\\\").replace('"', '\\"\\"')
         else:
-            self.userProfile = "~/.bashrc"
+            self.userProfile = ClusterConstants.BASHRC
 
     def __getStatusByOM(self):
         """
@@ -131,7 +133,7 @@ class Resetreplconninfo():
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"]
                             % cmd + " Error: \n%s" % output)
-        return output.split("\n")[-1]
+        return output.split("\n")
 
     def resetRepl(self):
         """
@@ -139,18 +141,42 @@ class Resetreplconninfo():
         input : NA
         output: NA
         """
-        status_list = self.__getStatusByOM().split('|')
+        output_list = self.__getStatusByOM()
+        output_num = 0
+        pattern = re.compile("(\d+) (.*) (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}) (.*)")
+        has_cm_component = True if [i for i in output_list if "CMServer State" in i] else False
+        if has_cm_component:
+            output_list = [i for i in output_list if i]
+            output_list = output_list[-1].split('|')
+        for content in output_list:
+            if pattern.search(content):
+                output_num += 1
+        status_list = output_list[-output_num:]
         repl_list = ['replconninfo' + str(i) for i in
                      range(1, len(status_list))]
 
-        localhost = DefaultValue.GetHostIpOrName()
+        # each information index after split space. displayed as:
+        #     node    node_ip         port      instance                       state
+        # ------------------------------------------------------------------------------------------
+        # 1  ecs-66cc 192.168.0.1   5432       6001 /opt/install/data/dn   P Primary Normal
+        # 2  ecs-6ac8 192.168.0.2   5432       6002 /opt/install/data/dn   S Standby Normal
+        # If the displayed information is changed, please modify the idx value here.
+        nodename_split_idx = 1
+        nodeip_split_idx = 2
+        dndir_split_idx = 5
+        instype_split_id = 7
+        if has_cm_component:
+            dndir_split_idx = 4
+            instype_split_id = 6
+
+        localhost = NetUtil.GetHostIpOrName()
         remote_ip_dict = {}
         for info_all in status_list:
             info = info_all.split()
-            if info[1] == localhost:
-                local_dndir = info[4]
+            if info[nodename_split_idx] == localhost:
+                local_dndir = info[dndir_split_idx]
             else:
-                remote_ip_dict[info[2]] = info[6]
+                remote_ip_dict[info[nodeip_split_idx]] = info[instype_split_id]
         head_cmd = "source %s;" % self.userProfile
         for repl in repl_list:
             cmd = head_cmd + 'gs_guc check -N %s -D %s -c "%s"' % \

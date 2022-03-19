@@ -61,7 +61,7 @@ class CheckMaxDatanode(BaseItem):
             elif (dataNum < 1024):
                 g_value = 1024
             else:
-                value = 2048
+                g_value = 2048
             self.result.rst = ResultStatus.WARNING
             self.result.val = "Invalid value for GUC parameter " \
                               "comm_max_datanode: %s. Expect value: %s" % (

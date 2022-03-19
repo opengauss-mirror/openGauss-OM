@@ -24,7 +24,7 @@ from gspylib.inspection.common.CheckResult import ResultStatus
 from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.inspection.common.Exception import CheckNAException
-from gspylib.os.gsfile import g_file
+from base_utils.os.file_util import FileUtil
 
 # cn
 INSTANCE_ROLE_COODINATOR = 3
@@ -49,7 +49,6 @@ class CheckSysTable(BaseItem):
     def checkSingleSysTable(self, Instance):
         tablelist = ["pg_attribute", "pg_class", "pg_constraint",
                      "pg_partition", "pgxc_class", "pg_index", "pg_stats"]
-        localPath = os.path.dirname(os.path.realpath(__file__))
         resultMap = {}
         try:
             for i in tablelist:
@@ -57,14 +56,14 @@ class CheckSysTable(BaseItem):
                     self.tmpPath, i, Instance.instanceId)
                 resFile = "%s/resFile_%s_%s.out" % (
                     self.tmpPath, i, Instance.instanceId)
-                g_file.createFile(sqlFile, True, DefaultValue.SQL_FILE_MODE)
-                g_file.createFile(resFile, True, DefaultValue.SQL_FILE_MODE)
-                g_file.changeOwner(self.user, sqlFile)
-                g_file.changeOwner(self.user, resFile)
+                FileUtil.createFile(sqlFile, True, DefaultValue.SQL_FILE_MODE)
+                FileUtil.createFile(resFile, True, DefaultValue.SQL_FILE_MODE)
+                FileUtil.changeOwner(self.user, sqlFile)
+                FileUtil.changeOwner(self.user, resFile)
                 sql = "select * from pg_table_size('%s');" % i
                 sql += "select count(*) from %s;" % i
                 sql += "select * from pg_column_size('%s');" % i
-                g_file.writeFile(sqlFile, [sql])
+                FileUtil.writeFile(sqlFile, [sql])
 
                 cmd = "gsql -d %s -p %s -f %s --output %s -t -A -X" % (
                     self.database, Instance.port, sqlFile, resFile)
@@ -72,9 +71,9 @@ class CheckSysTable(BaseItem):
                     cmd = "source '%s' && %s" % (self.mpprcFile, cmd)
                 SharedFuncs.runShellCmd(cmd, self.user)
 
-                restule = g_file.readFile(resFile)
-                g_file.removeFile(sqlFile)
-                g_file.removeFile(resFile)
+                restule = FileUtil.readFile(resFile)
+                FileUtil.removeFile(sqlFile)
+                FileUtil.removeFile(resFile)
 
                 size = restule[0].strip()
                 line = restule[1].strip()
@@ -89,9 +88,9 @@ class CheckSysTable(BaseItem):
             return resultMap
         except Exception as e:
             if os.path.exists(sqlFile):
-                g_file.removeFile(sqlFile)
+                FileUtil.removeFile(sqlFile)
             if os.path.exists(resFile):
-                g_file.removeFile(resFile)
+                FileUtil.removeFile(resFile)
             raise Exception(str(e))
 
     def checkSysTable(self):
@@ -126,7 +125,6 @@ class CheckSysTable(BaseItem):
         return outputList
 
     def doCheck(self):
-        flag = True
         resultStr = ""
         resultStr += "Instance table           size            row      " \
                      "width row*width\n"

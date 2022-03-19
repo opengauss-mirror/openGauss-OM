@@ -27,11 +27,18 @@ import os
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.ParameterParsecheck import Parameter
-from gspylib.common.Common import DefaultValue, ClusterCommand
+from gspylib.common.Common import DefaultValue
 from gspylib.common.LocalBaseOM import LocalBaseOM
 from gspylib.common.ErrorCode import ErrorCode
-from gspylib.os.gsfile import g_file
-from gspylib.common.VersionInfo import VersionInfo
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from domain_utils.cluster_file.version_info import VersionInfo
+from base_utils.os.net_util import NetUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from base_utils.common.constantsbase import ConstantsBase
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
 #############################################################################
 # Global variables
@@ -85,8 +92,12 @@ class CheckNodeEnv(LocalBaseOM):
         self.__checkPgsqlDir()
         # Check instances config on local node
         self.__checkNodeConfig()
+        # Set manual start
+        self.__set_manual_start()
+        # Set linux cron
+        self.__set_cron()
         self.logger.log("Checked the configuration file on node[%s]"
-                        " successfully." % DefaultValue.GetHostIpOrName())
+                        " successfully." % NetUtil.GetHostIpOrName())
 
     def __checkParameters(self):
         """
@@ -128,7 +139,7 @@ class CheckNodeEnv(LocalBaseOM):
         output: NA
         """
         # check user base log dir
-        user_dir = DefaultValue.getUserLogDirWithUser(self.user)
+        user_dir = ClusterDir.getUserLogDirWithUser(self.user)
         self.logger.log("Checking %s log directory[%s]."
                         % (VersionInfo.PRODUCT_NAME, user_dir))
         if (not os.path.exists(user_dir)):
@@ -162,11 +173,11 @@ class CheckNodeEnv(LocalBaseOM):
             self.logger.debug("Command to find directory in directory[%s] "
                               % user_dir)
             # change directory mode
-            ClusterCommand.getchangeDirModeCmd(user_dir)
+            FileUtil.getchangeDirModeCmd(user_dir)
             self.logger.debug("Command to find file in directory[%s] "
                               % user_dir)
             # change log file mode
-            ClusterCommand.getchangeFileModeCmd(user_dir)
+            FileUtil.getchangeFileModeCmd(user_dir)
             self.logger.debug("Command to change the obs log setting.")
             # change the obs log setting file  distribute package
             self.changeObsLogSetting()
@@ -186,7 +197,7 @@ class CheckNodeEnv(LocalBaseOM):
         then the relative path from app to log is '..'+'/..'*(num-1)+logpath
         the relative path from obs to log is '../../..'+'/..'*(num-1)+logpath
         """
-        username = DefaultValue.getEnv("LOGNAME")
+        username = EnvUtil.getEnv("LOGNAME")
         DefaultValue.checkPathVaild(username)
         obspath = "LogPath=../.." + "/.." * obspathNum + "%s/" \
                   % self.clusterInfo.logPath + "%s" % username + "/bin/gs_obs"
@@ -198,7 +209,6 @@ class CheckNodeEnv(LocalBaseOM):
             self.logger.debug("The cmd is %s " % cmd)
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50208"] % "obs log"
                             + " Error: \n%s " % output)
-        obsLogName = "gs_obs"
         obsinifile = "%s/lib/OBS.ini" % self.clusterInfo.appPath
 
         if not os.path.exists(obsinifile):
@@ -229,9 +239,9 @@ class CheckNodeEnv(LocalBaseOM):
         """
         self.logger.debug("Making %s directory[%s] for database node user."
                           % (desc, path))
-        g_file.createDirectory(path)
-        g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE, path)
-        if (not g_file.checkDirWriteable(path)):
+        FileUtil.createDirectory(path)
+        FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, path)
+        if not FileUtil.checkDirWriteable(path):
             self.logger.logExit(ErrorCode.GAUSS_501["GAUSS_50102"]
                                 % (path, self.user))
 
@@ -243,7 +253,7 @@ class CheckNodeEnv(LocalBaseOM):
         input : NA
         output: NA
         """
-        tmpDir = DefaultValue.getTmpDirFromEnv()
+        tmpDir = EnvUtil.getTmpDirFromEnv()
         self.logger.log("Checking directory [%s]." % tmpDir)
         if (not os.path.exists(tmpDir)):
             self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50201"]
@@ -251,10 +261,32 @@ class CheckNodeEnv(LocalBaseOM):
 
         self.__pgsqlFiles = os.listdir(tmpDir)
 
-        g_file.changeMode(DefaultValue.KEY_DIRECTORY_MODE, tmpDir)
-        if (not g_file.checkDirWriteable(tmpDir)):
+        FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, tmpDir)
+        if not FileUtil.checkDirWriteable(tmpDir):
             self.logger.logExit(ErrorCode.GAUSS_501["GAUSS_50102"]
                                 % (tmpDir, self.user))
+
+    def check_cm_agent_config(self):
+        """
+        function: Check cm_agent configuration
+        input : NA
+        output: NA
+        """
+        for cmaInst in self.dbNodeInfo.cmagents:
+            if len(self.__instanceIds) != 0 and cmaInst.instanceId not in self.__instanceIds:
+                continue
+            self.__checkDataDir(cmaInst.datadir)
+
+    def check_cm_server_config(self):
+        """
+        function: Check cm_server configuration
+        input : NA
+        output: NA
+        """
+        for cmsInst in self.dbNodeInfo.cmservers:
+            if len(self.__instanceIds) != 0 and cmsInst.instanceId not in self.__instanceIds:
+                continue
+            self.__checkDataDir(cmsInst.datadir)
 
     def checkDNConfig(self):
         """
@@ -276,7 +308,13 @@ class CheckNodeEnv(LocalBaseOM):
         input : NA
         output: NA
         """
-
+        self.logger.log("Checking CM data directory.")
+        if self.dbNodeInfo.cmDataDir:
+            self.__checkDataDir(self.dbNodeInfo.cmDataDir, False)
+            self.logger.log("Checking CMAgent configuration file.")
+            self.check_cm_agent_config()
+            self.logger.log("Checking CMServer configuration file.")
+            self.check_cm_server_config()
         self.logger.log("Checking database node configuration.")
         self.checkDNConfig()
 
@@ -308,17 +346,55 @@ class CheckNodeEnv(LocalBaseOM):
                 if (os.path.exists(ownerPath) or dirName == ""):
                     ownerPath = os.path.join(ownerPath, dirName)
                     os.makedirs(datadir,
-                                DefaultValue.KEY_DIRECTORY_PERMISSION)
+                                ConstantsBase.KEY_DIRECTORY_PERMISSION)
                     break
 
         # Check if data directory is writeable
-        if (not g_file.checkDirWriteable(datadir)):
+        if not FileUtil.checkDirWriteable(datadir):
             self.logger.logExit(ErrorCode.GAUSS_501["GAUSS_50102"]
                                 % (datadir, self.user))
 
         if (checkSize):
             self.__diskSizeInfo = DefaultValue.checkDirSize(
                 datadir, DefaultValue.INSTANCE_DISK_SIZE, self.logger)
+
+    def __set_manual_start(self):
+        """
+        function: Set manual start
+        input : NA
+        output: NA
+        """
+        self.logger.log("Setting manual start.")
+
+        if len(self.__instanceIds) == 0:
+            manual_start_file = "%s/bin/cluster_manual_start" % self.clusterInfo.appPath
+            FileUtil.createFile(manual_start_file)
+            FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, manual_start_file)
+            host_name = NetUtil.GetHostIpOrName()
+            db_node = self.clusterInfo.getDbNodeByName(host_name)
+            if not db_node:
+                self.logger.logExit(ErrorCode.GAUSS_512["GAUSS_51209"] % ("NODE", host_name))
+        else:
+            for instId in self.__instanceIds:
+                if (instId in self.dbNodeInfo.coordinators) or \
+                        (instId in self.dbNodeInfo.datanodes) or \
+                        (instId in self.dbNodeInfo.gtms):
+                    inst_start_file = "%s/bin/instance_manual_start_%d" % (
+                        self.clusterInfo.appPath, instId)
+                    FileUtil.createFile(inst_start_file)
+                    FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, inst_start_file)
+
+    def __set_cron(self):
+        """
+        function: Set linux cron
+        input : NA
+        output: NA
+        """
+        if self.cmCons and self.cmCons[0].instInfo.datadir == "/cm_agent" and \
+                not os.path.exists(self.cmCons[0].instInfo.datadir):
+            self.logger.debug("No CM instance configuration.No need to set crontab.")
+            return
+        self.cmCons[0].setMonitor(self.user)
 
 
 def usage():
@@ -376,11 +452,11 @@ def main():
         Parameter.checkParaVaild(key, value)
 
     # check if user exist and is the right user
-    DefaultValue.checkUser(clusterUser)
+    ClusterUser.checkUser(clusterUser)
 
     # check log dir
     if (logFile == ""):
-        logFile = DefaultValue.getOMLogPath(DefaultValue.LOCAL_LOG_FILE,
+        logFile = ClusterLog.getOMLogPath(ClusterConstants.LOCAL_LOG_FILE,
                                             clusterUser, "", "")
 
     try:

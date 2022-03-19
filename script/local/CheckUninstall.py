@@ -31,6 +31,9 @@ from gspylib.common.GaussLog import GaussLog
 from gspylib.common.Common import DefaultValue
 from gspylib.common.ParameterParsecheck import Parameter
 from gspylib.common.ErrorCode import ErrorCode
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
 
 class CheckUninstall:
@@ -139,7 +142,7 @@ class CheckUninstall:
             raise Exception(ErrorCode.GAUSS_500["GAUSS_50001"] % 'R' + ".")
 
         if (logFile == ""):
-            logFile = DefaultValue.getOMLogPath(DefaultValue.LOCAL_LOG_FILE,
+            logFile = ClusterLog.getOMLogPath(ClusterConstants.LOCAL_LOG_FILE,
                                                 "", self.installPath, "")
 
         self.logger = GaussLog(logFile, "CheckUninstall")
@@ -179,7 +182,7 @@ class CheckUninstall:
 
         self.logger.log("Checking OS user.")
         try:
-            DefaultValue.checkUser(self.user, False)
+            ClusterUser.checkUser(self.user, False)
         except Exception as e:
             raise Exception(str(e))
 

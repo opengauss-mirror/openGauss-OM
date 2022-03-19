@@ -16,13 +16,12 @@
 # ----------------------------------------------------------------------------
 import os
 import subprocess
-import platform
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsfile import g_file
-from gspylib.os.gsnetwork import g_network
-from gspylib.os.gsfile import g_Platform
+from base_utils.os.file_util import FileUtil
+from base_utils.os.net_util import NetUtil
+from os_platform.linux_distro import LinuxDistro
 
 networkCards = []
 
@@ -42,7 +41,7 @@ class CheckBond(BaseItem):
             serviceIP = self.ipAddr
         else:
             serviceIP = SharedFuncs.getIpByHostName(self.host)
-        networkCards = g_network.getAllNetworkInfo()
+        networkCards = NetUtil.getAllNetworkInfo()
         for network in networkCards:
             if (network.ipAddress == serviceIP):
                 networkCardNum = network.NICNum
@@ -56,8 +55,8 @@ class CheckBond(BaseItem):
         bondFile = '/proc/net/bonding/%s' % networkCardNum
         if (os.path.exists(bondFile)):
             self.result.raw += bondFile
-            flag1 = g_file.readFile(bondFile, 'BONDING_OPTS')
-            flag2 = g_file.readFile(bondFile, 'BONDING_MODULE_OPTS')
+            flag1 = FileUtil.readFile(bondFile, 'BONDING_OPTS')
+            flag2 = FileUtil.readFile(bondFile, 'BONDING_MODULE_OPTS')
             if (not flag1 and not flag2):
                 self.result.rst = ResultStatus.NG
                 self.result.val += "\nNo 'BONDING_OPTS' or" \
@@ -68,7 +67,7 @@ class CheckBond(BaseItem):
         ifcfgFileSuse = "/etc/sysconfig/network/ifcfg-%s" % networkCards
         ifcfgFileRedhat = "/etc/sysconfig/network-scripts/ifcfg-%s" \
                           % networkCards
-        distname, version, idnum = g_Platform.dist()
+        distname, version, idnum = LinuxDistro.linux_distribution()
         if (distname in ["redhat", "centos", "euleros", "openEuler"]):
             cmd = "echo BONDING_MODULE_OPTS='mode=%d " \
                   "miimon=100 use_carrier=0' >> %s " % (1, ifcfgFileRedhat)

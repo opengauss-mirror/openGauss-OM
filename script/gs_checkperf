@@ -29,27 +29,22 @@
 # it depends on binary of SSD disk.
 #############################################################################
 
-import subprocess
 import os
 import sys
 import pwd
-import grp
-import time
-import threading
-import glob
-import shutil
 
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.threads.SshTool import SshTool
-from gspylib.common.Common import ClusterCommand, DefaultValue
-from gspylib.common.OMCommand import OMCommand
+from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.ParameterParsecheck import Parameter
-from gspylib.os.gsfile import g_file
-from gspylib.os.gsOSlib import g_OSlib
 from impl.checkperf.OLAP.CheckperfImplOLAP import CheckperfImplOLAP
-from multiprocessing.dummy import Pool as ThreadPool
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
 #############################################################################
 # Global variables
@@ -169,7 +164,7 @@ General options:
         if (g_opts.outFile != ''):
             DefaultValue.checkOutputFile(g_opts.outFile)
         # check mpprc file path
-        g_opts.mpprcFile = DefaultValue.getMpprcFile()
+        g_opts.mpprcFile = EnvUtil.getMpprcFile()
 
         # cannot check SSD by cluster user,
         # and cannot check PMK by root permission user.
@@ -204,10 +199,10 @@ General options:
                 g_opts.user = pwd.getpwuid(os.getuid()).pw_name
 
         # check if user exists and if is the right user
-        DefaultValue.checkUser(g_opts.user)
+        ClusterUser.checkUser(g_opts.user)
 
         # Get the temporary directory from PGHOST
-        tmpDir = DefaultValue.getTmpDirFromEnv(g_opts.user)
+        tmpDir = EnvUtil.getTmpDirFromEnv(g_opts.user)
 
         # check if tmpDir exists
         if (not os.path.exists(tmpDir)):
@@ -216,8 +211,8 @@ General options:
 
         # check log file
         if (g_opts.logFile == ""):
-            g_opts.logFile = DefaultValue.getOMLogPath(
-                DefaultValue.GS_CHECKPERF_LOG_FILE, g_opts.user, "")
+            g_opts.logFile = ClusterLog.getOMLogPath(
+                ClusterConstants.GS_CHECKPERF_LOG_FILE, g_opts.user, "")
 
         # PMK is required if the parameter '--detail' exists
         if (g_opts.show_detail and "PMK" not in g_opts.checkItem):
@@ -238,13 +233,13 @@ General options:
             g_logger = GaussLog(g_opts.logFile, "gs_checkperf")
             # modify the file's owner
             if (os.getuid() == 0):
-                g_file.changeOwner(g_opts.user, g_logger.logFile)
+                FileUtil.changeOwner(g_opts.user, g_logger.logFile)
             # Init cluster from static configuration file
             self.clusterInfo.initFromStaticConfig(g_opts.user)
             # get directory name
             dirName = os.path.dirname(g_opts.logFile)
             g_opts.localLog = os.path.join(dirName,
-                                           DefaultValue.LOCAL_LOG_FILE)
+                                           ClusterConstants.LOCAL_LOG_FILE)
             # check if appPath exists
             if (not os.path.exists(self.clusterInfo.appPath)):
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"]
@@ -268,7 +263,7 @@ General options:
         output: NA
         """
         # get user and group
-        (user, group) = g_file.getfileUser(self.clusterInfo.appPath)
+        (user, group) = FileUtil.getfileUser(self.clusterInfo.appPath)
         # check if user right
         if (user != g_opts.user):
             g_logger.logExit(

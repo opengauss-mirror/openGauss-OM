@@ -14,10 +14,9 @@
 # MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------s
-from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.hardware.gscpu import CpuInfo
+from base_utils.os.cpu_util import CpuUtil
 
 
 class CheckCpuCount(BaseItem):
@@ -28,14 +27,14 @@ class CheckCpuCount(BaseItem):
 
         parRes = ""
         flag = "Normal"
-        cpuCount = CpuInfo.getCpuNum()
+        cpuCount = CpuUtil.getCpuNum()
 
-        output_online = CpuInfo.getCpuOnlineOfflineInfo()
+        output_online = CpuUtil.getCpuOnlineOfflineInfo()
         num = len(output_online.split('-'))
         firstValue = output_online.split('-')[0].strip()
         lastValue = output_online.split('-')[1].strip()
 
-        output_offline = CpuInfo.getCpuOnlineOfflineInfo(False)
+        output_offline = CpuUtil.getCpuOnlineOfflineInfo(False)
 
         if (num != 2 or int(firstValue) != 0 or int(
                 lastValue) != cpuCount - 1):

@@ -25,8 +25,8 @@ from multiprocessing.pool import ThreadPool
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsnetwork import g_network
 from gspylib.common.ErrorCode import ErrorCode
+from base_utils.os.net_util import NetUtil
 
 DEFAULT_PARALLEL_NUM = 12
 DEFAULT_LISTEN_PORT = 20000
@@ -60,7 +60,7 @@ class CheckNetSpeed(BaseItem):
         while server_count < max_server:
             listen_port = base_listen_port + server_count
             try:
-                p = subprocess.Popen([path + "/lib/checknetspeed/speed_test",
+                subprocess.Popen([path + "/lib/checknetspeed/speed_test",
                                       "recv", serIP, str(listen_port), "tcp"],
                                      shell=False,
                                      stdout=open('/dev/null', 'w'))
@@ -83,7 +83,7 @@ class CheckNetSpeed(BaseItem):
             if (index // max_server != group):
                 continue
             try:
-                p = subprocess.Popen([path + "/lib/checknetspeed/speed_test",
+                subprocess.Popen([path + "/lib/checknetspeed/speed_test",
                                       "send", ip, str(port), "tcp"],
                                      shell=False,
                                      stdout=open('/dev/null', 'w'))
@@ -197,7 +197,7 @@ class CheckNetSpeed(BaseItem):
         global MaxDelayFailFlag
         network_card_num = ""
         serviceIP = SharedFuncs.getIpByHostName(self.host)
-        for network in g_network.getAllNetworkInfo():
+        for network in NetUtil.getAllNetworkInfo():
             if (network.ipAddress == serviceIP):
                 network_card_num = network.NICNum
                 break
@@ -225,7 +225,7 @@ class CheckNetSpeed(BaseItem):
         MaxDelayMsg = "Failde to get max delay."
         MaxDelayFailFlag = False
         pool = ThreadPool(self.getCpuSet())
-        results = pool.map(self.checkMaxDelay, ipList)
+        pool.map(self.checkMaxDelay, ipList)
         pool.close()
         pool.join()
 

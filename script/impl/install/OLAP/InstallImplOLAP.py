@@ -22,12 +22,16 @@ import os
 import sys
 
 sys.path.append(sys.path[0] + "/../../../")
-from gspylib.common.Common import DefaultValue, ClusterCommand
+from gspylib.common.Common import DefaultValue
 from gspylib.common.OMCommand import OMCommand
 from gspylib.common.ErrorCode import ErrorCode
-from gspylib.common.VersionInfo import VersionInfo
 from gspylib.os.gsfile import g_file
 from impl.install.InstallImpl import InstallImpl
+from base_utils.executor.cmd_executor import CmdExecutor
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.file_util import FileUtil
+from base_utils.os.net_util import NetUtil
+from domain_utils.cluster_file.version_info import VersionInfo
 
 ROLLBACK_FAILED = 3
 
@@ -79,10 +83,9 @@ class InstallImplOLAP(InstallImpl):
         self.context.logger.debug("Deleting temporary file.")
         tmpFile = "/tmp/temp.%s" % self.context.user
         cmd = g_file.SHELL_CMD_DICT["deleteFile"] % (tmpFile, tmpFile)
-        DefaultValue.execCommandWithMode(cmd,
-                                         "delete temporary file",
-                                         self.context.sshTool,
-                                         self.context.isSingle)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle)
         self.context.logger.debug("Successfully deleted temporary file.")
 
     def prepareInstallCluster(self):
@@ -140,10 +143,9 @@ class InstallImplOLAP(InstallImpl):
 
         cmd = self.singleCmd(cmd)
 
-        DefaultValue.execCommandWithMode(cmd,
-                                         "check node configuration",
-                                         self.context.sshTool,
-                                         self.context.isSingle)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle)
         self.context.logger.debug("Successfully checked node configuration.")
 
     def checkNodeInstall(self):
@@ -168,10 +170,9 @@ class InstallImplOLAP(InstallImpl):
 
         cmd = self.singleCmd(cmd)
 
-        DefaultValue.execCommandWithMode(cmd,
-                                         "check installation environment",
-                                         self.context.sshTool,
-                                         self.context.isSingle)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle)
         self.context.logger.debug("Successfully checked node's installation.",
                                   "constant")
 
@@ -193,15 +194,16 @@ class InstallImplOLAP(InstallImpl):
         cmd += "%s -U %s %s -l %s" % (
             OMCommand.getLocalScript("Local_Init_Instance"), self.context.user,
             cmdParam, self.context.localLog)
+        if self.context.clusterInfo.enable_dcf == 'on':
+            cmd += " --paxos_mode"
         self.context.logger.debug(
             "Command for initializing instances: %s" % cmd)
 
         cmd = self.singleCmd(cmd)
 
-        DefaultValue.execCommandWithMode(cmd,
-                                         "initialize instances",
-                                         self.context.sshTool,
-                                         self.context.isSingle)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle)
         self.context.logger.debug("Successfully initialized node instance.")
 
     def configInstance(self):
@@ -283,76 +285,83 @@ class InstallImplOLAP(InstallImpl):
         self.context.logger.log(
             "Updating instance configuration on all nodes.")
         # update instances config on all nodes
-        cmdParam = ""
-        paralistdn = [param.split('=')[0].strip() for param in
+        cmd_param = ""
+        para_list_dn = [param.split('=')[0].strip() for param in
                       self.context.dataGucParam]
-        if ("autovacuum" not in paralistdn):
+        if "autovacuum" not in para_list_dn:
             self.context.dataGucParam.append("autovacuum=on")
 
         # get the --dn-guc parameter values
         for param in self.context.dataGucParam:
-            cmdParam += "*==SYMBOL==*-D*==SYMBOL==*%s" % param
+            cmd_param += "*==SYMBOL==*-D*==SYMBOL==*%s" % param
+        for param in self.context.cm_server_guc_param:
+            cmd_param += "*==SYMBOL==*-S*==SYMBOL==*%s" % param
         # check the --alarm-component parameter
-        if (self.context.alarm_component != ""):
-            cmdParam += "*==SYMBOL==*--alarm=%s" % self.context.alarm_component
-
+        if self.context.alarm_component != "":
+            cmd_param += "*==SYMBOL==*--alarm=%s" % self.context.alarm_component
+        if self.context.clusterInfo.enable_dcf == "on":
+            cmd_param += "*==SYMBOL==*-D*==SYMBOL==*%s" % (
+                    "enable_dcf=" + self.context.clusterInfo.enable_dcf)
+            if not self.context.clusterInfo.hasNoCm():
+                cmd_param += "*==SYMBOL==*-S*==SYMBOL==*%s" % (
+                    "enable_dcf=" + self.context.clusterInfo.enable_dcf)
+            cmd_param += "*==SYMBOL==*-D*==SYMBOL==*%s" % (
+                    "dcf_config=" + self.context.clusterInfo.dcf_config.replace('"', '\\"'))
+            cmd_param += "*==SYMBOL==*-X*==SYMBOL==*%s" % (self.context.xmlFile)
         # create tmp file for guc parameters
         # comm_max_datanode and max_process_memory
         self.context.logger.debug("create tmp_guc file.")
-        tmpGucPath = DefaultValue.getTmpDirFromEnv(self.context.user)
-        tmpGucFile = "%s/tmp_guc" % tmpGucPath
+        tmp_guc_path = EnvUtil.getTmpDirFromEnv(self.context.user)
+        tmp_guc_file = "%s/tmp_guc" % tmp_guc_path
         cmd = g_file.SHELL_CMD_DICT["createFile"] % (
-            tmpGucFile, DefaultValue.MAX_DIRECTORY_MODE, tmpGucFile)
-        DefaultValue.execCommandWithMode(cmd, "Install applications",
-                                         self.context.sshTool,
-                                         self.context.isSingle,
-                                         self.context.mpprcFile)
+            tmp_guc_file, DefaultValue.MAX_DIRECTORY_MODE, tmp_guc_file)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle,
+                                        self.context.mpprcFile)
         self.context.logger.debug("Create tmp_guc file successfully.")
 
         # get the master datanode number
-        primaryDnNum = DefaultValue.getPrimaryDnNum(self.context.clusterInfo)
+        primary_dn_num = DefaultValue.getPrimaryDnNum(self.context.clusterInfo)
         self.context.logger.debug(
-            "get master datanode number : %s" % primaryDnNum)
+            "get master datanode number : %s" % primary_dn_num)
         # get the physic memory of all node and choose the min one
-        physicMemo = DefaultValue.getPhysicMemo(self.context.sshTool,
+        physic_memo = DefaultValue.getPhysicMemo(self.context.sshTool,
                                                 self.context.isSingle)
-        self.context.logger.debug("get physic memory value : %s" % physicMemo)
+        self.context.logger.debug("get physic memory value : %s" % physic_memo)
         # get the datanode number in all nodes and choose the max one
-        dataNodeNum = DefaultValue.getDataNodeNum(self.context.clusterInfo)
-        self.context.logger.debug("get min datanode number : %s" % dataNodeNum)
+        data_node_num = DefaultValue.getDataNodeNum(self.context.clusterInfo)
+        self.context.logger.debug("get min datanode number : %s" % data_node_num)
 
         # write the value in tmp file
         self.context.logger.debug("Write value in tmp_guc file.")
-        gucValueContent = str(primaryDnNum) + "," + str(
-            physicMemo) + "," + str(dataNodeNum)
+        guc_value_content = str(primary_dn_num) + "," + str(
+            physic_memo) + "," + str(data_node_num)
         cmd = g_file.SHELL_CMD_DICT["overWriteFile"] % (
-            gucValueContent, tmpGucFile)
-        DefaultValue.execCommandWithMode(cmd, "Install applications",
-                                         self.context.sshTool,
-                                         self.context.isSingle,
-                                         self.context.mpprcFile)
+            guc_value_content, tmp_guc_file)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle,
+                                        self.context.mpprcFile)
         self.context.logger.debug("Write tmp_guc file successfully.")
 
         # update instances config
         cmd = "source %s;" % self.context.mpprcFile
         cmd += "%s " % (OMCommand.getLocalScript("Local_Config_Instance"))
-        paraLine = \
+        para_line = \
             "*==SYMBOL==*-U*==SYMBOL==*%s%s*==SYMBOL==*-l*==SYMBOL==*%s" % (
-                self.context.user, cmdParam, self.context.localLog)
-        if (self.context.dws_mode):
-            paraLine += "*==SYMBOL==*--dws-mode"
+                self.context.user, cmd_param, self.context.localLog)
         # get the --gucXml parameter
-        if (self.checkMemAndCores()):
-            paraLine += "*==SYMBOL==*--gucXml"
-        paraLine += "*==SYMBOL==*-X*==SYMBOL==*%s" % self.context.xmlFile
-        cmd += DefaultValue.encodeParaline(paraLine, DefaultValue.BASE_ENCODE)
+        if self.checkMemAndCores():
+            para_line += "*==SYMBOL==*--gucXml"
+        para_line += "*==SYMBOL==*-X*==SYMBOL==*%s" % self.context.xmlFile
+        cmd += DefaultValue.encodeParaline(para_line, DefaultValue.BASE_ENCODE)
 
         self.context.logger.debug(
             "Command for updating instances configuration: %s" % cmd)
-        DefaultValue.execCommandWithMode(cmd,
-                                         "update instances configuration",
-                                         self.context.sshTool,
-                                         self.context.isSingle)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle)
         self.context.logger.debug("Successfully configured node instance.")
 
     def updateHbaConfig(self):
@@ -370,10 +379,9 @@ class InstallImplOLAP(InstallImpl):
             self.context.xmlFile, self.context.localLog)
         self.context.logger.debug(
             "Command for configuring Hba instance: %s" % cmd)
-        DefaultValue.execCommandWithMode(cmd,
-                                         "config Hba instance",
-                                         self.context.sshTool,
-                                         self.context.isSingle)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle)
         self.context.logger.debug("Successfully configured HBA.")
 
     def rollbackInstall(self):
@@ -421,7 +429,7 @@ class InstallImplOLAP(InstallImpl):
             userDir = "%s/%s" % (
                 self.context.clusterInfo.logPath, self.context.user)
             # change log file mode
-            ClusterCommand.getchangeFileModeCmd(userDir)
+            FileUtil.getchangeFileModeCmd(userDir)
         except Exception as e:
             raise Exception(str(e))
 
@@ -434,21 +442,27 @@ class InstallImplOLAP(InstallImpl):
         # Check if cluster is running
         self.context.logger.debug("Checking the cluster status.", "addStep")
         try:
-            cmd = ClusterCommand.getQueryStatusCmd(self.context.user, "", "",
-                                                   False)
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status == 0:
-                # You can find the cluster status,
-                # indicating that the cluster is installed, and exit the error.
-                self.context.logger.debug("The cmd is %s " % cmd)
-                raise Exception(ErrorCode.GAUSS_516["GAUSS_51625"]
-                                + " Can not do install now.")
-            else:
-                self.context.logger.debug(
-                    "Successfully checked the cluster status.", "constant")
-        except Exception as e:
-            self.context.logger.debug("Failed to check cluster status. "
-                                      "and the cluster may be not installed.")
+            self.context.cmCons[0].queryClusterStatus()
+            # You can find the cluster status, indicating that the cluster is installed,
+            # and exit the error.
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51625"] + " Can not do install now.")
+        except Exception as _:
+            self.context.logger.debug("Successfully checked the cluster status.", "constant")
+
+    def check_cm_server_node_number(self):
+        """
+        Check CM server node number
+        """
+        cm_server_number = DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo)
+        if 0 < cm_server_number < 2:
+            raise Exception(
+                ErrorCode.GAUSS_527["GAUSS_52708"] % "CM server number" +
+                "CM server number must be more than 2.")
+        elif cm_server_number > 0 and len(self.context.clusterInfo.dbNodes) < 2:
+            raise Exception(
+                ErrorCode.GAUSS_527["GAUSS_52708"] % "CM server node number" +
+                "The number of cluster nodes configured with cm_server instances "
+                "cannot be less than 3.")
 
     def singleCmd(self, cmd):
         """
@@ -460,15 +474,6 @@ class InstallImplOLAP(InstallImpl):
         if (self.context.isSingle):
             cmd = cmd.replace("\\", "")
         return cmd
-
-    def distributeRackInfo(self):
-        """
-        function: Distributing the rack Information File
-        input : NA
-        output: NA
-        """
-        node_names = self.context.clusterInfo.getClusterNodeNames()
-        DefaultValue.distributeRackFile(self.context.sshTool, node_names)
 
     def deleteSymbolicAppPath(self):
         """
@@ -482,9 +487,22 @@ class InstallImplOLAP(InstallImpl):
         cmd = "rm -rf %s" % self.context.clusterInfo.appPath
         self.context.clusterInfo.appPath = \
             self.context.clusterInfo.appPath + "_" + commitid
-        DefaultValue.execCommandWithMode(cmd, "Delete symbolic link",
-                                         self.context.sshTool,
+        CmdExecutor.execCommandWithMode(cmd, self.context.sshTool,
                                          self.context.isSingle,
                                          self.context.mpprcFile)
         self.context.logger.debug(
             "Successfully delete symbolic link $GAUSSHOME, cmd: %s." % cmd)
+
+    def create_ca_for_cm(self):
+        """
+        Create CM CA file
+        """
+        if DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo) == 0:
+            self.context.logger.log("NO cm_server instance, no need to create CA for CM.")
+            return
+        local_cm = [cm_component for cm_component in self.context.cmCons
+                    if cm_component.instInfo.hostname ==
+                    NetUtil.GetHostIpOrName()][0]
+
+        local_cm.create_cm_ca(self.context.sshTool)
+

@@ -14,14 +14,12 @@
 # MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------
-import os
-import json
-import subprocess
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.common.Common import DefaultValue, ClusterCommand
+from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
+from domain_utils.sql_handler.sql_executor import SqlExecutor
 
 g_result = {}
 
@@ -87,7 +85,7 @@ LANGUAGE 'plpgsql';"""
                 secMode = False
             if (secMode):
                 dbList = []
-                (status, result, error) = ClusterCommand.excuteSqlOnLocalhost(
+                (status, result, error) = SqlExecutor.excuteSqlOnLocalhost(
                     self.port, sqldb)
                 if (status != 2):
                     raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"]
@@ -99,13 +97,13 @@ LANGUAGE 'plpgsql';"""
                 finalresult = ""
                 for db in dbList:
                     tablelist = []
-                    ClusterCommand.excuteSqlOnLocalhost(self.port, sql1, db)
-                    ClusterCommand.excuteSqlOnLocalhost(
+                    SqlExecutor.excuteSqlOnLocalhost(self.port, sql1, db)
+                    SqlExecutor.excuteSqlOnLocalhost(
                         self.port, "set client_min_messages='error';create "
                                    "table to_be_selected_check(test int);", db)
                     sql2 = "set client_min_messages='error';" + sql2
                     (status, result,
-                     error) = ClusterCommand.excuteSqlOnLocalhost(self.port,
+                     error) = SqlExecutor.excuteSqlOnLocalhost(self.port,
                                                                   sql2, db)
                     if (status != 2):
                         raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"]

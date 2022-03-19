@@ -14,13 +14,10 @@
 # MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------
-import subprocess
-import multiprocessing
 import _thread as thread
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.threads.parallelTool import parallelTool
-from gspylib.os.gsnetwork import g_network
+from base_utils.os.net_util import NetUtil
 
 DEFAULT_PARALLEL_NUM = 12
 g_lock = thread.allocate_lock()
@@ -45,7 +42,7 @@ class CheckPing(BaseItem):
         for i in range(len(sortedAllIP) - 2, -1, -1):
             if sortedAllIP.count(sortedAllIP[i]) > 1:
                 del sortedAllIP[i]
-        noPassIPs = g_network.checkIpAddressList(sortedAllIP)
+        noPassIPs = NetUtil.checkIpAddressList(sortedAllIP)
         if noPassIPs == []:
             self.result.rst = ResultStatus.OK
             self.result.raw = "All IP can pinged."

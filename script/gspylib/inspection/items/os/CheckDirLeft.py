@@ -18,9 +18,9 @@ import os
 import subprocess
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsfile import g_file
-from gspylib.os.gsplatform import g_Platform
+from os_platform.UserPlatform import g_Platform
 from gspylib.common.ErrorCode import ErrorCode
+from base_utils.os.file_util import FileUtil
 
 rmDir = []
 
@@ -44,7 +44,7 @@ class CheckDirLeft(BaseItem):
         parRes = ""
         flag = 0
         mountDir = []
-        mountList = g_file.readFile(g_Platform.getMtablFile())
+        mountList = FileUtil.readFile(g_Platform.getMtablFile())
         for line in mountList:
             mountInfo = line.strip()
             if (not mountInfo.startswith('#') and len(mountInfo.split()) > 5):

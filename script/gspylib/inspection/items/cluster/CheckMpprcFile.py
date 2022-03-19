@@ -19,6 +19,7 @@ import os
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
+from domain_utils.domain_common.cluster_constants import ClusterConstants
 
 
 class CheckMpprcFile(BaseItem):
@@ -30,9 +31,9 @@ class CheckMpprcFile(BaseItem):
         self.result.val = "There are illegal characters in mpprc file"
         appPath = self.cluster.appPath
         mpprcFile = self.mpprcFile
-        bashfile = "/home/%s/.bashrc" % self.user
-        if (mpprcFile == "" or not mpprcFile or mpprcFile == "/etc/profile"
-                or mpprcFile == "~/.bashrc" or mpprcFile == bashfile
+        bashfile = ClusterConstants.HOME_USER_BASHRC % self.user
+        if (mpprcFile == "" or not mpprcFile or mpprcFile == ClusterConstants.ETC_PROFILE
+                or mpprcFile == ClusterConstants.BASHRC or mpprcFile == bashfile
                 or not os.path.exists(mpprcFile)):
             self.result.rst = ResultStatus.NG
             self.result.val = "There is no mpprc file"

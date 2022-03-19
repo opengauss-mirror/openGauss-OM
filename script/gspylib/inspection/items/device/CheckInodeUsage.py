@@ -15,15 +15,12 @@
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------
 
-import os
-from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.hardware.gsdisk import g_disk
-
-TOTAL_THRESHOLD_NG = 500000000
+from base_utils.os.disk_util import DiskUtil
+from base_utils.os.env_util import EnvUtil
 
 
 class CheckInodeUsage(BaseItem):
@@ -61,10 +58,10 @@ class CheckInodeUsage(BaseItem):
         dataDirList = []
         for inst in nodeInfo.datanodes:
             dataDirList.append(inst.datadir)
-        dataDirList.append(DefaultValue.getEnv("PGHOST"))
-        dataDirList.append(DefaultValue.getEnv("GPHOME"))
-        dataDirList.append(DefaultValue.getEnv("GAUSSHOME"))
-        dataDirList.append(DefaultValue.getEnv("GAUSSLOG"))
+        dataDirList.append(EnvUtil.getEnv("PGHOST"))
+        dataDirList.append(EnvUtil.getEnv("GPHOME"))
+        dataDirList.append(EnvUtil.getEnv("GAUSSHOME"))
+        dataDirList.append(EnvUtil.getEnv("GAUSSLOG"))
         dataDirList.append("/tmp")
         return dataDirList
 
@@ -77,7 +74,6 @@ class CheckInodeUsage(BaseItem):
     def doCheck(self):
         flag = "Normal"
         resultStr = ""
-        top = ""
         DiskList = []
         DiskInfoDict = {}
         if (self.cluster):
@@ -87,8 +83,8 @@ class CheckInodeUsage(BaseItem):
             pathList = self.obtainDiskDir()
 
         for path in pathList:
-            diskName = g_disk.getMountPathByDataDir(path)
-            diskType = g_disk.getDiskMountType(diskName)
+            diskName = DiskUtil.getMountPathByDataDir(path)
+            diskType = DiskUtil.getDiskMountType(diskName)
             if (not diskType in ["xfs", "ext3", "ext4"]):
                 resultStr += \
                     "Path(%s) inodes usage(%s)     Warning reason: " \
@@ -98,7 +94,7 @@ class CheckInodeUsage(BaseItem):
                 if (flag == "Normal"):
                     flag = "Warning"
                 continue
-            usageInfo = g_disk.getDiskInodeUsage(path)
+            usageInfo = DiskUtil.getDiskInodeUsage(path)
             if (diskName in DiskList):
                 continue
             else:

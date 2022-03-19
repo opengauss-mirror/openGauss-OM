@@ -18,7 +18,7 @@
 import subprocess
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsfile import g_file
+from base_utils.os.file_util import FileUtil
 
 
 class CheckSwapMemory(BaseItem):
@@ -28,7 +28,7 @@ class CheckSwapMemory(BaseItem):
     def doCheck(self):
         MemSwap = 0
         self.result.raw = ""
-        result_swap = g_file.readFile('/proc/meminfo', "SwapTotal")[0]
+        result_swap = FileUtil.readFile('/proc/meminfo', "SwapTotal")[0]
         self.result.raw += result_swap
         swapInfo = result_swap.strip().split(' ')
         val = int(swapInfo[len(swapInfo) - 2])
@@ -38,7 +38,7 @@ class CheckSwapMemory(BaseItem):
         elif (factor == ''):
             MemSwap = val
 
-        result_mem = g_file.readFile('/proc/meminfo', "MemTotal")[0]
+        result_mem = FileUtil.readFile('/proc/meminfo', "MemTotal")[0]
         self.result.raw += "\n%s" % result_mem
         memInfo = result_mem.strip().split()
         val = int(memInfo[len(memInfo) - 2])

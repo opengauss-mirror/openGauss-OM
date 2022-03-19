@@ -28,6 +28,9 @@ from gspylib.common.ParallelBaseOM import ParallelBaseOM
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.ParameterParsecheck import Parameter
 from impl.backup.OLAP.BackupImplOLAP import BackupImplOLAP
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from domain_utils.cluster_os.cluster_user import ClusterUser
 
 ACTION_BACKUP = "backup"
 ACTION_RESTORE = "restore"
@@ -120,7 +123,7 @@ General options:
                 GaussLog.exitWithError(
                     ErrorCode.GAUSS_500["GAUSS_50001"] % 'U' + ".")
         # check if user exist and is the right user
-        DefaultValue.checkUser(self.user)
+        ClusterUser.checkUser(self.user)
 
     def checkBackupPara(self):
         """
@@ -137,19 +140,6 @@ General options:
             GaussLog.exitWithError(
                 ErrorCode.GAUSS_502["GAUSS_50213"] % self.backupDir)
 
-    def checkLogFilePara(self):
-        """
-        function: check log file parameter
-        input : NA
-        output: NA
-        """
-        # check log file
-        if (self.logFile == ""):
-            self.logFile = DefaultValue.getOMLogPath(
-                DefaultValue.GS_BACKUP_LOG_FILE, self.user, "")
-        if (not os.path.isabs(self.logFile)):
-            GaussLog.exitWithError(
-                ErrorCode.GAUSS_502["GAUSS_50213"] % "log file")
 
     def parseCommandLine(self):
         """
@@ -208,7 +198,8 @@ General options:
         self.checkAction()
         # check if user exist and is the right user
         self.checkUserParameter()
-        self.checkLogFilePara()
+        self.logFile = ClusterLog.checkLogFile(self.logFile, self.user, "",
+                                               ClusterConstants.GS_BACKUP_LOG_FILE)
         # check backupDir
         self.checkBackupPara()
         # check backup context parameter
@@ -247,5 +238,5 @@ if __name__ == '__main__':
     except Exception as e:
         GaussLog.exitWithError(str(e))
     finally:
-        DefaultValue.setActionFlagFile("gs_backup", None, False)
+        DefaultValue.setActionFlagFile("gs_backup", False)
     sys.exit(0)

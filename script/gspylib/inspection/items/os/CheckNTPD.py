@@ -19,8 +19,7 @@ import re
 from datetime import datetime, timedelta
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-from gspylib.os.gsplatform import g_Platform
-from gspylib.os.gsOSlib import g_OSlib
+from base_utils.os.process_util import ProcessUtil
 
 DEFAULT_INTERVAL = 300
 
@@ -67,7 +66,7 @@ class CheckNTPD(BaseItem):
                 else:
                     if re.search("======", line):
                         startHosts = True
-        pidList = g_OSlib.getProcess('ntpd')
+        pidList = ProcessUtil.getProcess('ntpd')
         for line in pidList:
             if (line.strip().isdigit()):
                 data.running = True

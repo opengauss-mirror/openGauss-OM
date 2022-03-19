@@ -3453,7 +3453,7 @@ class UpgradeImpl:
                 self.greyRestoreGuc()
                 if needSwitchProcess:
                     self.rollbackHotpatch()
-                    self.getOneDNInst(checkNoraml=True)
+                    self.getOneDNInst(checkNormal=True)
                     self.switchExistsProcess(True)
                 self.recordNodeStep(GreyUpgradeStep.STEP_UPDATE_CATALOG)
             if maxStep >= GreyUpgradeStep.STEP_UPDATE_CATALOG and\

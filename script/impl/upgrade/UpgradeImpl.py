@@ -1025,7 +1025,7 @@ class UpgradeImpl:
                 if self.context.action == const.ACTION_LARGE_UPGRADE:
                     self.updateCatalog()
                 self.recordNodeStep(GreyUpgradeStep.STEP_SWITCH_NEW_BIN)
-
+                self.CopyCerts()
                 self.upgradeAgain()
             except Exception as e:
                 errmsg = ErrorCode.GAUSS_529["GAUSS_52934"] + \
@@ -1273,7 +1273,7 @@ class UpgradeImpl:
                 raise Exception(str(e))
 
     def switchDn(self, isRollback):
-        self.context.logger.debug("Switching DN processes.")
+        self.context.logger.log("Switching DN processes.")
         start_time = timeit.default_timer()
         # under upgrade, kill the process from old cluster app path,
         # rollback: kill from new cluster app path

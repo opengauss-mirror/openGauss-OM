@@ -469,6 +469,8 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         if self.context.standbyLocalMode:
             self.logger.log("No need to do preinstall on local mode.")
+            self.sendSoftToHosts(send_pkg=False)
+            self.send_xml()
             return
         self.sendSoftToHosts()
         self.send_xml()

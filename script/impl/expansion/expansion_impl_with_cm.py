@@ -353,6 +353,8 @@ class ExpansionImplWithCm(ExpansionImpl):
         new_nodes_para_list = [(node.name, node.datanodes[0].datadir, "port",
                                 self.new_nodes[0].datanodes[0].port)
                                for node in self.new_nodes if node.datanodes]
+        print("--------------new_nodes_para_list---------------- ")
+        print(new_nodes_para_list)
         for new_node_para in new_nodes_para_list:
             self.set_guc_for_datanode(new_node_para)
         # set dcf parameter on all nodes

@@ -18,6 +18,7 @@
 # Description  : ExpansionImpl.py
 #############################################################################
 
+from enum import Flag
 import subprocess
 import sys
 import re
@@ -161,9 +162,9 @@ class ExpansionImpl():
                 and self.walKeepSegments != int(currentWalKeepSegments):
                 self.rollbackPrimaryWalKeepSegments()
         self.rollback()
-        self.clearTmpFile()
+        # self.clearTmpFile()
 
-    def sendSoftToHosts(self):
+    def sendSoftToHosts(self, send_pkg=True):
         """
         create software dir and send it on each nodes
         """
@@ -177,12 +178,13 @@ class ExpansionImpl():
             sshTool.executeCommand("umask 0022;mkdir -m a+x -p %s; chown %s:%s %s" % \
                 (self.remote_pkg_dir, self.user, self.group, self.tempFileDir),
                 DefaultValue.SUCCESS, [host])
-            for file in pkgfiles:
-                if not os.path.exists(file):
-                    GaussLog.exitWithError("Package [%s] is not found." % file)
-                sshTool.scpFiles(file, self.remote_pkg_dir, [host])
-            sshTool.executeCommand("cd %s;tar -xf %s" % (self.remote_pkg_dir, 
-                os.path.basename(pkgfiles[0])), DefaultValue.SUCCESS, [host])
+            if send_pkg:
+                for file in pkgfiles:
+                    if not os.path.exists(file):
+                        GaussLog.exitWithError("Package [%s] is not found." % file)
+                    sshTool.scpFiles(file, self.remote_pkg_dir, [host])
+                sshTool.executeCommand("cd %s;tar -xf %s" % (self.remote_pkg_dir, 
+                    os.path.basename(pkgfiles[0])), DefaultValue.SUCCESS, [host])
             self.cleanSshToolFile(sshTool)
         self.logger.log("End to send soft to each standby nodes.")
     

@@ -1307,7 +1307,6 @@ class dbClusterInfo():
             portMap = {}
 
             queryClsResult = copy.deepcopy(self.queryClsInfoParallel(hostName, sshtools, mpprcFile, "status"))
-            queryPortResult = copy.deepcopy(self.queryClsInfoParallel(hostName, sshtools, mpprcFile, "port"))
 
             for dbNode in self.dbNodes:
                 for dnInst in dbNode.datanodes:
@@ -1357,8 +1356,7 @@ class dbClusterInfo():
                         if dbState != "Normal":
                             clusterState = 'Degraded'
 
-                    # get port info by guc
-                    portMap[dbNode.name] = self.__getPortInfoLocal(dbNode.name, queryPortResult)
+                    portMap[dbNode.name] = dnInst.port
             if dnNodeCount == 1:
                 clusterState = "Unavailable" if dbState != "Normal" \
                     else "Normal"
@@ -1408,13 +1406,7 @@ class dbClusterInfo():
                             "%-*s " % (maxNodeNameLen, dbNode.name))
                     outText = outText + ("%-15s " % dnInst.listenIps[0])
 
-                    # port info
-                    port = ""
-                    if portMap[dbNode.name]:
-                        port = portMap[dbNode.name]
-                    else:
-                        port = dnInst.port
-                    outText = outText + ("%-10u " % port)
+                    outText = outText + ("%-10u " % dnInst.port)
 
                     outText = outText + ("%u " % dnInst.instanceId)
 
@@ -1436,56 +1428,7 @@ class dbClusterInfo():
             self.__fprintContent(outText, cmd.outputFile)
         except Exception as e:
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51652"] % str(e))
-
-    def __getPortInfoLocal(self, nodeName, queryClsResult):
-        """
-        function: Get port info form guc result
-        """
-
-        (status, output) = queryClsResult.get(nodeName)
-        if status != 0:
-            return None
-
-        DEFAULT_PORT = 5432
-        if not output:
-            return None
-        portpattern = re.compile("port=(\d+|NULL)")
-        result = portpattern.findall(output)
-        portvalue = ""
-        if len(result) > 0:
-            portvalue = result.pop()
-        if portvalue != "NULL":
-            return int(portvalue)
-        return DEFAULT_PORT
-
-    def __getPortInfo(self, nodeName, hostName, dnpath, sshtool, default_port, mpprcFile=""):
-        """
-        function: Get port info form guc result
-        """
-        portcmd = "gs_guc check -D %s -c port" % dnpath
-        output = ""
-        if nodeName != hostName:
-            (statusMap, output) = sshtool.getSshStatusOutput(
-                            portcmd, [nodeName], mpprcFile)
-            if statusMap[nodeName] != "Success":
-                return default_port
-        else:
-            (status, output) = subprocess.getstatusoutput(portcmd)
-            if status != 0:
-                return default_port
-
-        if not output:
-            return default_port
-        portpattern = re.compile("port=(\d+|NULL)")
-        result = portpattern.findall(output)
-        portvalue = ""
-        if len(result) > 0:
-            portvalue = result.pop()
-        if portvalue != "NULL":
-            return int(portvalue)
-        return default_port
         
-
     def __getDnRole(self, instanceType):
         """
         function : Get DnRole by instanceType
@@ -1525,10 +1468,6 @@ class dbClusterInfo():
         for dbNode in self.dbNodes:
             for dnInst in dbNode.datanodes:
                 dnNodeCount += 1
-                # Update port by query on each node. Otherwise the port is modified
-                # but the static file is not, query result will be failure
-                port = self.__getPortInfo(dbNode.name, localHostName, dnInst.datadir, sshtool, dnInst.port)
-                dnInst.port = port
                 self.__getDnState(dnInst, dbNode, localHostName, sshtool)
                 if dnInst.localRole == "Primary":
                     primaryDbState = dnInst.state

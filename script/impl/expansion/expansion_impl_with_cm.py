@@ -40,6 +40,7 @@ from gspylib.os.gsfile import g_file
 
 from base_utils.os.net_util import NetUtil
 from base_utils.executor.cmd_executor import CmdExecutor
+from domain_utils.cluster_file.cluster_dir import ClusterDir
 
 from gspylib.component.CM.CM_OLAP.CM_OLAP import CM_OLAP
 
@@ -338,7 +339,6 @@ class ExpansionImplWithCm(ExpansionImpl):
         para_str = " -c \"{0}='{1}'\" ".format(para_name, para_value)
         cmd = "{0} set -D {1} {2}".format(guc_path, inst_dir, para_str)
         self.logger.debug("Set guc parameter command: {0}".format(cmd))
-        CmdExecutor.execCommandWithMode(cmd, self.ssh_tool, host_list=[node_name])
         self.guc_executor(cmd, node_name)
         self.logger.debug("Successfully set guc param [{0}] "
                           "on node [{1}]".format(para_name, node_name))
@@ -349,12 +349,22 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         self.logger.debug("Start to set other guc parameters.")
 
-        # set port on new nodes
-        new_nodes_para_list = [(node.name, node.datanodes[0].datadir, "port",
-                                self.new_nodes[0].datanodes[0].port)
-                               for node in self.new_nodes if node.datanodes]
-        print("--------------new_nodes_para_list---------------- ")
-        print(new_nodes_para_list)
+        # set port|application_name|log_directory|audit_directory on new nodes
+        app_names = self.getIncreaseAppNames(len(self.new_nodes))
+        log_path = ClusterDir.getUserLogDirWithUser(self.user)
+        new_nodes_para_list = []
+        for node,appname in zip(self.new_nodes, app_names):
+            if node.datanodes:
+                datains = node.datanodes[0]
+                log_dir = "%s/pg_log/dn_%d" % (log_path, appname)
+                audit_dir = "%s/pg_audit/dn_%d" % (log_path, appname)
+                new_nodes_para_list.extend([
+                    (node.name, datains.datadir, "port", datains.port),
+                    (node.name, datains.datadir, "application_name", "dn_%s" % appname),
+                    (node.name, datains.datadir, "log_directory", "%s" % log_dir),
+                    (node.name, datains.datadir, "audit_directory", "%s" % audit_dir)
+                ])
+
         for new_node_para in new_nodes_para_list:
             self.set_guc_for_datanode(new_node_para)
         # set dcf parameter on all nodes

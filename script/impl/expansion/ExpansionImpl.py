@@ -162,7 +162,7 @@ class ExpansionImpl():
                 and self.walKeepSegments != int(currentWalKeepSegments):
                 self.rollbackPrimaryWalKeepSegments()
         self.rollback()
-        # self.clearTmpFile()
+        self.clearTmpFile()
 
     def sendSoftToHosts(self, send_pkg=True):
         """

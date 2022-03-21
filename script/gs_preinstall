@@ -388,6 +388,19 @@ General options:
         self.logger.log("Successfully parsed the configuration file.",
                         "constant")
 
+    # check expect for cm/create trust
+    def check_expect(self):
+        """
+        function: check expect
+        input: NA
+        output: NA
+        """
+        if not self.isSingle:
+            cmd = "echo exit|expect"
+            (status, _) = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                GaussLog.exitWithError(ErrorCode.GAUSS_514["GAUSS_51405"] % "expect")
+
     def getPreOMLogPath(self, logName, xml):
         """
         function: get the OM log path
@@ -456,6 +469,8 @@ if __name__ == '__main__':
         preinstall.checkParameter()
         # init global variables
         preinstall.initGlobals()
+        # check expect
+        preinstall.check_expect()
         # decompress version.cfg
         preinstall.decompressVersioncfg()
         preinstall.change_lib_path()

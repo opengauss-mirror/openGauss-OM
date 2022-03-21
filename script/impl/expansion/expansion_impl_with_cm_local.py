@@ -135,14 +135,19 @@ class ExpansionImplWithCmLocal(ExpansionImplWithCm):
         Config instance on new nodes
         """
         self._change_user_without_root()
-        self.send_xml()
         self._config_instance()
+        if DefaultValue.is_create_grpc(self.logger,
+                                       self.static_cluster_info.appPath):
+            self.logger.log("Generate GRPC cert file.")
+            self.generateGRPCCert()
         p_value.value = 1
 
     def run(self):
         """
         This is class enter.
         """
+        self.sendSoftToHosts(send_pkg=False)
+        self.send_xml()
         self.expansion_check()
         self._set_expansion_success()
         change_user_executor(self.do_config)

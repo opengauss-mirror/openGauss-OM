@@ -2291,7 +2291,7 @@ class DefaultValue():
             primaryFlag = "Primary"
             count = 0
             while count < 30:
-                cmd = "source {0} && gs_om -t status --detail".format(
+                cmd = "source {0} && gs_om -t query".format(
                     userProfile)
                 (status, output) = subprocess.getstatusoutput(cmd)
                 if status == 0:

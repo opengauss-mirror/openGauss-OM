@@ -1503,6 +1503,22 @@ def backupConfig():
                    (gtm_sequence, gtm_sequence, bakPath)
             g_logger.debug("Backup command: %s" % cmd)
             CmdExecutor.execCommandLocally(cmd)
+        cm_cert_file_dir = "'%s'/share/sslcert/cm" % clusterAppPath
+        back_up_cm_cert_file_cmd = "if [ -d '%s' ]; " \
+                                   "then cp -r '%s' '%s'; fi" % (cm_cert_file_dir,
+                                                                 cm_cert_file_dir, bakPath)
+        g_logger.debug("Backup CM cert files command: %s" % back_up_cm_cert_file_cmd)
+        CmdExecutor.execCommandLocally(back_up_cm_cert_file_cmd)
+        g_logger.debug("Backup CM cert files successfully.")
+        
+        om_cert_file_dir = "'%s'/share/sslcert/om" % clusterAppPath
+        back_up_om_cert_file_cmd = "if [ -d '%s' ]; " \
+                                   "then cp -r '%s' '%s'; fi" % (om_cert_file_dir,
+                                                                 om_cert_file_dir, bakPath)
+        g_logger.debug("Backup OM cert files command: %s" % back_up_om_cert_file_cmd)
+        CmdExecutor.execCommandLocally(back_up_om_cert_file_cmd)
+        g_logger.debug("Backup OM cert files successfully.")
+        
     except Exception as e:
         raise Exception(str(e))
 
@@ -1839,6 +1855,26 @@ def restoreConfig():
             grpcFileDir, grpcFileDir, grpcDesPath)
         g_logger.debug("Restore command: %s" % cmd)
         CmdExecutor.execCommandLocally(cmd)
+        
+        cm_cert_backup_dir = os.path.realpath(os.path.join(bakPath, "cm"))
+        cm_cert_dest_dir = os.path.realpath(os.path.join(clusterAppPath, "share", "sslcert"))
+        restore_cm_cert_file_cmd = "if [ -d '%s' ]; " \
+                                   "then cp -r '%s' '%s'; fi" % (cm_cert_backup_dir,
+                                                                 cm_cert_backup_dir,
+                                                                 cm_cert_dest_dir)
+        g_logger.debug("Restore CM cert files command: %s" % restore_cm_cert_file_cmd)
+        CmdExecutor.execCommandLocally(restore_cm_cert_file_cmd)
+        g_logger.debug("Restore CM cert files successfully.")
+        
+        om_cert_backup_dir = os.path.realpath(os.path.join(bakPath, "om"))
+        om_cert_dest_dir = os.path.realpath(os.path.join(clusterAppPath, "share", "sslcert"))
+        restore_om_cert_file_cmd = "if [ -d '%s' ]; " \
+                                   "then cp -r '%s' '%s'; fi" % (om_cert_backup_dir,
+                                                                 om_cert_backup_dir,
+                                                                 om_cert_dest_dir)
+        g_logger.debug("Restore OM cert files command: %s" % restore_om_cert_file_cmd)
+        CmdExecutor.execCommandLocally(restore_om_cert_file_cmd)
+        g_logger.debug("Restore OM cert files successfully.")
     except Exception as e:
         raise Exception(str(e))
 

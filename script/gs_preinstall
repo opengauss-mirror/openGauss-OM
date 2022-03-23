@@ -308,7 +308,7 @@ General options:
         if (g_nodeInfo is None):
             self.logger.logExit(ErrorCode.GAUSS_516["GAUSS_51620"] % "local" +
                                 " It is not a host name %s." % hostName)
-        self.check_config_content(g_nodeInfo)
+
         # check env-val
         self.checkEnvValueParameter()
         # check mpprc file

@@ -441,7 +441,6 @@ class PreinstallImpl:
             # send the cmd to sshIps
             # check the trust and envfile
             self.context.sshTool.executeCommand(cmd,
-                                                "check cluster trust",
                                                 DefaultValue.SUCCESS,
                                                 sshIps,
                                                 self.context.mpprcFile,
@@ -546,7 +545,7 @@ class PreinstallImpl:
         # set the str for write into /etc/hosts
         for (key, value) in list(result.items()):
             iphostInfo += '%s  %s  %s\n' % (key, value, HOSTS_MAPPING_FLAG)
-            if value != DefaultValue.GetHostIpOrName():
+            if value != NetUtil.GetHostIpOrName():
                 remoteHosts.append(value)
         remoteHosts1 = list(set(remoteHosts))
         iphostInfo = iphostInfo[:-1]
@@ -561,7 +560,6 @@ class PreinstallImpl:
                tmp_hostipname, tmp_hostipname, '/etc/hosts', tmp_hostipname)
         # exec the cmd on all remote nodes
         self.context.sshTool.executeCommand(cmd,
-                                            "grep /etc/hosts",
                                             DefaultValue.SUCCESS,
                                             remoteHosts1,
                                             self.context.mpprcFile)
@@ -569,7 +567,6 @@ class PreinstallImpl:
         # write the iphostInfo into /etc/hosts on all remote nodes
         cmd = "echo '%s'  >> /etc/hosts" % iphostInfo
         self.context.sshTool.executeCommand(cmd,
-                                            "write /etc/hosts",
                                             DefaultValue.SUCCESS,
                                             remoteHosts1,
                                             self.context.mpprcFile)

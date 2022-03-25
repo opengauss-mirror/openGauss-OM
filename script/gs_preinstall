@@ -290,7 +290,7 @@ General options:
         cmd = "sed -i '/^export[ ]*HOST_IP=/d' /etc/profile"
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
-            self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50205"]
+            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50205"]
                                 % ClusterConstants.ETC_PROFILE + "The cmd is %s" % cmd)
         if "HOST_IP" in os.environ.keys():
             os.environ.pop("HOST_IP")
@@ -306,7 +306,7 @@ General options:
         hostName = NetUtil.GetHostIpOrName()
         g_nodeInfo = self.clusterInfo.getDbNodeByName(hostName)
         if (g_nodeInfo is None):
-            self.logger.logExit(ErrorCode.GAUSS_516["GAUSS_51620"] % "local" +
+            GaussLog.exitWithError(ErrorCode.GAUSS_516["GAUSS_51620"] % "local" +
                                 " It is not a host name %s." % hostName)
         self.check_config_content(g_nodeInfo)
         # check env-val
@@ -395,7 +395,8 @@ General options:
         input: NA
         output: NA
         """
-        if not self.isSingle:
+        temp_nodes = ClusterConfigFile.getOneClusterConfigItem("nodeNames", self.xmlFile)
+        if len(temp_nodes.split(',')) > 1:
             cmd = "echo exit|expect"
             (status, _) = subprocess.getstatusoutput(cmd)
             if status != 0:
@@ -467,10 +468,10 @@ if __name__ == '__main__':
         preinstall.parseCommandLine()
         # check parameters
         preinstall.checkParameter()
-        # init global variables
-        preinstall.initGlobals()
         # check expect
         preinstall.check_expect()
+        # init global variables
+        preinstall.initGlobals()
         # decompress version.cfg
         preinstall.decompressVersioncfg()
         preinstall.change_lib_path()

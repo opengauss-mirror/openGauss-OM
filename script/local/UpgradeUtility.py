@@ -719,6 +719,22 @@ def reloadCmagent():
     else:
         raise Exception("Failed to reload cmagent.")
 
+
+def reload_cmserver():
+    """
+    reload the cm_server instance, make the guc parameter working
+    """
+    # reload the cm_server instance, make the guc parameter working
+    cmd = "ps ux | grep '%s/bin/cm_server' | grep -v grep | awk '{print $2}' | " \
+          "xargs -r -n 100 kill -1" % g_clusterInfo.appPath
+    g_logger.debug("Command for reload cm_server:%s" % cmd)
+    status, _ = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
+    if status == 0:
+        g_logger.log("Successfully reload cmserver.")
+    else:
+        raise Exception("Failed to reload cmserver.")
+
+
 def initDbInfo():
     """
     function: create a init dbInfo dict
@@ -2755,7 +2771,7 @@ def backupOneInstanceOldClusterCatalogPhysicalFiles(instance):
         __backup_global_dir(instance)
 
         if instance.instanceRole == INSTANCE_ROLE_DATANODE and \
-                instance.instanceType == DUMMY_STANDBY_INSTANCE:
+                instance.instanceType in [DUMMY_STANDBY_INSTANCE, CASCADE_STANDBY]:
             g_logger.debug("There is no need to backup catalog. "
                            "Instance data dir: %s" % instance.datadir)
             return
@@ -3701,6 +3717,31 @@ def greySyncInstanceGuc(dbInstance):
     g_logger.debug("Successfully dealt with %s." % oldConfig)
 
 
+def config_cm_agent_instance(cluster_info_file):
+    """
+    Config cm_agent.conf
+    """
+    g_logger.log("Start to config cm_agent.conf")
+    cluster_info_obj = dbClusterInfo()
+    cluster_info_obj.initFromStaticConfig(g_opts.user, cluster_info_file)
+    local_node = cluster_info_obj.get_local_node_info()
+    space_count = 17
+    cm_agent_conf = os.path.realpath(os.path.join(local_node.cmagents[0].datadir,
+                                                  "cm_agent.conf"))
+    g_logger.log("Local cm_agent config file path [{0}]".format(cm_agent_conf))
+    replace_str = "upgrade_from = {0}{1}# the version number of the cluster " \
+                  "before upgrade".format(g_opts.oldVersion,
+                                          " " * (space_count - len(str(g_opts.oldVersion))))
+    config_cmd = "sed -i 's/^upgrade_from =.*/{0}/g' {1} && " \
+                 "grep 'upgrade_from' {1}".format(replace_str, cm_agent_conf)
+    _, output = subprocess.getstatusoutput(config_cmd)
+    if not "upgrade_from = {0}".format(g_opts.oldVersion) in output:
+        g_logger.debug("Config cm_agent.conf failed. Output: {0}".format(output))
+        raise Exception("Config cm_agent.conf failed. Output: {0}".format(output))
+
+    g_logger.log("Local cm_agent config file set seccessfully.")
+
+
 def greyUpgradeSyncConfig():
     """
     """
@@ -3722,6 +3763,7 @@ def greyUpgradeSyncConfig():
                         os.path.realpath(new_static_config_file))
     if DefaultValue.check_add_cm(old_static_config_file, new_static_config_file, g_logger):
         install_cm_instance(new_static_config_file)
+        config_cm_agent_instance(new_static_config_file)
         cmd = ""
     else:
         g_logger.debug("No need to install CM component for grey upgrade sync config.")
@@ -4529,6 +4571,7 @@ def checkAction():
              const.ACTION_BACKUP_CONFIG,
              const.ACTION_RESTORE_CONFIG,
              const.ACTION_RELOAD_CMAGENT,
+             const.ACTION_RELOAD_CMSERVER,
              const.ACTION_INPLACE_BACKUP,
              const.ACTION_INPLACE_RESTORE,
              const.ACTION_CHECK_GUC,
@@ -4586,6 +4629,7 @@ def main():
             const.ACTION_INPLACE_BACKUP: inplaceBackup,
             const.ACTION_INPLACE_RESTORE: inplaceRestore,
             const.ACTION_RELOAD_CMAGENT: reloadCmagent,
+            const.ACTION_RELOAD_CMSERVER: reload_cmserver,
             const.ACTION_CHECK_GUC: checkGucValue,
             const.ACTION_BACKUP_HOTPATCH: backupHotpatch,
             const.ACTION_ROLLBACK_HOTPATCH: rollbackHotpatch,

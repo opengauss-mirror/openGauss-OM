@@ -20,6 +20,8 @@
 #############################################################################
 import os
 import sys
+import socket
+from unittest import expectedFailure
 package_path = os.path.dirname(os.path.realpath(__file__))
 ld_path = package_path + "/gspylib/clib"
 if 'LD_LIBRARY_PATH' not in os.environ:
@@ -98,6 +100,21 @@ General options:
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"]
                                    % 'c' + ".")
 
+    def check_nodename_recognized(self, node_names):
+        """
+        function: Check if nodename can be recognized.
+        input : NA
+        output: NA
+        """
+        try:
+            for name in node_names:
+                socket.gethostbyname(name)
+        except Exception as e:
+            GaussLog.printMessage(
+                "[Warning] Name or service not known on node [%s]." % name)
+            return False
+        return True
+        
     def initGlobal(self):
         """
         function: Init global parameter
@@ -111,7 +128,12 @@ General options:
             self.clusterInfo.initFromStaticConfig(self.user)
 
             nodeNames = self.clusterInfo.getClusterNodeNames()
-            self.sshTool = SshTool(nodeNames)
+            if self.check_nodename_recognized(nodeNames):
+                self.sshTool = SshTool(nodeNames)
+            else:
+                nodeSshIps = self.clusterInfo.getClusterSshIps()[0]
+                self.sshTool = SshTool(nodeSshIps)
+            
         except Exception as e:
             GaussLog.exitWithError(str(e))
 
@@ -123,6 +145,9 @@ General options:
         """
         failedNodes = ""
         succeedNodes = ""
+        # Create a temporary shell file
+        cmdFile = "%s/ClusterCall_%d.sh"\
+                      % (EnvUtil.getTmpDirFromEnv(), os.getpid())
         try:
             # Queries the existence of objects that
             # the command executes in all nodes
@@ -143,9 +168,6 @@ General options:
             succeedNodes = ""
             executeCmd = self.cmd
             #############################################################
-            # Create a temporary shell file
-            cmdFile = "%s/ClusterCall_%d.sh"\
-                      % (EnvUtil.getTmpDirFromEnv(), os.getpid())
 
             FileUtil.createFile(cmdFile, True, DefaultValue.FILE_MODE)
 

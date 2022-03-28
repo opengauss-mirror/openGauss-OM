@@ -3121,6 +3121,12 @@ class dbClusterInfo():
                 node.standbyBasePorts[INSTANCE_ROLE_CMSERVER] = \
                     node.masterBasePorts[INSTANCE_ROLE_CMSERVER]
 
+    def get_local_node_info(self):
+        """
+        Get local node info
+        """
+        local_node = [node for node in self.dbNodes if node.id == self.localNodeId]
+        return local_node[0] if local_node else None
 
     def __readNodeBasicInfo(self, dbNode, nodenames):
         """

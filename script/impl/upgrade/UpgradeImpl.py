@@ -1008,9 +1008,7 @@ class UpgradeImpl:
                 # 8. install the new bin in the appPath which has been
                 # prepared in the preinstall
                 self.installNewBin()
-                #self.createGrpcCA()
-                #self.prepareServerKey()
-                #self.prepareRoachServerKey()
+
                 # decompress the catalog upgrade_sql.tar.gz to temp dir,
                 # include upgrade sql file and guc set
                 self.prepareUpgradeSqlFolder()
@@ -1203,11 +1201,10 @@ class UpgradeImpl:
         Check cluster state and start cluster
         """
         self.context.logger.log("Check cluster state.")
-        cmd = "source {0};gs_om -t status".format(self.context.userProfile)
+        cmd = "source {0};gs_om -t query".format(self.context.userProfile)
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             self.context.logger.debug("Check cluster state failed. Output: {0}".format(output))
-            return
         if "cluster_state   : Degraded" in output or "cluster_state   : Normal" in output:
             self.context.logger.log("Cluster state: {0}".format(output))
             return
@@ -1227,6 +1224,10 @@ class UpgradeImpl:
         """
         self.context.logger.log("Switching all db processes.", "addStep")
         self._check_and_start_cluster()
+        if DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) > 0:
+            self.setUpgradeFromParam(self.context.oldClusterNumber)
+            self.reloadCmAgent()
+            self.reload_cmserver()
         self.createCheckpoint()
         self.switchDn(isRollback)
         try:
@@ -1310,6 +1311,7 @@ class UpgradeImpl:
         start cluster in grey upgrade
         :return:
         """
+        self.context.logger.log("Ready to grey start cluster.")
         versionFile = os.path.join(
             self.context.oldClusterAppPath, "bin/upgrade_version")
         if os.path.exists(versionFile):
@@ -1321,6 +1323,7 @@ class UpgradeImpl:
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
                             "Command:%s. Error:\n%s" % (cmd, output))
+        self.context.logger.log("Grey start cluster successfully.")
 
     def isNodeSpecifyStep(self, step, nodes=None):
         """
@@ -3275,8 +3278,10 @@ class UpgradeImpl:
                 self.recordNodeStep(GreyUpgradeStep.STEP_BEGIN_COMMIT)
             self.setActionFile()
             if self.context.action == const.ACTION_LARGE_UPGRADE:
-                self.setUpgradeFromParam(const.UPGRADE_UNSET_NUM)
-                self.reloadCmAgent()
+                if DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo) > 0:
+                    self.setUpgradeFromParam(const.UPGRADE_UNSET_NUM)
+                    self.reloadCmAgent()
+                    self.reload_cmserver(is_final=True)
                 self.setUpgradeMode(0)
             time.sleep(10)
             if self.dropPMKSchema() != 0:

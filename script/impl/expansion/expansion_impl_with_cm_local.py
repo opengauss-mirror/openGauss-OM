@@ -73,7 +73,7 @@ class ExpansionImplWithCmLocal(ExpansionImplWithCm):
                               "{0}".format(result_map))
             raise Exception("Get commit ID on remote node failed. output: {0}".format(result_map))
         result_dict = self._parse_ssh_tool_output_collect(output_collect)
-        if len(result_dict.values()) != 1:
+        if len(list(set(result_dict.values()))) != 1:
             self.logger.debug("The database version on the remote node is inconsistent. "
                               "result {0}".format(result_dict))
             raise Exception("The database version on the remote node is inconsistent.")

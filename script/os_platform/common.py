@@ -65,4 +65,4 @@ PAK_UBUNTU = "Ubuntu"
 _supported_dists = (
     'SuSE', 'debian', 'fedora', 'redhat', 'centos', 'euleros', "openEuler",
     'mandrake', 'mandriva', 'rocks', 'slackware', 'yellowdog', 'gentoo',
-    'UnitedLinux', 'turbolinux',  'ubuntu')
+    'UnitedLinux', 'turbolinux', 'ubuntu', 'kylin', 'asianux')

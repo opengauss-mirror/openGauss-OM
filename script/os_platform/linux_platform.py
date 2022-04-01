@@ -183,6 +183,11 @@ class LinuxPlatform(object):
                                      "%s-%s-%s-%s.%s" % (
                                         prefix_str, packageVersion, PAK_ASIANUX,
                                         BIT_VERSION, postfix_str))
+            if not os.path.exists(os.path.normpath(file_name)):
+                file_name = os.path.join(dir_name, "./../../",
+                                     "%s-%s-%s-%s.%s" % (
+                                        prefix_str, packageVersion, PAK_CENTOS,
+                                        BIT_VERSION, postfix_str))
         elif distname == SUSE and version.split('.')[0] in ("11", "12"):
             file_name = os.path.join(dir_name, "./../../",
                                      "%s-%s-%s-%s.%s" % (

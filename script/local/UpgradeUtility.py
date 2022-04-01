@@ -2328,16 +2328,21 @@ def copyCerts():
     oldOmSslCerts = os.path.join(g_opts.oldClusterAppPath, "share/sslcert/om")
     newOmSslCerts = os.path.join(g_opts.newClusterAppPath, "share/sslcert/om")
 
-    FileUtil.cpFile("%s/server.key.cipher" % oldBinPath, "%s/" % newBinPath)
-    FileUtil.cpFile("%s/server.key.rand" % oldBinPath, "%s/" % newBinPath)
+    if FileUtil.checkFileExists("%s/server.key.cipher" % oldBinPath):
+        FileUtil.cpFile("%s/server.key.cipher" % oldBinPath, "%s/" % newBinPath)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, "%s/server.key.cipher" % 
+                            newBinPath)
+        
+    if FileUtil.checkFileExists("%s/server.key.rand" % oldBinPath):
+        FileUtil.cpFile("%s/server.key.rand" % oldBinPath, "%s/" % newBinPath)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, "%s/server.key.rand" % 
+                            newBinPath)
+        
     for certFile in DefaultValue.SERVER_CERT_LIST:
-        FileUtil.cpFile("%s/%s" % (oldOmSslCerts, certFile), "%s/" %
+        if FileUtil.checkFileExists("%s/%s" % (oldOmSslCerts, certFile)):
+            FileUtil.cpFile("%s/%s" % (oldOmSslCerts, certFile), "%s/" %
                       newOmSslCerts)
-
-    FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, "%s/server.key.cipher" %
-                      newBinPath)
-    FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, "%s/server.key.rand" %
-                      newBinPath)
+    
     FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, "%s/*" %
                       newOmSslCerts)
 

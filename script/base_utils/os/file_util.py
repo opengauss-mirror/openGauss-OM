@@ -874,3 +874,12 @@ class FileUtil(object):
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % "log file" +
                             " Directory:%s." % user_dir + " Error: \n%s" % file_output)
+    
+    @staticmethod
+    def checkFileExists(file):
+        """
+        function : change file exists
+        input : file name
+        output: NA
+        """
+        return os.path.exists(file)

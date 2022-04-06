@@ -31,6 +31,7 @@ checkPythonVersion()
 from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.Common import DefaultValue
+DefaultValue.doConfigForParamiko()
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.ParallelBaseOM import ParallelBaseOM
 from gspylib.common.ParameterParsecheck import Parameter

@@ -708,7 +708,8 @@ class CM_OLAP(CM):
         input : NA
         output : NA
         """
-        cmd = DefaultValue.killInstProcessCmd("cm_server", True)
+        cmd = DefaultValue.killInstProcessCmd("cm_server", False)
+        self.logger.debug("Kill cm_server cmd is: {0}".format(cmd))
         (status, output) = CmdUtil.retryGetstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51606"] %

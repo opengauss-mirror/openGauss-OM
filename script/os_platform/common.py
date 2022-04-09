@@ -60,6 +60,7 @@ PAK_OPENEULER = "openEuler"
 PAK_REDHAT = "RedHat"
 PAK_ASIANUX = "asianux"
 PAK_UBUNTU = "Ubuntu"
+PAK_KYLIN = "Kylin"
 
 #######################################################
 _supported_dists = (

@@ -107,6 +107,9 @@ class CmdOptions():
         self.old_values = []
         self.new_values = []
 
+        # view
+        self.is_dynamic = False
+
 
 ###########################################
 class OperationManager(ParallelBaseOM):
@@ -243,6 +246,8 @@ Install options:
                 # Initialize the self.clusterInfo variable
                 if (self.g_opts.action == ACTION_STATUS):
                     self.initClusterInfoFromStaticFile(self.g_opts.user, False)
+                elif self.g_opts.action == ACTION_VIEW and self.g_opts.is_dynamic:
+                    self.initClusterInfoFromDynamicFile(self.g_opts.user)
                 else:
                     self.initClusterInfoFromStaticFile(self.g_opts.user)
 
@@ -351,6 +356,8 @@ Install options:
             # A view can specify an out file
             if ("outFile" in ParaDict.keys()):
                 self.g_opts.outFile = ParaDict.get("outFile")
+            if "dynamic" in ParaDict.keys():
+                self.g_opts.is_dynamic = True
 
     def parseQuery(self, ParaDict):
         """

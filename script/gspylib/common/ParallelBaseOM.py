@@ -206,6 +206,18 @@ class ParallelBaseOM(object):
             self.logger.debug("Instance information of cluster:\n%s." %
                               str(self.clusterInfo))
 
+    def initClusterInfoFromDynamicFile(self, user):
+        """
+        function: Function to init clusterInfo from dynamic file
+        input : user
+        output: NA
+        """
+        try:
+            self.clusterInfo = dbClusterInfo()
+            self.clusterInfo.readDynamicConfig(user)
+        except Exception as e:
+            raise Exception(str(e))
+
     def initSshTool(self, nodeNames, timeout=0):
         """
         function: Init ssh tool

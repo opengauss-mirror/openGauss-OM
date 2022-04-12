@@ -4372,10 +4372,13 @@ class UpgradeImpl:
             dnInst = None
             clusterNodes = self.context.oldClusterInfo.dbNodes
             primaryDnNode, output = DefaultValue.getPrimaryNode(
-                self.context.userProfile)
+                self.context.userProfile, self.context.logger)
             self.context.logger.debug(
                 "Cluster status information is %s;The primaryDnNode is %s" % (
                     output, primaryDnNode))
+            if not primaryDnNode:
+                self.context.logger.error("Get primary DN failed. Please check cluster.")
+                raise Exception(ErrorCode.GAUSS_516["GAUSS_51652"] % "Get primary DN failed.")
             for dbNode in clusterNodes:
                 if len(dbNode.datanodes) == 0:
                     continue
@@ -5104,12 +5107,13 @@ class UpgradeImpl:
         agent_component.create_cm_ca(self.context.sshTool)
         self.context.logger.debug("Create CA for CM successfully.")
 
-    def reloadCmAgent(self):
+    def reloadCmAgent(self, is_final=False):
         """
         Run the 'kill -1' command to make the parameters of all cmagent instances take effect.
         :return:
         """
-        if not DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) > 0:
+        if not DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) > 0 \
+                and not is_final:
             self.context.logger.debug("No need to reload cm configuration.")
             return
         self.context.logger.debug("Start to reload cmagent")
@@ -5131,7 +5135,7 @@ class UpgradeImpl:
                     self.context.forceRollback:
                 raise Exception(str(er))
             self.context.logger.debug("Failed to reload cm agent. Warning:{0}".format(str(er)))
-    
+
     def reload_cmserver(self, is_final=False):
         """
         Run the 'kill -1' command to make the parameters of all cmserver instances take effect.
@@ -5160,8 +5164,8 @@ class UpgradeImpl:
             self.waitClusterNormalDegrade()
             self.context.logger.debug("Success to reload cmserver")
         except Exception as er:
-            if (self.context.action == const.ACTION_INPLACE_UPGRADE or \
-                not self.context.forceRollback) and not self.context.ignoreInstance:
+            if self.context.action == const.ACTION_INPLACE_UPGRADE or \
+                    not self.context.forceRollback:
                 raise Exception(str(er))
             self.context.logger.debug("Failed to reload cm server. Warning:{0}".format(str(er)))
 
@@ -5480,24 +5484,24 @@ class UpgradeImpl:
         status = 0
         output = ""
 
-        if (checkPosition == const.OPTION_PRECHECK):
+        if checkPosition == const.OPTION_PRECHECK:
             if (self.checkClusterStatus(checkPosition, True) != 0):
                 output += "\n    Cluster status does not match condition."
-            if (self.checkConnection() != 0):
+            if self.checkConnection() != 0:
                 output += "\n    Database could not be connected."
-        elif (checkPosition == const.OPTION_POSTCHECK):
-            if (self.checkClusterStatus(checkPosition) != 0):
+        elif checkPosition == const.OPTION_POSTCHECK:
+            if self.checkClusterStatus(checkPosition) != 0:
                 output += "\n    Cluster status is Abnormal."
             if not self.checkVersion(
                     self.context.newClusterVersion,
                     self.context.clusterInfo.getClusterNodeNames()):
                 output += "\n    The gaussdb version is inconsistent."
-            if (self.checkConnection() != 0):
+            if self.checkConnection() != 0:
                 output += "\n    Database could not be connected."
         else:
             # Invalid check position
             output += "\n    Invalid check position."
-        if (output != ""):
+        if output != "":
             status = 1
         # all check has been pass, return 0
         self.context.logger.log("Successfully checked cluster status.",
@@ -5546,6 +5550,21 @@ class UpgradeImpl:
             self.context.logger.debug(str(e))
             return False
 
+    def _query_cluster_status(self):
+        """
+        Query cluster status
+        """
+        cmd = "source %s;gs_om -t query" % self.context.userProfile
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if "Cascade Need repair" in output:
+            self.context.logger.debug("Cascade node disconnect , "
+                                      "check again after 5 seconds.\n{0}".format(output))
+            time.sleep(5)
+            (status, output) = subprocess.getstatusoutput(cmd)
+            self.context.logger.debug("Retry query cluster status finish. "
+                                      "Output:\n{0}".format(output))
+        return cmd, status, output
+
     def checkClusterStatus(self, checkPosition=const.OPTION_PRECHECK,
                            doDetailCheck=False):
         """
@@ -5560,8 +5579,8 @@ class UpgradeImpl:
         # build query cmd
         # according to the implementation of the results to determine whether
         # the implementation of success
-        cmd = "source %s;gs_om -t query" % self.context.userProfile
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd, status, output = self._query_cluster_status()
+
         if status != 0:
             self.context.logger.debug(
                 "Failed to execute command %s.\nStatus:%s\nOutput:%s" %

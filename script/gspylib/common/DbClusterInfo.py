@@ -102,6 +102,8 @@ STANDBY_INSTANCE = 1
 DUMMY_STANDBY_INSTANCE = 2
 #cascade standby
 CASCADE_STANDBY = 3
+DICT_INSTANCE = {MASTER_INSTANCE: "primary", STANDBY_INSTANCE: "standby",
+                 CASCADE_STANDBY: "cascade_standby"}
 
 ###########################
 # instance number
@@ -1149,13 +1151,11 @@ class dbClusterInfo():
             outText = outText + ("time:%ld\n" % self.installTime)
             outText = outText + ("nodeCount:%u\n" % self.nodeCount)
             outText = outText + ("node:%u\n" % self.localNodeId)
+            outText = outText + ("=" * 60 + "\n")
             dnTotalNum = self.__getDnInstanceNum()
             for dbNode in self.dbNodes:
-                if self.clusterType == \
-                        CLUSTER_TYPE_SINGLE_PRIMARY_MULTI_STANDBY or \
-                        self.clusterType == CLUSTER_TYPE_SINGLE_INST:
-                    outText = outText + ("azName:%s\n" % dbNode.azName)
-                    outText = outText + ("azPriority:%u\n" % dbNode.azPriority)
+                outText = outText + ("azName:%s\n" % dbNode.azName)
+                outText = outText + ("azPriority:%u\n" % dbNode.azPriority)
                 outText = outText + ("node :%u\n" % dbNode.id)
                 outText = outText + ("nodeName:%s\n" % dbNode.name)
 
@@ -1170,6 +1170,8 @@ class dbClusterInfo():
                 j = 0
                 for dnInst in dbNode.datanodes:
                     j = j + 1
+                    outText = outText + ("datanodeInstanceType :%s\n" %
+                                         DICT_INSTANCE[dnInst.instanceType])
                     outText = outText + ("datanode %u:\n" % j)
                     outText = outText + (
                             "datanodeLocalDataPath :%s\n" % dnInst.datadir)
@@ -1190,54 +1192,20 @@ class dbClusterInfo():
                             "datanodeLocalHAPort :%u\n" % dnInst.haPort)
                     outText = outText + (
                             "dn_replication_num: %u\n" % dnTotalNum)
-                    k = 0
-                    if self.clusterType == \
-                            CLUSTER_TYPE_SINGLE_PRIMARY_MULTI_STANDBY or \
-                            self.clusterType == CLUSTER_TYPE_SINGLE_INST:
-                        maxPeerNum = MIRROR_COUNT_REPLICATION_MAX if \
-                            self.nodeCount > MIRROR_COUNT_REPLICATION_MAX \
-                            else self.nodeCount
-                        for k in range(maxPeerNum - 1):
-                            outText = outText + (
-                                    "datanodePeer%uDataPath :%s\n" % (
-                                k, dnInst.peerInstanceInfos[k].peerDataPath))
-                            m = 0
-                            for peerHaIP in dnInst.peerInstanceInfos[
-                                k].peerHAIPs:
-                                m += 1
-                                outText = outText + (
-                                        "datanodePeer%uHAIP %u:%s\n" % (
-                                    k, m, peerHaIP))
-                            outText = outText + (
-                                    "datanodePeer%uHAPort :%u\n" % (
-                                k, dnInst.peerInstanceInfos[k].peerHAPort))
-                    else:
-                        outText = outText + ("datanodePeerDataPath :%s\n" %
-                                             dnInst.peerInstanceInfos[
-                                                 0].peerDataPath)
+                    maxPeerNum = MIRROR_COUNT_REPLICATION_MAX if \
+                        self.nodeCount > MIRROR_COUNT_REPLICATION_MAX \
+                        else self.nodeCount
+                    for k in range(maxPeerNum - 1):
+                        outText = outText + ("datanodePeer%uDataPath :%s\n" %
+                                             (k, dnInst.peerInstanceInfos[k].peerDataPath))
                         m = 0
                         for peerHaIP in dnInst.peerInstanceInfos[k].peerHAIPs:
                             m += 1
-                            outText = outText + (
-                                    "datanodePeer2HAIP %u:%s\n" % (
-                                m, peerHaIP))
-                        outText = outText + ("datanodePeerHAPort :%u\n" %
-                                             dnInst.peerInstanceInfos[
-                                                 0].peerHAPort)
-                        outText = outText + ("datanodePeer2DataPath :%s\n" %
-                                             dnInst.peerInstanceInfos[
-                                                 0].peer2DataPath)
-                        m = 0
-                        for peer2HaIP in dnInst.peerInstanceInfos[
-                            0].peer2HAIPs:
-                            m += 1
-                            outText = outText + (
-                                    "datanodePeer2HAIP %u:%s\n" % (
-                                m, peer2HaIP))
-                        outText = outText + ("datanodePeer2HAPort :%u\n" %
-                                             dnInst.peerInstanceInfos[
-                                                 0].peer2HAPort)
+                            outText = outText + ("datanodePeer%uHAIP %u:%s\n" % (k, m, peerHaIP))
+                        outText = outText + ("datanodePeer%uHAPort :%u\n" %
+                                             (k, dnInst.peerInstanceInfos[k].peerHAPort))
 
+                    outText = outText + ("=" * 60 + "\n")
             self.__fprintContent(outText, fileName)
         except Exception as e:
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51652"] % str(e))

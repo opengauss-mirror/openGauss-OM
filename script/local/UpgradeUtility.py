@@ -4457,6 +4457,7 @@ def clean_cm_instance():
         server_component.instInfo = local_node.cmservers[0]
         server_component.logger = g_logger
         server_component.killProcess()
+        FileUtil.removeDirectory(local_node.cmservers[0].datadir)
         g_logger.debug("Clean local cm_server process successfully.")
     if os.path.isdir(local_node.cmagents[0].datadir):
         FileUtil.cleanDirectoryContent(local_node.cmagents[0].datadir)
@@ -4467,7 +4468,23 @@ def clean_cm_instance():
             g_logger.debug("Kill cm_agent process failed. Output: {0}".format(output))
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51606"] % "cm_agent")
         g_logger.debug("Kill local cm_agent process successfully.")
-    g_logger.debug("Local clean CM instance directory [{0}] successfully.".format(clean_dir))
+        FileUtil.removeDirectory(local_node.cmagents[0].datadir)
+        g_logger.debug("Clean local cm_agent directory successfully.")
+
+    g_logger.debug("Start clean other directory of CM component.")
+    cm_instance_parent_path = os.path.dirname(local_node.cmagents[0].datadir)
+    dcf_data_path = os.path.realpath(os.path.join(cm_instance_parent_path, "dcf_data"))
+    gstor_path = os.path.realpath(os.path.join(cm_instance_parent_path, "gstor"))
+    
+    if os.path.isdir(dcf_data_path):
+        FileUtil.removeDirectory(dcf_data_path)
+        g_logger.debug("Clean local dcf meta data directory successfully.")
+    if os.path.isdir(gstor_path):
+        FileUtil.removeDirectory(gstor_path)
+        g_logger.debug("Clean local gstor directory successfully.")
+
+    g_logger.debug("Local clean CM instance directory [{0}] "
+                   "successfully.".format(os.path.dirname(clean_dir)))
 
 
 def cleanOneInstanceConfBakOld(dbInstance):

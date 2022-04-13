@@ -135,6 +135,7 @@ class GaussCreateTrust():
         self.hostFile = ""
         self.hostList = []
         self.passwd = []
+        self.hosts_paswd_list = []
         self.logFile = ""
         self.localHost = ""
         self.flag = False
@@ -222,6 +223,7 @@ General options:
 
         if not self.passwd:
             self.passwd = self.getUserPasswd()
+            self.isKeyboardPassword = True
     
     def readHostFile(self):
         """
@@ -339,6 +341,7 @@ General options:
 
                 isPasswdOK = self.verifyPasswd(ssh, pswd)
                 if isPasswdOK:
+                    self.hosts_paswd_list.append([sshIp, pswd])
                     break
 
             if boolInvalidIp:
@@ -357,6 +360,7 @@ General options:
                         isPasswdOK = self.verifyPasswd(ssh, KeyboardPassword)
                         if isPasswdOK:
                             self.passwd.append(KeyboardPassword)
+                            self.hosts_paswd_list.append([sshIp, KeyboardPassword])
                             break
                         else:
                             continue
@@ -366,8 +370,6 @@ General options:
                     finally:
                         del KeyboardPassword
                         gc.collect()
-                        if ssh is not None:
-                            ssh.close()
             # if isKeyboardPassword is true, 3 times after the password is
             # also wrong to throw an unusual exit
             if not isPasswdOK:
@@ -1288,7 +1290,12 @@ General options:
         :param all_ips:
         :return:
         """
-        self.ssh_tool.create_all_sessions(user, all_ips, passwd)
+        # the hosts have diffirent password.
+        if len(self.hosts_paswd_list) == len(all_ips):
+            for ip, pswd in self.hosts_paswd_list:
+                self.ssh_tool.create_all_sessions(user, [ip], [pswd])
+        else:
+            self.ssh_tool.create_all_sessions(user, all_ips, passwd)
 
     def copy_shell_to_remote_node(self, shell_file, hostname):
         # scp ssh_protect to remote node

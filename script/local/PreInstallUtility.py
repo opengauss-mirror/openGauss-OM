@@ -1546,19 +1546,19 @@ Common options:
         """
         function: Determine whether the current node needs to set Cgroup
         input : NA
-        output: True     #no need to set cgroup
-                False    #need to set cgroup
+        output: True     #need to set cgroup
+                False    #not need to set cgroup
         """
         #Determine whether action is expansion.
         hostName = NetUtil.GetHostIpOrName()
         if len(self.clusterInfo.newNodes) == 0:
-            return False
+            return True
         #Determine whether the current node is a new node
         for node in self.clusterInfo.newNodes:
             if hostName == node.name:
-                return False
+                return True
         self.logger.debug("The current node is the old node for expansion, no need to set cgroup.")
-        return True
+        return False
 
     def decompressPkg2Cgroup(self):
         """
@@ -1596,7 +1596,7 @@ Common options:
         input : NA
         output: NA
         """
-        if self.needSetCgroup():
+        if not self.needSetCgroup():
             return
         self.logger.debug("Setting Cgroup.")
         # decompress server pakcage

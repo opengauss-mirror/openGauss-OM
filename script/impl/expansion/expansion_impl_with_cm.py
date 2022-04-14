@@ -450,11 +450,11 @@ class ExpansionImplWithCm(ExpansionImpl):
         Config instance
         """
         self.logger.debug("Start config instance.")
+        self.generateClusterStaticFile()
         self.setGucConfig()
         self._set_other_guc_para()
         self._config_pg_hba()
         self.distributeCipherFile()
-        self.generateClusterStaticFile()
 
     def _set_expansion_success(self):
         """

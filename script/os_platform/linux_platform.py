@@ -170,13 +170,13 @@ class LinuxPlatform(object):
                 file_name = os.path.join(dir_name, "./../../",
                                          "%s-%s-%s-%s.%s" % (
                                             prefix_str, packageVersion,
-                                            PAK_CENTOS,
+                                            PAK_REDHAT,
                                             BIT_VERSION, postfix_str))
             if not os.path.isfile(file_name):
                 file_name = os.path.join(dir_name, "./../../",
                                          "%s-%s-%s-%s.%s" % (
                                             prefix_str, packageVersion,
-                                            PAK_REDHAT,
+                                            PAK_CENTOS,
                                             BIT_VERSION, postfix_str))
         elif distname in ASIANUX:
             file_name = os.path.join(dir_name, "./../../",

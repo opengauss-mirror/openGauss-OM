@@ -86,12 +86,6 @@ ACTION_CHECK_CONFIG = "check_config"
 #############################################################################
 iphostInfo = ""
 topToolPath = ""
-# create the tmp file for dist trust steps
-g_stepTrustTmpFile = None
-# the tmp file name
-TRUST_TMP_FILE = "step_preinstall_file.dat"
-# the tmp file path
-TRUST_TMP_FILE_DIR = None
 createTrustFlag = False
 
 
@@ -1275,40 +1269,6 @@ class PreinstallImpl:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
                                 + " Error: \n%s" % output)
 
-    def createStepTmpFile(self):
-        """
-        function: create step tmp file
-        input : NA
-        output: NA
-        """
-        if self.context.localMode or self.context.isSingle:
-            return
-
-        try:
-            global g_stepTrustTmpFile
-            global TRUST_TMP_FILE_DIR
-            TRUST_TMP_FILE_DIR = "/tmp/%s" % TRUST_TMP_FILE
-            FileUtil.createFileInSafeMode(TRUST_TMP_FILE_DIR)
-            with open(TRUST_TMP_FILE_DIR, "w") as g_stepTrustTmpFile:
-                g_stepTrustTmpFile.flush()
-        except Exception as e:
-            raise Exception(str(e))
-
-    def deleteStepTmpFile(self):
-        """
-        function: delete step tmp file
-        input : NA
-        output: NA
-        """
-        if self.context.localMode or self.context.isSingle:
-            return
-
-        try:
-            cmd = "rm -rf '%s'" % TRUST_TMP_FILE_DIR
-            self.context.sshTool.executeCommand(cmd)
-        except Exception as e:
-            self.context.logger.error(str(e))
-
     def checkEnvFile(self):
         """
         function: delete step tmp file
@@ -1556,10 +1516,6 @@ class PreinstallImpl:
         self.checkInstanceDir()
         # install tools phase1
         self.installToolsPhase1()
-
-        # no need do the following steps in local mode
-        # create tmp file
-        self.createStepTmpFile()
         # exchange user key for root user
         self.createTrustForRoot()
         # distribute server package
@@ -1582,8 +1538,6 @@ class PreinstallImpl:
         self.createTrustForCommonUser()
         # change tool env path
         self.changeToolEnv()
-        # delete tmp file
-        self.deleteStepTmpFile()
         # the end of functions which do not use in in local mode
         #check software
         self.checkOSSoftware()
@@ -1632,7 +1586,6 @@ class PreinstallImpl:
             # close log file
             self.context.logger.closeLog()
         except Exception as e:
-            self.deleteStepTmpFile()
             for rmPath in self.context.needFixOwnerPaths:
                 if os.path.isfile(rmPath):
                     FileUtil.removeFile(rmPath)

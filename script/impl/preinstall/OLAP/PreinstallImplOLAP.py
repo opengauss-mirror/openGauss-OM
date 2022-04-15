@@ -451,12 +451,10 @@ class PreinstallImplOLAP(PreinstallImpl):
         if status != 0:
             self.context.logger.logExit("Command for set platform ARM:"
                                       "%s" % cmd + " Error: \n%s" % output)
-        if str(output) == "aarch64":
-            pass
-        else:
-            self.context.logger.log("No need to set ARM Optimization.",
-                                    "constant")
+        if output != "aarch64":
+            self.context.logger.log("No need to set ARM Optimization.", "constant")
             return
+
         try:
             # exec cmd for set platform ARM
             cmd = "%s -t %s -u %s -l %s -Q %s" % (

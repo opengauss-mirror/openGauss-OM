@@ -1505,12 +1505,6 @@ Common options:
                 "export LD_LIBRARY_PATH=$GPHOME/lib:$LD_LIBRARY_PATH"])
             # set PYTHONPATH
             FileUtil.writeFile(userProfile, ["export PYTHONPATH=$GPHOME/lib"])
-            # set om root script path
-            om_root_path = "%s/%s/script" % (DefaultValue.ROOT_SCRIPTS_PATH,
-                                             self.user)
-            FileUtil.writeFile(userProfile,
-                             ["export PATH=%s:$PATH" % om_root_path])
-
         except Exception as e:
             self.logger.logExit(str(e))
         self.logger.debug("Successfully set tool ENV.")
@@ -2472,6 +2466,10 @@ Common options:
                           dest_path, recursive=True)
 
         self.logger.debug("Delete root scripts in om user path.")
+
+        # set om root script path
+        userProfile = self.getUserProfile()
+        FileUtil.writeFile(userProfile, ["export PATH=%s:$PATH" % om_root_path])
         # delete root scripts in GPHOME
         om_user_path = os.path.join(self.clusterToolPath, "script")
         user_om_files = os.listdir(om_user_path)

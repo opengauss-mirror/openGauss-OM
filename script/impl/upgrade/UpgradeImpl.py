@@ -3470,6 +3470,7 @@ class UpgradeImpl:
                 # clean on all the node, because the binary_upgrade temp
                 #  dir will create in every node
                 self.cleanInstallPath(const.NEW)
+                self.getOneDNInst()
                 self.dropSupportSchema()
                 self.initOmRollbackProgressFile()
                 self.cleanBinaryUpgradeBakFiles(True)

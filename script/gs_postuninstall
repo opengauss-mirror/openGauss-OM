@@ -51,7 +51,7 @@ from base_utils.os.net_util import NetUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from os_platform.linux_distro import LinuxDistro
 from domain_utils.cluster_os.cluster_user import ClusterUser
-
+from domain_utils.cluster_file.profile_file import ProfileFile
 
 class Postuninstall(ParallelBaseOM):
     """
@@ -279,8 +279,7 @@ General options:
             if (self.mpprcFile != ""):
                 userprofile = self.mpprcFile
             else:
-                userprofile = "/home/%s/.bashrc" % self.user
-
+                userprofile = ProfileFile.get_user_bashrc(self.user)
             cmd = "su - %s -c 'source %s && echo $GAUSS_ENV' 2>/dev/null"\
                   % (self.user, userprofile)
             (status, output) = subprocess.getstatusoutput(cmd)

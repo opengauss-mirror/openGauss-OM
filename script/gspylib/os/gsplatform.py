@@ -1533,6 +1533,11 @@ class LinuxPlatform(GenericPlatform):
                                     "%s-%s-%s-%s.%s" % (
                                         prefixStr, packageVersion, PAK_ASIANUX,
                                         BIT_VERSION, postfixStr))
+            if not os.path.exists(os.path.normpath(fileName)):
+                fileName = os.path.join(dirName, "./../../../",
+                                    "%s-%s-%s-%s.%s" % (
+                                        prefixStr, packageVersion, PAK_CENTOS,
+                                        BIT_VERSION, postfixStr))
         elif distname == SUSE and version.split('.')[0] in ("11", "12"):
             fileName = os.path.join(dirName, "./../../../",
                                     "%s-%s-%s-%s.%s" % (

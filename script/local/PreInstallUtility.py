@@ -814,7 +814,7 @@ Common options:
         if status != 0:
             self.logger.logExit(
                 ErrorCode.GAUSS_503["GAUSS_50311"] % self.user
-                + " Error: \n%s" % (std_out+std_err))
+                + " Error: \n%s" % output)
 
     def createClusterPaths(self):
         """

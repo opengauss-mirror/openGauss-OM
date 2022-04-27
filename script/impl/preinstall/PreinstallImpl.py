@@ -35,6 +35,7 @@ from base_utils.os.file_util import FileUtil
 from domain_utils.cluster_file.package_info import PackageInfo
 from base_utils.os.password_util import PasswordUtil
 from base_utils.os.net_util import NetUtil
+from domain_utils.cluster_file.profile_file import ProfileFile
 
 # action name
 # prepare cluster tool package path
@@ -1319,10 +1320,8 @@ class PreinstallImpl:
                 "Environment file is not exist environment file,"
                 " skip check repeat.")
             return []
-        elif os.path.isfile(
-                os.path.join("/home", "%s/.bashrc" % self.context.user)):
-            source_file = os.path.join("/home",
-                                       "%s/.bashrc" % self.context.user)
+        elif os.path.isfile(ProfileFile.get_user_bashrc(self.context.user)):
+            source_file = ProfileFile.get_user_bashrc(self.context.user)
         else:
             self.context.logger.debug(
                 "There is no environment file, skip check repeat.")

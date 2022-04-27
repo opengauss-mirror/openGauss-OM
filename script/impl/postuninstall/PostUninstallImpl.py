@@ -451,11 +451,11 @@ class PostUninstallImpl:
                                     "environment variables of the local node"
                                     + " Error: \n%s" % output)
             # check if user profile exist
-            userProfile = ""
+            user_bashrc = ProfileFile.get_user_bashrc(self.user)
             if (self.mpprcFile is not None and self.mpprcFile != ""):
                 userProfile = self.mpprcFile
             else:
-                userProfile = ClusterConstants.HOME_USER_BASHRC % self.user
+                userProfile = user_bashrc
             if (not os.path.exists(userProfile)):
                 self.logger.debug(
                     "The %s does not exist. "
@@ -464,8 +464,8 @@ class PostUninstallImpl:
             # clean user's environmental variable
             DefaultValue.cleanUserEnvVariable(userProfile,
                                               cleanGAUSS_WARNING_TYPE=True)
-            if os.path.exists(ClusterConstants.HOME_USER_BASHRC % self.user):
-                FileUtil.deleteLine(ClusterConstants.HOME_USER_BASHRC % self.user,
+            if os.path.exists(user_bashrc):
+                FileUtil.deleteLine(user_bashrc,
                                     "^\\s*export\\s*%s=.*$" % DefaultValue.MPPRC_FILE_ENV)
 
             # clean $GAUSS_ENV

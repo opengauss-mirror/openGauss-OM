@@ -200,3 +200,17 @@ class ProfileFile:
             FileUtil.writeFile(userProfile, write_content)
         except Exception as e:
             raise Exception(str(e))
+
+    @staticmethod
+    def get_user_bashrc(username):
+        """
+        function : get user bashrc
+        input : username
+        output : NA
+        """
+        cmd = "su - %s -c \"echo ~\" 2>/dev/null" % username
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status == 0:
+            return output + "/.bashrc"
+        else:
+            return ClusterConstants.HOME_USER_BASHRC % username

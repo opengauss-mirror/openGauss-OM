@@ -122,6 +122,7 @@ class PreInstall(LocalBaseOM):
         self.envParams = []
         self.logFile = ""
         self.mpprcFile = ""
+        self.user_env_file = ""
         self.clusterToolPath = ""
         self.tmpFile = ""
         self.clusterAppPath = ""
@@ -1182,19 +1183,12 @@ Common options:
         After set env, set daily alarm.
         """
         # get and check the userProfile
-        userProfile = ""
+        self.user_env_file = ProfileFile.get_user_bashrc(self.user)
         if self.mpprcFile != "" and self.mpprcFile is not None:
             userProfile = self.mpprcFile
         else:
-            cmd = "su - %s -c \"echo ~\" 2>/dev/null" % self.user
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                self.logger.logExit(ErrorCode.GAUSS_514[
-                                        "GAUSS_51400"] % cmd
-                                    + " Error:\n%s" % output)
-
             # check if user profile exist
-            userProfile = ClusterConstants.HOME_USER_BASHRC % self.user
+            userProfile = self.user_env_file
             if not os.path.exists(userProfile):
                 self.logger.logExit(ErrorCode.GAUSS_502[
                                         "GAUSS_50201"] % 'user profile'
@@ -1206,11 +1200,11 @@ Common options:
                                           cleanGS_CLUSTER_NAME=False)
         self.logger.debug("Successfully delete user's environmental variable.")
         if self.mpprcFile:
-            #import environment variable separation scene to bashrc
-            FileUtil.deleteLine(ClusterConstants.HOME_USER_BASHRC % self.user,
+            # import environment variable separation scene to bashrc
+            FileUtil.deleteLine(self.user_env_file,
                                 "^\\s*export\\s*%s=.*$" % DefaultValue.MPPRC_FILE_ENV)
-            context = "export %s=%s" %(DefaultValue.MPPRC_FILE_ENV, self.mpprcFile)
-            FileUtil.writeFile(ClusterConstants.HOME_USER_BASHRC % self.user, [context])
+            context = "export %s=%s" % (DefaultValue.MPPRC_FILE_ENV, self.mpprcFile)
+            FileUtil.writeFile(self.user_env_file, [context])
             self.logger.debug("Successfully flush 'export MPPRC' in bashrc")
 
         # user's environmental variable
@@ -1338,16 +1332,8 @@ Common options:
             # so it should exist here
             userProfile = self.mpprcFile
         else:
-            # check if user home exist
-            cmd = "su - %s -c \"echo ~\" 2>/dev/null" % self.user
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                self.logger.logExit(ErrorCode.GAUSS_514[
-                                        "GAUSS_51400"] % cmd
-                                    + " Error:\n%s" % output)
-
             # check if user profile exist
-            userProfile = ClusterConstants.HOME_USER_BASHRC % self.user
+            userProfile = ProfileFile.get_user_bashrc(self.user)
             if not os.path.exists(userProfile):
                 self.logger.debug(
                     "User profile does not exist. Please create %s."

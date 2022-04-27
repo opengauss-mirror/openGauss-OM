@@ -140,8 +140,9 @@ class OMCommand():
         output: status, output
         """
         try:
-            statusFile = "/home/%s/gauss_check_status_%d.dat" % (
-            user, os.getpid())
+
+            statusFile = "%s/gauss_check_status_%s_%d.dat" % (os.environ['HOME'], user,
+                                                              os.getpid())
             TempfileManagement.removeTempFile(statusFile)
             cmd = ClusterCommand.getQueryStatusCmd("", statusFile)
             (status, output) = subprocess.getstatusoutput(cmd)

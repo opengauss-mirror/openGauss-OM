@@ -40,12 +40,9 @@ class CmdUtil(object):
     """ Cmd util"""
 
     SOURCE_CMD = 'source'
-    ENV_SOURCE_CMD = "source /etc/profile;source /home/%s/.bashrc;" \
+    ENV_SOURCE_CMD = "source /etc/profile;source ~/.bashrc;" \
                      "if [ $MPPDB_ENV_SEPARATE_PATH ]; " \
                      "then source $MPPDB_ENV_SEPARATE_PATH; fi"
-    SOURCE_FILE = "source /etc/profile;source /home/%s/.bashrc;" \
-                  "if [ $MPPDB_ENV_SEPARATE_PATH ]; " \
-                  "then echo $MPPDB_ENV_SEPARATE_PATH; fi"
 
     @staticmethod
     def findCmdInPath(cmd, additional_paths=None, print_error=True):
@@ -607,8 +604,7 @@ class CmdUtil(object):
         """
         get env source cmd
         """
-        user = pwd.getpwuid(os.getuid()).pw_name
-        env_source_cmd = CmdUtil.ENV_SOURCE_CMD % user
+        env_source_cmd = CmdUtil.ENV_SOURCE_CMD
         return env_source_cmd
 
     @staticmethod

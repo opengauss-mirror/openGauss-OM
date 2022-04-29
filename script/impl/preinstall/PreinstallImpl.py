@@ -233,13 +233,18 @@ class PreinstallImpl:
             return
         if self.context.preMode or not self.context.root_ssh_agent_flag:
             return
+        if not self.context.root_delete_flag:
+            return
         self.context.logger.debug("Start Delete root mutual trust")
 
         # get dir path
         username = pwd.getpwuid(os.getuid()).pw_name
         homeDir = os.path.expanduser("~" + username)
-        sshDir = "%s/.ssh/*" % homeDir
         tmp_path = "%s/gaussdb_tmp" % homeDir
+        authorized_keys = DefaultValue.SSH_AUTHORIZED_KEYS
+        known_hosts = DefaultValue.SSH_KNOWN_HOSTS
+        ssh_private = DefaultValue.SSH_PRIVATE_KEY
+        ssh_pub = DefaultValue.SSH_PUBLIC_KEY
 
         # get cmd
         bashrc_file = os.path.join(pwd.getpwuid(os.getuid()).pw_dir, ".bashrc")
@@ -247,7 +252,10 @@ class PreinstallImpl:
                              "xargs kill -9"
         delete_line_cmd = " ; sed -i '/^\\s*export\\s*SSH_AUTH_SOCK=.*$/d' %s" % bashrc_file
         delete_line_cmd += " && sed -i '/^\\s*export\\s*SSH_AGENT_PID=.*$/d' %s" % bashrc_file
-        delete_shell_cmd = " && rm -rf %s && rm -rf %s" % (sshDir, tmp_path)
+        delete_shell_cmd = " && rm -rf %s" % tmp_path
+        delete_shell_cmd += " && rm -f %s && rm -f %s" % (ssh_private, ssh_pub)
+        delete_shell_cmd += " && sed -i '/#OM/d' %s " % authorized_keys
+        delete_shell_cmd += " && sed -i '/#OM/d' %s " % known_hosts
         cmd = "%s" + delete_line_cmd + delete_shell_cmd
 
         # get remote node and local node

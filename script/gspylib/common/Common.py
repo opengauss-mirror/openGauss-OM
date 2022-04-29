@@ -485,6 +485,11 @@ class DefaultValue():
     # Cert type
     GRPC_CA = "grpc"
     SERVER_CA = "server"
+    # rsa file name
+    SSH_PRIVATE_KEY = os.path.expanduser("~/.ssh/id_om")
+    SSH_PUBLIC_KEY = os.path.expanduser("~/.ssh/id_om.pub")
+    SSH_AUTHORIZED_KEYS = os.path.expanduser("~/.ssh/authorized_keys")
+    SSH_KNOWN_HOSTS = os.path.expanduser("~/.ssh/known_hosts")
 
     @staticmethod
     def encodeParaline(cmd, keyword):
@@ -2524,7 +2529,7 @@ class DefaultValue():
         :return:
         """
         DefaultValue.clear_ssh_id_rsa(mpprcfile, logger)
-        id_rsa_path = os.path.expanduser("~/.ssh/id_rsa")
+        id_rsa_path = DefaultValue.SSH_PRIVATE_KEY
         cmd = "source %s;echo \"%s\" | /bin/sh %s %s" %(
             mpprcfile, str(secret_word), shell_file, id_rsa_path)
         if logger:
@@ -2704,7 +2709,7 @@ class DefaultValue():
         if logger:
             logger.debug("Successfully to clear id_rsa in ssh-agent")
 
-        id_rsa_path = os.path.expanduser("~/.ssh/id_rsa")
+        id_rsa_path = DefaultValue.SSH_PRIVATE_KEY
         cmd = "source %s;echo \"%s\" | /bin/sh %s %s" % (
             mpprcfile, str(secret_word), shell_file, id_rsa_path)
         if logger:

@@ -228,11 +228,11 @@ class LinuxPlatform(object):
                                         PAK_KYLIN,
                                         BIT_VERSION, postfix_str))
         elif distname in DEBIAN and (version == "buster/sid"):
-            file_name = os.path.join(dir_name, "./../../../",
+            file_name = os.path.join(dir_name, "./../../",
                                      "%s-%s-%s-%s.%s" % (
                                         prefix_str, packageVersion,
                                         PAK_UBUNTU,
-                                        BIT_VERSION, prefix_str))
+                                        BIT_VERSION, postfix_str))
         else:
             raise Exception(ErrorCode.GAUSS_519["GAUSS_51900"] +
                             "Supported platforms are: %s." % str(

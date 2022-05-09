@@ -69,6 +69,7 @@ class Preinstall(ParallelBaseOM):
         self.is_new_root_path = False
         self.ips = ""
         self.root_ssh_agent_flag = False
+        self.root_delete_flag = False
         self.user_ssh_agent_flag = False
 
     def usage(self):
@@ -157,6 +158,9 @@ General options:
         # parameter --non-interactive
         if (ParaDict.__contains__("preMode")):
             self.preMode = ParaDict.get("preMode")
+        # parameter --delete-root-trust
+        if (ParaDict.__contains__("root_delete_flag")):
+            self.root_delete_flag = ParaDict.get("root_delete_flag")
 
     def checkUserParameter(self):
         """

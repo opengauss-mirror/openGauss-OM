@@ -378,6 +378,12 @@ class GaussLog:
             self.step = self.step + 1
             return self.step
 
+    @staticmethod
+    def get_log_file_line():
+        f = sys._getframe().f_back.f_back.f_back
+        return "%s(%s:%s)" % (os.path.basename(f.f_code.co_filename), f.f_code.co_name,
+                              str(f.f_lineno))
+
     def __writeLog(self, level, msg, stepFlag=""):
         """
         function: Write log to file
@@ -411,14 +417,15 @@ class GaussLog:
                 msg = replace_reg.sub('-A *** ', str(msg))
 
             strTime = datetime.datetime.now()
+            file_line = self.get_log_file_line()
             if (stepFlag == ""):
-                print("[%s][%d][%s][%s]:%s" % (
-                    strTime, self.pid, self.moduleName, level, msg), 
+                print("[%s][%d][%s][%s][%s]:%s" % (
+                    strTime, self.pid, file_line, self.moduleName, level, msg),
                     file=self.fp)
             else:
                 stepnum = self.Step(stepFlag)
-                print("[%s][%d][%s][%s][Step%d]:%s" % (
-                    strTime, self.pid, self.moduleName, level, stepnum, msg),
+                print("[%s][%d][%s][%s][%s][Step%d]:%s" % (
+                    strTime, self.pid, file_line, self.moduleName, level, stepnum, msg),
                       file=self.fp)
             self.fp.flush()
             self.lock.release()

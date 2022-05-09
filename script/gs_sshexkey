@@ -146,10 +146,10 @@ class GaussCreateTrust():
         self.failedToAppendInfo = ""
         self.homeDir = os.path.expanduser("~" + self.user)
         self.sshDir = "%s/.ssh" % self.homeDir
-        self.authorized_keys_fname = '%s/.ssh/authorized_keys' % self.homeDir
-        self.known_hosts_fname = '%s/.ssh/known_hosts' % self.homeDir
-        self.id_rsa_fname = '%s/.ssh/id_rsa' % self.homeDir
-        self.id_rsa_pub_fname = self.id_rsa_fname + '.pub'
+        self.authorized_keys_fname = DefaultValue.SSH_AUTHORIZED_KEYS
+        self.known_hosts_fname = DefaultValue.SSH_KNOWN_HOSTS
+        self.id_rsa_fname = DefaultValue.SSH_PRIVATE_KEY
+        self.id_rsa_pub_fname = DefaultValue.SSH_PUBLIC_KEY
         self.skipHostnameSet = False
         self.isKeyboardPassword = False
         # init SshTool
@@ -712,9 +712,9 @@ General options:
             self.logger.log("Creating the local key file.", "addStep")
         else:
             self.logger.log("Creating the local key file.")
-        
-        if os.path.exists(self.sshDir):
-            FileUtil.removeDirectory(self.sshDir)
+
+        FileUtil.removeFile(self.id_rsa_fname)
+        FileUtil.removeFile(self.id_rsa_pub_fname)
         secret_word = self.get_secret(32)
         self.secret_word = secret_word
         localDirPath = os.path.dirname(os.path.realpath(__file__))
@@ -768,10 +768,10 @@ General options:
             FileUtil.createFileInSafeMode(self.authorized_keys_fname)
             f = open(self.authorized_keys_fname, 'a+')
             for line in f:
-                if line.strip() == self.localID:
+                if line.strip() == self.localID + " #OM":
                     # The localID is already in authorizedKeys; no need to add
                     return
-            f.write(self.localID)
+            f.write(self.localID + " #OM")
             f.write('\n')
             self._log("Successfully appended local ID to authorized_keys.", "constant")
         finally:
@@ -808,6 +808,7 @@ General options:
             hostnameList.append(value)
         for hostname in hostnameList:
             cmd = 'ssh-keyscan -t ed25519 %s >> %s ' % (hostname, self.known_hosts_fname)
+            cmd += '&& sed -i "$ s/$/ #OM/" %s ' % self.known_hosts_fname
             cmd += "&& chmod %s %s" % (DefaultValue.KEY_FILE_MODE, self.known_hosts_fname)
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0:
@@ -896,14 +897,14 @@ General options:
 
                 # Append the ID to authorized_keys;
                 cnt = 0
-                cmd = 'echo \"%s\" >> .ssh/authorized_keys && echo ok ok ok' % self.localID
+                cmd = 'echo \"%s #OM\" >> .ssh/authorized_keys && echo ok ok ok' % self.localID
                 (cin, cout, cerr) = p.exec_command(cmd)
                 cin.close()
                 #readline will read other msg.
                 line = cout.read().decode()
                 while line.find("ok ok ok") < 0:
                     time.sleep(cnt * 2)
-                    cmd = 'echo \"%s\" >> .ssh/authorized_keys && echo ok ok ok' % self.localID
+                    cmd = 'echo \"%s #OM\" >> .ssh/authorized_keys && echo ok ok ok' % self.localID
                     (cin, cout, cerr) = p.exec_command(cmd)
                     cin.close()
                     cnt += 1
@@ -964,11 +965,13 @@ General options:
         input : tab, line
         output: True/False
         """
-        IDKey = line.strip().split()
-        if not (len(IDKey) == 3 and line[0] != '#'):
-            return False
-        tab[IDKey[2]] = line
-        return True
+        key = line.strip().split()
+        if line[0] == "#":
+            return True
+        elif len(key) != 4:
+            tab[line] = line
+        else:
+            tab[key[2] + key[3]] = line
 
     def readAuthorizedKeys(self, tab=None, keysFile=None):
         """
@@ -1004,10 +1007,12 @@ General options:
         output: True/False
         """
         key = line.strip().split()
-        if not (len(key) == 3 and line[0] != '#'):
-            return False
-        tab[key[0]] = line
-        return True
+        if line[0] == "#":
+            return True
+        elif len(key) != 4:
+            tab[line] = line
+        else:
+            tab[key[0] + key[3]] = line
 
     def readKnownHosts(self, tab=None, hostsFile=None):
         """
@@ -1045,8 +1050,15 @@ General options:
         bashrc_file = os.path.join(pwd.getpwuid(os.getuid()).pw_dir, ".bashrc")
         cmd = 'source %s;' %bashrc_file
         cmd += ('scp -q -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' +
-                '%s %s %s %s %s:.ssh/' % (self.authorized_keys_fname, self.known_hosts_fname,
-                                          self.id_rsa_fname, self.id_rsa_pub_fname, hostname))
+                '%s %s %s:.ssh/' % (self.id_rsa_fname, self.id_rsa_pub_fname, hostname))
+        cmd += ''' && temp_auth=$(grep '#OM' %s)''' \
+               ''' && ssh %s "sed -i '/#OM/d' %s; echo '${temp_auth}' >> %s"''' % (
+                    self.authorized_keys_fname, hostname, self.authorized_keys_fname,
+                    self.authorized_keys_fname)
+        cmd += ''' && temp_auth=$(grep '#OM' %s)''' \
+               ''' && ssh %s "sed -i '/#OM/d' %s; echo '${temp_auth}' >> %s"''' % (
+                    self.known_hosts_fname, hostname, self.known_hosts_fname,
+                    self.known_hosts_fname)
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50223"] %"the authentication"

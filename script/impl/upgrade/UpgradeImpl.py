@@ -75,6 +75,7 @@ class UpgradeImpl:
         function: constructor
         """
         self.dnInst = None
+        self.dnStandbyInsts = []
         self.context = upgrade
         self.newCommitId = ""
         self.oldCommitId = ""
@@ -1853,7 +1854,12 @@ class UpgradeImpl:
 
         # perform a checkpoint and wait standby catchup
         self.createCheckpoint()
+        self.getAllStandbyDnInsts()
+        # wait standby catchup first
         self.HASyncReplayCheck(False)
+        # then wait all cascade standby(if any)
+        for standby in self.dnStandbyInsts:
+            self.HASyncReplayCheck(False, standby)
         # send cmd to all node and exec
         cmd = "%s -t %s -U %s -l %s -V %d" % \
                 (OMCommand.getLocalScript("Local_Upgrade_Utility"),
@@ -1905,7 +1911,12 @@ class UpgradeImpl:
 
         # perform checkpoint and wait standby sync before rollback
         self.createCheckpoint()
+        self.getAllStandbyDnInsts()
+        # wait standby catchup first
         self.HASyncReplayCheck(False)
+        # then wait all cascade standby(if any)
+        for standby in self.dnStandbyInsts:
+            self.HASyncReplayCheck(False, standby)
 
         # send cmd to all node and exec
         cmd = "%s -t %s -U %s -l %s -V %d" % \
@@ -2253,7 +2264,7 @@ class UpgradeImpl:
                                         self.context.userProfile,
                                         hosts)
 
-    def HASyncReplayCheck(self, catchupFailedOk = True):
+    def HASyncReplayCheck(self, catchupFailedOk=True, host=None):
         """
         function: Wait and check if all standbys have replayed upto flushed
                   xlog positions of primaries.We record primary xlog flush
@@ -2266,13 +2277,15 @@ class UpgradeImpl:
         Input: catchupFailedOk, if it's ok standby catch up primay failed
         output : NA
         """
+        host = self.dnInst if host == None else host
         self.context.logger.debug("Start to wait and check if all the standby"
-                                  " instances have replayed all xlogs.")
-        self.doReplay(catchupFailedOk)
+                                  " instances have replayed all xlogs, host: %s" % \
+                                  host.hostname)
+        self.doReplay(catchupFailedOk, host)
         self.context.logger.debug("Successfully performed the replay check "
                                   "of the standby instance.")
 
-    def doReplay(self, catchupFailedOk):
+    def doReplay(self, catchupFailedOk, host):
         refreshTimeout = 180
         waitTimeout = 300
         RefreshTime = datetime.now() + timedelta(seconds=refreshTimeout)
@@ -2288,8 +2301,8 @@ class UpgradeImpl:
             (status, output) = ClusterCommand.remoteSQLCommand(
                 sql,
                 self.context.user,
-                self.dnInst.hostname,
-                self.dnInst.port,
+                host.hostname,
+                host.port,
                 False,
                 DefaultValue.DEFAULT_DB_NAME,
                 IsInplaceUpgrade=True)
@@ -2331,8 +2344,8 @@ class UpgradeImpl:
                 (status, output) = ClusterCommand.remoteSQLCommand(
                     refreshsql,
                     self.context.user,
-                    self.dnInst.hostname,
-                    self.dnInst.port,
+                    host.hostname,
+                    host.port,
                     False,
                     DefaultValue.DEFAULT_DB_NAME,
                     IsInplaceUpgrade=True)
@@ -4393,6 +4406,76 @@ class UpgradeImpl:
         except Exception as e:
             self.context.logger.debug(traceback.format_exc())
             self.exitWithRetCode(self.context.action, False, str(e))
+
+    def getAllStandbyDnInsts(self):
+        """
+        function: find all normal standby dn instances by dbNodes.
+        input : NA
+        output: DN instances
+        """
+        try:
+            self.context.logger.debug("Get all standby DN.")
+            dnList = []
+            dnInst = None
+            clusterNodes = self.context.oldClusterInfo.dbNodes
+            standbyDn, output = DefaultValue.getStandbyNode(
+                self.context.userProfile, self.context.logger)
+            self.context.logger.debug(
+                "Cluster status information is %s;The standbyDn is %s" % (
+                    output, standbyDn))
+            if not standbyDn or standbyDn == []:
+                self.context.logger.debug("There is no standby dn")
+                return []
+            for dbNode in clusterNodes:
+                if len(dbNode.datanodes) == 0:
+                    continue
+                dnInst = dbNode.datanodes[0]
+                if dnInst.hostname not in standbyDn:
+                    continue
+                dnList.append(dnInst)
+
+            (checkStatus, checkResult) = OMCommand.doCheckStaus(
+                self.context.user, 0)
+            if checkStatus == 0:
+                self.context.logger.debug("The cluster status is normal,"
+                                            " no need to check standby dn status.")
+            else:
+                dnList = []
+                clusterStatus = \
+                    OMCommand.getClusterStatus()
+                if clusterStatus is None:
+                    raise Exception(ErrorCode.GAUSS_516["GAUSS_51600"])
+                clusterInfo = dbClusterInfo()
+                clusterInfo.initFromXml(self.context.xmlFile)
+                clusterInfo.dbNodes.extend(clusterNodes)
+                for dbNode in clusterInfo.dbNodes:
+                    if len(dbNode.datanodes) == 0:
+                        continue
+                    dn = dbNode.datanodes[0]
+                    if dn.hostname not in standbyDn:
+                        continue
+                    dbInst = clusterStatus.getInstanceStatusById(
+                        dn.instanceId)
+                    if dbInst is None:
+                        continue
+                    if dbInst.status == "Normal":
+                        self.context.logger.debug(
+                            "DN from %s is healthy." % dn.hostname)
+                        dnList.append(dn)
+                    else:
+                        self.context.logger.debug(
+                            "DN from %s is unhealthy." % dn.hostname)
+
+            if not dnList or dnList == []:
+                self.context.logger.debug("There is no normal standby dn")
+            else:
+                self.context.logger.debug("Successfully get all standby DN: %s" % \
+                     ','.join(d.hostname for d in dnList))
+                self.dnStandbyInsts = dnList
+
+        except Exception as e:
+            self.context.logger.log("Failed to get all standby DN. Error: %s" % str(e))
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51624"])
 
     def getOneDNInst(self, checkNormal=False):
         """

@@ -2287,13 +2287,12 @@ class DefaultValue():
             return False
 
     @staticmethod
-    def getPrimaryNode(userProfile, logger=None):
+    def getSpecificNode(userProfile, flagStr, logger=None):
         """
-        :param
-        :return: PrimaryNode
+        :param flagStr: Primary/Standby/Cascade
+        :return: correspond nodes
         """
         try:
-            primaryFlag = "Primary"
             count = 0
             while count < 30:
                 cmd = "source {0} && gs_om -t query".format(
@@ -2315,13 +2314,29 @@ class DefaultValue():
                                 "Command:%s. Error:\n%s" % (cmd, output))
             targetString = output.split("Datanode")[1]
             dnPrimary = [x for x in re.split(r"[|\n]", targetString)
-                         if primaryFlag in x]
+                         if flagStr in x]
             primaryList = []
             for dn in dnPrimary:
                 primaryList.append(list(filter(None, dn.split(" ")))[1])
             return primaryList, output
         except Exception as e:
             raise Exception(str(e))
+
+    @staticmethod
+    def getPrimaryNode(userProfile, logger=None):
+        """
+        :param
+        :return: PrimaryNode
+        """
+        return DefaultValue.getSpecificNode(userProfile, "Primary", logger)
+
+    @staticmethod
+    def getStandbyNode(userProfile, logger=None):
+        """
+        :param
+        :return: StandbyNode
+        """
+        return DefaultValue.getSpecificNode(userProfile, "Standby", logger)
 
 
     @staticmethod

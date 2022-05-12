@@ -1273,6 +1273,38 @@ class UpgradeImpl:
             else:
                 raise Exception(str(e))
 
+    def need_rolling(self, is_roll_back):
+        """
+        Get is need switch UDF subprocess from upgrade mode
+        """
+        self.context.logger.debug("Start check need rolling.")
+        new_static_config = os.path.realpath(os.path.join(self.context.newClusterAppPath, 
+                                                          "bin", "cluster_static_config"))
+        old_static_config = os.path.realpath(os.path.join(self.context.oldClusterAppPath, 
+                                                          "bin", "cluster_static_config"))
+        cluster_info = dbClusterInfo()
+        if is_roll_back:
+            self.context.logger.debug("This check need rolling for rollback.")
+            if not os.path.isfile(new_static_config):
+                self.context.logger.debug("Rollback not found new static config file [{0}]. "
+                                          "No need to switch UDF.".format(new_static_config))
+                return False
+            cluster_info.initFromStaticConfig(self.context.user, new_static_config)
+            if cluster_info.cmscount > 0:
+                self.context.logger.debug("Rollback cluster info include CMS instance. "
+                                          "So need to switch UDF.")
+                return True
+            self.context.logger.debug("Rollback new version cluster not include CMS instance. "
+                                      "So no need to switch UDF.")
+            return True
+        self.context.logger.debug("This check need rolling for upgrade.")
+        cluster_info.initFromStaticConfig(self.context.user, old_static_config)
+        if cluster_info.cmscount > 0:
+            self.context.logger.debug("Old cluster include CMS instance. So need to switch UDF.")
+            return True
+        self.context.logger.debug("Old cluster exclude CMS instance. So no need to switch UDF.")
+        return False
+
     def switchDn(self, isRollback):
         self.context.logger.log("Switching DN processes.")
         start_time = timeit.default_timer()
@@ -1293,6 +1325,8 @@ class UpgradeImpl:
             cmd += " --rollback"
         if self.context.forceRollback:
             cmd += " --force"
+        if self.need_rolling(isRollback):
+            cmd += " --rolling"
         self.context.logger.debug(
             "Command for switching DN processes: %s" % cmd)
         hostList = copy.deepcopy(self.context.nodeNames)

@@ -228,7 +228,7 @@ General options:
                 "port": port,
                 "localport": int(port) + 1,
                 "localservice": int(port) + 4,
-                "heartBeatPort": int(port) + 3,
+                "heartBeatPort": int(port) + 5,
                 "dataNode": data_node,
                 "instanceType": -1,
                 "azPriority": dbNode.azPriority

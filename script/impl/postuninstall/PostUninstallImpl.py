@@ -115,8 +115,6 @@ class PostUninstallImpl:
         """
         self.logger.debug("Do clean Environment.", "addStep")
         try:
-            # set GPHOME env
-            self.setOrCleanGphomeEnv()
             # check uninstall
             self.checkUnPreInstall()
             # clean app/log/data/temp dirs
@@ -134,17 +132,6 @@ class PostUninstallImpl:
         except Exception as e:
             self.logger.logExit(str(e))
         self.logger.debug("Do clean Environment succeeded.", "constant")
-
-    def setOrCleanGphomeEnv(self, setGphomeenv=True):
-        osProfile = ClusterConstants.ETC_PROFILE
-        if setGphomeenv:
-            GphomePath = ClusterDir.getPreClusterToolPath(self.xmlFile)
-            # set GPHOME
-            FileUtil.writeFile(osProfile, ["export GPHOME=%s" % GphomePath])
-        else:
-            FileUtil.deleteLine(osProfile, "^\\s*export\\s*GPHOME=.*$")
-            self.logger.debug(
-                "Deleting crash GPHOME in user environment variables.")
 
     def checkUnPreInstall(self):
         """
@@ -881,7 +868,6 @@ class PostUninstallImpl:
             self.cleanLocalLog()
             self.cleanMpprcFile()
             self.cleanScript()
-            self.setOrCleanGphomeEnv(setGphomeenv=False)
             self.delet_root_mutual_trust()
             self.logger.log("Successfully cleaned environment.")
         except Exception as e:

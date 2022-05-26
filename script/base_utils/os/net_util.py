@@ -35,7 +35,6 @@ from os_platform.UserPlatform import g_Platform
 
 localDirPath = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, localDirPath + "/../../../lib/netifaces/")
-sys.path.append(localDirPath + "/../../gspylib/inspection/lib/netifaces/")
 from netifaces import interfaces, ifaddresses, AF_INET, AF_INET6
 sys.path.insert(0, localDirPath + "/../../../lib")
 try:

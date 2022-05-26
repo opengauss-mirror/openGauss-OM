@@ -179,38 +179,6 @@ function clib_copy()
 
 function lib_copy()
 {
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/output/log/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/output/nodes/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/asn1crypto/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/bcrypt/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/cffi/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/cryptography/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/idna/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/nacl/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/pyasn1/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/pycparser/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/OpenSSL/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/psutil/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/netifaces/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/paramiko/ &&
-
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/asn1crypto/       ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/bcrypt/           ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/cffi/             ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/cryptography/     ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/idna/             ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/nacl/             ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/pyasn1/           ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/pycparser/        ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/OpenSSL/          ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/ipaddress.py      ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/six.py            ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/_cffi_backend.py  ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/_cffi_backend.so* ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psutil/           ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/netifaces/        ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/paramiko/         ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-
     mkdir -p ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/asn1crypto           ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/bcrypt               ${PKG_TMP_DIR}/lib
@@ -230,9 +198,7 @@ function lib_copy()
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/netifaces            ${PKG_TMP_DIR}/lib
 
     if [ -d "${BINARYLIBS_PATH_INSTALL_TOOLS}/psycopg2" ]; then
-        mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/psycopg2/
         cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psycopg2    ${PKG_TMP_DIR}/lib
-        cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psycopg2    ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
     fi
 
 }

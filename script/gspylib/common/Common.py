@@ -656,23 +656,6 @@ class DefaultValue():
             return 0
 
     @staticmethod
-    def checkPythonVersion():
-        """
-        function : Check system comes with Python version
-        input : NA
-        output: list
-        """
-        (major, minor, patchlevel) = platform.python_version_tuple()
-        if (str(major) == '3' and (str(minor) in ['6', '7'])):
-            if (str(minor) == '6'):
-                return (True, "3.6")
-            else:
-                return (True, "3.7")
-        else:
-            return (False, "%s.%s.%s" % (str(major), str(minor),
-                                         str(patchlevel)))
-
-    @staticmethod
     def getUserId(user):
         """
         function : get user id
@@ -693,52 +676,8 @@ class DefaultValue():
         input : NA
         output: NA
         """
-        (result, version) = DefaultValue.checkPythonVersion()
-        if not result:
-            print(ErrorCode.GAUSS_522["GAUSS_52201"] % version +
-                  " It must be 3.6.x or 3.7.x.")
-            sys.exit(1)
-        else:
-            localDir = os.path.dirname(os.path.realpath(__file__))
-            omToolsCffiPath = os.path.join(localDir,
-                                           "./../../../lib/_cffi_backend.so")
-            inspectToolsCffiPath = os.path.join(
-                localDir, "./../../../script/gspylib/inspection/"
-                          "lib/_cffi_backend.so")
-
-            """
-            Never remove _cffi_backend.so_UCS4 folder, as there maybe 
-            multi-version pythons on the platform
-            (V1R8C10 is with its own python, but now, we don't package 
-            python any more).
-            """
-            try:
-                flagNum = int(DefaultValue.GetPythonUCS())
-                # clean the old path info
-                FileUtil.removeFile(omToolsCffiPath)
-                FileUtil.removeFile(inspectToolsCffiPath)
-                # copy the correct version
-                newPythonDependCryptoPath = "%s_UCS%d_%s" % (omToolsCffiPath,
-                                                          flagNum, version)
-                if os.path.exists(newPythonDependCryptoPath):
-                    FileUtil.cpFile(newPythonDependCryptoPath, omToolsCffiPath,
-                                  "shell")
-                    FileUtil.cpFile(newPythonDependCryptoPath, inspectToolsCffiPath,
-                                  "shell")
-                else:
-                    newPythonDependCryptoPath = "%s_UCS%d" % (omToolsCffiPath,
-                                                          flagNum)
-                    FileUtil.cpFile(newPythonDependCryptoPath, omToolsCffiPath,
-                                  "shell")
-                    FileUtil.cpFile(newPythonDependCryptoPath, inspectToolsCffiPath,
-                                  "shell")
-            except Exception as e:
-                print(ErrorCode.GAUSS_516["GAUSS_51632"] %
-                      ("config depend file for paramiko 2.6.0. "
-                       "Error:\n%s" % str(e)))
-                sys.exit(1)
-            sys.path.insert(0, os.path.join(localDir, "./../../lib"))
-
+        localDir = os.path.dirname(os.path.realpath(__file__))
+        sys.path.insert(0, os.path.join(localDir, "./../../lib"))
 
     @staticmethod
     def getTmpDir(user, xml_path):

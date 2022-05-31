@@ -161,9 +161,10 @@ class OmImpl:
         # Call cm_ctl to query the cluster status
         (status, output) = subprocess.getstatusoutput(get_cluster_status_cmd)
         if status != 0:
-            raise Exception(ErrorCode.GAUSS_516[
-                                "GAUSS_51600"] + "\nCommand:%s\nError: \n%s" % (
-                                get_cluster_status_cmd, output))
+            if not(status == 255 and "Down" in output):
+                raise Exception(ErrorCode.GAUSS_516[
+                                    "GAUSS_51600"] + "\nCommand:%s\nError: \n%s" % (
+                                    get_cluster_status_cmd, output))
         node_status_line = ""
         if self.context.g_opts.nodeName != "":
             node_status = self.getNodeStatus(self.context.g_opts.nodeName)
@@ -172,7 +173,15 @@ class OmImpl:
 
         # Outputs the check result if no output file is specified
         if self.context.g_opts.outFile == "":
-            self.logger.log(output)
+            if status == 0 and self.context.g_opts.show_detail:
+                temp_lines = output.splitlines()
+                node_head = temp_lines[-3].split("|")[0]
+                node_split = "-" * len(node_head)
+                node_info = [info.strip() for info in temp_lines[-1].split("|")]
+                self.logger.log("\n".join(temp_lines[:-3] + [node_head] + [node_split] +
+                                          node_info))
+            else:
+                self.logger.log(output)
             if node_status_line:
                 self.logger.log(node_status_line)
         else:

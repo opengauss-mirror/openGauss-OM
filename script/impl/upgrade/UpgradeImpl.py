@@ -1004,9 +1004,7 @@ class UpgradeImpl:
                 # 8. install the new bin in the appPath which has been
                 # prepared in the preinstall
                 self.installNewBin()
-                #self.createGrpcCA()
-                #self.prepareServerKey()
-                #self.prepareRoachServerKey()
+
                 # decompress the catalog upgrade_sql.tar.gz to temp dir,
                 # include upgrade sql file and guc set
                 self.prepareUpgradeSqlFolder()
@@ -1197,11 +1195,10 @@ class UpgradeImpl:
         Check cluster state and start cluster
         """
         self.context.logger.log("Check cluster state.")
-        cmd = "source {0};gs_om -t status".format(self.context.userProfile)
+        cmd = "source {0};gs_om -t query".format(self.context.userProfile)
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             self.context.logger.debug("Check cluster state failed. Output: {0}".format(output))
-            return
         if "cluster_state   : Degraded" in output or "cluster_state   : Normal" in output:
             self.context.logger.log("Cluster state: {0}".format(output))
             return
@@ -1221,6 +1218,10 @@ class UpgradeImpl:
         """
         self.context.logger.log("Switching all db processes.", "addStep")
         self._check_and_start_cluster()
+        if DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) > 0:
+            self.setUpgradeFromParam(self.context.oldClusterNumber)
+            self.reloadCmAgent()
+            self.reload_cmserver()
         self.createCheckpoint()
         self.switchDn(isRollback)
         try:
@@ -1266,6 +1267,38 @@ class UpgradeImpl:
             else:
                 raise Exception(str(e))
 
+    def need_rolling(self, is_roll_back):
+        """
+        Get is need switch UDF subprocess from upgrade mode
+        """
+        self.context.logger.debug("Start check need rolling.")
+        new_static_config = os.path.realpath(os.path.join(self.context.newClusterAppPath, 
+                                                          "bin", "cluster_static_config"))
+        old_static_config = os.path.realpath(os.path.join(self.context.oldClusterAppPath, 
+                                                          "bin", "cluster_static_config"))
+        cluster_info = dbClusterInfo()
+        if is_roll_back:
+            self.context.logger.debug("This check need rolling for rollback.")
+            if not os.path.isfile(new_static_config):
+                self.context.logger.debug("Rollback not found new static config file [{0}]. "
+                                          "No need to switch UDF.".format(new_static_config))
+                return False
+            cluster_info.initFromStaticConfig(self.context.user, new_static_config)
+            if cluster_info.cmscount > 0:
+                self.context.logger.debug("Rollback cluster info include CMS instance. "
+                                          "So need to switch UDF.")
+                return True
+            self.context.logger.debug("Rollback new version cluster not include CMS instance. "
+                                      "So no need to switch UDF.")
+            return True
+        self.context.logger.debug("This check need rolling for upgrade.")
+        cluster_info.initFromStaticConfig(self.context.user, old_static_config)
+        if cluster_info.cmscount > 0:
+            self.context.logger.debug("Old cluster include CMS instance. So need to switch UDF.")
+            return True
+        self.context.logger.debug("Old cluster exclude CMS instance. So no need to switch UDF.")
+        return False
+
     def switchDn(self, isRollback):
         self.context.logger.log("Switching DN processes.")
         start_time = timeit.default_timer()
@@ -1286,6 +1319,8 @@ class UpgradeImpl:
             cmd += " --rollback"
         if self.context.forceRollback:
             cmd += " --force"
+        if self.need_rolling(isRollback):
+            cmd += " --rolling"
         self.context.logger.debug(
             "Command for switching DN processes: %s" % cmd)
         hostList = copy.deepcopy(self.context.nodeNames)
@@ -1304,6 +1339,7 @@ class UpgradeImpl:
         start cluster in grey upgrade
         :return:
         """
+        self.context.logger.log("Ready to grey start cluster.")
         versionFile = os.path.join(
             self.context.oldClusterAppPath, "bin/upgrade_version")
         if os.path.exists(versionFile):
@@ -1315,6 +1351,7 @@ class UpgradeImpl:
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
                             "Command:%s. Error:\n%s" % (cmd, output))
+        self.context.logger.log("Grey start cluster successfully.")
 
     def isNodeSpecifyStep(self, step, nodes=None):
         """
@@ -3181,8 +3218,10 @@ class UpgradeImpl:
                 self.recordNodeStep(GreyUpgradeStep.STEP_BEGIN_COMMIT)
             self.setActionFile()
             if self.context.action == const.ACTION_LARGE_UPGRADE:
-                self.setUpgradeFromParam(const.UPGRADE_UNSET_NUM)
-                self.reloadCmAgent()
+                if DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo) > 0:
+                    self.setUpgradeFromParam(const.UPGRADE_UNSET_NUM)
+                    self.reloadCmAgent()
+                    self.reload_cmserver(is_final=True)
                 self.setUpgradeMode(0)
             time.sleep(10)
             if self.dropPMKSchema() != 0:

@@ -42,6 +42,7 @@ ACTION_COMMIT_UPGRADE = "commit-upgrade"
 # ---------------------------------------------------------
 ACTION_SYNC_CONFIG = "sync_config"
 ACTION_RELOAD_CMAGENT = "reload_cmagent"
+ACTION_RELOAD_CMSERVER = "reload_cmserver"
 ACTION_SWITCH_PROCESS = "switch_little_effect_process"
 ACTION_SWITCH_CMSERVER = "switch_server"
 ACTION_SWITCH_BIN = "switch_bin"

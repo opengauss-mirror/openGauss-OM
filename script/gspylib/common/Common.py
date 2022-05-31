@@ -2282,20 +2282,26 @@ class DefaultValue():
             return False
 
     @staticmethod
-    def getPrimaryNode(userProfile):
+    def getSpecificNode(userProfile, flagStr, logger=None):
         """
-        :param
-        :return: PrimaryNode
+        :param flagStr: Primary/Standby/Cascade
+        :return: correspond nodes
         """
         try:
-            primaryFlag = "Primary"
             count = 0
             while count < 30:
                 cmd = "source {0} && gs_om -t query".format(
                     userProfile)
                 (status, output) = subprocess.getstatusoutput(cmd)
-                if status == 0:
+                if status == 0 and ("cluster_state   : Normal" in output \
+                                    or "cluster_state   : Degraded" in output):
                     break
+                if count == 2:
+                    start_cmd = "source {0} && gs_om -t start --timeout 30".format(userProfile)
+                    _, output = subprocess.getstatusoutput(start_cmd)
+                    if logger:
+                        logger.debug("Start cluster for get current primary datanode, "
+                                     "the result is : \n{0}".format(output))
                 time.sleep(10)
                 count += 1
             if status != 0:
@@ -2303,13 +2309,29 @@ class DefaultValue():
                                 "Command:%s. Error:\n%s" % (cmd, output))
             targetString = output.split("Datanode")[1]
             dnPrimary = [x for x in re.split(r"[|\n]", targetString)
-                         if primaryFlag in x]
+                         if flagStr in x]
             primaryList = []
             for dn in dnPrimary:
                 primaryList.append(list(filter(None, dn.split(" ")))[1])
             return primaryList, output
         except Exception as e:
             raise Exception(str(e))
+
+    @staticmethod
+    def getPrimaryNode(userProfile, logger=None):
+        """
+        :param
+        :return: PrimaryNode
+        """
+        return DefaultValue.getSpecificNode(userProfile, "Primary", logger)
+
+    @staticmethod
+    def getStandbyNode(userProfile, logger=None):
+        """
+        :param
+        :return: StandbyNode
+        """
+        return DefaultValue.getSpecificNode(userProfile, "Standby", logger)
 
 
     @staticmethod
@@ -3655,7 +3677,7 @@ class ClusterInstanceConfig():
             if pi.instanceType == DefaultValue.MASTER_INSTANCE:
                 masterInst = pi
             elif pi.instanceType == DefaultValue.STANDBY_INSTANCE or \
-                    dbInst.instanceType == DefaultValue.CASCADE_STANDBY:
+                    pi.instanceType == DefaultValue.CASCADE_STANDBY:
                 standbyInstIdLst.append(pi.instanceId)
 
         if dbInst.instanceType == DefaultValue.MASTER_INSTANCE:

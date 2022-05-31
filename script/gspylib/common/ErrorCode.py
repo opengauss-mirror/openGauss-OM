@@ -910,7 +910,8 @@ class ErrorCode():
         'GAUSS_52940': "[GAUSS-52940] : Invalid node type:%s.",
         'GAUSS_52941': "[GAUSS-52941] : Invalid node role:%s.",
         'GAUSS_52942': "[GAUSS-52942] : No such key to check guc value.",
-        'GAUSS_52943': "[GAUSS-52943] : Invalid instance type:%s."
+        'GAUSS_52943': "[GAUSS-52943] : Invalid instance type:%s.",
+        'GAUSS_52944': "[GAUSS-52944] : Must use --grey option."
 
     }
 

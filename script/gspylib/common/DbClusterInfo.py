@@ -1252,7 +1252,7 @@ class dbClusterInfo():
             else:
                 (status, output) = subprocess.getstatusoutput(command)
 
-            global_cls_query_rst[dnName] = [status, output]
+            global_cls_query_rst[dnName+command.split()[-1]] = [status, output]
 
         global global_cls_query_rst
         parallelTool.parallelExecute(queryInstance, dbInfoList)
@@ -1274,11 +1274,12 @@ class dbClusterInfo():
             primaryDbState = ""
             portMap = {}
 
-            queryClsResult = copy.deepcopy(self.queryClsInfoParallel(hostName, sshtools, mpprcFile, "status"))
+            queryClsResult = copy.deepcopy(self.queryClsInfoParallel(hostName, sshtools, mpprcFile,
+                                                                     "status"))
 
             for dbNode in self.dbNodes:
                 for dnInst in dbNode.datanodes:
-                    (status, output) = queryClsResult.get(dbNode.name)
+                    (status, output) = queryClsResult.get(dbNode.name + dnInst.datadir)
                     if status != 0 or output.find("exc_sql failed") > 0:
                         if output.find(
                                 "could not connect to the local server") \
@@ -2495,11 +2496,51 @@ class dbClusterInfo():
                             % xmlFile + " Error:\n%s" % str(e))
 
         self.__readClusterGlobalInfo()
-        self.__readClusterNodeInfo()
+        if self.__read_and_check_config_item(xmlRootNode, "clusterType", "cluster") == \
+                "single-inst-one-node":
+            self.__read_cluster_node_info_for_one()
+        else:
+            self.__readClusterNodeInfo()
         self.__checkAZForSingleInst()
         IpPort = self.__checkInstancePortandIP()
         self.__check_cms_config()
         return IpPort
+
+    def __read_cluster_node_info_for_one(self):
+        """
+        function : Read cluster node info.
+        input : NA
+        output : NA
+        """
+        # read cluster node info.
+        (_, node_name) = ClusterConfigFile.readOneClusterConfigItem(xmlRootNode,
+                                                                    "nodeNames",
+                                                                    "cluster")
+        if [node_name] != self.__getAllHostnamesFromDEVICELIST():
+            raise Exception(ErrorCode.GAUSS_512["GAUSS_51236"] +
+                            " The number of nodeNames and DEVICE are not same.")
+        # Get basic info of node: name, ip and master instance number etc.
+        self.dbNodes = []
+        db_node = dbNodeInfo(1, node_name)
+        self.__readNodeBasicInfo(db_node, [node_name])
+        self.dbNodes.append(db_node)
+        # Get datanode info
+        for i in range(db_node.dataNum):
+            db_inst = instanceInfo(BASE_ID_DUMMYDATANODE + i, 1)
+            db_inst.hostname = node_name
+            db_inst.datadir = self.__readNodeStrValue(node_name, "dataNode%s" % (i+1))
+            db_inst.instanceType = MASTER_INSTANCE if i == 0 else STANDBY_INSTANCE
+            db_inst.instanceRole = INSTANCE_ROLE_DATANODE
+            db_inst.listenIps = db_node.backIps[:]
+            db_inst.haIps = db_node.backIps[:]
+            db_inst.port = self.__readNodeIntValue(node_name, "dataPortBase%s" % (i+1))
+            db_inst.haPort = db_inst.port + 1
+            db_inst.ssdDir = ""
+            db_inst.syncNum = -1
+            db_inst.azName = db_node.azName
+            self.dbNodes[0].datanodes.append(db_inst)
+        self.dbNodes[0].appendInstance(1, MIRROR_ID_AGENT, INSTANCE_ROLE_CMAGENT,
+                                       INSTANCE_TYPE_UNDEFINED, [], None, "")
 
     def getClusterNodeNames(self):
         """

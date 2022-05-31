@@ -65,7 +65,7 @@ VALUE_CHECK_LIST = ["|", ";", "&", "$", "<", ">", "`", "\\", "'", "\"", "{",
 gs_preinstall = ["-?", "--help", "-V", "--version", "-U:", "-G:", "-L",
                  "--skip-os-set", "-X:",
                  "--env-var=", "--sep-env-file=", "--skip-hostname-set",
-                 "-l:", "--non-interactive", "--delete-root-trust"]
+                 "-l:", "--non-interactive", "--delete-root-trust", "--unused-third-party"]
 gs_install = ["-?", "--help", "-V", "--version", "-X:", "-l:",
               "--gsinit-parameter=", "--dn-guc=", "--cms-guc=",
               "--time-out=", "--alarm-component="]
@@ -375,7 +375,8 @@ class Parameter():
                            "--krb-client": "krb-client",
                            "--non-print": "nonPrinting",
                            "--dynamic": "dynamic",
-                           "--delete-root-trust": "root_delete_flag"
+                           "--delete-root-trust": "root_delete_flag",
+                           "--unused-third-party": "unused_third_party"
                            }
         parameterIsBool_keys = parameterIsBool.keys()
 

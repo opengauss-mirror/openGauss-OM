@@ -410,7 +410,7 @@ class TaskPool(object):
 
         # filter the still running tasks and not running tasks
         for task in self.running_tasks:
-            if task.isAlive():
+            if task.is_alive():
                 still_running.append(task)
             else:
                 self.task_status[task.host] = task.status

@@ -44,7 +44,7 @@ class VersionInfo(object):
     COMMON_VERSION = "Gauss200 OM VERSION"
     # It will be replaced with the product version, such as "Gauss200",
     # while being packaged by mpp_package.sh
-    PRODUCT_NAME = "__GAUSS_PRODUCT_STRING__"
+    PRODUCT_NAME = "openGauss"
     PRODUCT_NAME_PACKAGE = "-".join(PRODUCT_NAME.split())
     COMMITID = ""
 

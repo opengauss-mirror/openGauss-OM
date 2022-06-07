@@ -475,20 +475,16 @@ class ExpansionImpl():
         """
         self.logger.log("Start to preinstall database step.")
         tempXmlFile = "%s/clusterconfig.xml" % self.tempFileDir
-
-        if not EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH"):
-            preinstallCmd = "{softPath}/script/gs_preinstall -U {user} -G {group} "\
-                "-X {xmlFile} --non-interactive --skip-hostname-set 2>&1".format(
-                softPath = self.remote_pkg_dir, user = self.user,
-                group = self.group, xmlFile = tempXmlFile)
-        else:
-            preinstallCmd = "{softPath}/script/gs_preinstall -U {user} -G {group} " \
-                            "-X {xmlFile} --sep-env-file={envFile} --skip-hostname-set " \
-                            "--non-interactive 2>&1".format(softPath = self.remote_pkg_dir,
-                                                            user = self.user,
-                                                            group = self.group,
-                                                            xmlFile = tempXmlFile,
-                                                            envFile = self.envFile)
+        preinstallCmd = "{softPath}/script/gs_preinstall -U {user} -G {group} -X {xmlFile} " \
+                        "--non-interactive".format(softPath=self.remote_pkg_dir,
+                                                   user=self.user,
+                                                   group=self.group,
+                                                   xmlFile=tempXmlFile)
+        if EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH"):
+            preinstallCmd += " --sep-env-file={envFile}".format(envFile = self.envFile)
+        if not os.listdir(os.path.join(EnvUtil.getEnv("GPHOME"),"lib")):
+            preinstallCmd += " --unused-third-party"
+        preinstallCmd += " --skip-hostname-set 2>&1"
 
         failedPreinstallHosts = []
         for host in self.context.newHostList:

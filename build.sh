@@ -151,7 +151,7 @@ function version_cfg()
     echo "${gitversion}" >>${version_file}
 
     if [ -f ${PKG_TMP_DIR}/script/domain_utils/cluster_file/version_info.py ] ; then
-        sed -i -e "s/COMMON_VERSION = \"Gauss200 OM VERSION\"/COMMON_VERSION = \"$(echo ${om_version})\"/g" -e "s/__GAUSS_PRODUCT_STRING__/$module_name/g" ${PKG_TMP_DIR}/script/domain_utils/cluster_file/version_info.py
+        sed -i -e "s/COMMON_VERSION = \"Gauss200 OM VERSION\"/COMMON_VERSION = \"$(echo ${om_version})\"/g" ${PKG_TMP_DIR}/script/domain_utils/cluster_file/version_info.py
         if [ $? -ne 0 ]; then
             die "Failed to replace OM tools version number."
         fi

@@ -327,6 +327,8 @@ if __name__ == '__main__':
         REPEAT = False
         upgrade = Upgrade()
         upgrade.parseCommandLine()
+        if (upgrade.action == "auto-upgrade") and (not upgrade.is_grey_upgrade):
+            GaussLog.exitWithError(ErrorCode.GAUSS_529["GAUSS_52944"]) 
         upgrade.checkParameter()
 
         # set action flag file

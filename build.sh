@@ -179,6 +179,8 @@ function clib_copy()
 
 function lib_copy()
 {
+    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/output/log
+    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/output/nodes
     mkdir -p ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/asn1crypto           ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/bcrypt               ${PKG_TMP_DIR}/lib

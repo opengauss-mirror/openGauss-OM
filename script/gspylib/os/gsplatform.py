@@ -73,8 +73,10 @@ SUPPORT_RHEL_SERIES_PLATFORM_LIST = [REDHAT, CENTOS, "kylin", "asianux"]
 SUPPORT_RHEL6X_VERSION_LIST = ["6.4", "6.5", "6.6", "6.7", "6.8", "6.9", "10"]
 SUPPORT_RHEL7X_VERSION_LIST = ["7.0", "7.1", "7.2", "7.3", "7.4", "7.5", "7.6", 
     "7.7", "7.8", "7.9", "10"]
+SUPPORT_RHEL8X_VERSION_LIST = ["8.0", "8.1", "8.2", "8.3", "8.4", "8.5"]
 SUPPORT_RHEL_SERIES_VERSION_LIST = (SUPPORT_RHEL6X_VERSION_LIST +
-                                    SUPPORT_RHEL7X_VERSION_LIST)
+                                    SUPPORT_RHEL7X_VERSION_LIST + 
+                                    SUPPORT_RHEL8X_VERSION_LIST)
 # EulerOS 2.3 -> 2.0 SP3
 SUPPORT_EULEROS_VERSION_LIST = ["2.0"]
 # SuSE platform

@@ -5066,6 +5066,39 @@ class UpgradeImpl:
                 raise Exception(str(er))
             self.context.logger.debug("Failed to reload cm agent. Warning:{0}".format(str(er)))
 
+    def reload_cmserver(self, is_final=False):
+        """
+        Run the 'kill -1' command to make the parameters of all cmserver instances take effect.
+        :return:
+        """
+        if DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) == 0 \
+                and not is_final:
+            self.context.logger.debug("No need to reload cm server configuration.")
+            return
+        self.context.logger.debug("Start to reload cmserver")
+        cm_nodes = []
+        # Get all the nodes that contain the CMSERVER instance
+        for dbNode in self.context.clusterInfo.dbNodes:
+            if len(dbNode.cmservers) > 0:
+                cm_nodes.append(dbNode.name)
+        cmd = "%s -t %s -U %s --upgrade_bak_path=%s -l %s" % \
+              (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+               const.ACTION_RELOAD_CMSERVER,
+               self.context.user,
+               self.context.upgradeBackupPath,
+               self.context.localLog)
+        self.context.logger.debug("reloading all cmserver process: %s" % cmd)
+        try:
+            self.context.execCommandInSpecialNode(cmd, cm_nodes)
+            # wait the cluster be normal
+            self.waitClusterNormalDegrade()
+            self.context.logger.debug("Success to reload cmserver")
+        except Exception as er:
+            if self.context.action == const.ACTION_INPLACE_UPGRADE or \
+                    not self.context.forceRollback:
+                raise Exception(str(er))
+            self.context.logger.debug("Failed to reload cm server. Warning:{0}".format(str(er)))
+
     def restoreClusterConfig(self, isRollBack=False):
         """
         function: Restore the cluster config

@@ -8,7 +8,7 @@ then
 fi
 
 readonly cur_path=$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd && cd - &>/dev/null)
-readonly version="2.0.3"
+readonly version="2.0.4"
 
 source $cur_path"/common.sh"
 

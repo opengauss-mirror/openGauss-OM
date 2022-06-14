@@ -2496,7 +2496,7 @@ class dbClusterInfo():
                             % xmlFile + " Error:\n%s" % str(e))
 
         self.__readClusterGlobalInfo()
-        if self.__read_and_check_config_item(xmlRootNode, "clusterType", "cluster") == \
+        if self.__read_and_check_config_item(xmlRootNode, "clusterType", "cluster", True) == \
                 "single-inst-one-node":
             self.__read_cluster_node_info_for_one()
         else:
@@ -2526,7 +2526,7 @@ class dbClusterInfo():
         self.dbNodes.append(db_node)
         # Get datanode info
         for i in range(db_node.dataNum):
-            db_inst = instanceInfo(BASE_ID_DUMMYDATANODE + i, 1)
+            db_inst = instanceInfo(BASE_ID_DATANODE + i, 1)
             db_inst.hostname = node_name
             db_inst.datadir = self.__readNodeStrValue(node_name, "dataNode%s" % (i+1))
             db_inst.instanceType = MASTER_INSTANCE if i == 0 else STANDBY_INSTANCE

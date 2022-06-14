@@ -2241,7 +2241,7 @@ class DefaultValue():
                                     or "cluster_state   : Degraded" in output):
                     break
                 if count == 2:
-                    start_cmd = "source {0} && gs_om -t start --timeout 30".format(userProfile)
+                    start_cmd = "source {0} && gs_om -t start --time-out 30".format(userProfile)
                     _, output = subprocess.getstatusoutput(start_cmd)
                     if logger:
                         logger.debug("Start cluster for get current primary datanode, "

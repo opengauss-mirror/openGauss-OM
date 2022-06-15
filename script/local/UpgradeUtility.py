@@ -4438,7 +4438,7 @@ def kill_cm_server_process(gauss_home):
     subprocess.getstatusoutput(cmd)
     g_logger.debug("Kill cm_server finish.")
 
-    def cleanMonitor():
+def cleanMonitor():
     """
     function: clean om_monitor process and delete cron
     input : NA

@@ -87,63 +87,6 @@ class ExpansionImplWithCm(ExpansionImpl):
         self.new_nodes = [node for node in self.xml_cluster_info.dbNodes
                           for back_ip in node.backIps if back_ip in self.context.newHostList]
 
-    def guc_executor(self, guc_command, host_name):
-        """
-        Execute gs_guc command
-        """
-        current_time = str(datetime.datetime.now()).replace(" ", "_").replace(
-            ".", "_")
-        temp_file_dir = "/tmp/gs_expansion_%s" % (current_time)
-        temp_sh_file = os.path.join(temp_file_dir, "guc.sh")
-        command = "source %s ; %s" % (self.envFile, guc_command)
-        self.logger.debug("[%s] ready to run guc command is:%s" % (host_name, command))
-        # create temporary dir to save guc command bashfile.
-        try:
-            mkdir_cmd = "mkdir -m a+x -p %s; chown %s:%s %s" % \
-                        (temp_file_dir, self.user, self.group, temp_file_dir)
-            self.ssh_tool.getSshStatusOutput(mkdir_cmd, hostList=[host_name],
-                                             env_file=self.envFile)
-            local_create_file_cmd = "if [ ! -e '{0}' ]; then mkdir -m a+x -p {0};" \
-                                    "fi; touch {0}; cat /dev/null > {0}; " \
-                                    "chown {1}:{2} {0}".format(temp_file_dir,
-                                                               self.user, self.group)
-            status, output = subprocess.getstatusoutput(local_create_file_cmd)
-            if status != 0:
-                self.logger.debug("Failed to create temp file guc.sh.")
-                self.logger.debug("guc command result status: {0}".format(status))
-                self.logger.debug("guc command result output: {0}".format(output))
-                raise Exception(ErrorCode.GAUSS_535["GAUSS_53506"])
-            with os.fdopen(os.open("%s" % temp_sh_file, os.O_WRONLY | os.O_CREAT,
-                                   stat.S_IWUSR | stat.S_IRUSR), 'w') as fo:
-                fo.write("#bash\n")
-                fo.write(command)
-                fo.close()
-
-            # send guc command bashfile to each host and execute it.
-            if socket.gethostname() != host_name:
-                self.ssh_tool.scpFiles("%s" % temp_sh_file, "%s" % temp_sh_file, [host_name],
-                                       self.envFile)
-                result_map, output_collect = \
-                    self.ssh_tool.getSshStatusOutput("sh %s" % temp_sh_file,
-                                                     hostList=[host_name], env_file=self.envFile)
-                self.logger.debug("Execute gs_guc command output: {0}".format(output_collect))
-                if [fail_flag for fail_flag in result_map.values() if not fail_flag]:
-                    self.logger.debug("Execute gs_guc command failed. "
-                                      "result_map is : {0}".format(result_map))
-                    raise Exception(ErrorCode.GAUSS_535["GAUSS_53507"] % command)
-            else:
-                status, output = subprocess.getstatusoutput("sh %s" % temp_sh_file)
-                if status != 0:
-                    self.logger.debug("Local execute gs_guc command failed. "
-                                      "output is : {0}".format(output))
-                    raise Exception(ErrorCode.GAUSS_535["GAUSS_53507"] % command)
-        except Exception as exp:
-            raise Exception(str(exp))
-        finally:
-            self.ssh_tool.getSshStatusOutput(
-                g_file.SHELL_CMD_DICT["deleteDir"] % (temp_file_dir, temp_file_dir),
-                hostList=[host_name])
-
     @staticmethod
     def get_node_names(nodes):
         """
@@ -338,7 +281,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         para_str = " -c \"{0}='{1}'\" ".format(para_name, para_value)
         cmd = "{0} set -D {1} {2}".format(guc_path, inst_dir, para_str)
         self.logger.debug("Set guc parameter command: {0}".format(cmd))
-        self.guc_executor(cmd, node_name)
+        self.guc_executor(self.ssh_tool, cmd, node_name)
         self.logger.debug("Successfully set guc param [{0}] "
                           "on node [{1}]".format(para_name, node_name))
 
@@ -410,7 +353,7 @@ class ExpansionImplWithCm(ExpansionImpl):
                                    self._get_pgxc_node_name_for_single_inst())
         su_cmd = """su - {0} -c "{1}" """.format(self.user, cmd)
         self.logger.debug("Set guc parameter command: {0}".format(su_cmd))
-        self.guc_executor(su_cmd, socket.gethostname())
+        self.guc_executor(self.ssh_tool, su_cmd, socket.gethostname())
 
     def _get_new_node_by_back_ip(self, back_ip):
         """

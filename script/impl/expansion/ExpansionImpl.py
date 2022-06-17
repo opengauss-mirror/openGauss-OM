@@ -41,6 +41,8 @@ from gspylib.common.Common import DefaultValue
 from gspylib.common.GaussLog import GaussLog
 from gspylib.os.gsOSlib import g_OSlib
 import impl.upgrade.UpgradeConst as Const
+from gspylib.common.OMCommand import OMCommand
+from gspylib.os.gsfile import g_file
 
 from domain_utils.cluster_file.cluster_dir import ClusterDir
 from base_utils.os.env_util import EnvUtil
@@ -73,6 +75,7 @@ STATUS_FAIL = "Failure"
 BASE_ID_DATANODE = 6001
 MAX_DATANODE_NUM = 9
 
+ACTION_INSTALL_CLUSTER = "install_cluster"
 
 class ExpansionImpl():
     """
@@ -307,25 +310,6 @@ class ExpansionImpl():
         os.environ["LOGNAME"] = user_name
         os.environ["SHELL"] = pw_record.pw_shell
 
-    def initSshConnect(self, host, user='root', timeoutNum=0):
-        try:
-            self.sshClient = paramiko.SSHClient()
-            self.sshClient.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            if timeoutNum == 0:
-                self.sshClient.connect(host, 22, user)
-            elif timeoutNum < 4:
-                getPwdStr = "Please enter the password of user [%s] on node [%s]: " % (user, host)
-                passwd = getpass.getpass(getPwdStr)
-                try:
-                    self.sshClient.connect(host, 22, user, passwd)
-                except paramiko.ssh_exception.AuthenticationException:
-                    self.logger.log("Authentication failed.")
-                    raise Exception
-            else:
-                GaussLog.exitWithError(ErrorCode.GAUSS_511["GAUSS_51109"])
-        except Exception:
-            self.initSshConnect(host, user, timeoutNum + 1)
-
     def hasNormalStandbyInAZOfCascade(self, cascadeIp, existingStandbys):
         """
         check whether there are normal standbies in hostAzNameMap[cascadeIp] azZone
@@ -391,16 +375,9 @@ class ExpansionImpl():
             log_path = ClusterDir.getUserLogDirWithUser(self.user)
             log_dir = "%s/pg_log/dn_%d" % (log_path, appName)
             audit_dir = "%s/pg_audit/dn_%d" % (log_path, appName)
-            installCmd = "source {envFile} ; gs_install -X {xmlFile}" \
-                " --dn-guc=\"application_name='dn_{appname}'\"" \
-                " --dn-guc=\"log_directory='{log_dir}'\"" \
-                " --dn-guc=\"audit_directory='{audit_dir}'\"" \
-                " 2>&1".format(envFile=self.envFile, xmlFile=tempXmlFile, 
-                    appname=appName, log_dir=log_dir, audit_dir=audit_dir)
-            self.logger.debug(installCmd)
-            self.logger.log("Installing database on node %s:" % newHost)
             hostName = self.context.backIpNameMap[newHost]
             sshIp = self.context.clusterInfoDict[hostName]["sshIp"]
+            port = self.context.clusterInfoDict[hostName]["port"]
             if self.context.newHostCasRoleMap[newHost] == "on":
                 # check whether there are normal standbies in hostAzNameMap[host] azZone
                 hasStandbyWithSameAZ = self.hasNormalStandbyInAZOfCascade(newHost,
@@ -409,55 +386,72 @@ class ExpansionImpl():
                     notInstalledCascadeHosts.append(newHost)
                     self.expansionSuccess[newHost] = False
                     continue
-            self.initSshConnect(sshIp, self.user)
-            stdin, stdout, stderr = self.sshClient.exec_command(installCmd, 
-                get_pty=True)
-            channel = stdout.channel
-
-            while not channel.exit_status_ready():
-                try:
-                    recvOut = channel.recv(1024)
-                    outDecode = recvOut.decode("utf-8")
-                    outStr = outDecode.strip()
-                    if(len(outStr) == 0):
-                        continue
-                    if(outDecode.endswith("\r\n")):
-                        self.logger.log(outStr)
-                    else:
-                        value = ""
-                        if re.match(r".*yes.*no.*", outStr):
-                            value = input(outStr)
-                            while True:
-                                # check the input
-                                if (
-                                    value.upper() != "YES"
-                                    and value.upper() != "NO"
-                                    and value.upper() != "Y"
-                                    and value.upper() != "N"):
-                                    value = input("Please type 'yes' or 'no': ")
-                                    continue
-                                break
-                        else:
-                            value = getpass.getpass(outStr)
-                        stdin.channel.send("%s\r\n" %value)
-                        stdin.flush()
-                    stdout.flush()
-                except Exception as e:
-                    sys.exit(1)
-                if channel.exit_status_ready() and  \
-                    not channel.recv_stderr_ready() and \
-                    not channel.recv_ready(): 
-                    channel.close()
-                    break
-            stdout.close()
-            stderr.close()
-            if channel.recv_exit_status() != 0:
+            
+            ssh_tool = SshTool([sshIp], timeout=300)
+            
+            # installing applications
+            cmd = "source %s;" % self.envFile
+            cmd += "%s -t %s -U %s -X %s -R %s -c %s -l %s" % (
+                OMCommand.getLocalScript("Local_Install"),
+                ACTION_INSTALL_CLUSTER,
+                self.user + ":" + self.group,
+                tempXmlFile,
+                self.context.clusterInfoDict["appPath"],
+                EnvUtil.getEnvironmentParameterValue("GS_CLUSTER_NAME",
+                                                      self.user),
+                self.context.localLog)
+            self.logger.debug(
+                "Command for installing application: %s" % cmd)
+            result_map, output = ssh_tool.getSshStatusOutput(cmd, [], self.envFile)
+            if result_map[sshIp] != DefaultValue.SUCCESS:
+                self.logger.debug("install application failed: %s %s" % (newHost, output))
                 self.expansionSuccess[newHost] = False
                 failedInstallHosts.append(newHost)
-            else:
-                if self.context.newHostCasRoleMap[newHost] == "off":
-                    existingStandbys.append(newHost)
-                self.logger.log("%s install success." % newHost)
+                continue
+            
+            # send ca file dir
+            ca_file_dir = os.path.realpath(os.path.join(
+                self.context.clusterInfoDict["appPath"], "share", "sslcert"))
+            self.logger.debug(
+                "Command for sending ca file dir: %s" % ca_file_dir)
+            ssh_tool.scpFiles(ca_file_dir,
+                               os.path.dirname(ca_file_dir),
+                               [sshIp])
+            
+            # init database datanode
+            cmd = "source {0}; " \
+              "{1} -U {2} -l {3}".format(self.envFile,
+                                         OMCommand.getLocalScript("Local_Init_Instance"),
+                                         self.user, self.context.localLog)
+            self.logger.debug(
+                "Command for installing database datanode: %s" % cmd)
+            result_map, output = ssh_tool.getSshStatusOutput(cmd, [], self.envFile)
+            if result_map[sshIp] != DefaultValue.SUCCESS:
+                self.logger.debug("install datanode failed: %s %s" % (newHost, output))
+                self.expansionSuccess[newHost] = False
+                failedInstallHosts.append(newHost)
+                continue
+            
+            # set guc config
+            inst_dir = self.context.clusterInfoDict[hostName]["dataNode"]
+            guc_path = os.path.join(self.context.clusterInfoDict["appPath"],
+                                "bin", "gs_guc")
+            para_str = " -c \"application_name='dn_{0}'\" " \
+                "-c \"log_directory='{1}'\" " \
+                " -c \"audit_directory='{2}'\" " \
+                " -c \"listen_addresses='localhost,{3}'\"" \
+                " -c \"port='{4}'\"" \
+                "".format(appName, log_dir, audit_dir, newHost, port)
+            cmd = "source {0}; {1} set -D {2} {3}".format(self.envFile, 
+                                                          guc_path, inst_dir, para_str)
+            self.logger.debug(
+                "Command for set guc params: %s" % cmd)
+            self.guc_executor(ssh_tool, cmd, sshIp)
+            self.logger.log("%s install success." % newHost)
+            
+            if self.context.newHostCasRoleMap[newHost] == "off":
+                existingStandbys.append(newHost)
+             
         if notInstalledCascadeHosts:
             self.logger.log("OpenGauss won't be installed on cascade_standby"
                 " %s, because there is no Normal standby in the same azZone." %
@@ -1150,6 +1144,62 @@ remoteservice={remoteservice}'"
         except Exception as e:
             self.logger.debug(str(e))
 
+    def guc_executor(self, ssh_tool, guc_command, host_name):
+        """
+        Execute gs_guc command
+        """
+        current_time = str(datetime.datetime.now()).replace(" ", "_").replace(
+            ".", "_")
+        temp_file_dir = "/tmp/gs_expansion_%s" % (current_time)
+        temp_sh_file = os.path.join(temp_file_dir, "guc.sh")
+        command = "source %s ; %s" % (self.envFile, guc_command)
+        self.logger.debug("[%s] ready to run guc command is:%s" % (host_name, command))
+        # create temporary dir to save guc command bashfile.
+        try:
+            mkdir_cmd = "mkdir -m a+x -p %s; chown %s:%s %s" % \
+                        (temp_file_dir, self.user, self.group, temp_file_dir)
+            ssh_tool.getSshStatusOutput(mkdir_cmd, hostList=[host_name],
+                                             env_file=self.envFile)
+            local_create_file_cmd = "if [ ! -e '{0}' ]; then mkdir -m a+x -p {0};" \
+                                    "fi; touch {0}; cat /dev/null > {0}; " \
+                                    "chown {1}:{2} {0}".format(temp_file_dir,
+                                                               self.user, self.group)
+            status, output = subprocess.getstatusoutput(local_create_file_cmd)
+            if status != 0:
+                self.logger.debug("Failed to create temp file guc.sh.")
+                self.logger.debug("guc command result status: {0}".format(status))
+                self.logger.debug("guc command result output: {0}".format(output))
+                raise Exception(ErrorCode.GAUSS_535["GAUSS_53506"])
+            with os.fdopen(os.open("%s" % temp_sh_file, os.O_WRONLY | os.O_CREAT,
+                                   stat.S_IWUSR | stat.S_IRUSR), 'w') as fo:
+                fo.write("#bash\n")
+                fo.write(command)
+                fo.close()
+
+            # send guc command bashfile to each host and execute it.
+            if socket.gethostname() != host_name:
+                ssh_tool.scpFiles("%s" % temp_sh_file, "%s" % temp_sh_file, [host_name],
+                                       self.envFile)
+                result_map, output_collect = \
+                    ssh_tool.getSshStatusOutput("sh %s" % temp_sh_file,
+                                                     hostList=[host_name], env_file=self.envFile)
+                self.logger.debug("Execute gs_guc command output: {0}".format(output_collect))
+                if [fail_flag for fail_flag in result_map.values() if not fail_flag]:
+                    self.logger.debug("Execute gs_guc command failed. "
+                                      "result_map is : {0}".format(result_map))
+                    raise Exception(ErrorCode.GAUSS_535["GAUSS_53507"] % command)
+            else:
+                status, output = subprocess.getstatusoutput("sh %s" % temp_sh_file)
+                if status != 0:
+                    self.logger.debug("Local execute gs_guc command failed. "
+                                      "output is : {0}".format(output))
+                    raise Exception(ErrorCode.GAUSS_535["GAUSS_53507"] % command)
+        except Exception as exp:
+            raise Exception(str(exp))
+        finally:
+            ssh_tool.getSshStatusOutput(
+                g_file.SHELL_CMD_DICT["deleteDir"] % (temp_file_dir, temp_file_dir),
+                hostList=[host_name])
     
     def checkNodesDetail(self):
         """

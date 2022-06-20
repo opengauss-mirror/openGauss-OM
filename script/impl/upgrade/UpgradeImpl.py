@@ -668,9 +668,9 @@ class UpgradeImpl:
             self.setGUCValue("default_transaction_read_only", "true")
             self.context.logger.debug("successfully set the cluster read-only mode.")
             return 0
-        except Exception:
+        except Exception as e:
             self.context.logger.debug("WARNING: Failed to set default_transaction_read_only "
-                                      "parameter.")
+                                      "parameter. %s" % str(e))
             return 1
 
     def unSetClusterReadOnlyMode(self):
@@ -685,9 +685,9 @@ class UpgradeImpl:
             self.setGUCValue("default_transaction_read_only", "false")
             self.context.logger.debug("Successfully cancelled the cluster read-only mode.")
             return 0
-        except Exception:
+        except Exception as e:
             self.context.logger.debug("WARNING: Failed to set default_transaction_read_only "
-                                      "parameter.")
+                                      "parameter. %s" % str(e))
             return 1
 
     def stopCluster(self):

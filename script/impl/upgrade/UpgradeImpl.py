@@ -75,6 +75,7 @@ class UpgradeImpl:
         function: constructor
         """
         self.dnInst = None
+        self.dnStandbyInsts = []
         self.context = upgrade
         self.newCommitId = ""
         self.oldCommitId = ""
@@ -667,9 +668,9 @@ class UpgradeImpl:
             self.setGUCValue("default_transaction_read_only", "true")
             self.context.logger.debug("successfully set the cluster read-only mode.")
             return 0
-        except Exception:
+        except Exception as e:
             self.context.logger.debug("WARNING: Failed to set default_transaction_read_only "
-                                      "parameter.")
+                                      "parameter. %s" % str(e))
             return 1
 
     def unSetClusterReadOnlyMode(self):
@@ -684,9 +685,9 @@ class UpgradeImpl:
             self.setGUCValue("default_transaction_read_only", "false")
             self.context.logger.debug("Successfully cancelled the cluster read-only mode.")
             return 0
-        except Exception:
+        except Exception as e:
             self.context.logger.debug("WARNING: Failed to set default_transaction_read_only "
-                                      "parameter.")
+                                      "parameter. %s" % str(e))
             return 1
 
     def stopCluster(self):
@@ -1273,6 +1274,38 @@ class UpgradeImpl:
             else:
                 raise Exception(str(e))
 
+    def need_rolling(self, is_roll_back):
+        """
+        Get is need switch UDF subprocess from upgrade mode
+        """
+        self.context.logger.debug("Start check need rolling.")
+        new_static_config = os.path.realpath(os.path.join(self.context.newClusterAppPath, 
+                                                          "bin", "cluster_static_config"))
+        old_static_config = os.path.realpath(os.path.join(self.context.oldClusterAppPath, 
+                                                          "bin", "cluster_static_config"))
+        cluster_info = dbClusterInfo()
+        if is_roll_back:
+            self.context.logger.debug("This check need rolling for rollback.")
+            if not os.path.isfile(new_static_config):
+                self.context.logger.debug("Rollback not found new static config file [{0}]. "
+                                          "No need to switch UDF.".format(new_static_config))
+                return False
+            cluster_info.initFromStaticConfig(self.context.user, new_static_config)
+            if cluster_info.cmscount > 0:
+                self.context.logger.debug("Rollback cluster info include CMS instance. "
+                                          "So need to switch UDF.")
+                return True
+            self.context.logger.debug("Rollback new version cluster not include CMS instance. "
+                                      "So no need to switch UDF.")
+            return True
+        self.context.logger.debug("This check need rolling for upgrade.")
+        cluster_info.initFromStaticConfig(self.context.user, old_static_config)
+        if cluster_info.cmscount > 0:
+            self.context.logger.debug("Old cluster include CMS instance. So need to switch UDF.")
+            return True
+        self.context.logger.debug("Old cluster exclude CMS instance. So no need to switch UDF.")
+        return False
+
     def switchDn(self, isRollback):
         self.context.logger.log("Switching DN processes.")
         start_time = timeit.default_timer()
@@ -1293,6 +1326,8 @@ class UpgradeImpl:
             cmd += " --rollback"
         if self.context.forceRollback:
             cmd += " --force"
+        if self.need_rolling(isRollback):
+            cmd += " --rolling"
         self.context.logger.debug(
             "Command for switching DN processes: %s" % cmd)
         hostList = copy.deepcopy(self.context.nodeNames)
@@ -1819,7 +1854,12 @@ class UpgradeImpl:
 
         # perform a checkpoint and wait standby catchup
         self.createCheckpoint()
+        self.getAllStandbyDnInsts()
+        # wait standby catchup first
         self.HASyncReplayCheck(False)
+        # then wait all cascade standby(if any)
+        for standby in self.dnStandbyInsts:
+            self.HASyncReplayCheck(False, standby)
         # send cmd to all node and exec
         cmd = "%s -t %s -U %s -l %s -V %d" % \
                 (OMCommand.getLocalScript("Local_Upgrade_Utility"),
@@ -1871,7 +1911,12 @@ class UpgradeImpl:
 
         # perform checkpoint and wait standby sync before rollback
         self.createCheckpoint()
+        self.getAllStandbyDnInsts()
+        # wait standby catchup first
         self.HASyncReplayCheck(False)
+        # then wait all cascade standby(if any)
+        for standby in self.dnStandbyInsts:
+            self.HASyncReplayCheck(False, standby)
 
         # send cmd to all node and exec
         cmd = "%s -t %s -U %s -l %s -V %d" % \
@@ -2219,7 +2264,7 @@ class UpgradeImpl:
                                         self.context.userProfile,
                                         hosts)
 
-    def HASyncReplayCheck(self, catchupFailedOk = True):
+    def HASyncReplayCheck(self, catchupFailedOk=True, host=None):
         """
         function: Wait and check if all standbys have replayed upto flushed
                   xlog positions of primaries.We record primary xlog flush
@@ -2232,13 +2277,15 @@ class UpgradeImpl:
         Input: catchupFailedOk, if it's ok standby catch up primay failed
         output : NA
         """
+        host = self.dnInst if host == None else host
         self.context.logger.debug("Start to wait and check if all the standby"
-                                  " instances have replayed all xlogs.")
-        self.doReplay(catchupFailedOk)
+                                  " instances have replayed all xlogs, host: %s" % \
+                                  host.hostname)
+        self.doReplay(catchupFailedOk, host)
         self.context.logger.debug("Successfully performed the replay check "
                                   "of the standby instance.")
 
-    def doReplay(self, catchupFailedOk):
+    def doReplay(self, catchupFailedOk, host):
         refreshTimeout = 180
         waitTimeout = 300
         RefreshTime = datetime.now() + timedelta(seconds=refreshTimeout)
@@ -2254,8 +2301,8 @@ class UpgradeImpl:
             (status, output) = ClusterCommand.remoteSQLCommand(
                 sql,
                 self.context.user,
-                self.dnInst.hostname,
-                self.dnInst.port,
+                host.hostname,
+                host.port,
                 False,
                 DefaultValue.DEFAULT_DB_NAME,
                 IsInplaceUpgrade=True)
@@ -2297,8 +2344,8 @@ class UpgradeImpl:
                 (status, output) = ClusterCommand.remoteSQLCommand(
                     refreshsql,
                     self.context.user,
-                    self.dnInst.hostname,
-                    self.dnInst.port,
+                    host.hostname,
+                    host.port,
                     False,
                     DefaultValue.DEFAULT_DB_NAME,
                     IsInplaceUpgrade=True)
@@ -3470,6 +3517,7 @@ class UpgradeImpl:
                 # clean on all the node, because the binary_upgrade temp
                 #  dir will create in every node
                 self.cleanInstallPath(const.NEW)
+                self.getOneDNInst()
                 self.dropSupportSchema()
                 self.initOmRollbackProgressFile()
                 self.cleanBinaryUpgradeBakFiles(True)
@@ -4359,6 +4407,76 @@ class UpgradeImpl:
             self.context.logger.debug(traceback.format_exc())
             self.exitWithRetCode(self.context.action, False, str(e))
 
+    def getAllStandbyDnInsts(self):
+        """
+        function: find all normal standby dn instances by dbNodes.
+        input : NA
+        output: DN instances
+        """
+        try:
+            self.context.logger.debug("Get all standby DN.")
+            dnList = []
+            dnInst = None
+            clusterNodes = self.context.oldClusterInfo.dbNodes
+            standbyDn, output = DefaultValue.getStandbyNode(
+                self.context.userProfile, self.context.logger)
+            self.context.logger.debug(
+                "Cluster status information is %s;The standbyDn is %s" % (
+                    output, standbyDn))
+            if not standbyDn or standbyDn == []:
+                self.context.logger.debug("There is no standby dn")
+                return []
+            for dbNode in clusterNodes:
+                if len(dbNode.datanodes) == 0:
+                    continue
+                dnInst = dbNode.datanodes[0]
+                if dnInst.hostname not in standbyDn:
+                    continue
+                dnList.append(dnInst)
+
+            (checkStatus, checkResult) = OMCommand.doCheckStaus(
+                self.context.user, 0)
+            if checkStatus == 0:
+                self.context.logger.debug("The cluster status is normal,"
+                                            " no need to check standby dn status.")
+            else:
+                dnList = []
+                clusterStatus = \
+                    OMCommand.getClusterStatus()
+                if clusterStatus is None:
+                    raise Exception(ErrorCode.GAUSS_516["GAUSS_51600"])
+                clusterInfo = dbClusterInfo()
+                clusterInfo.initFromXml(self.context.xmlFile)
+                clusterInfo.dbNodes.extend(clusterNodes)
+                for dbNode in clusterInfo.dbNodes:
+                    if len(dbNode.datanodes) == 0:
+                        continue
+                    dn = dbNode.datanodes[0]
+                    if dn.hostname not in standbyDn:
+                        continue
+                    dbInst = clusterStatus.getInstanceStatusById(
+                        dn.instanceId)
+                    if dbInst is None:
+                        continue
+                    if dbInst.status == "Normal":
+                        self.context.logger.debug(
+                            "DN from %s is healthy." % dn.hostname)
+                        dnList.append(dn)
+                    else:
+                        self.context.logger.debug(
+                            "DN from %s is unhealthy." % dn.hostname)
+
+            if not dnList or dnList == []:
+                self.context.logger.debug("There is no normal standby dn")
+            else:
+                self.context.logger.debug("Successfully get all standby DN: %s" % \
+                     ','.join(d.hostname for d in dnList))
+                self.dnStandbyInsts = dnList
+
+        except Exception as e:
+            self.context.logger.log("Failed to get all standby DN. Error: %s" % str(e))
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51624"])
+
     def getOneDNInst(self, checkNormal=False):
         """
         function: find a dn instance by dbNodes,
@@ -4372,10 +4490,13 @@ class UpgradeImpl:
             dnInst = None
             clusterNodes = self.context.oldClusterInfo.dbNodes
             primaryDnNode, output = DefaultValue.getPrimaryNode(
-                self.context.userProfile)
+                self.context.userProfile, self.context.logger)
             self.context.logger.debug(
                 "Cluster status information is %s;The primaryDnNode is %s" % (
                     output, primaryDnNode))
+            if not primaryDnNode:
+                self.context.logger.error("Get primary DN failed. Please check cluster.")
+                raise Exception(ErrorCode.GAUSS_516["GAUSS_51652"] % "Get primary DN failed.")
             for dbNode in clusterNodes:
                 if len(dbNode.datanodes) == 0:
                     continue
@@ -5104,12 +5225,13 @@ class UpgradeImpl:
         agent_component.create_cm_ca(self.context.sshTool)
         self.context.logger.debug("Create CA for CM successfully.")
 
-    def reloadCmAgent(self):
+    def reloadCmAgent(self, is_final=False):
         """
         Run the 'kill -1' command to make the parameters of all cmagent instances take effect.
         :return:
         """
-        if not DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) > 0:
+        if not DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) > 0 \
+                and not is_final:
             self.context.logger.debug("No need to reload cm configuration.")
             return
         self.context.logger.debug("Start to reload cmagent")
@@ -5131,7 +5253,7 @@ class UpgradeImpl:
                     self.context.forceRollback:
                 raise Exception(str(er))
             self.context.logger.debug("Failed to reload cm agent. Warning:{0}".format(str(er)))
-    
+
     def reload_cmserver(self, is_final=False):
         """
         Run the 'kill -1' command to make the parameters of all cmserver instances take effect.
@@ -5160,8 +5282,8 @@ class UpgradeImpl:
             self.waitClusterNormalDegrade()
             self.context.logger.debug("Success to reload cmserver")
         except Exception as er:
-            if (self.context.action == const.ACTION_INPLACE_UPGRADE or \
-                not self.context.forceRollback) and not self.context.ignoreInstance:
+            if self.context.action == const.ACTION_INPLACE_UPGRADE or \
+                    not self.context.forceRollback:
                 raise Exception(str(er))
             self.context.logger.debug("Failed to reload cm server. Warning:{0}".format(str(er)))
 
@@ -5480,24 +5602,24 @@ class UpgradeImpl:
         status = 0
         output = ""
 
-        if (checkPosition == const.OPTION_PRECHECK):
+        if checkPosition == const.OPTION_PRECHECK:
             if (self.checkClusterStatus(checkPosition, True) != 0):
                 output += "\n    Cluster status does not match condition."
-            if (self.checkConnection() != 0):
+            if self.checkConnection() != 0:
                 output += "\n    Database could not be connected."
-        elif (checkPosition == const.OPTION_POSTCHECK):
-            if (self.checkClusterStatus(checkPosition) != 0):
+        elif checkPosition == const.OPTION_POSTCHECK:
+            if self.checkClusterStatus(checkPosition) != 0:
                 output += "\n    Cluster status is Abnormal."
             if not self.checkVersion(
                     self.context.newClusterVersion,
                     self.context.clusterInfo.getClusterNodeNames()):
                 output += "\n    The gaussdb version is inconsistent."
-            if (self.checkConnection() != 0):
+            if self.checkConnection() != 0:
                 output += "\n    Database could not be connected."
         else:
             # Invalid check position
             output += "\n    Invalid check position."
-        if (output != ""):
+        if output != "":
             status = 1
         # all check has been pass, return 0
         self.context.logger.log("Successfully checked cluster status.",
@@ -5546,6 +5668,21 @@ class UpgradeImpl:
             self.context.logger.debug(str(e))
             return False
 
+    def _query_cluster_status(self):
+        """
+        Query cluster status
+        """
+        cmd = "source %s;gs_om -t query" % self.context.userProfile
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if "Cascade Need repair" in output:
+            self.context.logger.debug("Cascade node disconnect , "
+                                      "check again after 5 seconds.\n{0}".format(output))
+            time.sleep(5)
+            (status, output) = subprocess.getstatusoutput(cmd)
+            self.context.logger.debug("Retry query cluster status finish. "
+                                      "Output:\n{0}".format(output))
+        return cmd, status, output
+
     def checkClusterStatus(self, checkPosition=const.OPTION_PRECHECK,
                            doDetailCheck=False):
         """
@@ -5560,8 +5697,8 @@ class UpgradeImpl:
         # build query cmd
         # according to the implementation of the results to determine whether
         # the implementation of success
-        cmd = "source %s;gs_om -t query" % self.context.userProfile
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd, status, output = self._query_cluster_status()
+
         if status != 0:
             self.context.logger.debug(
                 "Failed to execute command %s.\nStatus:%s\nOutput:%s" %

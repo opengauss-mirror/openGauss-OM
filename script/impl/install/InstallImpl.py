@@ -356,7 +356,6 @@ class InstallImpl:
             self.installClusterApp()
             self.context.logger.log("begin init Instance..")
             self.initInstance()
-            self.configZenithInst()
             self.context.logger.log("encrypt cipher and rand files "
                                     "for database.")
             initPasswd = self.getPasswdFromInitParam()
@@ -401,13 +400,6 @@ class InstallImpl:
         if pwdIndex > -1:
             self.context.dbInitParam.pop(pwdIndex)
         return passwd
-
-    def configZenithInst(self):
-        """
-        function: config zenith inst
-        :return:
-        """
-        pass
 
     def initInstance(self):
         """

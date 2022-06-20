@@ -40,43 +40,7 @@ from gspylib.common.ErrorCode import ErrorCode
 
 localDirPath = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, localDirPath + "/../../../lib/netifaces/")
-sys.path.append(localDirPath + "/../inspection/lib/netifaces/")
-try:
-    from netifaces import interfaces, ifaddresses, AF_INET, AF_INET6
-except ImportError as e:
-    # get python unicode value. The current environment python is compiled
-    # with UCS2 or UCS4.
-    # 1114111 is UCS4
-    # 65535 is UCS2
-    flagNum = 4 if sys.maxunicode == 1114111 else 2
-    omToolsNetifacesPath = os.path.join(
-        localDirPath, "./../../../lib/netifaces/netifaces.so")
-    inspectToolsNetifacesPath = os.path.join(
-        localDirPath, "./../../../script/gspylib/inspection/\
-        lib/netifaces/netifaces.so")
-    newPythonDependNetifacesPath = "%s_UCS%d" % (omToolsNetifacesPath,
-                                                 flagNum)
-    glo_cmd = "rm -f '%s' && " \
-              "cp -f -p '%s' '%s' " % (omToolsNetifacesPath,
-                                       newPythonDependNetifacesPath,
-                                       omToolsNetifacesPath)
-    glo_cmd += " && rm -f '%s' && " \
-               "cp -f -p '%s' '%s' " % (inspectToolsNetifacesPath,
-                                        newPythonDependNetifacesPath,
-                                        inspectToolsNetifacesPath)
-    flagExce = True
-    for retryNum in range(3):
-        (statusExec, outputExec) = subprocess.getstatusoutput(glo_cmd)
-        if statusExec != 0:
-            flagExce = False
-            time.sleep(1)
-        else:
-            flagExce = True
-            break
-    if not flagExce:
-        raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % glo_cmd
-                        + "Error:\n%s" % outputExec)
-    from netifaces import interfaces, ifaddresses, AF_INET, AF_INET6
+from netifaces import interfaces, ifaddresses, AF_INET, AF_INET6
 
 # ---------------platforms--------------------
 # global variable for our platform
@@ -131,7 +95,7 @@ PAK_CENTOS = "CentOS"
 PAK_EULER = "Euler"
 PAK_OPENEULER = "openEuler"
 PAK_REDHAT = "RedHat"
-PAK_ASIANUX = "asianux"
+PAK_ASIANUX = "Asianux"
 PAK_UBUNTU = "Ubuntu"
 
 #######################################################

@@ -65,7 +65,7 @@ VALUE_CHECK_LIST = ["|", ";", "&", "$", "<", ">", "`", "\\", "'", "\"", "{",
 gs_preinstall = ["-?", "--help", "-V", "--version", "-U:", "-G:", "-L",
                  "--skip-os-set", "-X:",
                  "--env-var=", "--sep-env-file=", "--skip-hostname-set",
-                 "-l:", "--non-interactive"]
+                 "-l:", "--non-interactive", "--delete-root-trust", "--unused-third-party"]
 gs_install = ["-?", "--help", "-V", "--version", "-X:", "-l:",
               "--gsinit-parameter=", "--dn-guc=", "--cms-guc=",
               "--time-out=", "--alarm-component="]
@@ -109,7 +109,7 @@ gs_om_stop = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-I:", "-m:",
 gs_om_restart = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-I:",
                "--time-out=", "--az=", "-l:", "--nodeId=", "-D:",
                "--security-mode=", "--mode=", "-m:"]
-gs_om_view = ["-t:", "-?", "--help", "-V", "--version", "-o:", "-l:"]
+gs_om_view = ["-t:", "-?", "--help", "-V", "--version", "-o:", "-l:", "--dynamic"]
 gs_om_query = ["-t:", "-?", "--help", "-V", "--version", "-o:", "-l:", "--time-out="]
 gs_om_status = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-o:",
                 "--detail", "--all", "-l:", "--az=", "--time-out="]
@@ -373,7 +373,10 @@ class Parameter():
                            "--agent-mode": "agentMode",
                            "--krb-server": "krb-server",
                            "--krb-client": "krb-client",
-                           "--non-print": "nonPrinting"
+                           "--non-print": "nonPrinting",
+                           "--dynamic": "dynamic",
+                           "--delete-root-trust": "root_delete_flag",
+                           "--unused-third-party": "unused_third_party"
                            }
         parameterIsBool_keys = parameterIsBool.keys()
 

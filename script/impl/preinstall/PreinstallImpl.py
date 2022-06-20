@@ -35,6 +35,7 @@ from base_utils.os.file_util import FileUtil
 from domain_utils.cluster_file.package_info import PackageInfo
 from base_utils.os.password_util import PasswordUtil
 from base_utils.os.net_util import NetUtil
+from domain_utils.cluster_file.profile_file import ProfileFile
 
 # action name
 # prepare cluster tool package path
@@ -86,12 +87,6 @@ ACTION_CHECK_CONFIG = "check_config"
 #############################################################################
 iphostInfo = ""
 topToolPath = ""
-# create the tmp file for dist trust steps
-g_stepTrustTmpFile = None
-# the tmp file name
-TRUST_TMP_FILE = "step_preinstall_file.dat"
-# the tmp file path
-TRUST_TMP_FILE_DIR = None
 createTrustFlag = False
 
 
@@ -238,13 +233,18 @@ class PreinstallImpl:
             return
         if self.context.preMode or not self.context.root_ssh_agent_flag:
             return
+        if not self.context.root_delete_flag:
+            return
         self.context.logger.debug("Start Delete root mutual trust")
 
         # get dir path
         username = pwd.getpwuid(os.getuid()).pw_name
         homeDir = os.path.expanduser("~" + username)
-        sshDir = "%s/.ssh/*" % homeDir
         tmp_path = "%s/gaussdb_tmp" % homeDir
+        authorized_keys = DefaultValue.SSH_AUTHORIZED_KEYS
+        known_hosts = DefaultValue.SSH_KNOWN_HOSTS
+        ssh_private = DefaultValue.SSH_PRIVATE_KEY
+        ssh_pub = DefaultValue.SSH_PUBLIC_KEY
 
         # get cmd
         bashrc_file = os.path.join(pwd.getpwuid(os.getuid()).pw_dir, ".bashrc")
@@ -252,7 +252,10 @@ class PreinstallImpl:
                              "xargs kill -9"
         delete_line_cmd = " ; sed -i '/^\\s*export\\s*SSH_AUTH_SOCK=.*$/d' %s" % bashrc_file
         delete_line_cmd += " && sed -i '/^\\s*export\\s*SSH_AGENT_PID=.*$/d' %s" % bashrc_file
-        delete_shell_cmd = " && rm -rf %s && rm -rf %s" % (sshDir, tmp_path)
+        delete_shell_cmd = " && rm -rf %s" % tmp_path
+        delete_shell_cmd += " && rm -f %s && rm -f %s" % (ssh_private, ssh_pub)
+        delete_shell_cmd += " && sed -i '/#OM/d' %s " % authorized_keys
+        delete_shell_cmd += " && sed -i '/#OM/d' %s " % known_hosts
         cmd = "%s" + delete_line_cmd + delete_shell_cmd
 
         # get remote node and local node
@@ -1275,40 +1278,6 @@ class PreinstallImpl:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
                                 + " Error: \n%s" % output)
 
-    def createStepTmpFile(self):
-        """
-        function: create step tmp file
-        input : NA
-        output: NA
-        """
-        if self.context.localMode or self.context.isSingle:
-            return
-
-        try:
-            global g_stepTrustTmpFile
-            global TRUST_TMP_FILE_DIR
-            TRUST_TMP_FILE_DIR = "/tmp/%s" % TRUST_TMP_FILE
-            FileUtil.createFileInSafeMode(TRUST_TMP_FILE_DIR)
-            with open(TRUST_TMP_FILE_DIR, "w") as g_stepTrustTmpFile:
-                g_stepTrustTmpFile.flush()
-        except Exception as e:
-            raise Exception(str(e))
-
-    def deleteStepTmpFile(self):
-        """
-        function: delete step tmp file
-        input : NA
-        output: NA
-        """
-        if self.context.localMode or self.context.isSingle:
-            return
-
-        try:
-            cmd = "rm -rf '%s'" % TRUST_TMP_FILE_DIR
-            self.context.sshTool.executeCommand(cmd)
-        except Exception as e:
-            self.context.logger.error(str(e))
-
     def checkEnvFile(self):
         """
         function: delete step tmp file
@@ -1359,10 +1328,8 @@ class PreinstallImpl:
                 "Environment file is not exist environment file,"
                 " skip check repeat.")
             return []
-        elif os.path.isfile(
-                os.path.join("/home", "%s/.bashrc" % self.context.user)):
-            source_file = os.path.join("/home",
-                                       "%s/.bashrc" % self.context.user)
+        elif os.path.isfile(ProfileFile.get_user_bashrc(self.context.user)):
+            source_file = ProfileFile.get_user_bashrc(self.context.user)
         else:
             self.context.logger.debug(
                 "There is no environment file, skip check repeat.")
@@ -1556,10 +1523,6 @@ class PreinstallImpl:
         self.checkInstanceDir()
         # install tools phase1
         self.installToolsPhase1()
-
-        # no need do the following steps in local mode
-        # create tmp file
-        self.createStepTmpFile()
         # exchange user key for root user
         self.createTrustForRoot()
         # distribute server package
@@ -1582,8 +1545,6 @@ class PreinstallImpl:
         self.createTrustForCommonUser()
         # change tool env path
         self.changeToolEnv()
-        # delete tmp file
-        self.deleteStepTmpFile()
         # the end of functions which do not use in in local mode
         #check software
         self.checkOSSoftware()
@@ -1632,7 +1593,6 @@ class PreinstallImpl:
             # close log file
             self.context.logger.closeLog()
         except Exception as e:
-            self.deleteStepTmpFile()
             for rmPath in self.context.needFixOwnerPaths:
                 if os.path.isfile(rmPath):
                     FileUtil.removeFile(rmPath)

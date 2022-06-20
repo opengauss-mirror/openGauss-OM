@@ -151,8 +151,7 @@ class ClusterDir:
 
     @staticmethod
     def get_env(env_param):
-        user = pwd.getpwuid(os.getuid()).pw_name
-        cmd = "source %s; echo $%s" % (ClusterConstants.HOME_USER_BASHRC % user, env_param)
+        cmd = "source %s; echo $%s" % (ClusterConstants.BASHRC, env_param)
         status, result = CmdUtil.exec_by_popen(cmd)
         SecurityChecker.check_injection_char(result)
 

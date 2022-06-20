@@ -51,6 +51,7 @@ from gspylib.component.CM.CM_OLAP.CM_OLAP import CM_OLAP
 
 import impl.upgrade.UpgradeConst as const
 from base_utils.executor.cmd_executor import CmdExecutor
+from base_utils.os.crontab_util import CrontabUtil
 from base_utils.os.cmd_util import CmdUtil
 
 from base_utils.os.compress_util import CompressUtil
@@ -2776,7 +2777,7 @@ def backupOneInstanceOldClusterCatalogPhysicalFiles(instance):
         __backup_global_dir(instance)
 
         if instance.instanceRole == INSTANCE_ROLE_DATANODE and \
-                instance.instanceType in [DUMMY_STANDBY_INSTANCE, CASCADE_STANDBY]:
+                instance.instanceType == DUMMY_STANDBY_INSTANCE:
             g_logger.debug("There is no need to backup catalog. "
                            "Instance data dir: %s" % instance.datadir)
             return
@@ -4437,6 +4438,41 @@ def kill_cm_server_process(gauss_home):
     subprocess.getstatusoutput(cmd)
     g_logger.debug("Kill cm_server finish.")
 
+def cleanMonitor():
+    """
+    function: clean om_monitor process and delete cron
+    input : NA
+    output: NA
+    """
+    g_logger.debug("Deleting monitor.")
+    try:
+        # get all content by crontab command
+        (status, output) = CrontabUtil.getAllCrontab()
+        # overwrit crontabFile, make it empty.
+        crontabFile = "%s/gauss_crontab_file_%d" \
+                      % (EnvUtil.getTmpDirFromEnv(), os.getpid())
+        FileUtil.createFile(crontabFile, True)
+        content_CronTabFile = [output]
+        FileUtil.writeFile(crontabFile, content_CronTabFile)
+        FileUtil.deleteLine(crontabFile, "\/bin\/om_monitor")
+        CrontabUtil.execCrontab(crontabFile)
+        FileUtil.removeFile(crontabFile)
+
+        kill_monitor_cmd = DefaultValue.killInstProcessCmd("om_monitor")
+        g_logger.debug("Kill om_monitor command: {0}".format(kill_monitor_cmd))
+        status, output = subprocess.getstatusoutput(kill_monitor_cmd)
+        if status != 0:
+            g_logger.debug("Kill om_monitor process failed. Output: {0}".format(output))
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51606"] % "om_monitor")
+        g_logger.debug("Kill local om_monitor process successfully.")
+
+
+    except Exception as e:
+        if os.path.exists(crontabFile):
+            FileUtil.removeFile(crontabFile)
+        raise Exception(str(e))
+    g_logger.debug("Successfully deleted OMMonitor.")
+
 
 def clean_cm_instance():
     """
@@ -4451,16 +4487,43 @@ def clean_cm_instance():
     local_node = [node for node in cluster_info.dbNodes
                   if node.name == NetUtil.GetHostIpOrName()][0]
     clean_dir = os.path.dirname(local_node.cmagents[0].datadir)
+
+    cleanMonitor()
+    
     if local_node.cmservers:
+        FileUtil.cleanDirectoryContent(local_node.cmservers[0].datadir)
         server_component = CM_OLAP()
         server_component.instInfo = local_node.cmservers[0]
         server_component.logger = g_logger
         server_component.killProcess()
-        FileUtil.cleanDirectoryContent(local_node.cmservers[0].datadir)
-        g_logger.debug("Clean cm_server instance successfully.")
+        FileUtil.removeDirectory(local_node.cmservers[0].datadir)
+        g_logger.debug("Clean local cm_server process successfully.")
     if os.path.isdir(local_node.cmagents[0].datadir):
         FileUtil.cleanDirectoryContent(local_node.cmagents[0].datadir)
-    g_logger.debug("Local clean CM instance directory [{0}] successfully.".format(clean_dir))
+        kill_agent_cmd = DefaultValue.killInstProcessCmd("cm_agent")
+        g_logger.debug("Kill cm_agent command: {0}".format(kill_agent_cmd))
+        status, output = subprocess.getstatusoutput(kill_agent_cmd)
+        if status != 0:
+            g_logger.debug("Kill cm_agent process failed. Output: {0}".format(output))
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51606"] % "cm_agent")
+        g_logger.debug("Kill local cm_agent process successfully.")
+        FileUtil.removeDirectory(local_node.cmagents[0].datadir)
+        g_logger.debug("Clean local cm_agent directory successfully.")
+
+    g_logger.debug("Start clean other directory of CM component.")
+    cm_instance_parent_path = os.path.dirname(local_node.cmagents[0].datadir)
+    dcf_data_path = os.path.realpath(os.path.join(cm_instance_parent_path, "dcf_data"))
+    gstor_path = os.path.realpath(os.path.join(cm_instance_parent_path, "gstor"))
+    
+    if os.path.isdir(dcf_data_path):
+        FileUtil.removeDirectory(dcf_data_path)
+        g_logger.debug("Clean local dcf meta data directory successfully.")
+    if os.path.isdir(gstor_path):
+        FileUtil.removeDirectory(gstor_path)
+        g_logger.debug("Clean local gstor directory successfully.")
+
+    g_logger.debug("Local clean CM instance directory [{0}] "
+                   "successfully.".format(os.path.dirname(clean_dir)))
 
 
 def cleanOneInstanceConfBakOld(dbInstance):

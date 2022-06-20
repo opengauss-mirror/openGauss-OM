@@ -122,6 +122,7 @@ class PreInstall(LocalBaseOM):
         self.envParams = []
         self.logFile = ""
         self.mpprcFile = ""
+        self.user_env_file = ""
         self.clusterToolPath = ""
         self.tmpFile = ""
         self.clusterAppPath = ""
@@ -814,7 +815,7 @@ Common options:
         if status != 0:
             self.logger.logExit(
                 ErrorCode.GAUSS_503["GAUSS_50311"] % self.user
-                + " Error: \n%s" % (std_out+std_err))
+                + " Error: \n%s" % output)
 
     def createClusterPaths(self):
         """
@@ -1182,19 +1183,12 @@ Common options:
         After set env, set daily alarm.
         """
         # get and check the userProfile
-        userProfile = ""
+        self.user_env_file = ProfileFile.get_user_bashrc(self.user)
         if self.mpprcFile != "" and self.mpprcFile is not None:
             userProfile = self.mpprcFile
         else:
-            cmd = "su - %s -c \"echo ~\" 2>/dev/null" % self.user
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                self.logger.logExit(ErrorCode.GAUSS_514[
-                                        "GAUSS_51400"] % cmd
-                                    + " Error:\n%s" % output)
-
             # check if user profile exist
-            userProfile = ClusterConstants.HOME_USER_BASHRC % self.user
+            userProfile = self.user_env_file
             if not os.path.exists(userProfile):
                 self.logger.logExit(ErrorCode.GAUSS_502[
                                         "GAUSS_50201"] % 'user profile'
@@ -1206,11 +1200,11 @@ Common options:
                                           cleanGS_CLUSTER_NAME=False)
         self.logger.debug("Successfully delete user's environmental variable.")
         if self.mpprcFile:
-            #import environment variable separation scene to bashrc
-            FileUtil.deleteLine(ClusterConstants.HOME_USER_BASHRC % self.user,
+            # import environment variable separation scene to bashrc
+            FileUtil.deleteLine(self.user_env_file,
                                 "^\\s*export\\s*%s=.*$" % DefaultValue.MPPRC_FILE_ENV)
-            context = "export %s=%s" %(DefaultValue.MPPRC_FILE_ENV, self.mpprcFile)
-            FileUtil.writeFile(ClusterConstants.HOME_USER_BASHRC % self.user, [context])
+            context = "export %s=%s" % (DefaultValue.MPPRC_FILE_ENV, self.mpprcFile)
+            FileUtil.writeFile(self.user_env_file, [context])
             self.logger.debug("Successfully flush 'export MPPRC' in bashrc")
 
         # user's environmental variable
@@ -1338,16 +1332,8 @@ Common options:
             # so it should exist here
             userProfile = self.mpprcFile
         else:
-            # check if user home exist
-            cmd = "su - %s -c \"echo ~\" 2>/dev/null" % self.user
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                self.logger.logExit(ErrorCode.GAUSS_514[
-                                        "GAUSS_51400"] % cmd
-                                    + " Error:\n%s" % output)
-
             # check if user profile exist
-            userProfile = ClusterConstants.HOME_USER_BASHRC % self.user
+            userProfile = ProfileFile.get_user_bashrc(self.user)
             if not os.path.exists(userProfile):
                 self.logger.debug(
                     "User profile does not exist. Please create %s."
@@ -1505,12 +1491,6 @@ Common options:
                 "export LD_LIBRARY_PATH=$GPHOME/lib:$LD_LIBRARY_PATH"])
             # set PYTHONPATH
             FileUtil.writeFile(userProfile, ["export PYTHONPATH=$GPHOME/lib"])
-            # set om root script path
-            om_root_path = "%s/%s/script" % (DefaultValue.ROOT_SCRIPTS_PATH,
-                                             self.user)
-            FileUtil.writeFile(userProfile,
-                             ["export PATH=%s:$PATH" % om_root_path])
-
         except Exception as e:
             self.logger.logExit(str(e))
         self.logger.debug("Successfully set tool ENV.")
@@ -1546,19 +1526,19 @@ Common options:
         """
         function: Determine whether the current node needs to set Cgroup
         input : NA
-        output: True     #no need to set cgroup
-                False    #need to set cgroup
+        output: True     #need to set cgroup
+                False    #not need to set cgroup
         """
         #Determine whether action is expansion.
         hostName = NetUtil.GetHostIpOrName()
         if len(self.clusterInfo.newNodes) == 0:
-            return False
+            return True
         #Determine whether the current node is a new node
         for node in self.clusterInfo.newNodes:
             if hostName == node.name:
-                return False
+                return True
         self.logger.debug("The current node is the old node for expansion, no need to set cgroup.")
-        return True
+        return False
 
     def decompressPkg2Cgroup(self):
         """
@@ -1596,7 +1576,7 @@ Common options:
         input : NA
         output: NA
         """
-        if self.needSetCgroup():
+        if not self.needSetCgroup():
             return
         self.logger.debug("Setting Cgroup.")
         # decompress server pakcage
@@ -2472,6 +2452,10 @@ Common options:
                           dest_path, recursive=True)
 
         self.logger.debug("Delete root scripts in om user path.")
+
+        # set om root script path
+        userProfile = self.getUserProfile()
+        FileUtil.writeFile(userProfile, ["export PATH=%s:$PATH" % om_root_path])
         # delete root scripts in GPHOME
         om_user_path = os.path.join(self.clusterToolPath, "script")
         user_om_files = os.listdir(om_user_path)

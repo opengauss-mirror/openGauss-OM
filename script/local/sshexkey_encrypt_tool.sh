@@ -14,7 +14,7 @@ cmd2="$3"
 
 func_sshkeygen_cmd()
 {
-cmd="ssh-keygen -t ed25519 -N \"$passwd\" -f ~/.ssh/id_rsa < /dev/null && chmod 600 ${cmd1} ${cmd2}"
+cmd="ssh-keygen -t ed25519 -N \"$passwd\" -f ~/.ssh/id_om < /dev/null && chmod 600 ${cmd1} ${cmd2}"
 eval $cmd
 }
 

@@ -25,7 +25,7 @@ from gspylib.common.ErrorCode import ErrorCode
 from os_platform.common import REDHAT, PAK_REDHAT, BIT_VERSION, \
     CENTOS, PAK_EULER, PAK_CENTOS, ASIANUX, SUSE, PAK_ASIANUX, \
     EULEROS, OPENEULER, KYLIN, PAK_OPENEULER, SUPPORT_WHOLE_PLATFORM_LIST,\
-    BLANK_SPACE, PAK_UBUNTU, DEBIAN
+    BLANK_SPACE, PAK_UBUNTU, DEBIAN, PAK_KYLIN
 from os_platform.linux_distro import LinuxDistro
 
 
@@ -170,13 +170,13 @@ class LinuxPlatform(object):
                 file_name = os.path.join(dir_name, "./../../",
                                          "%s-%s-%s-%s.%s" % (
                                             prefix_str, packageVersion,
-                                            PAK_CENTOS,
+                                            PAK_REDHAT,
                                             BIT_VERSION, postfix_str))
             if not os.path.isfile(file_name):
                 file_name = os.path.join(dir_name, "./../../",
                                          "%s-%s-%s-%s.%s" % (
                                             prefix_str, packageVersion,
-                                            PAK_REDHAT,
+                                            PAK_CENTOS,
                                             BIT_VERSION, postfix_str))
         elif distname in ASIANUX:
             file_name = os.path.join(dir_name, "./../../",
@@ -221,12 +221,18 @@ class LinuxPlatform(object):
                                         prefix_str, packageVersion,
                                         PAK_OPENEULER,
                                         BIT_VERSION, postfix_str))
+            if not os.path.isfile(file_name):
+                file_name = os.path.join(dir_name, "./../../",
+                                     "%s-%s-%s-%s.%s" % (
+                                        prefix_str, packageVersion,
+                                        PAK_KYLIN,
+                                        BIT_VERSION, postfix_str))
         elif distname in DEBIAN and (version == "buster/sid"):
-            file_name = os.path.join(dir_name, "./../../../",
+            file_name = os.path.join(dir_name, "./../../",
                                      "%s-%s-%s-%s.%s" % (
                                         prefix_str, packageVersion,
                                         PAK_UBUNTU,
-                                        BIT_VERSION, prefix_str))
+                                        BIT_VERSION, postfix_str))
         else:
             raise Exception(ErrorCode.GAUSS_519["GAUSS_51900"] +
                             "Supported platforms are: %s." % str(

@@ -173,8 +173,7 @@ class CleanOsUser(LocalBaseOM):
         """
         #get install path
         self.logger.debug("Clean user cron")
-        tmp_path = "/home/%s" %self.user
-        cron_file = "%s/gauss_cron_%s" % (tmp_path, self.user)
+        cron_file = "~/gauss_cron_%s" % self.user
         set_cron_cmd = "crontab -u %s -l > %s && " % (self.user, cron_file)
         set_cron_cmd += "sed -i '/CheckSshAgent.py/d' %s;" % cron_file
         set_cron_cmd += "crontab -u %s %s;service cron restart;" % (self.user, cron_file)

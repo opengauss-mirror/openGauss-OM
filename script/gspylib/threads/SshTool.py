@@ -736,7 +736,8 @@ class SshTool():
                                               targetDir, self.__resultFile)
                 hostList = self.hostNames
             if len(hostList) == 1 and hostList[0] == socket.gethostname() and \
-                srcFile != targetDir:
+                srcFile != targetDir and \
+                srcFile != os.path.join(targetDir, os.path.split(srcFile)[1]):
                 localMode = True
                 scpCmd = "cp -r %s %s" % (srcFile, targetDir)
             else:

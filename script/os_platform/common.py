@@ -58,8 +58,9 @@ PAK_CENTOS = "CentOS"
 PAK_EULER = "Euler"
 PAK_OPENEULER = "openEuler"
 PAK_REDHAT = "RedHat"
-PAK_ASIANUX = "asianux"
+PAK_ASIANUX = "Asianux"
 PAK_UBUNTU = "Ubuntu"
+PAK_KYLIN = "Kylin"
 
 #######################################################
 _supported_dists = (

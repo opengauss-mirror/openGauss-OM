@@ -485,6 +485,11 @@ class DefaultValue():
     # Cert type
     GRPC_CA = "grpc"
     SERVER_CA = "server"
+    # rsa file name
+    SSH_PRIVATE_KEY = os.path.expanduser("~/.ssh/id_om")
+    SSH_PUBLIC_KEY = os.path.expanduser("~/.ssh/id_om.pub")
+    SSH_AUTHORIZED_KEYS = os.path.expanduser("~/.ssh/authorized_keys")
+    SSH_KNOWN_HOSTS = os.path.expanduser("~/.ssh/known_hosts")
 
     @staticmethod
     def encodeParaline(cmd, keyword):
@@ -651,23 +656,6 @@ class DefaultValue():
             return 0
 
     @staticmethod
-    def checkPythonVersion():
-        """
-        function : Check system comes with Python version
-        input : NA
-        output: list
-        """
-        (major, minor, patchlevel) = platform.python_version_tuple()
-        if (str(major) == '3' and (str(minor) in ['6', '7'])):
-            if (str(minor) == '6'):
-                return (True, "3.6")
-            else:
-                return (True, "3.7")
-        else:
-            return (False, "%s.%s.%s" % (str(major), str(minor),
-                                         str(patchlevel)))
-
-    @staticmethod
     def getUserId(user):
         """
         function : get user id
@@ -688,52 +676,8 @@ class DefaultValue():
         input : NA
         output: NA
         """
-        (result, version) = DefaultValue.checkPythonVersion()
-        if not result:
-            print(ErrorCode.GAUSS_522["GAUSS_52201"] % version +
-                  " It must be 3.6.x or 3.7.x.")
-            sys.exit(1)
-        else:
-            localDir = os.path.dirname(os.path.realpath(__file__))
-            omToolsCffiPath = os.path.join(localDir,
-                                           "./../../../lib/_cffi_backend.so")
-            inspectToolsCffiPath = os.path.join(
-                localDir, "./../../../script/gspylib/inspection/"
-                          "lib/_cffi_backend.so")
-
-            """
-            Never remove _cffi_backend.so_UCS4 folder, as there maybe 
-            multi-version pythons on the platform
-            (V1R8C10 is with its own python, but now, we don't package 
-            python any more).
-            """
-            try:
-                flagNum = int(DefaultValue.GetPythonUCS())
-                # clean the old path info
-                FileUtil.removeFile(omToolsCffiPath)
-                FileUtil.removeFile(inspectToolsCffiPath)
-                # copy the correct version
-                newPythonDependCryptoPath = "%s_UCS%d_%s" % (omToolsCffiPath,
-                                                          flagNum, version)
-                if os.path.exists(newPythonDependCryptoPath):
-                    FileUtil.cpFile(newPythonDependCryptoPath, omToolsCffiPath,
-                                  "shell")
-                    FileUtil.cpFile(newPythonDependCryptoPath, inspectToolsCffiPath,
-                                  "shell")
-                else:
-                    newPythonDependCryptoPath = "%s_UCS%d" % (omToolsCffiPath,
-                                                          flagNum)
-                    FileUtil.cpFile(newPythonDependCryptoPath, omToolsCffiPath,
-                                  "shell")
-                    FileUtil.cpFile(newPythonDependCryptoPath, inspectToolsCffiPath,
-                                  "shell")
-            except Exception as e:
-                print(ErrorCode.GAUSS_516["GAUSS_51632"] %
-                      ("config depend file for paramiko 2.6.0. "
-                       "Error:\n%s" % str(e)))
-                sys.exit(1)
-            sys.path.insert(0, os.path.join(localDir, "./../../lib"))
-
+        localDir = os.path.dirname(os.path.realpath(__file__))
+        sys.path.insert(0, os.path.join(localDir, "./../../lib"))
 
     @staticmethod
     def getTmpDir(user, xml_path):
@@ -2282,13 +2226,12 @@ class DefaultValue():
             return False
 
     @staticmethod
-    def getPrimaryNode(userProfile, logger=None):
+    def getSpecificNode(userProfile, flagStr, logger=None):
         """
-        :param
-        :return: PrimaryNode
+        :param flagStr: Primary/Standby/Cascade
+        :return: correspond nodes
         """
         try:
-            primaryFlag = "Primary"
             count = 0
             while count < 30:
                 cmd = "source {0} && gs_om -t query".format(
@@ -2298,7 +2241,7 @@ class DefaultValue():
                                     or "cluster_state   : Degraded" in output):
                     break
                 if count == 2:
-                    start_cmd = "source {0} && gs_om -t start --timeout 30".format(userProfile)
+                    start_cmd = "source {0} && gs_om -t start --time-out 30".format(userProfile)
                     _, output = subprocess.getstatusoutput(start_cmd)
                     if logger:
                         logger.debug("Start cluster for get current primary datanode, "
@@ -2310,13 +2253,29 @@ class DefaultValue():
                                 "Command:%s. Error:\n%s" % (cmd, output))
             targetString = output.split("Datanode")[1]
             dnPrimary = [x for x in re.split(r"[|\n]", targetString)
-                         if primaryFlag in x]
+                         if flagStr in x]
             primaryList = []
             for dn in dnPrimary:
                 primaryList.append(list(filter(None, dn.split(" ")))[1])
             return primaryList, output
         except Exception as e:
             raise Exception(str(e))
+
+    @staticmethod
+    def getPrimaryNode(userProfile, logger=None):
+        """
+        :param
+        :return: PrimaryNode
+        """
+        return DefaultValue.getSpecificNode(userProfile, "Primary", logger)
+
+    @staticmethod
+    def getStandbyNode(userProfile, logger=None):
+        """
+        :param
+        :return: StandbyNode
+        """
+        return DefaultValue.getSpecificNode(userProfile, "Standby", logger)
 
 
     @staticmethod
@@ -2524,7 +2483,7 @@ class DefaultValue():
         :return:
         """
         DefaultValue.clear_ssh_id_rsa(mpprcfile, logger)
-        id_rsa_path = os.path.expanduser("~/.ssh/id_rsa")
+        id_rsa_path = DefaultValue.SSH_PRIVATE_KEY
         cmd = "source %s;echo \"%s\" | /bin/sh %s %s" %(
             mpprcfile, str(secret_word), shell_file, id_rsa_path)
         if logger:
@@ -2704,7 +2663,7 @@ class DefaultValue():
         if logger:
             logger.debug("Successfully to clear id_rsa in ssh-agent")
 
-        id_rsa_path = os.path.expanduser("~/.ssh/id_rsa")
+        id_rsa_path = DefaultValue.SSH_PRIVATE_KEY
         cmd = "source %s;echo \"%s\" | /bin/sh %s %s" % (
             mpprcfile, str(secret_word), shell_file, id_rsa_path)
         if logger:

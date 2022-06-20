@@ -66,6 +66,8 @@ elif [ X$(echo $PLAT_FORM_STR | grep "euleros") != X"" ]; then
     dist_version="EulerOS"
 elif [ X$(echo $PLAT_FORM_STR | grep "ubuntu") != X"" ]; then
     dist_version="Ubuntu"
+elif [ X$(echo $PLAT_FORM_STR | grep "asianux") != X"" ]; then
+    dist_version="Asianux"
 else
     echo "We only support openEuler(aarch64), EulerOS(aarch64), CentOS, Ubuntu(x86) platform."
     echo "Kernel is $kernel"
@@ -149,7 +151,7 @@ function version_cfg()
     echo "${gitversion}" >>${version_file}
 
     if [ -f ${PKG_TMP_DIR}/script/domain_utils/cluster_file/version_info.py ] ; then
-        sed -i -e "s/COMMON_VERSION = \"Gauss200 OM VERSION\"/COMMON_VERSION = \"$(echo ${om_version})\"/g" -e "s/__GAUSS_PRODUCT_STRING__/$module_name/g" ${PKG_TMP_DIR}/script/domain_utils/cluster_file/version_info.py
+        sed -i -e "s/COMMON_VERSION = \"Gauss200 OM VERSION\"/COMMON_VERSION = \"$(echo ${om_version})\"/g" ${PKG_TMP_DIR}/script/domain_utils/cluster_file/version_info.py
         if [ $? -ne 0 ]; then
             die "Failed to replace OM tools version number."
         fi
@@ -177,38 +179,8 @@ function clib_copy()
 
 function lib_copy()
 {
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/output/log/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/output/nodes/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/asn1crypto/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/bcrypt/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/cffi/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/cryptography/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/idna/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/nacl/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/pyasn1/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/pycparser/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/OpenSSL/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/psutil/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/netifaces/ &&
-    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/paramiko/ &&
-
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/asn1crypto/       ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/bcrypt/           ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/cffi/             ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/cryptography/     ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/idna/             ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/nacl/             ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/pyasn1/           ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/pycparser/        ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/OpenSSL/          ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/ipaddress.py      ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/six.py            ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/_cffi_backend.py  ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/_cffi_backend.so* ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psutil/           ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/netifaces/        ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/paramiko/         ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
-
+    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/output/log
+    mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/output/nodes
     mkdir -p ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/asn1crypto           ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/bcrypt               ${PKG_TMP_DIR}/lib
@@ -228,9 +200,7 @@ function lib_copy()
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/netifaces            ${PKG_TMP_DIR}/lib
 
     if [ -d "${BINARYLIBS_PATH_INSTALL_TOOLS}/psycopg2" ]; then
-        mkdir -p ${PKG_TMP_DIR}/script/gspylib/inspection/lib/psycopg2/
         cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psycopg2    ${PKG_TMP_DIR}/lib
-        cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psycopg2    ${PKG_TMP_DIR}/script/gspylib/inspection/lib/
     fi
 
 }

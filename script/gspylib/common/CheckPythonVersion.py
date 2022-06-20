@@ -23,16 +23,18 @@ import re
 def checkPythonVersion():
     pythonVersion = sys.version_info[0:2]
     distName = platform.platform()
+    if pythonVersion < (3, 0):
+        raise Exception("[GAUSS-52200] : version of python"
+                        " is not correct: %s." %
+                        distName + " should use Python 3.*")
     if re.search("oe1", distName) is not None:
         if not pythonVersion == (3, 7):
-            raise Exception("[GAUSS-52200] : version of python"
-                            " is not correct: %s." %
-                            distName + " should use Python 3.7.*")
+            print("Warnging version of python doesnot meet the expection, maybe third-party libs "
+                  "need to be compiled by yourself")
     else:
-        if not pythonVersion >= (3, 6):
-            raise Exception("[GAUSS-52200] : version of python"
-                            " is not correct: %s." %
-                            distName + " should use Python 3.6.*")
+        if not pythonVersion == (3, 6):
+            print("Warnging version of python doesnot meet the expection, maybe third-party libs "
+                  "need to be compiled by yourself")
     return True
 
 

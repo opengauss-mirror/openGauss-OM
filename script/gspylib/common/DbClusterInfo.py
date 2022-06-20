@@ -102,6 +102,8 @@ STANDBY_INSTANCE = 1
 DUMMY_STANDBY_INSTANCE = 2
 #cascade standby
 CASCADE_STANDBY = 3
+DICT_INSTANCE = {MASTER_INSTANCE: "primary", STANDBY_INSTANCE: "standby",
+                 CASCADE_STANDBY: "cascade_standby"}
 
 ###########################
 # instance number
@@ -1149,13 +1151,11 @@ class dbClusterInfo():
             outText = outText + ("time:%ld\n" % self.installTime)
             outText = outText + ("nodeCount:%u\n" % self.nodeCount)
             outText = outText + ("node:%u\n" % self.localNodeId)
+            outText = outText + ("=" * 60 + "\n")
             dnTotalNum = self.__getDnInstanceNum()
             for dbNode in self.dbNodes:
-                if self.clusterType == \
-                        CLUSTER_TYPE_SINGLE_PRIMARY_MULTI_STANDBY or \
-                        self.clusterType == CLUSTER_TYPE_SINGLE_INST:
-                    outText = outText + ("azName:%s\n" % dbNode.azName)
-                    outText = outText + ("azPriority:%u\n" % dbNode.azPriority)
+                outText = outText + ("azName:%s\n" % dbNode.azName)
+                outText = outText + ("azPriority:%u\n" % dbNode.azPriority)
                 outText = outText + ("node :%u\n" % dbNode.id)
                 outText = outText + ("nodeName:%s\n" % dbNode.name)
 
@@ -1170,6 +1170,8 @@ class dbClusterInfo():
                 j = 0
                 for dnInst in dbNode.datanodes:
                     j = j + 1
+                    outText = outText + ("datanodeInstanceType :%s\n" %
+                                         DICT_INSTANCE[dnInst.instanceType])
                     outText = outText + ("datanode %u:\n" % j)
                     outText = outText + (
                             "datanodeLocalDataPath :%s\n" % dnInst.datadir)
@@ -1190,54 +1192,20 @@ class dbClusterInfo():
                             "datanodeLocalHAPort :%u\n" % dnInst.haPort)
                     outText = outText + (
                             "dn_replication_num: %u\n" % dnTotalNum)
-                    k = 0
-                    if self.clusterType == \
-                            CLUSTER_TYPE_SINGLE_PRIMARY_MULTI_STANDBY or \
-                            self.clusterType == CLUSTER_TYPE_SINGLE_INST:
-                        maxPeerNum = MIRROR_COUNT_REPLICATION_MAX if \
-                            self.nodeCount > MIRROR_COUNT_REPLICATION_MAX \
-                            else self.nodeCount
-                        for k in range(maxPeerNum - 1):
-                            outText = outText + (
-                                    "datanodePeer%uDataPath :%s\n" % (
-                                k, dnInst.peerInstanceInfos[k].peerDataPath))
-                            m = 0
-                            for peerHaIP in dnInst.peerInstanceInfos[
-                                k].peerHAIPs:
-                                m += 1
-                                outText = outText + (
-                                        "datanodePeer%uHAIP %u:%s\n" % (
-                                    k, m, peerHaIP))
-                            outText = outText + (
-                                    "datanodePeer%uHAPort :%u\n" % (
-                                k, dnInst.peerInstanceInfos[k].peerHAPort))
-                    else:
-                        outText = outText + ("datanodePeerDataPath :%s\n" %
-                                             dnInst.peerInstanceInfos[
-                                                 0].peerDataPath)
+                    maxPeerNum = MIRROR_COUNT_REPLICATION_MAX if \
+                        self.nodeCount > MIRROR_COUNT_REPLICATION_MAX \
+                        else self.nodeCount
+                    for k in range(maxPeerNum - 1):
+                        outText = outText + ("datanodePeer%uDataPath :%s\n" %
+                                             (k, dnInst.peerInstanceInfos[k].peerDataPath))
                         m = 0
                         for peerHaIP in dnInst.peerInstanceInfos[k].peerHAIPs:
                             m += 1
-                            outText = outText + (
-                                    "datanodePeer2HAIP %u:%s\n" % (
-                                m, peerHaIP))
-                        outText = outText + ("datanodePeerHAPort :%u\n" %
-                                             dnInst.peerInstanceInfos[
-                                                 0].peerHAPort)
-                        outText = outText + ("datanodePeer2DataPath :%s\n" %
-                                             dnInst.peerInstanceInfos[
-                                                 0].peer2DataPath)
-                        m = 0
-                        for peer2HaIP in dnInst.peerInstanceInfos[
-                            0].peer2HAIPs:
-                            m += 1
-                            outText = outText + (
-                                    "datanodePeer2HAIP %u:%s\n" % (
-                                m, peer2HaIP))
-                        outText = outText + ("datanodePeer2HAPort :%u\n" %
-                                             dnInst.peerInstanceInfos[
-                                                 0].peer2HAPort)
+                            outText = outText + ("datanodePeer%uHAIP %u:%s\n" % (k, m, peerHaIP))
+                        outText = outText + ("datanodePeer%uHAPort :%u\n" %
+                                             (k, dnInst.peerInstanceInfos[k].peerHAPort))
 
+                    outText = outText + ("=" * 60 + "\n")
             self.__fprintContent(outText, fileName)
         except Exception as e:
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51652"] % str(e))
@@ -1284,7 +1252,7 @@ class dbClusterInfo():
             else:
                 (status, output) = subprocess.getstatusoutput(command)
 
-            global_cls_query_rst[dnName] = [status, output]
+            global_cls_query_rst[dnName+command.split()[-1]] = [status, output]
 
         global global_cls_query_rst
         parallelTool.parallelExecute(queryInstance, dbInfoList)
@@ -1306,11 +1274,12 @@ class dbClusterInfo():
             primaryDbState = ""
             portMap = {}
 
-            queryClsResult = copy.deepcopy(self.queryClsInfoParallel(hostName, sshtools, mpprcFile, "status"))
+            queryClsResult = copy.deepcopy(self.queryClsInfoParallel(hostName, sshtools, mpprcFile,
+                                                                     "status"))
 
             for dbNode in self.dbNodes:
                 for dnInst in dbNode.datanodes:
-                    (status, output) = queryClsResult.get(dbNode.name)
+                    (status, output) = queryClsResult.get(dbNode.name + dnInst.datadir)
                     if status != 0 or output.find("exc_sql failed") > 0:
                         if output.find(
                                 "could not connect to the local server") \
@@ -2527,11 +2496,51 @@ class dbClusterInfo():
                             % xmlFile + " Error:\n%s" % str(e))
 
         self.__readClusterGlobalInfo()
-        self.__readClusterNodeInfo()
+        if self.__read_and_check_config_item(xmlRootNode, "clusterType", "cluster", True) == \
+                "single-inst-one-node":
+            self.__read_cluster_node_info_for_one()
+        else:
+            self.__readClusterNodeInfo()
         self.__checkAZForSingleInst()
         IpPort = self.__checkInstancePortandIP()
         self.__check_cms_config()
         return IpPort
+
+    def __read_cluster_node_info_for_one(self):
+        """
+        function : Read cluster node info.
+        input : NA
+        output : NA
+        """
+        # read cluster node info.
+        (_, node_name) = ClusterConfigFile.readOneClusterConfigItem(xmlRootNode,
+                                                                    "nodeNames",
+                                                                    "cluster")
+        if [node_name] != self.__getAllHostnamesFromDEVICELIST():
+            raise Exception(ErrorCode.GAUSS_512["GAUSS_51236"] +
+                            " The number of nodeNames and DEVICE are not same.")
+        # Get basic info of node: name, ip and master instance number etc.
+        self.dbNodes = []
+        db_node = dbNodeInfo(1, node_name)
+        self.__readNodeBasicInfo(db_node, [node_name])
+        self.dbNodes.append(db_node)
+        # Get datanode info
+        for i in range(db_node.dataNum):
+            db_inst = instanceInfo(BASE_ID_DATANODE + i, 1)
+            db_inst.hostname = node_name
+            db_inst.datadir = self.__readNodeStrValue(node_name, "dataNode%s" % (i+1))
+            db_inst.instanceType = MASTER_INSTANCE if i == 0 else STANDBY_INSTANCE
+            db_inst.instanceRole = INSTANCE_ROLE_DATANODE
+            db_inst.listenIps = db_node.backIps[:]
+            db_inst.haIps = db_node.backIps[:]
+            db_inst.port = self.__readNodeIntValue(node_name, "dataPortBase%s" % (i+1))
+            db_inst.haPort = db_inst.port + 1
+            db_inst.ssdDir = ""
+            db_inst.syncNum = -1
+            db_inst.azName = db_node.azName
+            self.dbNodes[0].datanodes.append(db_inst)
+        self.dbNodes[0].appendInstance(1, MIRROR_ID_AGENT, INSTANCE_ROLE_CMAGENT,
+                                       INSTANCE_TYPE_UNDEFINED, [], None, "")
 
     def getClusterNodeNames(self):
         """

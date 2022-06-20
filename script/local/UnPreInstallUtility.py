@@ -34,6 +34,7 @@ from gspylib.common.LocalBaseOM import LocalBaseOM
 import impl.upgrade.UpgradeConst as Const
 from domain_utils.cluster_file.cluster_dir import ClusterDir
 from domain_utils.cluster_file.cluster_log import ClusterLog
+from domain_utils.cluster_file.profile_file import ProfileFile
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.file_util import FileUtil
 from domain_utils.cluster_file.version_info import VersionInfo
@@ -136,7 +137,7 @@ class Postuninstall(LocalBaseOM):
         if mppenvFile != "" and mppenvFile is not None:
             self.userProfile = mppenvFile
         else:
-            self.userProfile = ClusterConstants.HOME_USER_BASHRC % self.user
+            self.userProfile = ProfileFile.get_user_bashrc(self.user)
 
     def usage(self):
         """
@@ -457,25 +458,18 @@ class Postuninstall(LocalBaseOM):
         output: NA
         """
         self.logger.debug("Cleaning $GAUSS_ENV.")
-
-        # check if user profile exist
-        if self.userProfile is not None and self.userProfile != "":
-            userProfile = self.userProfile
-        else:
-            userProfile = ClusterConstants.HOME_USER_BASHRC % self.user
-
-        if not os.path.exists(userProfile):
+        if not os.path.exists(self.userProfile):
             self.logger.debug(
-                "The %s does not exist." % userProfile
+                "The %s does not exist." % self.userProfile
                 + " Please skip to clean $GAUSS_ENV.")
             return
         # clean user's environmental variable
-        DefaultValue.cleanUserEnvVariable(userProfile,
+        DefaultValue.cleanUserEnvVariable(self.userProfile,
                                           cleanGAUSS_WARNING_TYPE=True)
 
         # clean $GAUSS_ENV
         envContent = "^\\s*export\\s*GAUSS_ENV=.*$"
-        FileUtil.deleteLine(userProfile, envContent)
+        FileUtil.deleteLine(self.userProfile, envContent)
 
         self.logger.debug("Cleaned $GAUSS_ENV.")
 

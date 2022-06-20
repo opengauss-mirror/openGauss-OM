@@ -115,8 +115,6 @@ class PostUninstallImpl:
         """
         self.logger.debug("Do clean Environment.", "addStep")
         try:
-            # set GPHOME env
-            self.setOrCleanGphomeEnv()
             # check uninstall
             self.checkUnPreInstall()
             # clean app/log/data/temp dirs
@@ -134,17 +132,6 @@ class PostUninstallImpl:
         except Exception as e:
             self.logger.logExit(str(e))
         self.logger.debug("Do clean Environment succeeded.", "constant")
-
-    def setOrCleanGphomeEnv(self, setGphomeenv=True):
-        osProfile = ClusterConstants.ETC_PROFILE
-        if setGphomeenv:
-            GphomePath = ClusterDir.getPreClusterToolPath(self.xmlFile)
-            # set GPHOME
-            FileUtil.writeFile(osProfile, ["export GPHOME=%s" % GphomePath])
-        else:
-            FileUtil.deleteLine(osProfile, "^\\s*export\\s*GPHOME=.*$")
-            self.logger.debug(
-                "Deleting crash GPHOME in user environment variables.")
 
     def checkUnPreInstall(self):
         """
@@ -451,11 +438,11 @@ class PostUninstallImpl:
                                     "environment variables of the local node"
                                     + " Error: \n%s" % output)
             # check if user profile exist
-            userProfile = ""
+            user_bashrc = ProfileFile.get_user_bashrc(self.user)
             if (self.mpprcFile is not None and self.mpprcFile != ""):
                 userProfile = self.mpprcFile
             else:
-                userProfile = ClusterConstants.HOME_USER_BASHRC % self.user
+                userProfile = user_bashrc
             if (not os.path.exists(userProfile)):
                 self.logger.debug(
                     "The %s does not exist. "
@@ -464,8 +451,8 @@ class PostUninstallImpl:
             # clean user's environmental variable
             DefaultValue.cleanUserEnvVariable(userProfile,
                                               cleanGAUSS_WARNING_TYPE=True)
-            if os.path.exists(ClusterConstants.HOME_USER_BASHRC % self.user):
-                FileUtil.deleteLine(ClusterConstants.HOME_USER_BASHRC % self.user,
+            if os.path.exists(user_bashrc):
+                FileUtil.deleteLine(user_bashrc,
                                     "^\\s*export\\s*%s=.*$" % DefaultValue.MPPRC_FILE_ENV)
 
             # clean $GAUSS_ENV
@@ -881,7 +868,6 @@ class PostUninstallImpl:
             self.cleanLocalLog()
             self.cleanMpprcFile()
             self.cleanScript()
-            self.setOrCleanGphomeEnv(setGphomeenv=False)
             self.delet_root_mutual_trust()
             self.logger.log("Successfully cleaned environment.")
         except Exception as e:

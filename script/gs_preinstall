@@ -27,8 +27,13 @@ import grp
 import subprocess
 from gspylib.common.CheckPythonVersion import checkPythonVersion
 checkPythonVersion()
-
-from gspylib.common.DbClusterInfo import dbClusterInfo
+from base_utils.os.file_util import FileUtil
+if "--unused-third-party" in sys.argv:
+    package_path = os.path.dirname(os.path.realpath(__file__))
+    lib_path = os.path.join(package_path, "..", "lib")
+    clib_files = os.path.join(package_path, "gspylib/clib/*.so*")
+    FileUtil.cleanDirectoryContent(lib_path)
+    FileUtil.removeFile(clib_files)
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
@@ -43,6 +48,7 @@ from domain_utils.cluster_os.cluster_user import ClusterUser
 from base_utils.os.net_util import NetUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from base_utils.os.user_util import UserUtil
+
 
 #############################################################################
 # Global variables
@@ -68,6 +74,7 @@ class Preinstall(ParallelBaseOM):
         self.is_new_root_path = False
         self.ips = ""
         self.root_ssh_agent_flag = False
+        self.root_delete_flag = False
         self.user_ssh_agent_flag = False
 
     def usage(self):
@@ -80,7 +87,7 @@ Usage:
     gs_preinstall -U USER -G GROUP -X XMLFILE
       [-L]  [--skip-os-set] [--env-var="ENVVAR" [...]]
       [--sep-env-file=ENVFILE] [--skip-hostname-set] [-l LOGFILE]
-      [--non-interactive]
+      [--non-interactive] [--delete-root-trust] [--unused-third-party]
 
 General options:
     -U                                 Cluster user.
@@ -105,6 +112,10 @@ General options:
                                      If it is specified, you must ensure the
                                      SSH trust for root user and cluster
                                      user have been created.
+        --delete-root-trust            Whether to delete root trust.
+                                       (The default value is not deleted)
+        --unused-third-party           Whether to use om's third-party.
+                                       (The default value is used)
         """
         print(self.usage.__doc__)
 
@@ -156,6 +167,10 @@ General options:
         # parameter --non-interactive
         if (ParaDict.__contains__("preMode")):
             self.preMode = ParaDict.get("preMode")
+        # parameter --delete-root-trust
+        if (ParaDict.__contains__("root_delete_flag")):
+            self.root_delete_flag = ParaDict.get("root_delete_flag")
+
 
     def checkUserParameter(self):
         """
@@ -437,7 +452,7 @@ General options:
         gsom_path = os.path.realpath(
                     os.path.join(os.path.realpath(__file__), "../../../"))
         package_path = os.path.dirname(os.path.realpath(__file__))
-        lib_path = os.path.join(package_path, "lib")
+        lib_path = os.path.join(package_path, "..", "lib")
         sys.path.insert(0, lib_path)
         if gsom_path == DefaultValue.ROOT_SCRIPTS_PATH:
             self.is_new_root_path = True

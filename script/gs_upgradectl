@@ -254,7 +254,7 @@ General options:
                                      "on the host {1}".format(local_log.logFile, failed_host)
                 replace_reg = re.compile(r'-W[ ]*[^ ]*[ ]*')
                 cmd_hide_passwd = replace_reg.sub('-W *** ', cmd)
-                raise Exception(ErrorCode.GAUSS_535["GAUSS_53507"] % cmd_hide_passwd + local_file_msg)
+                raise Exception(ErrorCode.GAUSS_535["GAUSS_53507"] % cmd_hide_passwd + local_file_msg + output)
 
     def initGlobalInfos(self):
         """

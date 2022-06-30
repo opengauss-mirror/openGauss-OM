@@ -111,36 +111,42 @@ function fn_get_openGauss_tar()
         return 1
     fi
 
+    necessary_files=(
+    "openGauss-${version}-${system_name}-64bit-om.tar.gz"
+    "openGauss-${version}-${system_name}-64bit.sha256"
+    "openGauss-${version}-${system_name}-64bit.tar.bz2"
+    "upgrade_sql.sha256"
+    "upgrade_sql.tar.gz"
+    )
+
     cd "$install_tar"
-    if [ "`find $cur_path/../ -maxdepth 1 -name "openGauss-${version}-*"|wc -l`" -lt "3" ]
+    fn_check_files_exist "${necessary_files[*]}" $cur_path/../
+    if [ $? -ne 0 ]
     then
-        if [ "`find . -name "openGauss-${version}-*"|wc -l`" -lt "3" ] && [ "$system_name"X != "Ubuntu"X ]
+        fn_check_files_exist "${necessary_files[*]}" .
+        if [ $? -ne 0 ] && [ "$system_name"X != "Ubuntu"X ]
         then
             url="https://opengauss.obs.cn-south-1.myhuaweicloud.com/${version}/${system_arch}/openGauss-${version}-${system_name}-64bit-all.tar.gz"
             echo "Downloading openGauss tar from official website at ${install_tar}"
             wget $url --timeout=30 --tries=3 && tar -zxf openGauss-${version}-${system_name}-64bit-all.tar.gz
             if [ $? -ne 0 ]
             then
-                echo "wget error. The $install_tar need openGauss-${version}-${system_name}-64bit-om.tar.gz"
-                echo "wget error. The $install_tar need openGauss-${version}-${system_name}-64bit.sha256"
-                echo "wget error. The $install_tar need openGauss-${version}-${system_name}-64bit.tar.bz2"
+                echo "wget error. The $install_tar need"
+                fn_print_array "${necessary_files[*]}"
                 return 1
             else
                 echo "wget success."
             fi
         else
-            echo "Can not found openGauss install pkg."
-            echo "The $install_tar need openGauss-${version}-${system_name}-64bit-om.tar.gz"
-            echo "The $install_tar need openGauss-${version}-${system_name}-64bit.sha256"
-            echo "The $install_tar need openGauss-${version}-${system_name}-64bit.tar.bz2"
+            echo "Can not found openGauss install pkg. The $install_tar need"
+            fn_print_array "${necessary_files[*]}"
             return 1
         fi
     else
-        if [ "`find . -name "openGauss-${version}-*"|wc -l`" -lt "3" ]
+        fn_check_files_exist "${necessary_files[*]}" $install_tar
+        if [ $? -ne 0 ]
         then
-            cp "$cur_path/../openGauss-${version}-${system_name}-64bit-om.tar.gz" \
-               "$cur_path/../openGauss-${version}-${system_name}-64bit.tar.bz2" \
-               "$cur_path/../openGauss-${version}-${system_name}-64bit.sha256" "$install_tar"
+            fn_copy_files "${necessary_files[*]}" $cur_path/.. $install_tar
             if [ $? -ne 0 ]
             then
                 echo "copy Installation package error."

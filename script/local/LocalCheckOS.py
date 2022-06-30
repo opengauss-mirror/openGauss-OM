@@ -44,6 +44,9 @@ from domain_utils.cluster_file.version_info import VersionInfo
 from base_utils.os.net_util import NetUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from os_platform.linux_distro import LinuxDistro
+from os_platform.common import SUPPORT_RHEL6X_VERSION_LIST, \
+    SUPPORT_RHEL7X_VERSION_LIST, SUPPORT_RHEL12X_VERSION_LIST, \
+    SUPPORT_SUSE11X_VERSION_LIST, SUPPORT_RHEL8X_VERSION_LIST
 
 sys.path.insert(0, localDirPath + "/../../lib")
 import psutil
@@ -408,7 +411,7 @@ class ioschedulers:
         self.devices = dict()
         self.errormsg = ''
         # key is device name, value is optional configuration list
-        self.allItem = {}
+        self.all_item = {}
 
 
 def collectIOschedulers():
@@ -441,7 +444,7 @@ def collectIOschedulers():
             if len(words) != 2:
                 continue
             data.devices[d] = words[0].strip()
-            data.allItem[d] = scheduler.replace("[", "").replace("]",
+            data.all_item[d] = scheduler.replace("[", "").replace("]",
                                                                  "").split()
         except Exception as e:
             data.errormsg += e.__str__()
@@ -688,11 +691,11 @@ def disRemoveIPC():
         cmd = "systemctl show systemd-logind | grep RemoveIPC && " \
               "loginctl show-session | grep RemoveIPC"
         output = disableRemoveIPCLog(cmd)
-        ipcCheckNum = 0
+        ipc_check_num = 0
         for result in output.split("\n"):
             if result == "RemoveIPC=no":
-                ipcCheckNum = ipcCheckNum + 1
-        if ipcCheckNum < 1:
+                ipc_check_num = ipc_check_num + 1
+        if ipc_check_num < 1:
             g_logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
                              + " Error: \n cmd:\"systemctl show systemd-logind"
                                " | grep RemoveIPC and  loginctl show-session "
@@ -1007,7 +1010,7 @@ def setNetWorkMTUOrTXRXValue(networkCardNum, valueType,
 
     # write setting cmds into init file
     if (valueType == "tx" or valueType == "rx"):
-        cmdWrite = "sed -i \"/^.*\\/sbin\\/ethtool -G %s %s %s$/d\" %s" \
+        cmd_write = "sed -i \"/^.*\\/sbin\\/ethtool -G %s %s %s$/d\" %s" \
                    % (networkCardNum, valueType, expectValue, initFileName)
 
     cmdInit = """%s && echo "%s">>%s""" % (cmdWrite, cmd, initFileName)
@@ -1562,8 +1565,8 @@ def CheckIOSchedulers(isSetting=False):
     for dev in list(data.devices.keys()):
         expectedScheduler = "deadline"
         # Vda disk only supports mq-deadline
-        if (expectedScheduler not in data.allItem[dev]
-                and "mq-deadline" in data.allItem[dev]):
+        if (expectedScheduler not in data.all_item[dev]
+                and "mq-deadline" in data.all_item[dev]):
             expectedScheduler = "mq-deadline"
         scheduler = data.devices[dev]
         if scheduler != expectedScheduler:
@@ -1751,52 +1754,55 @@ def CheckPlatformInfo():
     data = collectplatformInfo()
     if (data.distname == "SuSE"):
         if (data.version == "11" and data.patchlevel == "1"):
-            mixedType = "%s%sSP%s" % (data.distname, data.version,
+            mixed_type = "%s%sSP%s" % (data.distname, data.version,
                                       data.patchlevel)
-            platformStr = "%s_%s_SP%s_%s" % (data.distname, data.version,
+            platform_str = "%s_%s_SP%s_%s" % (data.distname, data.version,
                                              data.patchlevel, data.bits)
-        elif (data.version == "11" and data.patchlevel in ("2", "3", "4")):
-            mixedType = "%s%s" % (data.distname, data.version)
-            platformStr = "%s_%s_SP%s_%s" % (data.distname, data.version,
+        elif data.version == "11" and data.patchlevel \
+            in SUPPORT_SUSE11X_VERSION_LIST:
+            mixed_type = "%s%s" % (data.distname, data.version)
+            platform_str = "%s_%s_SP%s_%s" % (data.distname, data.version,
                                              data.patchlevel, data.bits)
-        elif (data.version == "12" and
-              data.patchlevel in ("0", "1", "2", "3")):
-            mixedType = "%s%s" % (data.distname, data.version)
-            platformStr = "%s_%s_SP%s_%s" % (data.distname, data.version,
+        elif data.version == "12" and \
+            data.patchlevel in SUPPORT_RHEL12X_VERSION_LIST:
+            mixed_type = "%s%s" % (data.distname, data.version)
+            platform_str = "%s_%s_SP%s_%s" % (data.distname, data.version,
                                              data.patchlevel, data.bits)
         else:
-            platformStr = "%s_%s_SP%s_%s" % (data.distname, data.version,
+            platform_str = "%s_%s_SP%s_%s" % (data.distname, data.version,
                                              data.patchlevel, data.bits)
-            g_logger.log("False %s %s" % (data.distname, platformStr))
+            g_logger.log("False %s %s" % (data.distname, platform_str))
             return
-    elif (data.distname in ("redhat", "centos", "asianux")):
-        if (data.version in ("6.4", "6.5", "6.6", "6.7", "6.8", "6.9")):
-            mixedType = "%s6" % data.distname
-            platformStr = "%s_%s_%s" % (data.distname,
+    elif data.distname in ("redhat", "centos", "asianux"):
+        if data.version in SUPPORT_RHEL6X_VERSION_LIST:
+            mixed_type = "%s6" % data.distname
+            platform_str = "%s_%s_%s" % (data.distname,
                                         data.version, data.bits)
-        elif (data.version[0:3]
-              in ("7.0", "7.1", "7.2", "7.3", "7.4", "7.5", "7.6", "7.7", 
-              "7.8", "7.9")):
-            mixedType = "%s7" % data.distname
-            platformStr = "%s_%s_%s" % (data.distname, data.version,
+        elif data.version[0:3] in SUPPORT_RHEL7X_VERSION_LIST:
+            mixed_type = "%s7" % data.distname
+            platform_str = "%s_%s_%s" % (data.distname, data.version,
+                                        data.bits)
+        elif data.version[0:3] in SUPPORT_RHEL8X_VERSION_LIST:
+            mixed_type = "%s8" % data.distname
+            platform_str = "%s_%s_%s" % (data.distname, data.version,
                                         data.bits)
         else:
-            platformStr = "%s_%s_%s" % (data.distname, data.version,
+            platform_str = "%s_%s_%s" % (data.distname, data.version,
                                         data.bits)
-            g_logger.log("False %s %s" % (data.distname, platformStr))
+            g_logger.log("False %s %s" % (data.distname, platform_str))
             return
     elif (data.distname == "euleros" or data.distname == "openEuler" or data.distname == "kylin"):
-        mixedType = "%s" % data.distname
-        platformStr = "%s_%s_%s" % (data.distname, data.version, data.bits)
+        mixed_type = "%s" % data.distname
+        platform_str = "%s_%s_%s" % (data.distname, data.version, data.bits)
     elif (data.distname == "debian" or data.version == "buster/sid"):
-        mixedType = "%s" % data.distname
-        platformStr = "%s_%s_%s" % (data.distname, data.version, data.bits)
+        mixed_type = "%s" % data.distname
+        platform_str = "%s_%s_%s" % (data.distname, data.version, data.bits)
     else:
-        platformStr = "%s_%s_%s" % (data.distname, data.version, data.bits)
-        g_logger.log("False unknown %s" % platformStr)
+        platform_str = "%s_%s_%s" % (data.distname, data.version, data.bits)
+        g_logger.log("False unknown %s" % platform_str)
         return
 
-    g_logger.log("True %s %s" % (mixedType, platformStr))
+    g_logger.log("True %s %s" % (mixed_type, platform_str))
     return
 
 

@@ -16,6 +16,7 @@
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------
 import sys
+import sysconfig
 import platform
 import re
 
@@ -37,9 +38,18 @@ def checkPythonVersion():
                   "need to be compiled by yourself")
     return True
 
+def check_python_compiler_option():
+    config_args = sysconfig.get_config_var("CONFIG_ARGS")
+    if "--enable-shared" and "-fPIC" not in config_args:
+        raise Exception("[GAUSS-52200] : When compiling python, \
+            carry the -enable-shared and -fpic parameters")
+    return True
+
 
 if __name__ == '__main__':
     try:
-        checkPythonVersion()
+        check_python = checkPythonVersion()
+        if check_python:
+            check_python_compiler_option()
     except Exception as e:
         raise Exception(e)

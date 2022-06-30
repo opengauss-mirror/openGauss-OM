@@ -25,8 +25,10 @@ import pwd
 import sys
 import grp
 import subprocess
-from gspylib.common.CheckPythonVersion import checkPythonVersion
+from gspylib.common.CheckPythonVersion import checkPythonVersion, \
+    check_python_compiler_option
 checkPythonVersion()
+check_python_compiler_option()
 from base_utils.os.file_util import FileUtil
 if "--unused-third-party" in sys.argv:
     package_path = os.path.dirname(os.path.realpath(__file__))

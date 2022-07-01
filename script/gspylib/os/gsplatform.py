@@ -84,7 +84,7 @@ SUSE11 = "11"
 SUSE12 = "12"
 SUPPORT_SUSE_VERSION_LIST = [SUSE11, SUSE12]
 SUPPORT_SUSE11X_VERSION_LIST = ["1", "2", "3", "4"]
-SUPPORT_RHEL12X_VERSION_LIST = ["0", "1", "2", "3"]
+SUPPORT_SUSE12X_VERSION_LIST = ["0", "1", "2", "3", "4", "5"]
 BIT_VERSION = "64bit"
 
 # ---------------command path--------------------
@@ -99,6 +99,7 @@ PAK_OPENEULER = "openEuler"
 PAK_REDHAT = "RedHat"
 PAK_ASIANUX = "Asianux"
 PAK_UBUNTU = "Ubuntu"
+PAK_SUSE = "SUSE"
 
 #######################################################
 _supported_dists = (
@@ -1502,7 +1503,12 @@ class LinuxPlatform(GenericPlatform):
         elif distname == SUSE and version.split('.')[0] in ("11", "12"):
             fileName = os.path.join(dirName, "./../../../",
                                     "%s-%s-%s-%s.%s" % (
-                                        prefixStr, packageVersion, "SUSE11",
+                                        prefixStr, packageVersion, PAK_CENTOS,
+                                        BIT_VERSION, postfixStr))
+            if not os.path.isfile(fileName):
+                fileName = os.path.join(dirName, "./../../../",
+                                    "%s-%s-%s-%s.%s" % (
+                                        prefixStr, packageVersion, PAK_SUSE,
                                         BIT_VERSION, postfixStr))
         elif distname in EULEROS and (idnum in ["SP2", "SP3", "SP5"]):
             fileName = os.path.join(dirName, "./../../../",
@@ -1722,7 +1728,7 @@ class SLESPlatform(LinuxPlatform):
                     ((version == SUSE11 and
                       patchlevel in SUPPORT_SUSE11X_VERSION_LIST) or
                      (version == SUSE12 and
-                      patchlevel in SUPPORT_RHEL12X_VERSION_LIST))):
+                      patchlevel in SUPPORT_SUSE12X_VERSION_LIST))):
                 platformVersion = "%s.%s" % (version, patchlevel)
                 return distName.lower(), platformVersion
             else:

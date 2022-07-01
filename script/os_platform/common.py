@@ -48,7 +48,7 @@ SUSE11 = "11"
 SUSE12 = "12"
 SUPPORT_SUSE_VERSION_LIST = [SUSE11, SUSE12]
 SUPPORT_SUSE11X_VERSION_LIST = ["1", "2", "3", "4"]
-SUPPORT_RHEL12X_VERSION_LIST = ["0", "1", "2", "3"]
+SUPPORT_SUSE12X_VERSION_LIST = ["0", "1", "2", "3", "4", "5"]
 BIT_VERSION = "64bit"
 
 # ---------------command path--------------------
@@ -64,6 +64,7 @@ PAK_REDHAT = "RedHat"
 PAK_ASIANUX = "Asianux"
 PAK_UBUNTU = "Ubuntu"
 PAK_KYLIN = "Kylin"
+PAK_SUSE = "SUSE"
 
 #######################################################
 _supported_dists = (

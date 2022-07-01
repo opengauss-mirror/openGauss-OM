@@ -24,7 +24,7 @@ import subprocess
 
 import platform
 from gspylib.common.ErrorCode import ErrorCode
-from os_platform.common import SUPPORT_RHEL12X_VERSION_LIST, \
+from os_platform.common import SUPPORT_SUSE12X_VERSION_LIST, \
     SUPPORT_SUSE11X_VERSION_LIST, SUSE12, SUSE11, BIT_VERSION, \
     SUPPORT_SUSE_VERSION_LIST, SUSE, BLANK_SPACE
 from os_platform.linux_distro import LinuxDistro
@@ -150,7 +150,7 @@ class SLESPlatform(LinuxPlatform):
                     ((version == SUSE11 and
                       patchlevel in SUPPORT_SUSE11X_VERSION_LIST) or
                      (version == SUSE12 and
-                      patchlevel in SUPPORT_RHEL12X_VERSION_LIST))):
+                      patchlevel in SUPPORT_SUSE12X_VERSION_LIST))):
                 platform_version = "%s.%s" % (version, patchlevel)
                 return dist_name.lower(), platform_version
             else:

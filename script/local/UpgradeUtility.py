@@ -4341,11 +4341,12 @@ def isKillDn():
         # get the dn and cn name
         dnInst = None
         clusterNodes = g_clusterInfo.dbNodes
+        with_cm = True if g_clusterInfo.cmscount > 0 else False
         for dbNode in clusterNodes:
             if len(dbNode.datanodes) == 0:
                 continue
             dnInst = dbNode.datanodes[0]
-            primaryDnNode, _ = DefaultValue.getPrimaryNode(g_opts.userProfile)
+            primaryDnNode, _ = DefaultValue.getPrimaryNode(g_opts.userProfile, with_cm=with_cm)
             if dnInst.hostname not in primaryDnNode:
                 continue
             break

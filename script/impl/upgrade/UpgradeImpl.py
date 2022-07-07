@@ -2246,11 +2246,7 @@ class UpgradeImpl:
         output: NA
         """
         self.context.logger.debug("Preparing upgrade sql folder.")
-        if self.context.action == const.ACTION_INPLACE_UPGRADE:
-            hostName = NetUtil.GetHostIpOrName()
-            hosts = [hostName]
-        else:
-            hosts = self.context.clusterNodes
+        hosts = self.context.clusterNodes
         cmd = "%s -t %s -U %s --upgrade_bak_path=%s -X %s -l %s" % \
               (OMCommand.getLocalScript("Local_Upgrade_Utility"),
                const.ACTION_UPGRADE_SQL_FOLDER,

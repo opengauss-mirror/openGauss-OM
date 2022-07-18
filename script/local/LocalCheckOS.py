@@ -45,7 +45,7 @@ from base_utils.os.net_util import NetUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from os_platform.linux_distro import LinuxDistro
 from os_platform.common import SUPPORT_RHEL6X_VERSION_LIST, \
-    SUPPORT_RHEL7X_VERSION_LIST, SUPPORT_RHEL12X_VERSION_LIST, \
+    SUPPORT_RHEL7X_VERSION_LIST, SUPPORT_SUSE12X_VERSION_LIST, \
     SUPPORT_SUSE11X_VERSION_LIST, SUPPORT_RHEL8X_VERSION_LIST
 
 sys.path.insert(0, localDirPath + "/../../lib")
@@ -1764,7 +1764,7 @@ def CheckPlatformInfo():
             platform_str = "%s_%s_SP%s_%s" % (data.distname, data.version,
                                              data.patchlevel, data.bits)
         elif data.version == "12" and \
-            data.patchlevel in SUPPORT_RHEL12X_VERSION_LIST:
+            data.patchlevel in SUPPORT_SUSE12X_VERSION_LIST:
             mixed_type = "%s%s" % (data.distname, data.version)
             platform_str = "%s_%s_SP%s_%s" % (data.distname, data.version,
                                              data.patchlevel, data.bits)

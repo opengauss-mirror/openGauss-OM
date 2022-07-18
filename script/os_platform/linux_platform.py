@@ -25,7 +25,7 @@ from gspylib.common.ErrorCode import ErrorCode
 from os_platform.common import REDHAT, PAK_REDHAT, BIT_VERSION, \
     CENTOS, PAK_EULER, PAK_CENTOS, ASIANUX, SUSE, PAK_ASIANUX, \
     EULEROS, OPENEULER, KYLIN, PAK_OPENEULER, SUPPORT_WHOLE_PLATFORM_LIST,\
-    BLANK_SPACE, PAK_UBUNTU, DEBIAN, PAK_KYLIN
+    BLANK_SPACE, PAK_UBUNTU, DEBIAN, PAK_KYLIN, PAK_SUSE
 from os_platform.linux_distro import LinuxDistro
 
 
@@ -191,8 +191,13 @@ class LinuxPlatform(object):
         elif distname == SUSE and version.split('.')[0] in ("11", "12"):
             file_name = os.path.join(dir_name, "./../../",
                                      "%s-%s-%s-%s.%s" % (
-                                        prefix_str, packageVersion, "SUSE11",
+                                        prefix_str, packageVersion, PAK_CENTOS,
                                         BIT_VERSION, postfix_str))
+            if not os.path.isfile(file_name):
+                file_name = os.path.join(dir_name, "./../../",
+                                        "%s-%s-%s-%s.%s" % (
+                                            prefix_str, packageVersion, PAK_SUSE,
+                                            BIT_VERSION, postfix_str))
         elif distname in EULEROS and (idnum in ["SP2", "SP3", "SP5"]):
             new_prefix_str = "%s-%s" % (prefix_str, packageVersion)
             new_postfix_str = "%s.%s" % (BIT_VERSION, postfix_str)

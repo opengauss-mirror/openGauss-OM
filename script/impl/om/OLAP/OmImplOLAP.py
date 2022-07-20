@@ -179,9 +179,17 @@ class OmImplOLAP(OmImpl):
         """
         self.logger.debug("Operating: Starting.")
         # if has cm, will start cluster by cm_ctl command
-        if not self.context.clusterInfo.hasNoCm():
+        if ((not self.context.clusterInfo.hasNoCm())
+            and DefaultValue.isgreyUpgradeNodeSpecify(self.context.user,
+            DefaultValue.GREY_UPGRADE_STEP_UPGRADE_PROCESS, None, self.context.logger)):
+            self.context.logger.debug("Have CM configuration, upgrade all"
+                                      " nodes together.")
             self.doStartClusterByCm()
             return
+        else:
+            self.context.logger.debug("Have CM configuration, rolling upgrade "
+                                     "partial node but not all nodes, so "
+                                     "start cluster with openGauss om.")
         # Specifies the stop node
         # Gets the specified node id
         startType = "node" if self.context.g_opts.nodeName != "" else "cluster"

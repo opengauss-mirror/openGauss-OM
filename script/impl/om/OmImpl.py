@@ -252,7 +252,9 @@ class OmImpl:
                 raise Exception(
                     ErrorCode.GAUSS_516["GAUSS_51619"]
                     % self.context.g_opts.nodeName)
-        if not self.context.clusterInfo.hasNoCm():
+        if ((not self.context.clusterInfo.hasNoCm())
+            and DefaultValue.isgreyUpgradeNodeSpecify(self.context.user,
+            DefaultValue.GREY_UPGRADE_STEP_UPGRADE_PROCESS, None, self.context.logger)):
             self.getQueryStatusByCm(node_id)
         else:
             self.getQueryStatusWithoutCm(node_id, sshtool, host_name)

@@ -387,7 +387,7 @@ class CheckContext():
             return
         fileName = self.getCacheFile()
         if not os.path.isfile(fileName):
-            raise CheckException("File %s is not exist or invalid" % fileName)
+            raise CheckException("GAUSS-53049", "File %s is not exist or invalid" % fileName)
         try:
             pool = ThreadPool(DefaultValue.getCpuSet())
             results = pool.map(self.sendTmpFile, hosts)
@@ -540,16 +540,16 @@ def parseCommandLine():
         try:
             g_opts.timeout = int(ParaDict["time_out"])
         except Exception:
-            raise CheckException("The parameter timeout set invalid value")
+            raise CheckException("GAUSS-53050", "The parameter timeout set invalid value")
         if g_opts.timeout < DEFAULT_TIMEOUT:
-            raise CheckException(
+            raise CheckException("GAUSS-53051",
                 "The timeout parameter must be set larger than default "
                 "value 1500 seconds")
     setTimeOut()
     if "format" in list(ParaDict.keys()):
         g_opts.format = ParaDict["format"]
         if g_opts.format not in formatList:
-            raise CheckException(
+            raise CheckException("GAUSS-53052",
                 "Format %s is not available,the valid format is %s" % (
                     g_opts.format, ",".join(formatList)))
     if "nonPrinting" in list(ParaDict.keys()):
@@ -558,10 +558,10 @@ def parseCommandLine():
 def checkParameter():
     ##########################################################
     if g_opts.nodes:
-        raise CheckException("The --hosts parameter is not available")
+        raise CheckException("GAUSS-53053", "The --hosts parameter is not available")
     if __isRoot() and not __isDistributing():
         if not g_opts.localMode:
-            raise CheckException(
+            raise CheckException("GAUSS-53054",
                 "The command must be running with cluster user")
     ########################################################
     # Get the -U parameter
@@ -585,15 +585,15 @@ def checkuser():
         g_context.user = SharedFuncs.getCurrentUser()
     if g_context.user:
         if not __isRoot() and g_context.user != SharedFuncs.getCurrentUser():
-            raise CheckException(
+            raise CheckException("GAUSS-53055",
                 "The user %s is not current user" % g_context.user)
         try:
             user_uid = pwd.getpwnam(g_context.user).pw_uid
         except Exception:
-            raise CheckException(
+            raise CheckException("GAUSS-53055",
                 "The user %s is not a effective user." % g_context.user)
         if user_uid == 0:
-            raise CheckException("The -U parameter can not be the root user.")
+            raise CheckException("GAUSS-53056", "The -U parameter can not be the root user.")
         isClusterUser = SharedFuncs.checkClusterUser(g_context.user,
                                                      __getMpprcFile())
         if isClusterUser:
@@ -605,7 +605,7 @@ def checkuser():
             else:
                 isClusterUser = False
         if not isClusterUser:
-            raise CheckException(
+            raise CheckException("GAUSS-53055",
                 "The user %s is not valid cluster user" % g_context.user)
         if g_opts.localMode or g_opts.distributing:
             return
@@ -632,14 +632,14 @@ def checkuser():
                       resultInfo[3] in dbNameList):
                     errorNode.append(resultInfo[3])
                 else:
-                    raise CheckException(
+                    raise CheckException("GAUSS-53057",
                         "Failed to check user trust. commands: %s Error:/n%s"
                         % (cmd, output))
             if errorNode:
-                raise CheckException(
+                raise CheckException("GAUSS-53057",
                     "Failed to check user trust with %s" % errorNode)
             else:
-                raise CheckException(
+                raise CheckException("GAUSS-53057",
                     "Failed to check user trust. Error:/n%s" % output)
 
 
@@ -649,10 +649,10 @@ def createPath(path, user=""):
     if os.path.isdir(path):
         # test write permissions
         if not FileUtil.checkDirWriteable(path):
-            raise CheckException(
+            raise CheckException("GAUSS-53058",
                 "Failed to create or delete file in the [%s]." % path)
     elif os.path.isfile(path):
-        raise CheckException("The out path [%s] must be a directory." % path)
+        raise CheckException("GAUSS-53059", "The out path [%s] must be a directory." % path)
     else:
         # path is not exist. recursively create the path
         FileUtil.createDirectory(path, True, DefaultValue.KEY_DIRECTORY_MODE)
@@ -753,7 +753,7 @@ def getRootUserPwd():
                 rootpwd = __retryConnection(host, rootuser)
             g_opts.pwdMap[host] = (rootuser, rootpwd)
         if pwd.getpwnam(rootuser).pw_uid != 0:
-            raise CheckException("Enter the user [%s] does not have"
+            raise CheckException("GAUSS-53060", "Enter the user [%s] does not have"
                                  " root privileges." % rootuser)
         # print message on screen
         __printOnScreen("Check root password connection successfully")
@@ -810,7 +810,7 @@ def parseCheckContext():
                 g_context.routing = "%s:%s" % (
                     workIP, SharedFuncs.getMaskByIP(workIP))
             else:
-                raise CheckException(
+                raise CheckException("GAUSS-53061",
                     "The --routing is required when cluster dosen't exist")
         g_context.items.append(item)
     if len(singleSkipList) != 0:
@@ -864,7 +864,7 @@ def parseCheckContext():
     if failedItems:
         raise ParseItemException(failedItems)
     if not g_context.items:
-        raise CheckException("No check item can be performed,"
+        raise CheckException("GAUSS-53062", "No check item can be performed,"
                              " please confirm the input parameters.")
 
     # print message on screen
@@ -964,7 +964,7 @@ def __retryConnection(host, user):
             return passwd
         else:
             continue
-    raise CheckException(
+    raise CheckException("GAUSS-53063",
         "Verify password failed for user[%s] on the node[%s]" % (user, host))
 
 
@@ -980,7 +980,7 @@ def __getMpprcFile():
         cmd = "echo ~ 2>/dev/null"
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
-            raise CheckException(
+            raise CheckException("GAUSS-53064",
                 "Fetching user environment variable file failed."
                 " Please setup environment variables." + "The cmd is %s" % cmd)
         else:
@@ -989,7 +989,7 @@ def __getMpprcFile():
         cmd = "su - %s -c 'echo ~ 2>/dev/null'" % g_context.user
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
-            raise CheckException(
+            raise CheckException("GAUSS-53065",
                 "Failed to get user [%s] home directory. Error: %s\n" % (
                     g_context.user, output) + "The cmd is %s" % cmd)
         else:
@@ -997,7 +997,7 @@ def __getMpprcFile():
     elif __isRoot():
         return ""
     else:
-        raise CheckException("The separated mpprc file was not found."
+        raise CheckException("GAUSS-53066", "The separated mpprc file was not found."
                              " Please setup environment variables")
 
 
@@ -1178,7 +1178,7 @@ def getMTUValue(node):
     else:
         username, passwd = g_opts.pwdMap[node]
         if username is None or passwd is None:
-            raise CheckException("Retrive username and password error.")
+            raise CheckException("GAUSS-53067", "Retrive username and password error.")
         output = SharedFuncs.runSshCmdWithPwd(cmd1, sshIp, username, passwd)
     # Separate each network card
     networkInfoList = output.strip().split('\n\n')
@@ -1191,7 +1191,7 @@ def getMTUValue(node):
             networkInfo = eachNet
             break
     if not networkInfo:
-        raise CheckException(
+        raise CheckException("GAUSS-53068",
             "Failed to get network card information with '%s'." % node)
     # get network number
     networkNum = networkInfo.split()[0]
@@ -1210,10 +1210,10 @@ def getMTUValue(node):
         else:
             continue
     if not networkNum:
-        raise CheckException(
+        raise CheckException("GAUSS-53068",
             "Failed to get network card number with '%s'." % node)
     if not mtuValue:
-        raise CheckException(
+        raise CheckException("GAUSS-53068",
             "Failed to get network card mtu value with '%s' '%s'."
             % (node, networkNum))
     # The nodes are grouped by MTU value
@@ -1537,7 +1537,7 @@ def __analysisResult(output, itemName):
     """
     item_result = ItemResult.parse(output)
     if not item_result:
-        raise CheckException("analysis result occurs error")
+        raise CheckException("GAUSS-53069", "analysis result occurs error")
     try:
         # load support item
         mod_path = g_context.supportItems[itemName]
@@ -1545,7 +1545,7 @@ def __analysisResult(output, itemName):
         # analysis the item result got from each node
         item_result = checker.postAnalysis(item_result)
     except Exception as e:
-        raise CheckException(str(e))
+        raise CheckException("GAUSS-53070", str(e))
     return item_result
 
 

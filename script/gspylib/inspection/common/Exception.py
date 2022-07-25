@@ -18,8 +18,8 @@
 
 
 class CheckException(Exception):
-    def __init__(self, content):
-        self.code = "GAUSS-53000"
+    def __init__(self, code, content):
+        self.code = code
         self.content = content
 
     def __str__(self):
@@ -28,7 +28,7 @@ class CheckException(Exception):
 
 class UseBothParameterException(CheckException):
     def __init__(self, params):
-        self.code = "GAUSS-53015"
+        self.code = "GAUSS-53034"
         self.content = \
             " The parameter '-%s' and '-%s' can not be used together." % (
                 params[0], params[1])
@@ -36,7 +36,7 @@ class UseBothParameterException(CheckException):
 
 class SceneNotFoundException(CheckException):
     def __init__(self, scene, supportScenes):
-        self.code = "GAUSS-53017"
+        self.code = "GAUSS-53035"
         self.content = \
             "The scene %s and its configuaration file scene_%s.xml " \
             "were not found in config folder." % (
@@ -46,7 +46,7 @@ class SceneNotFoundException(CheckException):
 
 class ParseItemException(CheckException):
     def __init__(self, items):
-        self.code = "GAUSS-53017"
+        self.code = "GAUSS-53036"
         self.content = \
             "There were errors when parsing these items: %s." % ",".join(
                 items) + \
@@ -55,32 +55,32 @@ class ParseItemException(CheckException):
 
 class NotEmptyException(CheckException):
     def __init__(self, elem, detail=""):
-        self.code = "GAUSS-53018"
+        self.code = "GAUSS-53037"
         self.content = "The %s cannot be empty. %s" % (elem, detail)
 
 
 class NotExistException(CheckException):
     def __init__(self, elem, List):
-        self.code = "GAUSS-53019"
+        self.code = "GAUSS-53038"
         self.content = "The %s does not exist in %s." % (elem, List)
 
 
 class InterruptException(CheckException):
     def __init__(self):
-        self.code = "GAUSS-53020"
+        self.code = "GAUSS-53039"
         self.content = \
             "The checking process was interrupted by user with Ctrl+C command"
 
 
 class TrustException(CheckException):
     def __init__(self, hosts):
-        self.code = "GAUSS-53021"
+        self.code = "GAUSS-53040"
         self.content = "Faild to verified SSH trust on hosts: %s" % hosts
 
 
 class ShellCommandException(CheckException):
     def __init__(self, cmd, output):
-        self.code = "GAUSS-53025"
+        self.code = "GAUSS-53041"
         self.cmd = cmd
         self.output = output
         self.content = \
@@ -90,7 +90,7 @@ class ShellCommandException(CheckException):
 
 class SshCommandException(CheckException):
     def __init__(self, host, cmd, output):
-        self.code = "GAUSS-53026"
+        self.code = "GAUSS-53042"
         self.cmd = cmd
         self.host = host
         self.output = output
@@ -101,7 +101,7 @@ class SshCommandException(CheckException):
 
 class SQLCommandException(CheckException):
     def __init__(self, sql, output):
-        self.code = "GAUSS-53027"
+        self.code = "GAUSS-53043"
         self.sql = sql
         self.output = output
         self.content = \
@@ -111,13 +111,13 @@ class SQLCommandException(CheckException):
 
 class TimeoutException(CheckException):
     def __init__(self, nodes):
-        self.code = "GAUSS-53028"
+        self.code = "GAUSS-53044"
         self.content = "The node[%s] execute timeout." % ",".join(nodes)
 
 
 class ThreadCheckException(CheckException):
     def __init__(self, thread, exception):
-        self.code = "GAUSS-53020"
+        self.code = "GAUSS-53045"
         if (isinstance(exception, ShellCommandException)
                 or isinstance(exception, SQLCommandException)
                 or isinstance(exception, SshCommandException)):
@@ -135,18 +135,18 @@ class ThreadCheckException(CheckException):
 
 class ContextDumpException(CheckException):
     def __init__(self, errors):
-        self.code = "GAUSS-53030"
+        self.code = "GAUSS-53046"
         self.content = "Dumping context has errors: %s." % str(errors)
 
 
 class ContextLoadException(CheckException):
     def __init__(self, errors):
-        self.code = "GAUSS-53031"
+        self.code = "GAUSS-53047"
         self.content = "Loading context has errors: %s." % str(errors)
 
 
 class CheckNAException(CheckException):
     def __init__(self, item):
-        self.code = "GAUSS-53033"
+        self.code = "GAUSS-53048"
         self.content = \
             "Check item %s are not needed at the current node" % item

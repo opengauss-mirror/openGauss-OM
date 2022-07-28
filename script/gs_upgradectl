@@ -116,6 +116,10 @@ General options:
   --force                         Force to rollback when cluster status is
                                   not normal
   --grey                          Use grey-binary-upgrade
+Option for grey upgrade
+  -h                              Under grey upgrade, specified nodes name.
+  --continue                      Under grey upgrade, continue to upgrade
+                                  remain nodes. 
 
         """
 
@@ -143,6 +147,10 @@ General options:
         if "grey" in ParaDict.keys():
             self.is_grey_upgrade = True
             self.is_inplace_upgrade = False
+        if "nodename" in ParaDict.keys():
+            self.nodeNames = ParaDict.get("nodename")
+        if "continue" in ParaDict.keys():
+            self.upgrade_remain = True
         if "force" in ParaDict.keys():
             self.forceRollback = True
 
@@ -195,6 +203,15 @@ General options:
             if not os.path.exists(self.xmlFile):
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] %
                                 self.xmlFile)
+        
+        # check parameter base on different action
+        # check the param which input
+        if self.action == Const.ACTION_AUTO_UPGRADE:
+            if self.is_grey_upgrade:
+                self.checkCommandConflicts(inplace=False)
+            else:
+                self.checkCommandConflicts()
+        
         # check mpprc file path
         # get mpprcFile by MPPDB_ENV_SEPARATE_PATH. Even if the return value
         # is "" or None, no need to pay attention
@@ -315,6 +332,24 @@ General options:
                 self.logger.debug("Retry distributing xml command, "
                                   "the {0} time.".format(count))
 
+    def checkCommandConflicts(self, inplace=True):
+        """
+        function: check the command line for conflict input
+        return:
+        """
+        conflictPara = 0
+        if self.upgrade_remain:
+            conflictPara += 1
+        if len(self.nodeNames) != 0:
+            conflictPara += 1
+        if inplace:
+            if conflictPara > 0:
+                raise Exception("The parameter %s should be used in grey "
+                                "upgrade" % "'--continue, -h'")
+        else:
+            if conflictPara > 1:
+                GaussLog.exitWithError(ErrorCode.Gauss_500["GAUSS_50005"] % (
+                                       "--continue", "-h"))
 
 if __name__ == '__main__':
     """

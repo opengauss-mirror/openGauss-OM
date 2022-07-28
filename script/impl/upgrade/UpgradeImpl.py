@@ -1108,6 +1108,9 @@ class UpgradeImpl:
             self.context.logger.log(hintInfo + str(e))
             self.context.logger.debug(traceback.format_exc())
             self.exitWithRetCode(self.context.action, False, hintInfo + str(e))
+        if len(self.context.nodeNames) < len(self.context.clusterNodes):
+            self.context.logger.log("The nodes % have been successfully upgraded."
+                                    "Then can upgrade the remaining nodes." % self.context.nodeNames)
         self.context.logger.log("Successfully upgrade nodes.")
         self.exitWithRetCode(self.context.action, True)
 
@@ -1441,8 +1444,37 @@ class UpgradeImpl:
         # when number and node names is empty
         self.context.logger.debug("Choose the nodes to be upgraded.")
         self.setClusterDetailInfo()
-        self.context.nodeNames = self.context.clusterNodes
-        self.context.logger.log("Upgrade all nodes.")
+        
+        # check nodename following paramter -h whether have been upgraded 
+        if len(self.context.nodeNames) != 0:
+            self.context.logger.log(
+                "Upgrade nodes %s." % self.context.nodeNames)
+            greyNodeNames = self.getUpgradedNodeNames()
+            checkH_nodes = \
+                [val for val in greyNodeNames if val in self.context.nodeNames]
+            if len(checkH_nodes) > 0:
+                raise Exception("The nodes %s have been upgrade" %
+                            checkH_nodes)
+        # confirm in checkParameter
+        elif self.context.upgrade_remain:
+            greyNodeNames = self.getUpgradedNodeNames()
+            otherNodeNames = [
+                i for i in self.context.clusterNodes if i not in greyNodeNames]
+            self.context.nodeNames = otherNodeNames
+            self.context.logger.debug(
+                "Upgrade remain nodes %s." % self.context.nodeNames)
+        # when number and node names is empty 
+        else:
+            nodeTotalNum = len(self.context.clusterNodes)
+            if len(self.context.clusterNodes) == 1:
+                self.context.nodeNames.append(
+                    self.context.clusterInfo.dbNodes[0].name)
+                self.context.logger.log(
+                    "Upgrade one node '%s'." % self.context.nodeNames[0])
+            # SinglePrimaryMultiStandbyCluster
+            else:
+                self.context.nodeNames = self.context.clusterNodes
+                self.context.logger.log("Upgrade all nodes.")
 
     def getUpgradedNodeNames(self, step=GreyUpgradeStep.STEP_INIT_STATUS):
         """
@@ -4881,11 +4913,17 @@ class UpgradeImpl:
                 "File %s does not exists. No need to check." %
                 const.GREY_UPGRADE_STEP_FILE)
             return
-        grey_node_names = self.getUpgradedNodeNames()
-        if grey_node_names:
+        
+        # check cluster nodes wheather all have been upgraded
+        grey_node_names = self.getUpgradedNodeNames(GreyUpgradeStep.STEP_UPGRADE_PROCESS)
+        if len(grey_node_names) == len(self.context.clusterNodes):
             self.context.logger.log(
                 "All nodes have been upgrade, no need to upgrade again.")
             self.exitWithRetCode(self.action, True)
+        else:
+            self.context.logger.log(
+                "%s node have been upgrade, can upgrade the remaining nodes." 
+                % grey_node_names)
 
     def checkOptionH(self):
         self.checkNodeNames()
@@ -4982,11 +5020,25 @@ class UpgradeImpl:
         if not os.path.isfile(stepFile):
             raise Exception(ErrorCode.GAUSS_529["GAUSS_52920"] +
                             "Need to upgrade some nodes first.")
+        
+        # check cluster nodes wheather all have been upgraded
+        # get upgraded nodes list
         greyNodeNames = self.getUpgradedNodeNames()
         # the nodes that have upgraded that should reached to precommit
+        # if nodes < STEP_UPDATE_POST_CATALOG, indicate that this node not
+        # upgrade completely, need to rollback fistly and upgrade again
         if not self.isNodeSpecifyStep(GreyUpgradeStep.STEP_UPDATE_POST_CATALOG,
                                       greyNodeNames):
-            raise Exception(ErrorCode.GAUSS_529["GAUSS_52912"])
+            self.context.logger.log(
+                "%s node have been upgrade, can upgrade the remaining nodes."
+                 % greyNodeNames)
+            raise Exception(ErrorCode.GAUSS_529["GAUSS-52944"])
+        elif len(greyNodeNames) == len(self.context.clusterNodes):
+            self.context.logger.log(
+                "All nodes have been upgrade, no need to upgrade again "
+                "by --continue.")
+            self.exitWithRetCode(self.action, True)
+
         if len(greyNodeNames) == len(self.context.clusterInfo.dbNodes):
             self.printPrecommitBanner()
             self.context.logger.debug(

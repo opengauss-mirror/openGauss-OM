@@ -379,11 +379,14 @@ class Postuninstall(LocalBaseOM):
         cmd += "sed -i -e '/^export GPHOME=%s$/d' %s " % (
             self.clusterToolPath.replace('/', '\/'), PROFILE_FILE)
         cmd += \
-            "-e '/^export PATH=\$GPHOME\/pssh-2.3.1\/bin:" \
-            "\$GPHOME\/script:\$PATH$/d' %s " % PROFILE_FILE
+            "-e '/^export PATH=\$PATH:\$GPHOME\/pssh-2.3.1\/bin:" \
+            "\$GPHOME\/script$/d' %s " % PROFILE_FILE
         cmd += \
-            "-e '/^export PATH=\$GPHOME\/script\/gspylib\/pssh\/bin:" \
-            "\$GPHOME\/script:\$PATH$/d' %s " % PROFILE_FILE
+            "-e '/^export PATH=\$PATH:\$GPHOME\/script\/gspylib\/pssh\/bin:" \
+            "\$GPHOME\/script$/d' %s " % PROFILE_FILE
+        cmd += \
+            "-e '/^export LD_LIBRARY_PATH=\$GPHOME\/script\/gspylib\/clib:" \
+            "\$LD_LIBRARY_PATH$/d' %s " % PROFILE_FILE
         cmd += \
             "-e '/^export LD_LIBRARY_PATH=\$GPHOME\/lib:" \
             "\$LD_LIBRARY_PATH$/d' %s " % PROFILE_FILE

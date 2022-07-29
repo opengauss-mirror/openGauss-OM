@@ -428,8 +428,15 @@ class PostUninstallImpl:
 
             # clean local node environment variable
             cmd = "(if [ -s '%s' ]; then " % PROFILE_FILE
-            cmd += "sed -i -e '/^export PATH=\/root\/gauss_om\/%s\/script:" \
-                   "\$PATH$/d' %s; fi)" % (self.user, PROFILE_FILE)
+            cmd += "sed -i -e '/^export PATH=\$PATH:\/root\/gauss_om\/%s\/" \
+                   "script$/d' %s " % (self.user, PROFILE_FILE)
+            cmd += "-e '/^export PATH=\$PATH:\$GPHOME\/script\/gspylib\/pssh\/bin:" \
+                "\$GPHOME\/script$/d' %s " % PROFILE_FILE
+            cmd += "-e '/^export LD_LIBRARY_PATH=\$GPHOME\/script\/gspylib\/clib:" \
+                "\$LD_LIBRARY_PATH$/d' %s " % PROFILE_FILE
+            cmd += "-e '/^export LD_LIBRARY_PATH=\$GPHOME\/lib:" \
+                "\$LD_LIBRARY_PATH$/d' %s " % PROFILE_FILE
+            cmd +="-e '/^export PYTHONPATH=\$GPHOME\/lib$/d' %s; fi) " % PROFILE_FILE
             self.logger.debug(
                 "Command for deleting environment variable: %s" % cmd)
             (status, output) = subprocess.getstatusoutput(cmd)

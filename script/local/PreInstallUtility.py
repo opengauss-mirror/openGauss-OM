@@ -1447,6 +1447,16 @@ Common options:
             "Deleting crash LD_LIBRARY_PATH in user environment variables.")
 
         # clean PATH
+        if userProfile is ClusterConstants.ETC_PROFILE:
+            FileUtil.deleteLine(userProfile,
+                                "^\\s*export\\s*PATH=\\$PATH:\\$GPHOME\\/pssh-2.3.1\\/bin:"
+                                "\\$GPHOME\\/script$")
+            FileUtil.deleteLine(userProfile,
+                                "^\\s*export\\s*PATH=\\$PATH:\\$GPHOME\\/script\\/gspylib\\"
+                                "/pssh\\/bin:\\$GPHOME\\/script$")
+            FileUtil.deleteLine(userProfile,
+                                "^\\s*export\\s*PATH=\\$PATH:\\/root\\/gauss_om\\/%s\\"
+                                "/script$" % self.user)
         FileUtil.deleteLine(userProfile,
                           "^\\s*export\\s*PATH=\\$GPHOME\\/pssh-2.3.1\\/bin:"
                           "\\$GPHOME\\/script:\\$PATH$")
@@ -1480,9 +1490,14 @@ Common options:
             FileUtil.writeFile(userProfile,
                              ["export GPHOME=%s" % self.clusterToolPath])
             # set PATH
-            FileUtil.writeFile(userProfile, [
-                "export PATH=$GPHOME/script/gspylib/pssh/bin:"
-                "$GPHOME/script:$PATH"])
+            if userProfile is ClusterConstants.ETC_PROFILE:
+                FileUtil.writeFile(userProfile, [
+                    "export PATH=$PATH:$GPHOME/script/gspylib/pssh/bin:"
+                    "$GPHOME/script"])
+            else:
+                FileUtil.writeFile(userProfile, [
+                    "export PATH=$GPHOME/script/gspylib/pssh/bin:"
+                    "$GPHOME/script:$PATH"])
             # set LD_LIBRARY_PATH
             FileUtil.writeFile(userProfile, [
                 "export LD_LIBRARY_PATH="
@@ -2455,7 +2470,10 @@ Common options:
 
         # set om root script path
         userProfile = self.getUserProfile()
-        FileUtil.writeFile(userProfile, ["export PATH=%s:$PATH" % om_root_path])
+        if userProfile is ClusterConstants.ETC_PROFILE:
+            FileUtil.writeFile(userProfile, ["export PATH=$PATH:%s" % om_root_path])
+        else:
+            FileUtil.writeFile(userProfile, ["export PATH=%s:$PATH" % om_root_path])
         # delete root scripts in GPHOME
         om_user_path = os.path.join(self.clusterToolPath, "script")
         user_om_files = os.listdir(om_user_path)

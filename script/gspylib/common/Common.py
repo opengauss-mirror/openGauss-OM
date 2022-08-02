@@ -2875,15 +2875,15 @@ class DefaultValue():
         try:
             if nodes:
                 logger.debug(
-                    "check if the nodes %s step is % " (nodes, step))
+                    "check if the nodes %s step is %s " (nodes, step))
             else:
                 logger.debug(
-                    "check if all the nodes is %s" % step)
+                    "check if all the nodes step is %s" % step)
                 # This cluster info is new cluster info.
                 clusterNodes = []
                 cluster_info = dbClusterInfo()
                 cluster_info.initFromStaticConfig(user)
-                for dbNode in cluster_info.dnNodes:
+                for dbNode in cluster_info.dbNodes:
                     clusterNodes.append(dbNode.name)
                 nodes = copy.deepcopy(clusterNodes)
             
@@ -2895,7 +2895,7 @@ class DefaultValue():
             if tmpDir == "":
                 raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$PGHOST")
             upgradeBackupPath = "%s/%s" % (tmpDir, "binary_upgrade")
-            stepFile = os.path.join(upgradeBackPath, "upgrade_step.csv")
+            stepFile = os.path.join(upgradeBackupPath, "upgrade_step.csv")
             if not os.path.isfile(stepFile):
                 logger.debug(
                     "No step file, which means not in upgrade occasion or "
@@ -2917,7 +2917,7 @@ class DefaultValue():
                             return False
                 logger.debug("The nodes %s step is all %s" %  (nodes, step))
             return True
-        except Exeception as e:
+        except Exception as e:
             # failed to read the upgrade_step.csv in isgreyUpgradeNodeSpecify
             logger.logExit(str(e))
 

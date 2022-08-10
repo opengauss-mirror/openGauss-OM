@@ -2152,6 +2152,35 @@ def backupHotpatch():
     for dbInstance in g_dbNode.gtms:
         backupInstanceHotpatchConfig(dbInstance.datadir)
 
+def clean_gs_secure_files():
+    """
+    clean gs_secure_files folder
+    """
+    pool = ThreadPool(DefaultValue.getCpuSet())
+    pool.map(clean_stream_gs_secure, g_dbNode.datanodes)
+    pool.close()
+    pool.join()
+
+
+def clean_stream_gs_secure(dn_inst):
+    """
+    clean gs secure dir
+    """
+    temp_dir = EnvUtil.getTmpDirFromEnv()
+    file_path = os.path.join(dn_inst.datadir, "gs_secure_files")
+    cmd = "(if [ -d '%s' ]; then rm -rf '%s'; fi) && " % (file_path, file_path)
+    cmd += "(if [ -f '%s/upgrade_phase_info' ]; then rm -f '%s/upgrade_phase_info'; " \
+           "fi) &&" % (temp_dir, temp_dir)
+    cmd += "(if [ -f '%s/hadr.key.cipher' ]; then rm -f '%s/hadr.key.cipher'; " \
+           "fi) &&" % (temp_dir, temp_dir)
+    cmd += "(if [ -f '%s/hadr.key.rand' ]; then rm -f '%s/hadr.key.rand'; " \
+           "fi) &&" % (temp_dir, temp_dir)
+    cmd += "(if [ -d '%s/gs_secure_files' ]; then rm -f '%s/gs_secure_files'; " \
+           "fi)" % (temp_dir, temp_dir)
+    g_logger.debug("Starting clean instance %s gs secure dir, cmd:%s." % (dn_inst.instanceId, cmd))
+    CmdExecutor.execCommandLocally(cmd)
+    g_logger.debug("Successfully clean instance %s gs secure dir." % dn_inst.instanceId)
+
 
 def rollbackInstanceHotpatchConfig(instanceDataDir):
     """
@@ -4720,6 +4749,7 @@ def main():
             const.ACTION_GREY_SYNC_GUC: greySyncGuc,
             const.ACTION_GREY_UPGRADE_CONFIG_SYNC: greyUpgradeSyncConfig,
             const.ACTION_SWITCH_DN: switchDnNodeProcess,
+            const.ACTION_CLEAN_GS_SECURE_FILES: clean_gs_secure_files,
             const.ACTION_GET_LSN_INFO: getLsnInfo,
             const.ACTION_GREY_RESTORE_CONFIG: greyRestoreConfig,
             const.ACTION_GREY_RESTORE_GUC: greyRestoreGuc,

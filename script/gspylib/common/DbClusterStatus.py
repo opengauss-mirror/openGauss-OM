@@ -21,11 +21,13 @@
 import os
 import sys
 
+
 sys.path.append(sys.path[0] + "/../../")
 from gspylib.common.Common import DefaultValue, ClusterInstanceConfig
 from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.ErrorCode import ErrorCode
 from domain_utils.cluster_os.cluster_user import ClusterUser
+from impl.streaming_disaster_recovery.streaming_constants import StreamingConstants
 
 ###########################
 # instance type. only for CN/DN 
@@ -64,6 +66,7 @@ class StatusReport():
         self.dnPrimary = 0
         self.dnStandby = 0
         self.dn_cascade_standby = 0
+        self.dn_main_standby = 0
         self.dnDummy = 0
         self.dnBuild = 0
         self.dnAbnormal = 0
@@ -124,6 +127,8 @@ class DbInstanceStatus():
             elif self.status == DbClusterStatus.INSTANCE_STATUS_CASCADE_STANDBY:
                 if self.haStatus != DbClusterStatus.HA_STATUS_NORMAL:
                     return False
+            elif self.status == DbClusterStatus.INSTANCE_STATUS_MAIN_STANDBY:
+                return True
             else:
                 return False
 
@@ -231,6 +236,8 @@ class DbNodeStatus():
                 report.dnDummy += 1
             elif inst.status == DbClusterStatus.INSTANCE_STATUS_CASCADE_STANDBY:
                 report.dn_cascade_standby += 1
+            elif inst.status == DbClusterStatus.INSTANCE_STATUS_MAIN_STANDBY:
+                report.dn_main_standby += 1
             else:
                 report.dnAbnormal += 1
 
@@ -400,7 +407,23 @@ class DbClusterStatus():
         "Degraded": "Degraded",
         "Unknown": "Abnormal"
     }
-
+    INSTANCE_STATUS_MAP_CHECK_STATUS = {
+        "Normal": "Primary",
+        "Unnormal": "Abnormal",
+        "Primary": "Primary",
+        "Standby": "Standby",
+        "Secondary": "Secondary",
+        "Pending": "Abnormal",
+        "Down": "Down",
+        "Unknown": "Abnormal",
+        "Offline": "Offline",
+        "Main Standby": "Standby",
+        "Cascade Standby": "Standby"
+    }
+    INSTANCE_STATUS_MAP_CHECK_FAILOVER = {
+        "Need repair(Disconnected)": "Normal",
+        "Need repair": "Normal"
+    }
     ###################################################################
     # instance role
     ###################################################################
@@ -418,6 +441,7 @@ class DbClusterStatus():
     INSTANCE_STATUS_PRIMARY = "Primary"
     INSTANCE_STATUS_STANDBY = "Standby"
     INSTANCE_STATUS_CASCADE_STANDBY = "Cascade Standby"
+    INSTANCE_STATUS_MAIN_STANDBY = "Main Standby"
     INSTANCE_STATUS_ABNORMAL = "Abnormal"
     INSTANCE_STATUS_DOWN = "Down"
     INSTANCE_STATUS_DUMMY = "Secondary"
@@ -432,6 +456,7 @@ class DbClusterStatus():
         "Standby": "Standby",
         "Secondary": "Secondary",
         "Cascade Standby": "Cascade Standby",
+        "Main Standby": "Main Standby",
         "Pending": "Abnormal",
         "Down": "Down",
         "Unknown": "Abnormal"
@@ -611,7 +636,29 @@ class DbClusterStatus():
                     DbClusterStatus.OM_NODE_STATUS_ABNORMAL)
         return statusInfo
 
-    def initFromFile(self, filePath, isExpandScene=False):
+    def init_from_content(self, content, is_expand_scene=False, check_action=None, logger=None):
+        """
+        Init from content
+        """
+        content_list = content.split('\n')
+        try:
+            for line in content_list:
+                line = line.strip()
+                if line == "":
+                    continue
+                str_list = line.split(":")
+                if len(str_list) != 2:
+                    continue
+                self.__fillField(str_list[0].strip(), str_list[1].strip(),
+                                 is_expand_scene, check_action=check_action)
+        except Exception as error:
+            if logger:
+                logger.debug("Failed parse cluster status with error:%s, "
+                             "status content:%s" % (error, content))
+            raise Exception(
+                ErrorCode.GAUSS_502["GAUSS_50204"] % "status content" + " Error: \n%s" % str(error))
+
+    def initFromFile(self, filePath, isExpandScene=False, check_action=None):
         """
         function : Init from status file 
         input : filePath
@@ -637,12 +684,12 @@ class DbClusterStatus():
                         continue
 
                     self.__fillField(strList[0].strip(), strList[1].strip(),
-                                     isExpandScene)
+                                     isExpandScene, check_action=check_action)
         except Exception as e:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] %
                             "status file" + " Error: \n%s" % str(e))
 
-    def __fillField(self, field, value, isExpandScene):
+    def __fillField(self, field, value, isExpandScene, check_action=None):
         """ 
         function : Fill field 
         input : field, value
@@ -690,7 +737,10 @@ class DbClusterStatus():
             elif value == DbClusterStatus.INSTANCE_TYPE_ETCD:
                 self.__curNode.etcds.append(self.__curInstance)
         elif field == "instance_state":
-            status = DbClusterStatus.INSTANCE_STATUS_MAP.get(value)
+            if check_action == DefaultValue.TASK_QUERY_STATUS:
+                status = DbClusterStatus.INSTANCE_STATUS_MAP_CHECK_STATUS.get(value)
+            else:
+                status = DbClusterStatus.INSTANCE_STATUS_MAP.get(value)
             self.__curInstance.status = \
                 DbClusterStatus.INSTANCE_STATUS_ABNORMAL \
                     if status is None else status
@@ -715,6 +765,11 @@ class DbClusterStatus():
                 self.__curInstance.status = \
                     DbClusterStatus.INSTANCE_STATUS_ABNORMAL
                 self.__curInstance.detail_status = value
+                if check_action == StreamingConstants.STREAM_DISTRIBUTE_ACTION:
+                    self.__curInstance.status = \
+                        DbClusterStatus.INSTANCE_STATUS_MAP_CHECK_FAILOVER.get(value, value)
+                    self.__curInstance.detail_status = \
+                        DbClusterStatus.INSTANCE_STATUS_MAP_CHECK_FAILOVER.get(value, value)
         elif field == "HA_state":
             haStatus = DbClusterStatus.HA_STATUS_MAP.get(value)
             detail_ha = value
@@ -742,5 +797,9 @@ class DbClusterStatus():
                     if dataStatus is None else dataStatus
         elif field == "reason":
             self.__curInstance.reason = value
+            if check_action == StreamingConstants.STREAM_DISTRIBUTE_ACTION and \
+                    hasattr(self.__curInstance, "detail_ha") and value == "Disconnected":
+                self.__curInstance.detail_ha = \
+                    DbClusterStatus.INSTANCE_STATUS_MAP_CHECK_FAILOVER.get("Need repair", value)
 
 

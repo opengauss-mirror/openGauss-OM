@@ -101,7 +101,12 @@ class ErrorCode():
         'GAUSS_50018': "[GAUSS-50018] : The parameter value of %s is Null.",
         'GAUSS_50019': "[GAUSS-50019] : The value of %s is error.",
         'GAUSS_50020': "[GAUSS-50020] : The value of %s must be a digit.",
-        'GAUSS_50021': "[GAUSS-50021] : Failed to query %s parameter."
+        'GAUSS_50021': "[GAUSS-50021] : Failed to query %s parameter.",
+        'GAUSS_50022': "[GAUSS-50022] : The parameter '%s' should be %s.",
+        'GAUSS_50023': "[GAUSS-50023] : The parameter '%s' over max length %s.",
+        'GAUSS_50024': "[GAUSS-50024] : The parameter '%s' is invalid.",
+        'GAUSS_50025': "[GAUSS-50025] : There is illegal character '%s' in parameter %s.",
+        'GAUSS_50026': "[GAUSS-50026] : Failed to check %s parameters in the XML file."
 
     }
 

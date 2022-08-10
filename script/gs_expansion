@@ -87,7 +87,7 @@ class Expansion(ParallelBaseOM):
 
     def usage(self):
         """
-gs_expansion is a utility to expansion standby node for a cluster.
+gs_expansion is a utility to expansion standby node for a cluster, streaming cluster does not yet support.
 
 Usage:
     gs_expansion -? | --help

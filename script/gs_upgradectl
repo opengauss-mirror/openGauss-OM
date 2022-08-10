@@ -45,6 +45,7 @@ import pwd
 import grp
 import copy
 import re
+import json
 
 from gspylib.common.Common import DefaultValue
 from gspylib.common.GaussLog import GaussLog
@@ -58,6 +59,23 @@ from domain_utils.cluster_file.cluster_log import ClusterLog
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.net_util import NetUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
+
+
+class DualUpgradeShareInfo:
+    """
+    Used to record the upgrade status information of the primary and standby clusters
+
+    """
+
+    def __init__(self, jsonInfo=None):
+        # If the Json string is passed in, the Json information is used to initialize the class
+        if jsonInfo:
+            self.__dict__ = jsonInfo
+        else:
+            self.masterVersion = ""
+            self.masterUpgradeStatus = 0
+            self.standbyVersion = ""
+            self.standbyUpgradeStatus = 0
 
 
 class Upgrade(ParallelBaseOM):
@@ -90,6 +108,14 @@ class Upgrade(ParallelBaseOM):
         self.oldClusterNumber = None
         self.forceRollback = False
         self.upgrade_remain = False
+        # Record the upgrade status information under dual clusters
+        self.dualUpgradeShareInfo = None
+        # Record the primary cluster or the standby cluster, dual-primary or dual-standby
+        self.clusterType = ""
+        # Whether it is a standby cluster in a dual cluster. Convenient to judge
+        self.standbyCluster = False
+        # The path to record the information of each cluster upgrade stage in the dual cluster
+        self.upgradePhaseInfoPath = ""
 
     def usage(self):
         """
@@ -153,6 +179,10 @@ Option for grey upgrade
             self.upgrade_remain = True
         if "force" in ParaDict.keys():
             self.forceRollback = True
+        self.tmpDir = EnvUtil.getTmpDirFromEnv()
+        if self.tmpDir == "":
+            raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$PGHOST")
+        self.upgradePhaseInfoPath = os.path.join(self.tmpDir, Const.UPGRADE_PHASE_INFO)
 
     def checkUser(self):
         """
@@ -298,6 +328,69 @@ Option for grey upgrade
             if nodeName not in self.clusterNodes:
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51619"] % nodeName)
         self.logger.debug("Successfully init global infos")
+
+        # If it is a dual-cluster, initialize the related information of the dual-cluster
+        self.initDualUpgradeInfo()
+
+    def initDualUpgradeInfo(self):
+        """
+        initialize dual cluster upgrade status information
+        If it is not a dual cluster, do not initialize
+        :return:
+        """
+        if os.path.exists(self.upgradePhaseInfoPath):
+            if self.is_inplace_upgrade and self.action not in \
+                    ["commit-upgrade", "auto-rollback", "chose-strategy"]:
+                raise Exception("Dual cluster does not support in-place upgrade")
+            self.dualUpgradeShareInfo = self.getDualUpgradeInfo(self.upgradePhaseInfoPath,
+                                                                startPost=0)
+        if not self.dualUpgradeShareInfo:
+            self.dualUpgradeShareInfo = DualUpgradeShareInfo()
+
+    @staticmethod
+    def getDualUpgradeInfo(filePath, startPost):
+        """
+        Obtain the dual-cluster upgrade status information from the file,
+        and return None if there is no record
+        :return:
+        """
+        if os.path.exists(filePath):
+            lenInfo = 0
+            with open(filePath, 'r') as shareInfo:
+                shareInfo.seek(startPost)
+                length = shareInfo.read(4)
+                if length > '':
+                    try:
+                        lenInfo = int(length)
+                    except Exception as _:
+                        lenInfo = 0
+                if lenInfo > 0:
+                    shareInfo.seek(startPost + 4)
+                    return json.loads(shareInfo.read(lenInfo), object_hook=DualUpgradeShareInfo)
+        return None
+
+    def updateDualUpgradeInfo(self, dualUpgradeShareInfo, filePath, startPost):
+        """
+        Update the upgrade information of the cluster to the dual-cluster
+        shared file /dev/my_disk_sync_disk file
+        :return:
+        """
+        if os.path.exists(filePath):
+            with os.fdopen(os.open(filePath, os.O_WRONLY, 0o600), "w") as shareInfo:
+                shareInfo.seek(startPost + Const.LENGTH_STORAGE_INFO_LEN)
+                shareInfo.write(json.dumps(dualUpgradeShareInfo, default=lambda obj: obj.__dict__))
+                length = shareInfo.tell() - (startPost + Const.LENGTH_STORAGE_INFO_LEN)
+                shareInfo.seek(startPost, 0)
+                shareInfo.write("{0:04d}".format(length))
+
+            # After the status file is updated, the standby cluster
+            # distributes the updated status file to the data directory of the DN.
+            for dbNode in self.clusterInfo.dbNodes:
+                for dnInst in dbNode.datanodes:
+                    self.sshTool.scpFiles(filePath, dnInst.datadir,
+                                          hostList=[dnInst.hostname])
+        else:
+            raise Exception("{0} file does not exist and cannot be updated".format(filePath))
 
     def distributeFileToSpecialNode(self, file, destDir, hostList):
         """

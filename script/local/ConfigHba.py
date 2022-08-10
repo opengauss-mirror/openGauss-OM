@@ -56,6 +56,7 @@ class CmdOptions():
         self.removeIps = []
         self.addIps = []
         self.dws_mode = False
+        self.try_reload = False
 
 
 def usage():
@@ -75,6 +76,7 @@ General options:
   -r                                 the signal about ignorepgHbaMiss
   --remove-ip                        Remove ip address from pg_hba.conf
   --add-ip                           Add ip address to pg_hba.conf
+  --try-reload                       Try reload guc params if can not set
   --help                             Show help information for this utility,
                                      and exit the command line mode.
     """
@@ -88,7 +90,7 @@ def parseCommandLine():
     try:
         opts, args = getopt.getopt(sys.argv[1:], "U:X:l:r",
                                    ["remove-ip=", "help", "dws-mode",
-                                    "add-ip="])
+                                    "add-ip=", "try-reload"])
     except Exception as e:
         usage()
         GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"] % str(e))
@@ -116,6 +118,8 @@ def parseCommandLine():
             g_opts.removeIps.append(value)
         elif (key == "--dws-mode"):
             g_opts.dws_mode = True
+        elif key == "--try-reload":
+            g_opts.try_reload = True
         elif (key == "--add-ip"):
             g_opts.addIps = value.split(',')
         Parameter.checkParaVaild(key, value)
@@ -154,7 +158,7 @@ class ConfigHba(LocalBaseOM):
     """
 
     def __init__(self, logFile, user, clusterConf, dwsMode=False,
-                 ignorepgHbaMiss=False, removeIps=None):
+                 ignorepgHbaMiss=False, removeIps=None, try_reload=False):
         """
         function: configure all instance on local node
         """
@@ -178,6 +182,7 @@ class ConfigHba(LocalBaseOM):
         if removeIps is None:
             removeIps = []
         self.removeIps = removeIps
+        self.try_reload = try_reload
 
     def getAllIps(self):
         """
@@ -220,6 +225,16 @@ class ConfigHba(LocalBaseOM):
         except Exception as e:
             raise Exception(str(e))
 
+    def remove_streaming_config(self, component):
+        """
+        remove dn & cn pg_hba for streaming stop
+        """
+        ip_segment_list = list(set(['.'.join(
+            remove_ip.split('.')[:2]) + ".0.0/16" for remove_ip in self.removeIps]))
+        for ip_segment in ip_segment_list:
+            ip_remove_str = "-h \"host    replication    all    %s\" " % ip_segment
+            component.doGUCConfig("set", ip_remove_str, True)
+
     def __configAnInstance(self, component):
         """
         function: set hba config for single component
@@ -245,9 +260,10 @@ class ConfigHba(LocalBaseOM):
             self.logger.debug("The %s does not exist." % hbaFile)
             return
 
-        component.setPghbaConfig(self.allIps)
+        component.setPghbaConfig(self.allIps, try_reload=self.try_reload)
         if len(self.removeIps) != 0:
             component.removeIpInfoOnPghbaConfig(self.removeIps)
+            self.remove_streaming_config(component)
 
 
 if __name__ == '__main__':
@@ -266,7 +282,7 @@ if __name__ == '__main__':
         # modify Instance 
         configer = ConfigHba(g_opts.logFile, g_opts.clusterUser,
                              g_opts.clusterConf, g_opts.dws_mode,
-                             g_opts.ignorepgHbaMiss, g_opts.removeIps)
+                             g_opts.ignorepgHbaMiss, g_opts.removeIps, g_opts.try_reload)
         configer.configHba()
 
     except Exception as e:

@@ -87,7 +87,7 @@ class Checkperf():
 
     def usage(self):
         """
-gs_checkperf is a utility to check the cluster performance and SSD performance.
+gs_checkperf is a utility to check the cluster performance and SSD performance, streaming disaster cluster does not yet support.
 
 Usage:
   gs_checkperf -? | --help
@@ -253,6 +253,11 @@ General options:
             binPath = os.path.join(self.clusterInfo.appPath, "bin")
             g_opts.databaseSizeFile = os.path.join(binPath,
                                                    DefaultValue.DB_SIZE_FILE)
+            is_disaster_cluster = \
+                DefaultValue.cm_exist_and_is_disaster_cluster(self.clusterInfo, g_logger)
+            if is_disaster_cluster:
+                GaussLog.exitWithError(
+                    ErrorCode.GAUSS_512["GAUSS_51244"] % " Disaster cluster")
         except Exception as e:
             g_logger.logExit(str(e))
 

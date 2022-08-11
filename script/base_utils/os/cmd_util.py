@@ -24,6 +24,8 @@ import subprocess
 import threading
 import time
 from subprocess import PIPE, Popen
+from datetime import datetime
+from datetime import timedelta
 import pwd
 from gspylib.common.ErrorCode import ErrorCode
 from base_utils.common.exceptions import CommandNotFoundException
@@ -573,6 +575,21 @@ class CmdUtil(object):
                     time.sleep(sleep_time)
             else:
                 break
+        return status, output
+
+    @staticmethod
+    def retry_util_timeout(cmd, timeout, sleep_time=1):
+        """
+        retry execute cmd with giving timeout.
+        """
+        end_time = datetime.now() + timedelta(seconds=int(timeout))
+        status, output = 1, 1
+        while datetime.now() < end_time:
+            status, output = CmdUtil.getstatusoutput_by_fast_popen(cmd)
+            if status == 0:
+                break
+            else:
+                time.sleep(sleep_time)
         return status, output
 
     @staticmethod

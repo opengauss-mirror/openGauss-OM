@@ -85,7 +85,7 @@ class GaussLog:
     Class to handle log file
     """
 
-    def __init__(self, logFile, module="", expectLevel=LOG_DEBUG):
+    def __init__(self, logFile, module="", expectLevel=LOG_DEBUG, trace_id=None):
         """
         function: Constructor
         input : NA
@@ -104,6 +104,7 @@ class GaussLog:
         self.lock = thread.allocate_lock()
         self.tmpFile = None
         self.ignoreErr = False
+        self.trace_id = trace_id
 
         logFileList = ""
         try:
@@ -419,9 +420,14 @@ class GaussLog:
             strTime = datetime.datetime.now()
             file_line = self.get_log_file_line()
             if (stepFlag == ""):
-                print("[%s][%d][%s][%s][%s]:%s" % (
-                    strTime, self.pid, file_line, self.moduleName, level, msg),
-                    file=self.fp)
+                if self.trace_id:
+                    print("[%s][%s][%d][%s][%s]:%s"
+                          % (self.trace_id, strTime, self.pid, self.moduleName,
+                             level, msg), file=self.fp)
+                else:
+                    print("[%s][%d][%s][%s]:%s" % (
+                        strTime, self.pid, self.moduleName, level, msg),
+                        file=self.fp)
             else:
                 stepnum = self.Step(stepFlag)
                 print("[%s][%d][%s][%s][%s][Step%d]:%s" % (

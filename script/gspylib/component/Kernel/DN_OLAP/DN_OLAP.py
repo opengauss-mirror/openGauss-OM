@@ -407,7 +407,7 @@ class DN_OLAP(Kernel):
 
         self.modifyDummpyStandbyConfigItem()
 
-    def setPghbaConfig(self, clusterAllIpList):
+    def setPghbaConfig(self, clusterAllIpList, try_reload=False):
         """
         """
         principal = None
@@ -446,12 +446,22 @@ class DN_OLAP(Kernel):
                 GUCParasStrList.append(GUCParasStr)
                 i = 0
                 GUCParasStr = ""
+        # Used only streaming disaster cluster
+        streaming_dn_ips = self.get_streaming_relate_dn_ips(self.instInfo)
+        if streaming_dn_ips:
+            for dn_ip in streaming_dn_ips:
+                GUCParasStr += "-h \"host    all    %s    %s/32    %s\" " \
+                               % (pg_user, dn_ip, METHOD_TRUST)
+                GUCParasStr += "-h \"host    all    all    %s/32    %s\" " \
+                               % (dn_ip, METHOD_SHA)
+                ip_segment = '.'.join(dn_ip.split('.')[:2]) + ".0.0/16"
+                GUCParasStr += "-h \"host    replication    all    %s    sha256\" " % ip_segment
 
         if (GUCParasStr != ""):
             GUCParasStrList.append(GUCParasStr)
 
         for parasStr in GUCParasStrList:
-            self.doGUCConfig("set", parasStr, True)
+            self.doGUCConfig("set", parasStr, True, try_reload=try_reload)
 
     """
     Desc: 

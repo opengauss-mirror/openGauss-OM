@@ -370,6 +370,10 @@ class OmImplOLAP(OmImpl):
             self.logger.log(
                 "No need to generate dynamic configuration file for one node.")
             return
+        if DefaultValue.cm_exist_and_is_disaster_cluster(self.context.clusterInfo, self.logger):
+            self.logger.log(
+                "Streaming disaster cluster do not need to generate dynamic configuration.")
+            return
         self.logger.log("Generating dynamic configuration file for all nodes.")
         hostname = NetUtil.GetHostIpOrName()
         sshtool = SshTool(self.context.clusterInfo.getClusterNodeNames())

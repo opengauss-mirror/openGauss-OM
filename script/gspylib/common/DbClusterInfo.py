@@ -37,6 +37,7 @@ from domain_utils.cluster_file.version_info import VersionInfo
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from base_utils.common.constantsbase import ConstantsBase
 from base_utils.os.env_util import EnvUtil
+from base_utils.security.security_checker import SecurityChecker
 
 ###########################
 # instance role 
@@ -958,6 +959,10 @@ class dbClusterInfo():
         # add for dcf
         self.enable_dcf = ""
         self.dcf_config = ""
+        self.local_stream_ip_map = []
+        self.remote_stream_ip_map = []
+        self.remote_dn_base_port = 0
+        self.local_dn_base_port = 0
 
     def __str__(self):
         """
@@ -1314,7 +1319,7 @@ class dbClusterInfo():
                     maxAzNameLen = maxAzNameLen if maxAzNameLen > azNameLen \
                         else azNameLen
                     dnNodeCount += 1
-                    if roleStatus == "Primary":
+                    if roleStatus in ["Primary", "Main"]:
                         primaryDbNum += 1
                         primaryDbState = dbState
                     else:
@@ -3395,6 +3400,7 @@ class dbClusterInfo():
             if self.enable_dcf == "":
                 i = 0
             ssdInfoList[i].extend(ssddirList)
+            self.parse_stream_cluster_info(masterNode, i)
 
             # dataNode syncNum
             key = "dataNode%d_syncNum" % (i + 1)
@@ -3619,6 +3625,48 @@ class dbClusterInfo():
 
         for inst in masterNode.datanodes:
             inst.azName = masterNode.azName
+
+    def parse_stream_cluster_info(self, masternode, i):
+        """parse_stream_cluster_info"""
+        i = i + 1
+        local_ip_map = self.__readNodeStrValue(masternode.name,
+                                               "localStreamIpmap%s" % i, True)
+        if not local_ip_map:
+            return
+        remote_ip_map = self.__readNodeStrValue(masternode.name,
+                                                "remoteStreamIpmap%s" % i, True)
+        remote_dn_port = self.__readNodeStrValue(masternode.name,
+                                                 "remotedataPortBase", True)
+        local_dn_port = self.__readNodeStrValue(masternode.name,
+                                                "dataPortBase", True, MASTER_BASEPORT_DATA)
+        if not all([local_ip_map, remote_ip_map, remote_dn_port]):
+            raise Exception(
+                ErrorCode.GAUSS_512["GAUSS_51236"] + " check streamInfo config is correct")
+        self.local_stream_ip_map.append(dbClusterInfo.append_map_ip_into_global(local_ip_map))
+        self.remote_stream_ip_map.append(dbClusterInfo.append_map_ip_into_global(remote_ip_map))
+        if not remote_dn_port.isdigit() or not local_dn_port.isdigit():
+            raise Exception(
+                ErrorCode.GAUSS_512["GAUSS_51236"] + " check streamInfo config is correct")
+        self.remote_dn_base_port = int(remote_dn_port)
+        self.local_dn_base_port = int(local_dn_port)
+
+    @staticmethod
+    def append_map_ip_into_global(strem_ip_map):
+        """append_map_ip_into_global"""
+        shard_map = []
+        ip_map_list = [i.strip().strip("),").strip(",(") for i in strem_ip_map.split("(") if i]
+        for ip_map in ip_map_list:
+            peer_ip_map = ip_map.split(",")
+            temp_dict = dict()
+            if len(peer_ip_map) != 2:
+                raise Exception(ErrorCode.GAUSS_512["GAUSS_51236"] +
+                                " check localStreamIpmap is correct")
+            temp_dict["ip"] = peer_ip_map[0].strip()
+            SecurityChecker.check_ip_valid(temp_dict["ip"],  temp_dict["ip"])
+            temp_dict["dataIp"] = peer_ip_map[1].strip()
+            SecurityChecker.check_ip_valid(temp_dict["dataIp"],  temp_dict["dataIp"])
+            shard_map.append(temp_dict)
+        return shard_map
 
     def __readCmaConfig(self, dbNode):
         """ 
@@ -4689,3 +4737,14 @@ class dbClusterInfo():
         :return:True or False
         """
         return self.cmscount < 1
+
+    def getDbNodeByID(self, inputid):
+        """
+        function : Get node by id.
+        input : nodename
+        output : []
+        """
+        for dbNode in self.dbNodes:
+            if dbNode.id == inputid:
+                return dbNode
+        return None

@@ -24,6 +24,7 @@ import stat
 import subprocess
 import pwd
 import grp
+import json
 from subprocess import PIPE
 
 from base_utils.common.constantsbase import ConstantsBase
@@ -298,6 +299,27 @@ class FileUtil(object):
                                 "Error:\n%s" % str(excep))
             lock.release()
         return True
+
+    @staticmethod
+    def write_update_file(file_path, content, authority, is_json=True):
+        """
+        Write or update file, create if not exist.
+        """
+        with os.fdopen(os.open(file_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+                               authority), "w") as fp_write:
+            if is_json:
+                json.dump(content, fp_write)
+            else:
+                fp_write.write(content)
+
+    @staticmethod
+    def write_add_file(file_path, content, authority):
+        """
+        Write or add content in file, create if not exist.
+        """
+        if not os.path.isfile(file_path):
+            FileUtil.createFileInSafeMode(file_path, mode=authority)
+        FileUtil.writeFile(file_path, [content])
 
     @staticmethod
     def withAsteriskPath(path):

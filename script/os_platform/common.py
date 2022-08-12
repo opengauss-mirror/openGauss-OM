@@ -65,6 +65,7 @@ PAK_ASIANUX = "Asianux"
 PAK_UBUNTU = "Ubuntu"
 PAK_KYLIN = "Kylin"
 PAK_SUSE = "SUSE"
+PAK_DEBIAN = "Debian"
 
 #######################################################
 _supported_dists = (

@@ -25,7 +25,7 @@ from gspylib.common.ErrorCode import ErrorCode
 from os_platform.common import REDHAT, PAK_REDHAT, BIT_VERSION, \
     CENTOS, PAK_EULER, PAK_CENTOS, ASIANUX, SUSE, PAK_ASIANUX, \
     EULEROS, OPENEULER, KYLIN, PAK_OPENEULER, SUPPORT_WHOLE_PLATFORM_LIST,\
-    BLANK_SPACE, PAK_UBUNTU, DEBIAN, PAK_KYLIN, PAK_SUSE
+    BLANK_SPACE, PAK_UBUNTU, DEBIAN, PAK_KYLIN, PAK_SUSE, PAK_DEBIAN
 from os_platform.linux_distro import LinuxDistro
 
 
@@ -112,8 +112,8 @@ class LinuxPlatform(object):
         """
         pass
 
-    @staticmethod
-    def get_euler_package_name(dir_path, perfix, postfix):
+    
+    def get_euler_package_name(self, dir_path, perfix, postfix):
         """
         Get package name of Euler OS
         """
@@ -121,9 +121,16 @@ class LinuxPlatform(object):
                                 "%s-%s-%s" % (perfix, PAK_EULER, postfix))
         if not os.path.isfile(file_name):
             file_name = os.path.join(dir_path, "./../../../",
-                                    "%s-%s-%s" % (perfix, PAK_REDHAT, postfix))
+                                    "%s-%s-%s" % (perfix, PAK_CENTOS, postfix))
 
         return file_name
+
+    def package_file_path(self, prefix_str, packageVersion, distro, postfix_str):
+        dir_name = os.path.dirname(os.path.realpath(__file__))
+        return os.path.join(dir_name, "./../../", "%s-%s-%s-%s.%s" % (
+                                    prefix_str, packageVersion, distro,
+                                    BIT_VERSION, postfix_str))
+
 
     def getPackageFile(self, packageVersion, productVersion, fileType="tarFile"):
         """
@@ -148,107 +155,88 @@ class LinuxPlatform(object):
 
         # RHEL and CentOS have the same kernel version,
         # So RHEL cluster package can run directly on CentOS.
-        if distname in REDHAT:
-            file_name = os.path.join(dir_name, "./../../",
-                                     "%s-%s-%s-%s.%s" % (
-                                        prefix_str, packageVersion, PAK_REDHAT,
-                                        BIT_VERSION, postfix_str))
-        elif distname in CENTOS:
-            if os.path.isfile(os.path.join("/etc", "euleros-release")):
-                file_name = os.path.join(dir_name, "./../../",
-                                         "%s-%s-%s-%s.%s" % (
-                                            prefix_str, packageVersion,
-                                            PAK_EULER,
-                                            BIT_VERSION, postfix_str))
-                if not os.path.isfile(file_name):
-                    file_name = os.path.join(dir_name, "./../../",
-                                            "%s-%s-%s-%s.%s" % (
-                                                prefix_str, packageVersion,
-                                                PAK_CENTOS, BIT_VERSION,
-                                                postfix_str))
+        # Installation packages vary with operating systems
+        
+        if distname == REDHAT:
+            file_name_list = [
+                self.package_file_path(prefix_str, packageVersion, PAK_REDHAT, postfix_str),
+                self.package_file_path(prefix_str, packageVersion, PAK_CENTOS, postfix_str)
+                ]
+            if version[0] == "8":
+                file_name_list = [
+                    self.package_file_path(prefix_str, packageVersion, PAK_OPENEULER, postfix_str),
+                    ]
+
+        elif distname == EULEROS:
+            if idnum in ["SP2", "SP3", "SP5"]:
+                new_prefix_str = "%s-%s" % (prefix_str, packageVersion)
+                new_postfix_str = "%s.%s" % (BIT_VERSION, postfix_str)
+                file_name_list = [
+                    self.get_euler_package_name(dir_name, new_prefix_str, new_postfix_str),
+                    self.package_file_path(prefix_str, packageVersion, PAK_CENTOS, postfix_str)
+                    ]
+            elif idnum == "SP8":
+                file_name_list = [
+                    self.package_file_path(prefix_str, packageVersion, PAK_EULER, postfix_str)
+                    ]
             else:
-                file_name = os.path.join(dir_name, "./../../",
-                                         "%s-%s-%s-%s.%s" % (
-                                            prefix_str, packageVersion,
-                                            PAK_REDHAT,
-                                            BIT_VERSION, postfix_str))
-            if not os.path.isfile(file_name):
-                file_name = os.path.join(dir_name, "./../../",
-                                         "%s-%s-%s-%s.%s" % (
-                                            prefix_str, packageVersion,
-                                            PAK_CENTOS,
-                                            BIT_VERSION, postfix_str))
-        elif distname in ASIANUX:
-            file_name = os.path.join(dir_name, "./../../",
-                                     "%s-%s-%s-%s.%s" % (
-                                        prefix_str, packageVersion, PAK_ASIANUX,
-                                        BIT_VERSION, postfix_str))
-            if not os.path.exists(os.path.normpath(file_name)):
-                file_name = os.path.join(dir_name, "./../../",
-                                     "%s-%s-%s-%s.%s" % (
-                                        prefix_str, packageVersion, PAK_CENTOS,
-                                        BIT_VERSION, postfix_str))
+                file_name_list = [
+                    self.package_file_path(prefix_str, packageVersion, PAK_EULER, postfix_str),
+                    self.package_file_path(prefix_str, packageVersion, PAK_CENTOS, postfix_str)
+                    ]
+
+        elif distname == CENTOS:
+            if os.path.isfile(os.path.join("/etc", "euleros-release")):
+                file_name_list = [
+                self.package_file_path(prefix_str, packageVersion, PAK_CENTOS, postfix_str),
+                self.package_file_path(prefix_str, packageVersion, PAK_EULER, postfix_str)
+                ]
+            elif version[0] == "8":
+                file_name_list = [
+                    self.package_file_path(prefix_str, packageVersion, PAK_OPENEULER, postfix_str),
+                    ]
+            else:
+                file_name_list = [
+                    self.package_file_path(prefix_str, packageVersion, PAK_CENTOS, postfix_str)
+                    ]
+        
+        elif distname == ASIANUX:
+            file_name_list = [
+                self.package_file_path(prefix_str, packageVersion, PAK_ASIANUX, postfix_str),
+                self.package_file_path(prefix_str, packageVersion, PAK_CENTOS, postfix_str)
+                ]
+        
         elif distname == SUSE and version.split('.')[0] in ("11", "12"):
-            file_name = os.path.join(dir_name, "./../../",
-                                     "%s-%s-%s-%s.%s" % (
-                                        prefix_str, packageVersion, PAK_CENTOS,
-                                        BIT_VERSION, postfix_str))
-            if not os.path.isfile(file_name):
-                file_name = os.path.join(dir_name, "./../../",
-                                        "%s-%s-%s-%s.%s" % (
-                                            prefix_str, packageVersion, PAK_SUSE,
-                                            BIT_VERSION, postfix_str))
-        elif distname in EULEROS and (idnum in ["SP2", "SP3", "SP5"]):
-            new_prefix_str = "%s-%s" % (prefix_str, packageVersion)
-            new_postfix_str = "%s.%s" % (BIT_VERSION, postfix_str)
-            file_name = LinuxPlatform.get_euler_package_name(dir_name,
-                                                             new_prefix_str,
-                                                             new_postfix_str)
-            if not os.path.isfile(file_name):
-                file_name = os.path.join(dir_name, "./../../",
-                                         "%s-%s-%s-%s.%s" % (
-                                            prefix_str, packageVersion,
-                                            PAK_REDHAT,
-                                            BIT_VERSION, postfix_str))
-        elif distname in EULEROS and (idnum == "SP8"):
-            file_name = os.path.join(dir_name, "./../../",
-                                     "%s-%s-%s-%s.%s" % (
-                                        prefix_str, packageVersion, PAK_EULER,
-                                        BIT_VERSION, postfix_str))
-        elif distname in EULEROS:
-            file_name = os.path.join(dir_name, "./../../",
-                                     "%s-%s-%s-%s.%s" % (
-                                        prefix_str, packageVersion, PAK_REDHAT,
-                                        BIT_VERSION, postfix_str))
-        elif distname in OPENEULER or distname in KYLIN:
-            file_name = os.path.join(dir_name, "./../../",
-                                     "%s-%s-%s-%s.%s" % (
-                                        prefix_str, packageVersion,
-                                        PAK_OPENEULER,
-                                        BIT_VERSION, postfix_str))
-            if not os.path.isfile(file_name):
-                file_name = os.path.join(dir_name, "./../../",
-                                     "%s-%s-%s-%s.%s" % (
-                                        prefix_str, packageVersion,
-                                        PAK_KYLIN,
-                                        BIT_VERSION, postfix_str))
-        elif distname in DEBIAN and (version == "buster/sid"):
-            file_name = os.path.join(dir_name, "./../../",
-                                     "%s-%s-%s-%s.%s" % (
-                                        prefix_str, packageVersion,
-                                        PAK_UBUNTU,
-                                        BIT_VERSION, postfix_str))
+            file_name_list = [
+                self.package_file_path(prefix_str, packageVersion, PAK_SUSE, postfix_str),
+                self.package_file_path(prefix_str, packageVersion, PAK_CENTOS, postfix_str)
+                ]
+        
+        elif distname == OPENEULER or distname == KYLIN:
+            file_name_list = [
+                self.package_file_path(prefix_str, packageVersion, PAK_OPENEULER, postfix_str),
+                self.package_file_path(prefix_str, packageVersion, PAK_KYLIN, postfix_str)
+                ]
+        
+        elif distname == DEBIAN:
+            file_name_list = [
+                self.package_file_path(prefix_str, packageVersion, PAK_DEBIAN, postfix_str),
+                self.package_file_path(prefix_str, packageVersion, PAK_OPENEULER, postfix_str)
+                ]
+        
         else:
             raise Exception(ErrorCode.GAUSS_519["GAUSS_51900"] +
                             "Supported platforms are: %s." % str(
                 SUPPORT_WHOLE_PLATFORM_LIST))
-
-        file_name = os.path.normpath(file_name)
-        if not os.path.exists(file_name):
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % file_name)
-        if not os.path.isfile(file_name):
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50210"] % file_name)
-        return file_name
+        
+        # Find the installation package that exists on the current node
+        package_name_list = []
+        for file_name in file_name_list:
+            package_name = os.path.basename(file_name)
+            package_name_list.append(package_name)
+            if os.path.exists(file_name) and os.path.isfile(file_name):
+                return file_name
+        raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % package_name_list)
 
     def getGrepCmd(self):
         """

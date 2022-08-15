@@ -837,7 +837,6 @@ class PostUninstallImpl:
         username = pwd.getpwuid(os.getuid()).pw_name
         # get dir path
         homeDir = os.path.expanduser("~" + username)
-        sshDir = "%s/.ssh/*" % homeDir
         tmp_path = "%s/gaussdb_tmp" % homeDir
 
         # get cmd
@@ -846,7 +845,11 @@ class PostUninstallImpl:
                              "xargs kill -9"
         delete_line_cmd = " && sed -i '/^\\s*export\\s*SSH_AUTH_SOCK=.*$/d' %s" % bashrc_file
         delete_line_cmd += " && sed -i '/^\\s*export\\s*SSH_AGENT_PID=.*$/d' %s" % bashrc_file
-        delete_shell_cmd = " && rm -rf %s && rm -rf %s" % (sshDir, tmp_path)
+        delete_line_cmd += " && sed -i '/#OM$/d' %s" % DefaultValue.SSH_AUTHORIZED_KEYS
+        delete_line_cmd += " && sed -i '/#OM$/d' %s" % DefaultValue.SSH_KNOWN_HOSTS
+        delete_shell_cmd = " && rm -rf %s" % tmp_path
+        delete_shell_cmd += " && rm -rf %s" % DefaultValue.SSH_PRIVATE_KEY
+        delete_shell_cmd += " && rm -rf %s" % DefaultValue.SSH_PUBLIC_KEY
         cmd = "%s" + delete_line_cmd + delete_shell_cmd
 
         # get remote node and local node

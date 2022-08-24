@@ -5853,7 +5853,7 @@ class UpgradeImpl:
             self.context.logger.debug("Command for checking gaussdb version "
                                       "consistency: %s." % cmd)
             (status, output) = \
-                self.context.sshTool.getSshStatusOutput(cmd, checknodes)
+                self.context.sshTool.getSshStatusOutput(cmd, self.context.nodeNames)
             for node in status.keys():
                 failFlag = "Failed to check version information"
                 if status[node] != DefaultValue.SUCCESS or \

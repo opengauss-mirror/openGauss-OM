@@ -27,11 +27,12 @@ CENTOS = "centos"
 EULEROS = "euleros"
 KYLIN = "kylin"
 OPENEULER = "openeuler"
+FUSIONOS = "fusionos"
 ASIANUX = "asianux"
 DEBIAN = "debian"
 UBUNTU = "ubuntu"
 SUPPORT_WHOLE_PLATFORM_LIST = [SUSE, REDHAT, CENTOS, EULEROS, OPENEULER, KYLIN,
-                               ASIANUX, DEBIAN, UBUNTU]
+                               FUSIONOS, ASIANUX, DEBIAN, UBUNTU]
 # RedhatX platform
 SUPPORT_RHEL_SERIES_PLATFORM_LIST = [REDHAT, CENTOS, "kylin", "asianux"]
 SUPPORT_RHEL6X_VERSION_LIST = ["6.4", "6.5", "6.6", "6.7", "6.8", "6.9", "10"]
@@ -60,6 +61,7 @@ COLON = ":"
 PAK_CENTOS = "CentOS"
 PAK_EULER = "Euler"
 PAK_OPENEULER = "openEuler"
+PAK_FUSIONOS = "FusionOS"
 PAK_REDHAT = "RedHat"
 PAK_ASIANUX = "Asianux"
 PAK_UBUNTU = "Ubuntu"
@@ -71,4 +73,4 @@ PAK_DEBIAN = "Debian"
 _supported_dists = (
     'SuSE', 'debian', 'fedora', 'redhat', 'centos', 'euleros', "openEuler",
     'mandrake', 'mandriva', 'rocks', 'slackware', 'yellowdog', 'gentoo',
-    'UnitedLinux', 'turbolinux', 'ubuntu', 'kylin', 'asianux')
+    "FusionOS", 'UnitedLinux', 'turbolinux', 'ubuntu', 'kylin', 'asianux')

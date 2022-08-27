@@ -68,7 +68,7 @@ class CheckBond(BaseItem):
         ifcfgFileRedhat = "/etc/sysconfig/network-scripts/ifcfg-%s" \
                           % networkCards
         distname, version, idnum = LinuxDistro.linux_distribution()
-        if (distname in ["redhat", "centos", "euleros", "openEuler"]):
+        if (distname in ["redhat", "centos", "euleros", "openEuler", "FusionOS"]):
             cmd = "echo BONDING_MODULE_OPTS='mode=%d " \
                   "miimon=100 use_carrier=0' >> %s " % (1, ifcfgFileRedhat)
         else:

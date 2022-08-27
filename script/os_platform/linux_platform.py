@@ -25,7 +25,8 @@ from gspylib.common.ErrorCode import ErrorCode
 from os_platform.common import REDHAT, PAK_REDHAT, BIT_VERSION, \
     CENTOS, PAK_EULER, PAK_CENTOS, ASIANUX, SUSE, PAK_ASIANUX, \
     EULEROS, OPENEULER, KYLIN, PAK_OPENEULER, SUPPORT_WHOLE_PLATFORM_LIST,\
-    BLANK_SPACE, PAK_UBUNTU, DEBIAN, PAK_KYLIN, PAK_SUSE, PAK_DEBIAN
+    BLANK_SPACE, PAK_UBUNTU, DEBIAN, PAK_KYLIN, PAK_SUSE, PAK_DEBIAN, \
+    FUSIONOS, PAK_FUSIONOS
 from os_platform.linux_distro import LinuxDistro
 
 
@@ -222,6 +223,11 @@ class LinuxPlatform(object):
             file_name_list = [
                 self.package_file_path(prefix_str, packageVersion, PAK_DEBIAN, postfix_str),
                 self.package_file_path(prefix_str, packageVersion, PAK_OPENEULER, postfix_str)
+                ]
+        
+        elif distname == FUSIONOS:
+            file_name_list = [
+                self.package_file_path(prefix_str, packageVersion, PAK_FUSIONOS, postfix_str)
                 ]
         
         else:

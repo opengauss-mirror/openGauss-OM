@@ -27,6 +27,10 @@ function get_os_str() {
         os_str=openeuler_aarch64
     elif [ "$os_name"x = "openEuler"x ] && [ "$cpu_arc"x = "x86_64"x ]; then
         os_str=openeuler_x86_64
+    elif [ "$os_name"x = "fusionos"x ] && [ "$cpu_arc"x = "aarch64"x ]; then
+        os_str=fusionos_aarch64
+    elif [ "$os_name"x = "fusionos"x ] && [ "$cpu_arc"x = "x86_64"x ]; then
+        os_str=fusionos_x86_64
     elif [ "$os_name"x = "ubuntu"x ] && [ "$cpu_arc"x = "x86_64"x ]; then
         os_str=ubuntu18.04_x86_64
     elif [ "$os_name"x = "asianux"x ] && [ "$cpu_arc"x = "x86_64"x ]; then

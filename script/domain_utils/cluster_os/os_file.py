@@ -83,7 +83,7 @@ class OsFile:
             return init_system_file
         if distname == "SuSE" and os.path.isfile(init_file_suse):
             init_file = init_file_suse
-        elif distname in ("redhat", "centos", "euleros", "oracle", "openEuler") \
+        elif distname in ("redhat", "centos", "euleros", "oracle", "openEuler", "FusionOS") \
                 and os.path.isfile(init_file_redhat):
             init_file = init_file_redhat
         elif distname == "kylin" and os.path.isfile(init_file_kylin):

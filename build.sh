@@ -2,7 +2,7 @@
 
 declare binarylib_dir='None'
 declare module_name="openGauss"
-declare version_number='3.0.0'
+declare version_number='3.1.0'
 declare version_Kernel='92.298'
 ROOT_DIR=$(cd $(dirname "${BASH_SOURCE[0]}") && pwd)
 echo "ROOT_DIR : $ROOT_DIR"
@@ -79,13 +79,13 @@ declare package_name="${package_pre_name}.tar.gz"
 declare sha256_name="${package_pre_name}.sha256"
 
 if [ ${binarylib_dir} != 'None' ] && [ -d ${binarylib_dir} ]; then
-    BINARYLIBS_PATH="${binarylib_dir}/dependency/${PLAT_FORM_STR}"
-    BUILD_TOOLS_PATH="${binarylib_dir}/buildtools/${PLAT_FORM_STR}"
-    BINARYLIBS_PATH_INSTALL_TOOLS="${binarylib_dir}/dependency/install_tools_${PLAT_FORM_STR}"
+    BINARYLIBS_PATH="${binarylib_dir}/kernel/dependency/"
+    BUILD_TOOLS_PATH="${binarylib_dir}/buildtools/"
+    BINARYLIBS_PATH_INSTALL_TOOLS="${binarylib_dir}/install_tools"
 else
-    BINARYLIBS_PATH="${ROOT_DIR}/binarylibs/dependency/${PLAT_FORM_STR}"
-    BUILD_TOOLS_PATH="${ROOT_DIR}/binarylibs/buildtools/${PLAT_FORM_STR}"
-    BINARYLIBS_PATH_INSTALL_TOOLS="${ROOT_DIR}/dependency/install_tools_${PLAT_FORM_STR}"	
+    BINARYLIBS_PATH="${ROOT_DIR}/binarylibs/kernel/dependency/"
+    BUILD_TOOLS_PATH="${ROOT_DIR}/binarylibs/buildtools/"
+    BINARYLIBS_PATH_INSTALL_TOOLS="${ROOT_DIR}/install_tools"	
 fi
 
 log()

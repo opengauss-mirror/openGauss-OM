@@ -39,29 +39,23 @@ from gspylib.common.Constants import Constants
 
 try:
     import paramiko
-except ImportError as e:
-    import ctypes
-    if str(e).find('SSLv3_method') == -1:
-        # not find SSLv3_method, and it's not ours
+except ImportError as ex:
+    try:
         local_path = os.path.dirname(os.path.realpath(__file__))
         clib_path = os.path.realpath(os.path.join(local_path, "../../gspylib/clib/"))
-        ssl_path = os.path.join(clib_path, 'libssl.so.1.1')
-        crypto_path = os.path.join(clib_path, 'libcrypto.so.1.1')
-        if os.path.isfile(crypto_path):
-            ctypes.CDLL(crypto_path, mode=ctypes.RTLD_GLOBAL)
-        if os.path.isfile(ssl_path):
-            ctypes.CDLL(ssl_path, mode=ctypes.RTLD_GLOBAL)
-    else:
-        ssl_path = '/usr/lib64/libssl.so.1.1'
-        crypto_path = '/usr/lib64/libcrypto.so.1.1'
-        if os.path.isfile(crypto_path):
-            ctypes.CDLL(crypto_path, mode=ctypes.RTLD_GLOBAL)
-        if os.path.isfile(ssl_path):
-            ctypes.CDLL(ssl_path, mode=ctypes.RTLD_GLOBAL)
-    try:
+        ld_path = os.getenv("LD_LIBRARY_PATH")
+        if not ld_path or not ld_path.startswith(clib_path):
+            if not ld_path:
+                os.environ['LD_LIBRARY_PATH'] = clib_path
+            else:
+                os.environ['LD_LIBRARY_PATH'] = clib_path + ":" + ld_path
+        try:
+            os.execl(sys.executable, sys.executable, *sys.argv)
+        except Exception as ex:
+            sys.exit("Failed to set the enviroment variable: %s" % str(ex))
         import paramiko
     except ImportError as ex:
-        raise Exception(ErrorCode.GAUSS_522["GAUSS_52200"] % str(e))
+            raise Exception(ErrorCode.GAUSS_522["GAUSS_52200"] % str(ex))
 
 class SshTool():
     """

@@ -42,7 +42,7 @@ try:
 except ImportError as ex:
     try:
         local_path = os.path.dirname(os.path.realpath(__file__))
-        clib_path = os.path.realpath(os.path.join(local_path, "gspylib/clib/"))
+        clib_path = os.path.realpath(os.path.join(local_path, "../../gspylib/clib/"))
         ld_path = os.getenv("LD_LIBRARY_PATH")
         if not ld_path or not ld_path.startswith(clib_path):
             if not ld_path:

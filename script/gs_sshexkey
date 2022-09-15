@@ -37,16 +37,6 @@ import secrets
 import string
 import platform
 import gc
-package_path = os.path.dirname(os.path.realpath(__file__))
-ld_path = package_path + "/gspylib/clib"
-if 'LD_LIBRARY_PATH' not in os.environ:
-    os.environ['LD_LIBRARY_PATH'] = ld_path
-    os.execve(os.path.realpath(__file__), sys.argv, os.environ)
-if not os.environ.get('LD_LIBRARY_PATH').startswith(ld_path):
-    os.environ['LD_LIBRARY_PATH'] = \
-        ld_path + ":" + os.environ['LD_LIBRARY_PATH']
-    os.execve(os.path.realpath(__file__), sys.argv, os.environ)
-
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.threads.parallelTool import parallelTool
@@ -61,10 +51,26 @@ from subprocess import PIPE
 from base_utils.common.fast_popen import FastPopen
 
 DefaultValue.doConfigForParamiko()
+
 try:
     import paramiko
-except ImportError as e:
-    sys.exit(ErrorCode.GAUSS_522["GAUSS_52200"] % str(e))
+except ImportError as ex:
+    try:
+        local_path = os.path.dirname(os.path.realpath(__file__))
+        clib_path = os.path.realpath(os.path.join(local_path, "gspylib/clib/"))
+        ld_path = os.getenv("LD_LIBRARY_PATH")
+        if not ld_path or not ld_path.startswith(clib_path):
+            if not ld_path:
+                os.environ['LD_LIBRARY_PATH'] = clib_path
+            else:
+                os.environ['LD_LIBRARY_PATH'] = clib_path + ":" + ld_path
+        try:
+            os.execl(sys.executable, sys.executable, *sys.argv)
+        except Exception as ex:
+            sys.exit("Failed to set the enviroment variable: %s" % str(ex))
+        import paramiko
+    except ImportError as ex:
+            raise Exception(ErrorCode.GAUSS_522["GAUSS_52200"] % str(ex))
 from gspylib.threads.SshTool import SshTool
 
 HOSTS_MAPPING_FLAG = "#Gauss OM IP Hosts Mapping"

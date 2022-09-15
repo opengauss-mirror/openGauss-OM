@@ -24,7 +24,7 @@ import os
 import platform
 from gspylib.common.ErrorCode import ErrorCode
 from os_platform.common import BIT_VERSION, EULEROS, SUPPORT_EULEROS_VERSION_LIST, \
-    SUPPORT_RHEL_SERIES_PLATFORM_LIST, \
+    FUSIONOS, SUPPORT_RHEL_SERIES_PLATFORM_LIST, \
     SUPPORT_RHEL_SERIES_VERSION_LIST, OPENEULER, CENTOS, \
     SUPPORT_RHEL7X_VERSION_LIST, DEBIAN, BLANK_SPACE
 from os_platform.linux_distro import LinuxDistro
@@ -58,7 +58,9 @@ class RHELPlatform(LinuxPlatform):
                 (dist_name.lower() == CENTOS and version[0:3] ==
                  SUPPORT_EULEROS_VERSION_LIST and
                  os.path.isfile(os.path.join("/etc", "euleros-release"))) or
-                dist_name.lower() == OPENEULER):
+                (dist_name.lower() == OPENEULER) or
+                (dist_name.lower() == FUSIONOS)
+            ):
             return True
         return False
 
@@ -168,6 +170,7 @@ class RHELPlatform(LinuxPlatform):
                   (dist_name.lower() in SUPPORT_RHEL_SERIES_PLATFORM_LIST and
                    version[0:3] in SUPPORT_RHEL_SERIES_VERSION_LIST)) or
                  (dist_name.lower() == OPENEULER) or
+                 (dist_name.lower() == FUSIONOS) or
                  (dist_name.lower() == DEBIAN and version == "buster/sid")
             )):
                 return dist_name.lower(), version[0:3]

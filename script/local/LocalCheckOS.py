@@ -661,7 +661,7 @@ def disRemoveIPC():
     """
     g_logger.debug("disbale RemoveIPC.")
     distName = g_Platform.getCurrentPlatForm()[0]
-    if distName.upper() in ("OPENEULER", "KYLIN"):
+    if distName.upper() in ("OPENEULER", "FUSIONOS", "KYLIN"):
         cmd = "setenforce 0"
         subprocess.getstatusoutput(cmd)
         initFile = "/usr/lib/systemd/system/systemd-logind.service"
@@ -1391,7 +1391,7 @@ def collectfirewall():
     """
     data = firewall()
     distname = LinuxDistro.linux_distribution()[0]
-    if distname in ("redhat", "centos", "euleros", "openEuler"):
+    if distname in ("redhat", "centos", "euleros", "openEuler", "FusionOS"):
         data.distname = distname.upper()
         if g_Platform.isPlatFormEulerOSOrRHEL7X():
             cmd = "systemctl status firewalld.service"
@@ -1406,7 +1406,7 @@ def collectfirewall():
         data.errormsg = output
         return data
 
-    if distname in ("redhat", "centos", "euleros", "openEuler"):
+    if distname in ("redhat", "centos", "euleros", "openEuler", "FusionOS"):
         if g_Platform.isPlatFormEulerOSOrRHEL7X():
             if (output.strip()).find("Active: "
                                      "active (running)") > 0:
@@ -1791,7 +1791,7 @@ def CheckPlatformInfo():
                                         data.bits)
             g_logger.log("False %s %s" % (data.distname, platform_str))
             return
-    elif (data.distname == "euleros" or data.distname == "openEuler" or data.distname == "kylin"):
+    elif (data.distname == "euleros" or data.distname == "openEuler" or data.distname == "FusionOS" or data.distname == "kylin"):
         mixed_type = "%s" % data.distname
         platform_str = "%s_%s_%s" % (data.distname, data.version, data.bits)
     elif (data.distname == "debian" or data.version == "buster/sid"):

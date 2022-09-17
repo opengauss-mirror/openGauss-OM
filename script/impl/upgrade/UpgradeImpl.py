@@ -5475,6 +5475,10 @@ class UpgradeImpl:
             if (self.checkConnection() != 0):
                 output += "\n    Database could not be connected."
         elif checkPosition == const.OPTION_POSTCHECK:
+            if len(self.context.nodeNames) != 0:
+                checknodes = self.context.nodeNames
+            else:
+                checknodes = self.context.clusterInfo.getClusterNodeNames()
             if self.checkClusterStatus(checkPosition) != 0:
                 output += "\n    Cluster status is Abnormal."
             if not self.checkVersion(

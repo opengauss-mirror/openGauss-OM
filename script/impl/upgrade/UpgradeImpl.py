@@ -1209,10 +1209,13 @@ class UpgradeImpl:
             self.context.logger.log(hintInfo + str(e))
             self.context.logger.debug(traceback.format_exc())
             self.exitWithRetCode(self.context.action, False, hintInfo + str(e))
-        if len(self.context.nodeNames) < len(self.context.clusterNodes):
+
+        greyNodeNames = self.getUpgradedNodeNames(GreyUpgradeStep.STEP_UPDATE_POST_CATALOG)   
+        if len(greyNodeNames) < len(self.context.clusterNodes):
             self.context.logger.log("The nodes % have been successfully upgraded."
                                     "Then can upgrade the remaining nodes." % self.context.nodeNames)
-        self.context.logger.log("Successfully upgrade nodes.")
+        else:                                    
+            self.context.logger.log("Successfully upgrade all nodes.")
         self.exitWithRetCode(self.context.action, True)
 
     def getOneNodeStep(self, nodeName):
@@ -5774,11 +5777,14 @@ class UpgradeImpl:
             if self.checkConnection() != 0:
                 output += "\n    Database could not be connected."
         elif checkPosition == const.OPTION_POSTCHECK:
+            if len(self.context.nodeNames) != 0:
+                checknodes = self.context.nodeNames
+            else:
+                checknodes = self.context.clusterInfo.getClusterNodeNames()
             if self.checkClusterStatus(checkPosition) != 0:
                 output += "\n    Cluster status is Abnormal."
             if not self.checkVersion(
-                    self.context.newClusterVersion,
-                    self.context.clusterInfo.getClusterNodeNames()):
+                    self.context.newClusterVersion, checknodes):
                 output += "\n    The gaussdb version is inconsistent."
             if self.checkConnection() != 0:
                 output += "\n    Database could not be connected."
@@ -5819,7 +5825,7 @@ class UpgradeImpl:
             self.context.logger.debug("Command for checking gaussdb version "
                                       "consistency: %s." % cmd)
             (status, output) = \
-                self.context.sshTool.getSshStatusOutput(cmd, self.context.nodeNames)
+                self.context.sshTool.getSshStatusOutput(cmd, checknodes)
             for node in status.keys():
                 failFlag = "Failed to check version information"
                 if status[node] != DefaultValue.SUCCESS or \

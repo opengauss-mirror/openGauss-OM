@@ -806,8 +806,9 @@ Common options:
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_511["GAUSS_51103"] % cmd)
-        except Exception:
+        except Exception as e:
             self.delTempFile(tempFile)
+            self.logger.debug("Changing user password failed. %s" % str(e))
             self.logger.logExit(ErrorCode.GAUSS_503["GAUSS_50311"] % "user")
 
         cmd = "echo '%s:%s' | chpasswd" % (self.user, password)

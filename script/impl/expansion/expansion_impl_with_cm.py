@@ -124,7 +124,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         self.logger.log("Start to perform perinstall on nodes: "
                         "{0}".format(ExpansionImplWithCm.get_node_names(self.new_nodes)))
-        pre_install_path = os.path.realpath(os.path.join(self.context.packagepath,
+        pre_install_path = os.path.realpath(os.path.join(self.remote_pkg_dir,
                                                          "script", "gs_preinstall"))
         sep_env_file = "--sep-env-file={0}".format(EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH")) \
             if EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH") else ""
@@ -345,15 +345,19 @@ class ExpansionImplWithCm(ExpansionImpl):
         # 1.set pgxc_node_name on old nodes
         gauss_home = os.path.realpath(self.static_cluster_info.appPath)
         guc_path = os.path.join(gauss_home, "bin", "gs_guc")
-        export_str = "export LD_LIBRARY_PATH={0}:" \
-                     "$LD_LIBRARY_PATH".format(os.path.join(gauss_home, "lib"))
-        cmd = "%s;%s set -N all -I all -c " \
-              "\\\"%s='%s'\\\"" % (export_str, guc_path,
+        cmd = "source %s; %s set -N all -I all -c " \
+              "\\\"%s='%s'\\\"" % (self.envFile, guc_path,
                                    "pgxc_node_name",
                                    self._get_pgxc_node_name_for_single_inst())
         su_cmd = """su - {0} -c "{1}" """.format(self.user, cmd)
         self.logger.debug("Set guc parameter command: {0}".format(su_cmd))
-        self.guc_executor(self.ssh_tool, su_cmd, socket.gethostname())
+        status, output = subprocess.getstatusoutput(su_cmd)
+        if status == 0:
+            self.logger.debug("Set pgxc_node_name successfully.")
+        else:
+            self.logger.debug("Set pgxc_node_name failed. "
+                              "result is : {0}".format(output))
+            raise Exception(ErrorCode.GAUSS_535["GAUSS_53507"] % su_cmd)
 
     def _get_new_node_by_back_ip(self, back_ip):
         """

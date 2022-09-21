@@ -199,9 +199,12 @@ class ExpansionImpl():
         upgrade_sha_file = os.path.join(pkgdir,
                                              Const.UPGRADE_SQL_SHA)
         om_file = bz2_sha_file.replace(".sha256", "-om.tar.gz")
+        cm_file = []
+        if self.context.check_cm_component():
+            cm_file = [bz2_sha_file.replace(".sha256", "-cm.tar.gz")]
 
         return [om_file, bz2_file, bz2_sha_file, upgrade_sql_file,
-             upgrade_sha_file]
+             upgrade_sha_file] + cm_file
 
     def generateAndSendXmlFile(self):
         """

@@ -160,8 +160,7 @@ class PreinstallImplOLAP(PreinstallImpl):
             # self.context.needFixOwnerPaths will be checked the ownet
             self.context.needFixOwnerPaths.append(ownerPath)
 
-            # if clusterToolPath is not exist, then create it
-
+            # if clusterToolPath does not exist, then create it
             if not os.path.exists(self.context.clusterToolPath):
                 FileUtil.createDirectory(self.context.clusterToolPath)
                 FileUtil.changeMode(DefaultValue.MAX_DIRECTORY_MODE,

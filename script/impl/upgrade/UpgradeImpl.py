@@ -6571,9 +6571,10 @@ class UpgradeImpl:
 
         :return:
         """
+        streaming_cabin = os.path.realpath(os.path.join(EnvUtil.getTmpDirFromEnv(), "streaming_cabin"))
         # The value of replconninfo1 must contain 'iscascade' in the DR cluster.
         isStrDRCluster = self.isGucContainDesignatedVal("replconninfo1", "iscascade")
-        if isStrDRCluster:
+        if isStrDRCluster and os.path.isdir(streaming_cabin):
             suffix = "-streamDR"
         else:
             self.context.logger.debug("Current cluster is not dual cluster.")

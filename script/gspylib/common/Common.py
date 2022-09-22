@@ -3286,13 +3286,13 @@ class DefaultValue():
                     if row['node_host'] in nodes:
                         if step == -1:
                             step = int(row['step'])
-                    else:
-                        if step <= int(row['step']):
-                            continue
                         else:
-                            logger.debug("The nodes %s step is not all %s"
-                            % (nodes, step))
-                            return False
+                            if step <= int(row['step']):
+                                continue
+                            else:
+                                logger.debug("The nodes %s step is not all %s"
+                                % (nodes, step))
+                                return False
                 logger.debug("The nodes %s step is all %s" %  (nodes, step))
             return True
         except Exception as e:

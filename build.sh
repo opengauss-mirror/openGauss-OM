@@ -132,12 +132,7 @@ function copy_script_file()
     if [ $? -ne 0 ]; then
         die "cp -r $ROOT_DIR/script $PKG_TMP_DIR failed "
     fi
-    chmod -R +x $PKG_TMP_DIR/script/
-    
-    cp -rf $ROOT_DIR/simpleInstall $PKG_TMP_DIR/
-    if [ $? -ne 0 ]; then
-        die "cp -r $ROOT_DIR/simpleInstall $PKG_TMP_DIR/ failed "
-    fi    
+    chmod -R +x $PKG_TMP_DIR/script/   
 }
 
 function version_cfg()

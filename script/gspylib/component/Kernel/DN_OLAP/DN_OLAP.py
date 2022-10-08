@@ -17,6 +17,7 @@
 #############################################################################
 import sys
 import os
+import re
 
 sys.path.append(sys.path[0] + "/../../../../")
 from gspylib.common.ErrorCode import ErrorCode
@@ -184,7 +185,7 @@ class DN_OLAP(Kernel):
 
 
     def getDNDict(self, user, configItemType=None, peerInsts=None,
-                  azNames=None, syncNum=-1):
+                  azNames=None, syncNum=-1, syncNumFirst=""):
         """
         function: Get database node configuration
         input : user, configItemType=None, peerInsts,
@@ -237,7 +238,25 @@ class DN_OLAP(Kernel):
                     totalnum = totalnum - 1
             tmp_dn_dict["application_name"] = "'dn_%s'" % \
                                             self.instInfo.instanceId
-            if len(azNames) == 1 and totalnum > 0:
+
+            if syncNumFirst != [] and syncNumFirst != '':
+                user = UserUtil.getUserInfo()["name"]
+                clusterInfo = dbClusterInfo()
+                clusterInfo.initFromStaticConfig(user)
+                peerInsts = clusterInfo.getPeerInstance(self.instInfo)
+                dbNodes = clusterInfo.dbNodes
+                dn = dict()
+                for dbinfo in dbNodes:
+                    datanodes = dbinfo.datanodes
+                    for datainfo in datanodes:
+                        dn[datainfo.hostname] = datainfo.instanceId
+                for sync in dn.keys():
+                    if syncNumFirst.count(sync) > 1:
+                        self.logger.debug("sync must be only one")
+                    else:
+                        syncNumFirst = syncNumFirst.replace(sync,'dn_%s' % (dn[sync]))
+                tmp_dn_dict["synchronous_standby_names"] = "'%s'" % (syncNumFirst)
+            elif len(azNames) == 1 and totalnum > 0:
                 if syncNum == -1 and totalnum > 1:
                     num = (totalnum + 1)//2
                     dn_inst_str = ",".join(['dn_{0}'.format(inst.instanceId)
@@ -376,8 +395,9 @@ class DN_OLAP(Kernel):
         if azNames is None:
             azNames = []
         syncNum = self.instInfo.syncNum
+        syncNumFirst = self.instInfo.syncNumFirst
         tmpDNDict = self.getDNDict(user, configItemType, peerInsts,
-                                   azNames, syncNum)
+                                   azNames, syncNum, syncNumFirst)
 
         commonDict = self.setCommonItems()
         self.setGucConfig(commonDict)

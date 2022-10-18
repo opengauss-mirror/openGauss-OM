@@ -55,6 +55,7 @@ from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.ParameterParsecheck import Parameter
 import impl.upgrade.UpgradeConst as Const
 from impl.upgrade.OLAP.UpgradeImplOLAP import UpgradeImplOLAP
+from impl.upgrade.upgrade_cm_impl import UpgradeCmImpl
 from domain_utils.cluster_file.cluster_log import ClusterLog
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.net_util import NetUtil
@@ -116,6 +117,8 @@ class Upgrade(ParallelBaseOM):
         self.standbyCluster = False
         # The path to record the information of each cluster upgrade stage in the dual cluster
         self.upgradePhaseInfoPath = ""
+        self.upgrade_action = ""
+        self.upgrade_package = ""
 
     def usage(self):
         """
@@ -128,6 +131,7 @@ Usage:
   gs_upgradectl -t auto-upgrade -X XMLFILE [-l LOGFILE] [--grey]
   gs_upgradectl -t auto-rollback -X XMLFILE [-l LOGFILE] [--force]
   gs_upgradectl -t commit-upgrade -X XMLFILE [-l LOGFILE]
+  gs_upgradectl -t upgrade-cm --upgrade-package PACKAGE_PATH
 
 General options:
   -?, --help                      Show help information for this utility,
@@ -142,6 +146,7 @@ General options:
   --force                         Force to rollback when cluster status is
                                   not normal
   --grey                          Use grey-binary-upgrade
+  --upgrade-package               Path of the CM component package
 Option for grey upgrade
   -h                              Under grey upgrade, specified nodes name.
   --continue                      Under grey upgrade, continue to upgrade
@@ -179,6 +184,8 @@ Option for grey upgrade
             self.upgrade_remain = True
         if "force" in ParaDict.keys():
             self.forceRollback = True
+        if "upgrade-package" in ParaDict.keys():
+            self.upgrade_package = ParaDict.get("upgrade-package")
         self.tmpDir = EnvUtil.getTmpDirFromEnv()
         if self.tmpDir == "":
             raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$PGHOST")
@@ -227,7 +234,7 @@ Option for grey upgrade
             raise Exception(ErrorCode.GAUSS_500["GAUSS_50001"] % "t" + ".")
         # when we do auto-upgrade, auto-rollback or commit-upgrade,
         # we must incoming '-X' and make sure  the xml file exists.
-        if self.action != Const.ACTION_CHOSE_STRATEGY:
+        if self.action not in [Const.ACTION_CHOSE_STRATEGY, Const.ACTION_UPGRADE_CM]:
             if self.xmlFile == "":
                 raise Exception(ErrorCode.GAUSS_500["GAUSS_50001"] % 'X' + ".")
             if not os.path.exists(self.xmlFile):
@@ -459,8 +466,11 @@ if __name__ == '__main__':
 
         # set action flag file
         DefaultValue.setActionFlagFile("gs_upgradectl")
-        upgrade.initGlobalInfos()
-        impl = UpgradeImplOLAP(upgrade)
+        if upgrade.action == Const.ACTION_UPGRADE_CM:
+            impl = UpgradeCmImpl(upgrade)
+        else:
+            upgrade.initGlobalInfos()
+            impl = UpgradeImplOLAP(upgrade)
         impl.run()
     except Exception as e:
         if REPEAT:

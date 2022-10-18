@@ -326,6 +326,7 @@ class DefaultValue():
     # cluster status
     CLUSTER_STATUS_NORMAL = "Normal"
     CLUSTER_STATUS_DEGRADED = "Degraded"
+    CLUSTER_STATUS_UNAVAILABLE = "Unavailable"
     ###########################
     # instance role
     ###########################

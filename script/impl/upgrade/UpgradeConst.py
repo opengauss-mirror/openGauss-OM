@@ -27,6 +27,7 @@ DELTA_NUM = 0.000001
 #external action
 ACTION_CHOSE_STRATEGY = "chose-strategy"
 ACTION_INPLACE_UPGRADE = "inplace-binary-upgrade"
+ACTION_UPGRADE_CM = "upgrade-cm"
 #grey upgrade
 ACTION_SMALL_UPGRADE = "small-binary-upgrade"
 ACTION_LARGE_UPGRADE = "large-binary-upgrade"
@@ -106,6 +107,16 @@ BINARY_UPGRADE_STEP_UPGRADE_APP = 4
 BINARY_UPGRADE_STEP_START_NODE = 5
 BINARY_UPGRADE_STEP_PRE_COMMIT = 6
 
+# upgrade CM component
+ACTION_UPGRADE_PREPARE_UPGRADE_CM = "prepare_upgrade_cm"
+ACTION_UPGRADE_CM_UPGRADE_BINARY = "upgrade_cm"
+ACTION_UPGRADE_CM_ROLLBACK = "rollback_cm"
+
+UPGRADE_BACKUP_DIR = "upgrade_cm_backup_dir"
+UPGRADE_CM_DECOMPRESS_DIR = "cm_decompress_package"
+UPGRADE_TMP_BACKUP_DIR = "ready_backup_cm"
+UPGRADE_BACKUP_TAR_NAME = "upgrade_cm_backup.tar.gz"
+UPGRADE_BINARY_LIST_FILE_NAME = "upgrade_binary_list"
 
 # dual cluster stage
 class DualClusterStage:

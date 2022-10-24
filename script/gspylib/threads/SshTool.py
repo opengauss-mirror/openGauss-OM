@@ -17,6 +17,7 @@
 # ----------------------------------------------------------------------------
 # Description  : SshTool.py is utility to support ssh tools
 #############################################################################
+import copy
 import socket
 import subprocess
 import os
@@ -689,7 +690,7 @@ class SshTool():
 
         return resultMap
 
-    def scpFiles(self, srcFile, targetDir, hostList=None, env_file="",
+    def scpFiles(self, srcFile, targetDir, sshHostList=None, env_file="",
                  gp_path="", parallel_num=300):
         """
         function: copy files to other path
@@ -700,8 +701,9 @@ class SshTool():
         outputCollect = ""
         localMode = False
         resultMap = {}
-        if hostList is None:
-            hostList = []
+        hostList = []
+        if sshHostList is None:
+            sshHostList = []
         try:
             if env_file != "":
                 mpprcFile = env_file
@@ -721,20 +723,28 @@ class SshTool():
                 GPHOME = gp_path.strip()
             pscppre = "python3 %s/script/gspylib/pssh/bin/pscp" % GPHOME
 
-            if len(hostList) == 0:
-                scpCmd += " && %s -r -v -t %s -p %s -h %s -o %s -e %s %s %s" \
-                          " 2>&1 | tee %s" % (pscppre, self.__timeout,
-                                              parallel_num, self.__hostsFile,
-                                              self.__outputPath,
-                                              self.__errorPath, srcFile,
-                                              targetDir, self.__resultFile)
-                hostList = self.hostNames
+            if len(sshHostList) == 0:
+                hostList = copy.deepcopy(self.hostNames)
+            else:
+                hostList = copy.deepcopy(sshHostList)
             if len(hostList) == 1 and hostList[0] == socket.gethostname() and \
                 srcFile != targetDir and \
                 srcFile != os.path.join(targetDir, os.path.split(srcFile)[1]):
                 localMode = True
                 scpCmd = "cp -r %s %s" % (srcFile, targetDir)
             else:
+                # cp file on local node
+                if socket.gethostname() in hostList:
+                    localhost_idx = hostList.index(socket.gethostname())
+                    hostList.pop(localhost_idx)
+                    cpcmd = "cp -r %s %s" % (srcFile, targetDir)
+                    if srcFile != targetDir and srcFile != os.path.join(targetDir, os.path.basename(srcFile)):
+                        (status, output) = subprocess.getstatusoutput(cpcmd)
+                        if status == 0:
+                            resultMap[socket.gethostname()] = DefaultValue.SUCCESS
+                        else:
+                            resultMap[socket.gethostname()] = DefaultValue.FAILURE
+                    
                 scpCmd += " && %s -r -v -t %s -p %s -H %s -o %s -e %s %s %s" \
                           " 2>&1 | tee %s" % (pscppre, self.__timeout,
                                               parallel_num,

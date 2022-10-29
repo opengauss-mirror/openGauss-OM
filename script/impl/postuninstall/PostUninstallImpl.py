@@ -22,7 +22,7 @@ import grp
 import pwd
 import getpass
 
-from script.base_utils.os.user_util import UserUtil
+from base_utils.os.user_util import UserUtil
 
 sys.path.append(sys.path[0] + "/../")
 from gspylib.threads.parallelTool import parallelTool

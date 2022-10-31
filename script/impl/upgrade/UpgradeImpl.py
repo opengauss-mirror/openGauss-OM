@@ -1161,7 +1161,11 @@ class UpgradeImpl:
                 self.switchBin(const.NEW)
                 self.restore_origin_disaster_user_file()
                 # create CA for CM
-                self.create_ca_for_cm()
+                if len(self.context.nodeNames) == len(self.context.clusterNodes):
+                    self.create_ca_for_cm()
+                else:
+                    self.createCmCaForRollingUpgrade()
+
                 self.setNewVersionGuc()
                 self.recordNodeStep(GreyUpgradeStep.STEP_UPGRADE_PROCESS)
             if currentStep < GreyUpgradeStep.STEP_UPDATE_POST_CATALOG:
@@ -1418,6 +1422,7 @@ class UpgradeImpl:
 
     def switchDn(self, isRollback):
         self.context.logger.log("Switching DN processes.")
+        is_rolling = False
         start_time = timeit.default_timer()
         # under upgrade, kill the process from old cluster app path,
         # rollback: kill from new cluster app path
@@ -1436,7 +1441,10 @@ class UpgradeImpl:
             cmd += " --rollback"
         if self.context.forceRollback:
             cmd += " --force"
-        if self.need_rolling(isRollback):
+        if len(self.context.nodeNames) != len(self.context.clusterNodes):
+            is_rolling = True
+        if self.need_rolling(isRollback) or is_rolling:
+            self.context.logger.log("Switch DN processes for rolling upgrade.")
             cmd += " --rolling"
         self.context.logger.debug(
             "Command for switching DN processes: %s" % cmd)
@@ -5414,6 +5422,26 @@ class UpgradeImpl:
                                                                 "bin"))
         agent_component.create_cm_ca(self.context.sshTool)
         self.context.logger.debug("Create CA for CM successfully.")
+    
+    def createCmCaForRollingUpgrade(self):
+        """
+        Create CM CA file
+        """
+        if self.get_upgrade_cm_strategy() != 1:
+            self.context.logger.debug("No need to create CA for CM.")
+            return
+		
+        hostList = copy.deepcopy(self.context.nodeNames)
+		
+        cmd = "%s -t %s -U %s --new_cluster_app_path=%s -l %s" % \
+              (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+               const.ACTION_CREATE_CM_CA_FOR_ROLLING_UPGRADE,
+               self.context.user,
+               self.context.newClusterAppPath,
+               self.context.localLog)
+        self.context.logger.debug("Command for create ca for cm in rolling upgrade: %s" % cmd)
+        self.context.sshTool.executeCommand(cmd, hostList=hostList)
+        self.context.logger.debug("Successfully create cm ca for rolling upgrade.")
 
     def reloadCmAgent(self, is_final=False):
         """

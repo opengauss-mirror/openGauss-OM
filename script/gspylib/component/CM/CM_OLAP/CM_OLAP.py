@@ -792,7 +792,8 @@ class CM_OLAP(CM):
                 # number of assurance certificate files.
                 if openssl and len(os.listdir(target_dir)) > CM_OLAP.CM_CERT_FILES_NUM:
                     break
-            openssl.distribute_cert(ssh_tool)
+            if (ssh_tool):
+                openssl.distribute_cert(ssh_tool)
             self.logger.log("Create CA files on directory [{0}]. "
                             "file list: {1}".format(target_dir, os.listdir(target_dir)))
         else:

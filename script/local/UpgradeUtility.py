@@ -416,7 +416,8 @@ def checkParameter():
             % "-new_cluster_app_path and --old_cluster_app_path")
     elif g_opts.action in \
             [const.ACTION_SYNC_CONFIG,
-             const.ACTION_RESTORE_CONFIG] and not g_opts.newClusterAppPath:
+             const.ACTION_RESTORE_CONFIG,
+             const.ACTION_CREATE_CM_CA_FOR_ROLLING_UPGRADE] and not g_opts.newClusterAppPath:
         GaussLog.exitWithError(
             ErrorCode.GAUSS_500["GAUSS_50001"] % "-new_cluster_app_path")
     elif g_opts.action in \
@@ -4010,6 +4011,33 @@ def greyUpgradeSyncConfig():
     CmdExecutor.execCommandLocally(restore_cm_cert_file_cmd)
     g_logger.debug("Restore CM cert files for grey upgrade successfully.")
 
+def createCmCaForRollingUpgrade():
+    """
+    Create CM CA file
+    """
+    g_logger.debug("Start create CA for CM.")
+		
+    clusterAppPath = g_opts.newClusterAppPath
+		
+    new_static_config_file = os.path.join(
+        clusterAppPath, "bin/cluster_static_config")
+    if not os.path.isfile(new_static_config_file):
+        raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] %
+                        os.path.realpath(new_static_config_file))
+					  
+    new_cluster_info = dbClusterInfo()
+    new_cluster_info.initFromStaticConfig(g_opts.user, new_static_config_file)
+    local_node = get_local_node(new_cluster_info)
+    if not local_node:
+        raise Exception("Cluster Information object error. Not obtain local node.")
+		
+    agent_component = CM_OLAP()
+    agent_component.instInfo = local_node.cmagents[0]
+    agent_component.logger = g_logger
+    agent_component.binPath = os.path.realpath(os.path.join(clusterAppPath,
+                                                                "bin"))
+    agent_component.create_cm_ca(None)
+    g_logger.debug("Create CA for CM in Rolling Upgrade successfully.")
 
 def setGucValue():
     """
@@ -4224,7 +4252,23 @@ def isKillDn():
         g_logger.debug("isKillDn dnName:{0} "
                        "commitid:{1}".format(dnNames, curCommitid))
         # execute on the dn and cn to get the exists process version
-        needKillDn = checkExistsVersion(dnInst, curCommitid)
+        if g_opts.rolling:
+            current_user = pwd.getpwuid(os.getuid()).pw_name
+            gauss_home = EnvUtil.getEnvironmentParameterValue("GAUSSHOME",
+                                                              current_user)
+            static_config_file = os.path.join(gauss_home, "bin",
+                                              "cluster_static_config")
+            cluster_info = dbClusterInfo()
+            cluster_info.initFromStaticConfig(current_user, static_config_file)
+            local_node = [node for node in cluster_info.dbNodes
+                      if node.name == NetUtil.GetHostIpOrName()][0]
+            dnInst = local_node.datanodes[0]
+            g_logger.debug("Check version for rolling upgrade node: %s."
+                           % (dnInst.hostname))
+            needKillDn = checkExistsVersion(dnInst, curCommitid)
+
+        else:
+            needKillDn = checkExistsVersion(dnInst, curCommitid)
         return needKillDn
     except Exception as e:
         g_logger.debug("Cannot query the exists dn process "
@@ -4687,6 +4731,7 @@ def checkAction():
              const.ACTION_CREATE_NEW_CSV_FILE,
              const.ACTION_GREY_SYNC_GUC,
              const.ACTION_GREY_UPGRADE_CONFIG_SYNC,
+             const.ACTION_CREATE_CM_CA_FOR_ROLLING_UPGRADE,
              const.ACTION_SWITCH_DN,
              const.ACTION_GET_LSN_INFO,
              const.ACTION_GREY_RESTORE_CONFIG,
@@ -4748,6 +4793,7 @@ def main():
             const.ACTION_RESTORE_DYNAMIC_CONFIG_FILE: restoreDynamicConfigFile,
             const.ACTION_GREY_SYNC_GUC: greySyncGuc,
             const.ACTION_GREY_UPGRADE_CONFIG_SYNC: greyUpgradeSyncConfig,
+            const.ACTION_CREATE_CM_CA_FOR_ROLLING_UPGRADE: createCmCaForRollingUpgrade,
             const.ACTION_SWITCH_DN: switchDnNodeProcess,
             const.ACTION_CLEAN_GS_SECURE_FILES: clean_gs_secure_files,
             const.ACTION_GET_LSN_INFO: getLsnInfo,

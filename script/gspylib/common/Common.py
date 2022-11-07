@@ -32,6 +32,8 @@ import base64
 import secrets
 import string
 import stat
+import csv
+import copy
 from subprocess import PIPE
 
 # The installation starts, but the package is not decompressed completely.
@@ -215,6 +217,10 @@ class DefaultValue():
     # The remaining space of device
     INSTANCE_DISK_SIZE = 200
 
+    ###########################
+    # upgrade parameter
+    ###########################
+    GREY_UPGRADE_STEP_UPGRADE_PROCESS = 3
 
     # env parameter
     MPPRC_FILE_ENV = "MPPDB_ENV_SEPARATE_PATH"
@@ -2860,6 +2866,60 @@ class DefaultValue():
                          "on node [{0}] successfully.".format(node.name))
         logger.log("Remove dynamic_config_file and CM metadata directory on all nodes.")
 
+    @staticmethod
+    def isgreyUpgradeNodeSpecify(user, step=-1, nodes=None, logger=None):
+        """
+        step = -1 means we just check if step in all the specified nodes is the
+        same otherwise, we check if all the specified nodes is the given step
+        """
+        try:
+            if nodes:
+                logger.debug(
+                    "check if the nodes %s step is %s " (nodes, step))
+            else:
+                logger.debug(
+                    "check if all the nodes step is %s" % step)
+                # This cluster info is new cluster info.
+                clusterNodes = []
+                cluster_info = dbClusterInfo()
+                cluster_info.initFromStaticConfig(user)
+                for dbNode in cluster_info.dbNodes:
+                    clusterNodes.append(dbNode.name)
+                nodes = copy.deepcopy(clusterNodes)
+            
+            logger.debug(
+                "IsgreyUpgradeNodeSpecify: all the nodes is %s" % nodes)
+            
+            # upgrade backup path
+            tmpDir = EnvUtil.getTmpDirFromEnv(user)
+            if tmpDir == "":
+                raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$PGHOST")
+            upgradeBackupPath = "%s/%s" % (tmpDir, "binary_upgrade")
+            stepFile = os.path.join(upgradeBackupPath, "upgrade_step.csv")
+            if not os.path.isfile(stepFile):
+                logger.debug(
+                    "No step file, which means not in upgrade occasion or "
+                    "node %s step is same" % nodes)
+                return True
+
+            with open(stepFile, 'r') as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    if row['node_host'] in nodes:
+                        if step == -1:
+                            step = int(row['step'])
+                        else:
+                            if step <= int(row['step']):
+                                continue
+                            else:
+                                logger.debug("The nodes %s step is not all %s"
+                                % (nodes, step))
+                                return False
+                logger.debug("The nodes %s step is all %s" %  (nodes, step))
+            return True
+        except Exception as e:
+            # failed to read the upgrade_step.csv in isgreyUpgradeNodeSpecify
+            logger.logExit(str(e))
 
 class ClusterCommand():
     '''

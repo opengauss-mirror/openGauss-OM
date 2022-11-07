@@ -321,11 +321,15 @@ class Kernel(BaseComponent):
                                         realPath = "'%s/%s'" % (
                                         pglDir, infoDir)
                                         FileUtil.removeDirectory(realPath)
-            cmd = "if [ -d '%s' ];then cd '%s' && find . ! -name " \
-                  "'pg_location' " \
-                  "! -name '..' ! -name '.' -print0 |xargs -r -0 -n100 rm " \
-                  "-rf; " \
-                  "fi" % (instDir, instDir)
+
+            ignores = [
+                'pg_location', 'cfg', 'log', 'dss_inst.ini', 'dss_vg_conf.ini',
+                'nodedata.cfg', '.', '..'
+            ]
+            extra_cmd = '! -name'.join([' \'{}\' '.format(ig) for ig in ignores])
+
+            cmd = "if [ -d '%s' ];then cd '%s' && find . ! -name %s -print0" \
+                  " |xargs -r -0 -n100 rm -rf; fi "   % (instDir, instDir, extra_cmd)
             (status, output) = subprocess.getstatusoutput(cmd)
             if (status != 0):
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50207"] %

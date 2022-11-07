@@ -37,6 +37,7 @@ from base_utils.os.file_util import FileUtil
 from domain_utils.cluster_file.profile_file import ProfileFile
 from domain_utils.cluster_file.version_info import VersionInfo
 from base_utils.os.net_util import NetUtil
+from base_utils.os.env_util import EnvUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from os_platform.linux_distro import LinuxDistro
 
@@ -133,6 +134,18 @@ class PostUninstallImpl:
             self.logger.logExit(str(e))
         self.logger.debug("Do clean Environment succeeded.", "constant")
 
+    def setOrCleanGphomeEnv(self, setGphomeenv=True):
+        osProfile = ClusterConstants.ETC_PROFILE
+        if setGphomeenv:
+            GphomePath = ClusterDir.getPreClusterToolPath(self.xmlFile)
+            # set GPHOME
+            FileUtil.writeFile(osProfile, ["export GPHOME=%s" % GphomePath])
+        else:
+            FileUtil.deleteLine(osProfile, "^\\s*export\\s*GPHOME=.*$")
+            FileUtil.deleteLine(osProfile, "^\\s*export\\s*UNPACKPATH=.*$")
+            self.logger.debug(
+                "Deleting crash GPHOME in user environment variables.")
+
     def checkUnPreInstall(self):
         """
         function: check whether do uninstall before unpreinstall
@@ -209,6 +222,15 @@ class PostUninstallImpl:
                                         self.sshTool, self.localMode,
                                         self.mpprcFile)
         self.logger.log("Successfully deleted the temporary directory.")
+
+        path = '/etc/udev/rules.d/zz-dss_{}.rules'.format(self.user)
+        if self.clusterInfo.enable_dss == 'on' or os.path.isfile(path):
+            self.logger.log("Deleting the udev rule file.")
+            cmd = "if [ -f '{0}' ]; then rm -rf '{0}'; fi;".format(path)
+            self.logger.debug("Command for deleting the udev rule file: %s" % cmd)
+            CmdExecutor.execCommandWithMode(cmd, self.sshTool, self.localMode,
+                                            self.mpprcFile)
+            self.logger.log("Successfully deleted the udev rule file.")
 
     def CleanInstanceDir(self):
         """
@@ -824,7 +846,7 @@ class PostUninstallImpl:
         except Exception as e:
             raise Exception(str(e))
 
-    def delet_root_mutual_trust(self):
+    def delet_root_mutual_trust(self, local_host, path):
         """
         :return:
         """
@@ -854,12 +876,11 @@ class PostUninstallImpl:
 
         # get remote node and local node
         host_list = self.clusterInfo.getClusterNodeNames()
-        local_host = NetUtil.GetHostIpOrName()
         host_list.remove(local_host)
 
         # delete remote root mutual trust
         kill_remote_ssh_agent_cmd = DefaultValue.killInstProcessCmd("ssh-agent", True)
-        self.sshTool.getSshStatusOutput(cmd % kill_remote_ssh_agent_cmd, host_list)
+        self.sshTool.getSshStatusOutput(cmd % kill_remote_ssh_agent_cmd, host_list, gp_path=path)
         # delete local root mutual trust
         CmdExecutor.execCommandLocally(cmd % kill_ssh_agent_cmd)
         self.logger.debug("Delete root mutual trust successfully.")
@@ -869,6 +890,13 @@ class PostUninstallImpl:
             self.logger.debug(
                 "gs_postuninstall execution takes %s steps in total"
                 % ClusterCommand.countTotalSteps("gs_postuninstall"))
+            local_host = NetUtil.GetHostIpOrName()
+            if (self.mpprcFile is not None and self.mpprcFile != ""):
+                os_profile = self.mpprcFile
+            else:
+                os_profile = ClusterConstants.ETC_PROFILE
+            path = EnvUtil.get_env_param(source_file=os_profile,
+                                         env_param="UNPACKPATH")
             self.createTrustForRoot()
             self.cleanGphomeScript()
             self.checkLogFilePath()
@@ -878,7 +906,8 @@ class PostUninstallImpl:
             self.cleanLocalLog()
             self.cleanMpprcFile()
             self.cleanScript()
-            self.delet_root_mutual_trust()
+            self.setOrCleanGphomeEnv(setGphomeenv=False)
+            self.delet_root_mutual_trust(local_host, path)
             self.logger.log("Successfully cleaned environment.")
         except Exception as e:
             self.logger.logExit(str(e))

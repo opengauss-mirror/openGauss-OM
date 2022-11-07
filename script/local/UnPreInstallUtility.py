@@ -390,6 +390,7 @@ class Postuninstall(LocalBaseOM):
         cmd += \
             "-e '/^export LD_LIBRARY_PATH=\$GPHOME\/lib:" \
             "\$LD_LIBRARY_PATH$/d' %s " % PROFILE_FILE
+        cmd += "-e '/^export UNPACKPATH=.*$/d' %s " % PROFILE_FILE
         cmd += \
             "-e '/^export PYTHONPATH=\$GPHOME\/lib$/d' %s; fi) " % PROFILE_FILE
         self.logger.debug(

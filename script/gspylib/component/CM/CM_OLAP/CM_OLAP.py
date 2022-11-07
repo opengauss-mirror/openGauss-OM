@@ -29,7 +29,7 @@ try:
     from gspylib.common.Common import DefaultValue, ClusterCommand
     from gspylib.common.DbClusterStatus import DbClusterStatus
     from gspylib.os.gsfile import g_file
-    from gspylib.component.CM.CM import CM
+    from gspylib.component.CM.CM import CM, CmResAttr, CmResCtrlCmd, DssInstAttr
     from gspylib.common.DbClusterInfo import dbClusterInfo
     from base_utils.os.crontab_util import CrontabUtil
     from base_utils.os.env_util import EnvUtil
@@ -39,6 +39,7 @@ try:
     from base_utils.common.fast_popen import FastPopen
     from domain_utils.cluster_file.cluster_dir import ClusterDir
     from domain_utils.cluster_file.cluster_log import ClusterLog
+    from gspylib.component.DSS.dss_comp import DssInst, UdevContext
 
 except ImportError as e:
     sys.exit("[GAUSS-52200] : Unable to import module: %s." % str(e))
@@ -62,6 +63,15 @@ class CM_OLAP(CM):
         Constructor
         '''
         super(CM_OLAP, self).__init__()
+        self.cluster_info = None
+
+    def init_globals(self):
+        user = pwd.getpwuid(os.getuid()).pw_name
+        self.cluster_info = dbClusterInfo()
+        if os.path.isfile(
+                self.cluster_info.get_staic_conf_path(user, ignore_err=True)):
+            self.cluster_info.initFromStaticConfig(user)
+
 
     def init_cm_server(self):
         """
@@ -89,6 +99,15 @@ class CM_OLAP(CM):
         log_path = EnvUtil.getEnvironmentParameterValue("GAUSSLOG", user)
         server_para_dict = {"log_dir": os.path.realpath(os.path.join(log_path,
                                                                      "cm", "cm_server"))}
+        if  self.dss_mode:
+            cm_vote_disk = UdevContext.CM_VOTE_NAME % user
+            cm_share_disk = UdevContext.CM_SHARE_NAME % user
+            server_para_dict.update({
+                'share_disk_path': cm_share_disk,
+                'voting_disk_path': cm_vote_disk,
+                'dn_arbitrate_mode': 'share_disk',
+                'ddb_type': '2'
+            })
         self.setGucConfig(server_para_dict)
         self.logger.debug("Initializing cm_server instance successfully.")
 
@@ -118,6 +137,12 @@ class CM_OLAP(CM):
         log_path = EnvUtil.getEnvironmentParameterValue("GAUSSLOG", user)
         agent_para_dict = {"unix_socket_directory": os.path.dirname(self.binPath),
                            "log_dir": os.path.realpath(os.path.join(log_path, "cm", "cm_agent"))}
+        if self.dss_mode:
+            cm_vote_disk = UdevContext.CM_VOTE_NAME % user
+            agent_para_dict.update({
+                'voting_disk_path': cm_vote_disk
+                })
+
         self.setGucConfig(agent_para_dict)
         self.logger.debug("Initializing cm_agent instance successfully.")
 
@@ -141,6 +166,9 @@ class CM_OLAP(CM):
         if self.instInfo.instanceRole == DefaultValue.INSTANCE_ROLE_CMSERVER:
             self.init_cm_server()
         elif self.instInfo.instanceRole == DefaultValue.INSTANCE_ROLE_CMAGENT:
+            if self.dss_mode:
+                self.init_globals()
+                self.init_cm_res_json()
             self.init_cm_agent()
 
     def uninstall(self):
@@ -767,17 +795,17 @@ class CM_OLAP(CM):
                 continue
         self.logger.debug("Retry generate CA for CM component failed.")
 
-    def create_cm_ca(self, ssh_tool):
+    def create_cm_ca(self, ssh_tool, ca_org='cm'):
         """
-        Create CA file for CM component
+        Create CA file for CM/dss component
         """
-        self.logger.log("Create CA files for cm beginning.")
+        self.logger.log("Create CA files for {} beginning.".format(ca_org))
         current_user = pwd.getpwuid(os.getuid()).pw_name
         gp_home = EnvUtil.getEnvironmentParameterValue("GPHOME", current_user)
         create_ca_script = os.path.realpath(os.path.join(gp_home, "script", "gspylib",
                                                          "common", "encrypted_openssl.py"))
         expect_sh = os.path.realpath(os.path.join(gp_home, "script", "local", "expect.sh"))
-        target_dir = os.path.realpath(os.path.join(self.binPath, "..", "share", "sslcert", "cm"))
+        target_dir = os.path.realpath(os.path.join(self.binPath, "..", "share", "sslcert", ca_org))
 
         if os.path.isfile(create_ca_script) and os.path.isfile(expect_sh):
             create_cmd = g_file.SHELL_CMD_DICT["createDir"] % (target_dir,
@@ -800,4 +828,42 @@ class CM_OLAP(CM):
         else:
             self.logger.log("There is not exists [%s]." % create_ca_script)
 
+    def get_init_cm_cmd(self):
+        user = pwd.getpwuid(os.getuid()).pw_name
+        gauss_home = EnvUtil.getEnvironmentParameterValue('GAUSSHOME', user)
+        dss_home = EnvUtil.getEnvironmentParameterValue('DSS_HOME', user)
+        # not use realpath
+        dms_contrl = os.path.join(gauss_home, 'bin/dms_contrl.sh')
+        dss_contrl = os.path.join(gauss_home, 'bin/dss_contrl.sh')
 
+        cmd = [
+            str(CmResCtrlCmd(name='dms_res', attr=CmResAttr(dms_contrl))),
+            str(
+                CmResCtrlCmd(name='dss',
+                             attr=CmResAttr(dss_contrl, res_type='APP')))
+        ]
+
+        for db_inst in self.cluster_info.dbNodes:
+            cmd.append(
+                str(
+                    CmResCtrlCmd(action='edit',
+                                 name='dss',
+                                 attr=DssInstAttr(
+                                     node_id=db_inst.id,
+                                     dss_id=DssInst.get_current_dss_id(
+                                         dss_home, db_inst),
+                                     dss_home="{};{}".format(dss_home,
+                                     db_inst.datanodes[0].datadir)))))
+        return "source {}; {}".format(EnvUtil.getMpprcFile(), ' ;'.join(cmd))
+
+    def init_cm_res_json(self, rm_cm_json=True):
+        cm_resource = os.path.realpath(
+            os.path.join(self.instInfo.datadir, 'cm_resource.json'))
+        if rm_cm_json and os.path.isfile(cm_resource):
+            os.remove(cm_resource)
+        cmd = self.get_init_cm_cmd()
+        sts, out = subprocess.getstatusoutput(cmd)
+        if sts != 0:
+            raise Exception(
+                'Failed to initialize the CM resource file. Error: {}'.format(
+                    str(out)))

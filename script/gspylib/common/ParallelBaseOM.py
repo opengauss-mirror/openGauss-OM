@@ -28,6 +28,7 @@ from gspylib.common.OMCommand import OMCommand
 from gspylib.threads.SshTool import SshTool
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.component.CM.CM_OLAP.CM_OLAP import CM_OLAP
+from gspylib.component.DSS.dss_comp import Dss
 from gspylib.component.Kernel.DN_OLAP.DN_OLAP import DN_OLAP
 from base_utils.executor.cmd_executor import CmdExecutor
 from domain_utils.cluster_file.cluster_dir import ClusterDir
@@ -78,6 +79,7 @@ class ParallelBaseOM(object):
         self.gtmCons = []
         self.cnCons = []
         self.dnCons = []
+        self.dss_cons = []
         # localMode is same as isSingle in all OM script, expect for
         # gs_preinstall.
         # in gs_preinstall, localMode means local mode for master-standby
@@ -120,6 +122,17 @@ class ParallelBaseOM(object):
         for nodeInfo in self.clusterInfo.dbNodes:
             self.initCmComponent(nodeInfo)
             self.initKernelComponent(nodeInfo)
+            dss_mode = self.clusterInfo.enable_dss == 'on'
+            self.init_dss_component(nodeInfo, dss_mode=dss_mode)
+
+    def init_dss_component(self, node_info, dss_mode=False):
+        if not dss_mode:
+            return
+        component = Dss()
+        component.clusterType = self.clusterInfo.clusterType
+        component.dss_mode = dss_mode
+        self.dss_cons.append(component)
+
 
     def initComponentAttributes(self, component):
         """
@@ -558,5 +571,3 @@ class ParallelBaseOM(object):
                 scpFile = os.path.join(binPath, "%s" % certFile)
                 self.sshTool.scpFiles(scpFile, binPath, hostList)
         self.logger.debug("Successfully encrypted cipher and rand files.")
-
-

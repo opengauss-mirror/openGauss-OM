@@ -22,6 +22,7 @@ sys.path.append(sys.path[0] + "/../../../../")
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.Common import DefaultValue, ClusterInstanceConfig
 from gspylib.component.Kernel.Kernel import Kernel
+from gspylib.component.DSS.dss_comp import Dss, DssInst
 from gspylib.common.DbClusterInfo import dbClusterInfo
 from base_utils.os.cmd_util import CmdUtil
 from domain_utils.cluster_file.cluster_dir import ClusterDir
@@ -98,6 +99,7 @@ class DN_OLAP(Kernel):
         FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, "%s/server.key.rand" %
                           self.instInfo.datadir)
 
+    @Dss.catch_err()
     def initInstance(self):
         """
         function:
@@ -138,6 +140,19 @@ class DN_OLAP(Kernel):
             self.logger.debug('check DCF mode:%s' % self.paxos_mode)
             if self.paxos_mode:
                 cmd += " -c"
+            elif self.dss_mode:
+                if not Dss.check_dss_exist():
+                    raise Exception('The dssserver process does not exist.')
+                vgname = EnvUtil.getEnv('VGNAME')
+                dss_home = EnvUtil.getEnv('DSS_HOME')
+                cfg_path = os.path.join(dss_home, 'cfg', 'dss_inst.ini')
+                inst_id = DssInst.get_dss_id_from_key(dss_home)
+                cfg_context = DssInst(cfg_path).get_dms_url()
+                pri_vgname = DssInst.get_private_vgname_by_ini(dss_home, inst_id)
+                cmd += " -n --vgname=\"{}\" --enable-dss --dms_url=\"{}\" -I {}" \
+                    " --socketpath=\"{}\"".format(
+                    "+{},+{}".format(vgname, pri_vgname), cfg_context, inst_id,
+                    "UDS:{}/.dss_unix_d_socket".format(dss_home))
             self.logger.debug("Command for initializing database "
                               "node instance: %s" % cmd)
             (status, output) = CmdUtil.retryGetstatusoutput(cmd)
@@ -185,6 +200,14 @@ class DN_OLAP(Kernel):
             tmp_dn_dict["dcf_node_id"] = str(int(self.instInfo.instanceId) - 6000)
             tmp_dn_dict["dcf_data_path"] = self.instInfo.datadir + '/dcf_data'
             tmp_dn_dict["dcf_log_path"] = '%s/dcf_log' % ClusterDir.getUserLogDirWithUser(user)
+        if EnvUtil.get_rdma_type(user) == "RDMA":
+            tmp_dn_dict["ss_interconnect_type"] = '\'RDMA\''
+            tmp_dn_dict["ss_ock_log_path"] = "'%s/pg_log/dn_%d'" % (
+                ClusterDir.getUserLogDirWithUser(user),
+                self.instInfo.instanceId)
+            rdma_config = EnvUtil.get_rdma_config(user)
+            if rdma_config:
+                tmp_dn_dict["ss_rdma_work_config"] = "'{}'".format(rdma_config)
         if "127.0.0.1" in self.instInfo.listenIps:
             tmp_dn_dict["listen_addresses"] = "'%s'" % ",".join(
                 self.instInfo.listenIps)
@@ -471,4 +494,3 @@ class DN_OLAP(Kernel):
 
     def upgrade(self):
         pass
-

@@ -194,7 +194,7 @@ class SshTool():
                     cmd = "source %s; %s/script/%s -f %s -l '%s'" % \
                           (ClusterConstants.ETC_PROFILE, gphome, create_trust_file,
                            tmp_hosts, self.__logFile)
-                    
+
             if skipHostnameSet:
                 cmd += " --skip-hostname-set"
 
@@ -369,7 +369,7 @@ class SshTool():
 
     def executeCommand(self, cmd, cmdReturn=DefaultValue.SUCCESS,
                        hostList=None, env_file="", parallel_num=300,
-                       checkenv=False):
+                       checkenv=False, parallelism=True ):
         """
         function: Execute command on all hosts
         input : cmd, descript, cmdReturn, hostList, env_file, parallel_num
@@ -398,20 +398,23 @@ class SshTool():
 
             if len(hostList) == 0:
                 if os.getuid() == 0 and (mpprcFile == "" or not mpprcFile):
-                    sshCmd = "source %s && %s -t %s -h %s -P -p %s -o %s -e" \
+                    sshCmd = "source %s && %s -t %s parallelism_flag -P -p %s -o %s -e" \
                              " %s \"source %s; %s\" 2>&1 | tee %s" \
                              % (osProfile, psshpre, self.__timeout,
-                                self.__hostsFile, parallel_num,
+                              parallel_num,
                                 self.__outputPath, self.__errorPath,
                                 osProfile, cmd, self.__resultFile)
                 else:
-                    sshCmd = "source %s && %s -t %s -h %s -P -p %s -o %s -e" \
+                    sshCmd = "source %s && %s -t %s parallelism_flag -P -p %s -o %s -e" \
                              " %s \"source %s;source %s;%s\" 2>&1 | tee %s" \
                              % (osProfile, psshpre, self.__timeout,
-                                self.__hostsFile, parallel_num,
+                                 parallel_num,
                                 self.__outputPath, self.__errorPath,
                                 osProfile, userProfile, cmd,
                                 self.__resultFile)
+                if parallelism:
+                    sshCmd = sshCmd.replace('parallelism_flag',
+                                            '-h ' + self.__hostsFile)
                 hostList = self.hostNames
             else:
                 if os.getuid() == 0 and (mpprcFile == "" or not mpprcFile):
@@ -443,9 +446,31 @@ class SshTool():
 
             # if it is localMode, it means does not call pssh,
             # so there is no time out
-            (status, output) = subprocess.getstatusoutput(sshCmd)
+            if not parallelism:
+                for dss_host in hostList:
+                    dss_cmd = sshCmd.replace('parallelism_flag',
+                                            '-H ' + dss_host)
+                    status, output = subprocess.getstatusoutput(dss_cmd)
+                    if output.find("Timed out, Killed by signal 9") > 0:
+                        self.timeOutClean(cmd, psshpre, hostList, env_file,
+                                        parallel_num)
+                        isTimeOut = True
+                        raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"]
+                                        % SensitiveMask.mask_pwd(dss_cmd) +
+                                        " Error:\n%s" % SensitiveMask.mask_pwd(output))
+                    if status != 0:
+                        raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"]
+                                        % SensitiveMask.mask_pwd(dss_cmd) +
+                                        " Error:\n%s" % SensitiveMask.mask_pwd(output))
+                    dsts, dout = self.parseSshResult([dss_host])
+                    if dsts.get(dss_host, '') == DefaultValue.FAILURE:
+                        # pssh already has errorcdoe
+                        raise Exception(SensitiveMask.mask_pwd(dout))
+                return
+            else:
+                status, output = subprocess.getstatusoutput(sshCmd)
             # when the pssh is time out, kill parent and child process
-            if not localMode:
+            if not localMode and parallelism:
                 if output.find("Timed out, Killed by signal 9") > 0:
                     self.timeOutClean(cmd, psshpre, hostList, env_file,
                                       parallel_num)
@@ -954,4 +979,3 @@ class SshTool():
         """
         for session in self.__sessions.values():
             session.close()
-

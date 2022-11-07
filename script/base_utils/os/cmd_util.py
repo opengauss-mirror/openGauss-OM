@@ -646,3 +646,35 @@ class CmdUtil(object):
             else:
                 break
         return status, output
+
+    @staticmethod
+    def interactive_with_popen(cmd, password):
+        """
+        function : Interactive password entry
+        input : cmd, password
+        output: NA
+        """
+        env_source_cmd = CmdUtil.get_env_source_cmd()
+        if isinstance(password, str):
+            password = bytes(password, 'utf-8')
+        try:
+            proc = Popen("%s; %s" % (env_source_cmd, cmd),
+                         shell=True,
+                         stdout=PIPE,
+                         stderr=PIPE,
+                         stdin=PIPE)
+
+            proc.stdin.write(password)
+            proc.stdin.write(bytes("\n", 'utf-8'))
+            proc.stdin.flush()
+        except Exception:
+            output, error = proc.communicate()
+            return proc.returncode, output, error
+        else:
+            # Increase the system response time
+            time.sleep(0.1)
+            proc.stdin.write(password)
+            proc.stdin.write(bytes("\n", 'utf-8'))
+            proc.stdin.flush()
+            output, error = proc.communicate()
+            return proc.returncode, output, error

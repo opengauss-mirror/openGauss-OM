@@ -37,6 +37,7 @@ from base_utils.os.file_util import FileUtil
 from domain_utils.cluster_file.profile_file import ProfileFile
 from base_utils.os.process_util import ProcessUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
+from gspylib.component.DSS.dss_comp import Dss
 
 
 class Uninstall(LocalBaseOM):
@@ -94,11 +95,29 @@ class Uninstall(LocalBaseOM):
         try:
             self.logger.debug("OLAP's local uninstall.")
             self.__cleanMonitor()
+            self.unregister()
             self.__cleanInstallProgram()
             self.__changeuserEnv()
             self.logger.closeLog()
         except Exception as e:
             raise Exception(str(e))
+
+    def unregister(self):
+        '''
+        Deregistering a Disk in dss-mode
+        '''
+        gausshome = ClusterDir.getInstallDir(self.user)
+        dsscmd = os.path.realpath(os.path.join(gausshome, 'bin', 'dsscmd'))
+        if os.path.isfile(dsscmd):
+            dss_home = EnvUtil.get_dss_home(self.user)
+            cfg = os.path.join(dss_home, 'cfg', 'dss_inst.ini')
+            if os.path.isfile(cfg):
+                Dss.unreg_disk(dss_home, logger=self.logger)
+                self.logger.log("Successfully unregist the lun.")
+            else:
+                self.logger.log(f"The {cfg} not exist.")
+        else:
+            self.logger.debug("Non-dss-mode or not find dsscmd.")
 
     def __changeuserEnv(self):
         """

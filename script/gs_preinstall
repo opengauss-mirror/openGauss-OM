@@ -78,6 +78,9 @@ class Preinstall(ParallelBaseOM):
         self.root_ssh_agent_flag = False
         self.root_delete_flag = False
         self.user_ssh_agent_flag = False
+        self.enable_dss = ""
+        self.dss_vg_info = ""
+        self.dss_vgname = ""
 
     def usage(self):
         """
@@ -333,13 +336,13 @@ General options:
 
         # check log file
         self.checkLogFile()
-    
+
     # set LD_LIBRARY_PATH add local lib
     def setLibPath(self):
         package_path = os.path.dirname(os.path.realpath(__file__))
         ld_path = package_path + "/gspylib/clib"
         rerun = True
- 
+
         if 'LD_LIBRARY_PATH' not in os.environ:
             os.environ['LD_LIBRARY_PATH'] = ld_path
         elif not os.environ.get('LD_LIBRARY_PATH').startswith(ld_path):
@@ -356,19 +359,40 @@ General options:
 
     # decompress version.cfg from bz2
     def decompressVersioncfg(self):
-        package_path = os.path.dirname(os.path.realpath(__file__))
-        toolpath = package_path + "/../"
-        cmd = "cd " + toolpath + " && tar -xpf `head -1 version.cfg`*.tar.bz2 ./version.cfg ./bin/encrypt " \
-                                 "&& mv ./bin/encrypt ./script/gspylib/clib && rm -rf ./bin"
-        (status, _) = subprocess.getstatusoutput(cmd)
+        bin_cmd = 'tar -xpf `head -1 version.cfg`*.tar.bz2 ./version.cfg'
+        cm_cmd = 'tar -xpf `head -1 version.cfg`*cm.tar.gz'
+        cmd = self.get_dec_package_cmd(bin_cmd, cm_cmd)
+        status, _ = subprocess.getstatusoutput(cmd)
         if status != 0:
-            cmd = "cd " + toolpath + " && tar -xpf `ls openGauss*.tar.bz2|tail -1` ./version.cfg" \
-                                     " ./bin/encrypt && mv ./bin/encrypt ./script/gspylib/clib" \
-                                     " && rm -rf ./bin"
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"] % "version.cfg"
-                                       + "The cmd is %s. " % cmd + "The output is %s." % output)
+            bin_cmd = 'tar -xpf `ls openGauss*.tar.bz2|tail -1` ./version.cfg'
+            cm_cmd = 'tar -xpf `ls openGauss*cm.tar.gz|tail -1`'
+            self.get_dec_package_cmd(bin_cmd, cm_cmd)
+            status, output = subprocess.getstatusoutput(cmd)
+            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"] %
+                                   "version.cfg" + "The cmd is %s. " % cmd +
+                                   "The output is %s." % output)
+
+    def get_dec_package_cmd(self, bin_cmd, cm_cmd):
+
+        root = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..')
+        clib = os.path.join(root, "script/gspylib/clib")
+        bin_files = ['./bin/encrypt']
+        if self.clusterInfo.enable_dss == 'on':
+            cm_files = ['bin/cm_persist']
+            bin_files.extend([
+                './bin/perctrl', './bin/dsscmd', './lib/libdssapi.so',
+                './bin/dss_clear.sh'
+            ])
+        else:
+            cm_files = []
+        cmd = 'cd {} && '.format(root)
+        cmd += '{} {} && '.format(bin_cmd, ''.join(' '.join(bin_files)))
+        if cm_files:
+            cmd += '{} {} && '.format(cm_cmd, ''.join(' '.join(cm_files)))
+        cmd += '\mv {} {} && '.format(' '.join(bin_files + cm_files), clib)
+        cmd += 'cd {} && rm -rf bin'.format(root)
+        return cmd
+
 
     # init global variables
     def initGlobals(self):

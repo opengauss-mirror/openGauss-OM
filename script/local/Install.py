@@ -349,6 +349,22 @@ class Install(LocalBaseOM):
         self.productVersion = None
         self.time_out = None
 
+
+    def link_dss_bin(self):
+        clib_path = os.path.join(
+            EnvUtil.getEnvironmentParameterValue("GPHOME", self.user),
+            'script/gspylib/clib')
+        bin_path = os.path.join(self.installPath, 'bin')
+        if not os.path.isdir(clib_path) or not os.path.isdir(bin_path):
+            raise Exception('ss')
+        cmd = 'ln -snf {0}/cm_persist {0}/perctrl {1}'.format(
+            clib_path, bin_path)
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception("Dss bin file link failed. Output: %s" % output)
+        self.logger.log("Dss bin file package successfully.")
+
+
     def decompress_cm_package(self):
         """
         Decompress CM package
@@ -435,6 +451,10 @@ class Install(LocalBaseOM):
 
         # decompress CM package
         self.decompress_cm_package()
+
+        # link bin with cap on dss mode
+        if self.clusterInfo.enable_dss == 'on':
+            self.link_dss_bin()
 
         # change owner for tar file.
         FileUtil.changeOwner(self.user, self.installPath, True)

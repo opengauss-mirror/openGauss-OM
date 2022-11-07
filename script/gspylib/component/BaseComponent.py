@@ -181,4 +181,3 @@ class BaseComponent(object):
             self.logger.debug("Warning: Current instance port is in the "
                               "range of random port(%d - %d)." % (minPort,
                                                                   maxPort))
-

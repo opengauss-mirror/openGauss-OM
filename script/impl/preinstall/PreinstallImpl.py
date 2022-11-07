@@ -479,6 +479,24 @@ class PreinstallImpl:
         """
         pass
 
+    def dss_init(self):
+        '''
+        unreg the disk of the dss and about
+        '''
+        pass
+
+    def create_dss_vg(self):
+        '''
+        Create a VG on the first node.
+        '''
+        pass
+
+    def reset_lun_device(self):
+        '''
+        Low-level user disk with dd
+        '''
+        pass
+
     def installToolsPhase2(self):
         """
         function: install the tools
@@ -639,11 +657,16 @@ class PreinstallImpl:
                 self.context.localLog,
                 self.context.xmlFile,
                 self.context.clusterToolPath)
-            if self.context.mpprcFile == "":
-                CmdExecutor.execCommandWithMode(
-                    cmd,
-                    self.context.sshTool,
-                    self.context.localMode)
+            if os.path.isfile(self.context.mpprcFile
+                              ) and self.context.clusterInfo.enable_dss == 'on':
+                cmd += ' -s {}'.format(self.context.mpprcFile)
+
+            if self.context.mpprcFile == "" or (
+                    os.path.isfile(self.context.mpprcFile)
+                    and self.context.clusterInfo.enable_dss == 'on'):
+                CmdExecutor.execCommandWithMode(cmd, self.context.sshTool,
+                                                self.context.localMode)
+                self.context.logger.debug("Command for change env: %s" % cmd)
         except Exception as e:
             raise Exception(str(e))
 
@@ -936,11 +959,12 @@ class PreinstallImpl:
                     FileUtil.removeFile(topDirFile)
 
             # create the directory on all nodes
-            cmd = "%s -t %s -u %s -g %s -X '%s' -l '%s'" % (
+            cmd = "%s -t %s -u %s -g %s -Q %s -X '%s' -l '%s'" % (
                 OMCommand.getLocalScript("Local_PreInstall"),
                 ACTION_CREATE_CLUSTER_PATHS,
                 self.context.user,
                 self.context.group,
+                self.context.clusterToolPath,
                 self.context.xmlFile,
                 self.context.localLog)
             # check the env file
@@ -1572,6 +1596,14 @@ class PreinstallImpl:
         self.setArmOptimization()
         # fix server package mode
         self.fixServerPackageOwner()
+
+        # unreg the disk of the dss and about
+        self.dss_init()
+
+        self.reset_lun_device()
+        # Low-level user disk with dd
+        # create a vg on the first node
+        self.create_dss_vg()
 
         # set user cron
         self.set_user_crontab()

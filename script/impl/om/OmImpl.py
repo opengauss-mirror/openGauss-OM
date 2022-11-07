@@ -24,6 +24,7 @@ import sys
 import pwd
 
 from datetime import datetime
+import getpass
 
 sys.path.append(sys.path[0] + "/../../../")
 from gspylib.common.DbClusterInfo import dbClusterInfo, queryCmd
@@ -40,10 +41,12 @@ from base_utils.os.file_util import FileUtil
 from base_utils.os.net_util import NetUtil
 from base_utils.os.user_util import UserUtil
 from base_utils.common.constantsbase import ConstantsBase
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from base_utils.executor.cmd_executor import CmdExecutor
 
 # Cert
 EMPTY_CERT = "emptyCert"
-
+EMPTY_FLAG = "emptyflag"
 
 ###########################################
 class OmImpl:
@@ -473,6 +476,45 @@ class OmImpl:
             self.context.g_opts.mpprcFile)
         return status
 
+    def backup_cert_files(self, ssl_dir):
+        """
+        function: Back up the certificate files in the ssl_dir directory.
+        input: certificate directory
+        output: NA
+        """
+        if self.context.g_opts.localMode:
+            # empty flag
+            if os.path.isfile(
+                    os.path.join(ssl_dir, DefaultValue.CERT_BACKUP_FILE)):
+                FileUtil.removeFile(
+                    os.path.join(ssl_dir, DefaultValue.CERT_BACKUP_FILE))
+            if not os.path.exists(os.path.join(ssl_dir, EMPTY_FLAG)):
+                os.mknod(os.path.join(ssl_dir, EMPTY_FLAG))
+            cmd = " %s && " % CmdUtil.getCdCmd(ssl_dir)
+            cmd += CompressUtil.getCompressFilesCmd(DefaultValue.CERT_BACKUP_FILE, "*")
+            (status, output) = CmdUtil.retryGetstatusoutput(cmd)
+            if status != 0:
+                FileUtil.removeFile(os.path.join(ssl_dir, EMPTY_FLAG))
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % \
+                                cmd + "Failed to backup cert files on local node." +
+                                "Error: \n%s" % output)
+            if os.path.exists(os.path.join(ssl_dir, EMPTY_FLAG)):
+                os.remove(os.path.join(ssl_dir, EMPTY_FLAG))
+        else:
+            sshcmd = "if [ -d '%s' ]; then " % ssl_dir
+            sshcmd += " %s && " % CmdUtil.getCdCmd(ssl_dir)
+            sshcmd += g_file.SHELL_CMD_DICT["deleteFile"] % (
+                DefaultValue.CERT_BACKUP_FILE, DefaultValue.CERT_BACKUP_FILE) + ";"
+            sshcmd += CmdUtil.getTouchCmd(EMPTY_FLAG)
+            sshcmd += " && " + CompressUtil.getCompressFilesCmd(DefaultValue.CERT_BACKUP_FILE, "*;")
+            sshcmd += g_file.SHELL_CMD_DICT["deleteFile"] % (EMPTY_FLAG, EMPTY_FLAG)
+            sshcmd += " && " + g_file.SHELL_CMD_DICT["changeMode"] % (
+                DefaultValue.KEY_FILE_MODE, DefaultValue.CERT_BACKUP_FILE)
+            sshcmd += "; fi"
+            self.sshTool.executeCommand(sshcmd, DefaultValue.SUCCESS,
+                                        [node.name for node in self.context.clusterInfo.dbNodes],
+                                        self.context.g_opts.mpprcFile)
+
     def doDNBackup(self):
         """
         function: backup SSL cert files on single_inst cluster.
@@ -484,6 +526,12 @@ class OmImpl:
         backupList = DefaultValue.CERT_FILES_LIST[:]
         allDnNodeDict = self.getDnNodeDict()
         normalNodeList = []
+        dss_ssl_dir = os.path.join(ClusterDir.getInstallDir(self.context.g_opts.user),
+                                   "share/sslcert/dss/")
+        cm_ssl_dir = os.path.join(ClusterDir.getInstallDir(self.context.g_opts.user),
+                                  "share/sslcert/cm/")
+        om_ssl_dir = os.path.join(ClusterDir.getInstallDir(self.context.g_opts.user),
+                                  "share/sslcert/om/")
 
         tarBackupList = []
         if (self.context.g_opts.localMode):
@@ -520,6 +568,12 @@ class OmImpl:
             # Clear empty file
             if (os.path.isfile(os.path.join(nodeDnDir, EMPTY_CERT))):
                 os.remove(os.path.join(nodeDnDir, EMPTY_CERT))
+            if os.path.isdir(dss_ssl_dir):
+                self.backup_cert_files(dss_ssl_dir)
+            if os.path.isdir(cm_ssl_dir):
+                self.backup_cert_files(cm_ssl_dir)
+            if os.path.isdir(om_ssl_dir):
+                self.backup_cert_files(om_ssl_dir)
             self.logger.log("Successfully executed local backup.")
             return
         # 1 check backup flag file on all dbnodes.
@@ -588,6 +642,86 @@ class OmImpl:
             self.sshTool.executeCommand(sshcmd,
                                         DefaultValue.SUCCESS, [node],
                                         self.context.g_opts.mpprcFile)
+        self.backup_cert_files(dss_ssl_dir)
+        self.backup_cert_files(cm_ssl_dir)
+        self.backup_cert_files(om_ssl_dir)
+
+    def local_rollback_cert(self, ssl_dir, cert_list):
+        """
+        function: rollback SSL cert files
+        input: Certificate directory, which is used to replace the certificate file.
+        output: NA
+        """
+        # create dss temp dir
+        temp_dir = os.path.join(ssl_dir, "dssTempDir")
+        if not os.path.exists(temp_dir):
+            os.mkdir(temp_dir)
+        else:
+            FileUtil.removeDirectory(temp_dir)
+            os.mkdir(temp_dir)
+
+        # backup cert cert to temp dir
+        for num in iter(cert_list):
+            certfile = os.path.join(ssl_dir, num)
+            if os.path.exists(certfile):
+                FileUtil.moveFile(certfile, temp_dir)
+
+        # decompress backup package to cert dir
+        cmd = "cd '%s' && if [ -f '%s' ];then tar -zxf %s;fi" % \
+              (ssl_dir, DefaultValue.CERT_BACKUP_FILE, DefaultValue.CERT_BACKUP_FILE)
+        status, _ = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            # copy cert files from temp dir to cert dir
+            cmd = "cp '%s'/* '%s' && rm -rf '%s' && rm -rf '%s'" % \
+                   (temp_dir, temp_dir, temp_dir, os.path.join(temp_dir, EMPTY_FLAG))
+            CmdUtil.getstatusoutput_by_fast_popen(cmd)
+
+        FileUtil.removeDirectory(temp_dir)
+        FileUtil.removeDirectory(os.path.join(temp_dir, EMPTY_FLAG))
+        self.logger.debug("Successfully rollback ssl cert files.")
+
+    def cert_rollback(self):
+        """
+        function: Certificate Rollback
+        input: NA
+        output: NA
+        """
+        dss_ssl_dir = os.path.join(ClusterDir.getInstallDir(
+            self.context.g_opts.user), "share/sslcert/dss/")
+        cm_ssl_dir = os.path.join(ClusterDir.getInstallDir(
+            self.context.g_opts.user), "share/sslcert/cm/")
+        om_ssl_dir = os.path.join(ClusterDir.getInstallDir(
+            self.context.g_opts.user), "share/sslcert/om/")
+        if self.context.g_opts.localMode:
+            if os.path.exists(dss_ssl_dir) and EnvUtil.get_dss_ssl_status(
+                    getpass.getuser()) == 'on':
+                self.local_rollback_cert(dss_ssl_dir,
+                                         DefaultValue.GDS_CERT_LIST)
+                self.regen_dss_cert()
+                self.logger.log("Successfully rollback dss ssl cert files.")
+            if os.path.exists(cm_ssl_dir):
+                self.local_rollback_cert(cm_ssl_dir, DefaultValue.GDS_CERT_LIST)
+                self.logger.log("Successfully rollback cm ssl cert files.")
+            if os.path.exists(om_ssl_dir):
+                self.local_rollback_cert(om_ssl_dir, DefaultValue.SERVER_CERT_LIST)
+                self.logger.log("Successfully rollback om ssl cert files.")
+        else:
+            # rollback dss cert files
+            if os.path.exists(dss_ssl_dir) and EnvUtil.get_dss_ssl_status(
+                    getpass.getuser()) == 'on':
+                self.rollback_cert(dss_ssl_dir, DefaultValue.GDS_CERT_LIST)
+                self.regen_dss_cert()
+                self.logger.log("Successfully replace dss SSL cert files.")
+
+            # rollback cm cert files
+            if os.path.exists(cm_ssl_dir):
+                self.rollback_cert(cm_ssl_dir, DefaultValue.GDS_CERT_LIST)
+                self.logger.log("Successfully replace cm SSL cert files.")
+
+            # rollback om cert files
+            if os.path.exists(om_ssl_dir):
+                self.rollback_cert(om_ssl_dir, DefaultValue.SERVER_CERT_LIST)
+                self.logger.log("Successfully replace om SSL cert files.")
 
     def doDNSSLCertRollback(self):
         """
@@ -659,14 +793,16 @@ class OmImpl:
 
                 if (os.path.isfile(os.path.join(localDnDir, EMPTY_CERT))):
                     os.remove(os.path.join(localDnDir, EMPTY_CERT))
+                self.cert_rollback()
 
                 self.logger.log(
                     "Successfully rollback SSL cert files with local mode.")
                 return
             else:
-                self.logger.log("There is not exists backup files.")
+                self.cert_rollback()
+                self.logger.log("There is not node data exists backup files.")
                 return
-                # 1.check backup file "gsql_cert_backup.tar.gz" on all dbnodes.
+        # 1.check backup file "gsql_cert_backup.tar.gz" on all dbnodes.
         for node in allDnNodeDict.keys():
             backupGzFile = os.path.join(allDnNodeDict[node],
                                         DefaultValue.CERT_BACKUP_FILE)
@@ -768,6 +904,23 @@ class OmImpl:
             self.logger.log(
                 "Successfully rollback SSL cert files on [%s]." % node)
 
+        self.cert_rollback()
+
+    def rollback_cert(self, ssl_dir, cert_list):
+        """
+        function: Delete the certificate and decompress the backup package.
+        input: Certificate directory, certificate list
+        output: NA
+        """
+        cmd = "cd '%s';rm -f" % ssl_dir
+        for num in cert_list:
+            cmd += " {}".format(num)
+        sshcmd = "%s && tar -zxf %s;rm -f '%s'" % (cmd, DefaultValue.CERT_BACKUP_FILE, EMPTY_FLAG)
+        self.sshTool.executeCommand(sshcmd,
+                                    DefaultValue.SUCCESS,
+                                    [node.name for node in self.context.clusterInfo.dbNodes],
+                                    self.context.g_opts.mpprcFile)
+
     def getDnNodeDict(self):
         """
         function: get dbnodes information
@@ -783,6 +936,121 @@ class OmImpl:
                     0].datadir
         self.logger.debug("Successfully get database node dict.")
         return clusterDnNodes
+
+    def distribute_ssl_cert(self, params):
+        """
+        function: Distributing SSL Certificate Files
+        input: Certificate parameters
+        output: NA
+        """
+        cert_path_list, ssl_dir, cert_lit, mode = params
+        if self.context.g_opts.localMode:
+            cert_path_list_num = len(cert_path_list)
+            for num in range(cert_path_list_num):
+                # distribute cert
+                if os.path.isfile(os.path.join(ssl_dir, cert_lit[num])):
+                    os.remove(os.path.join(ssl_dir, cert_lit[num]))
+                if os.path.isfile(cert_path_list[num]):
+                    FileUtil.cpFile(cert_path_list[num],
+                                    os.path.join(ssl_dir, cert_lit[num]))
+                    FileUtil.changeMode(mode,
+                                        os.path.join(ssl_dir, cert_lit[num]))
+        else:
+            cert_lit_num = len(cert_lit)
+            for num in range(cert_lit_num):
+                sshcmd = g_file.SHELL_CMD_DICT["deleteFile"] % (
+                    os.path.join(ssl_dir, cert_lit[num]),
+                    os.path.join(ssl_dir, cert_lit[num]))
+                self.sshTool.executeCommand(
+                    sshcmd,
+                    DefaultValue.SUCCESS,
+                    [node.name for node in self.context.clusterInfo.dbNodes],
+                    self.context.g_opts.mpprcFile)
+            cert_path_list_num = len(cert_path_list)
+            for num in range(cert_path_list_num):
+                if os.path.exists(cert_path_list[num]):
+                    cmd = g_file.SHELL_CMD_DICT["changeMode"] % (
+                        mode, cert_path_list[num])
+                    (status, output) = subprocess.getstatusoutput(cmd)
+                    if status != 0:
+                        raise Exception("Failed to chmod dss cert files" + "Error: \n%s" % output)
+                    self.sshTool.scpFiles(cert_path_list[num], ssl_dir,
+                                          [node.name for node in self.context.clusterInfo.dbNodes])
+
+    def regen_dss_cert(self):
+        """
+        function: Re-generate the ciphertext of the DSS.
+        input: NA
+        output: NA
+        """
+        try:
+            self.logger.debug("Re-generate the ciphertext of the DSS")
+            cmd = "source %s; %s -t dss_cert_replacer -U %s -l %s" % (
+                self.context.g_opts.mpprcFile,
+                OMCommand.getLocalScript("Local_Collect"), self.context.user,
+                self.context.localLog)
+            CmdExecutor.execCommandWithMode(
+                cmd, self.sshTool, self.context.g_opts.localMode,
+                self.context.g_opts.mpprcFile,
+                [node.name for node in self.context.clusterInfo.dbNodes])
+            self.logger.debug("The cmd is %s " % cmd)
+        except Exception as e:
+            self.logger.log("Failed to re-generate the ciphertext of the DSS.")
+            raise Exception(str(e))
+
+    def distribute_cert(self):
+        """
+        function: Distributing Certificates
+        input: NA
+        output: NA
+        """
+        tempDir = "tempCertDir"
+        gphost = EnvUtil.getTmpDirFromEnv()
+        cm_dss_sslcert_cert_path_list = []
+        server_sslcert_cert_path_list = []
+        dss_ssl_dir = os.path.join(ClusterDir.getInstallDir(
+            self.context.g_opts.user),
+            "share/sslcert/dss/")
+        cm_ssl_dir = os.path.join(ClusterDir.getInstallDir(
+            self.context.g_opts.user),
+            "share/sslcert/cm/")
+        om_ssl_dir = os.path.join(ClusterDir.getInstallDir(
+            self.context.g_opts.user),
+            "share/sslcert/om/")
+        for num in range(len(DefaultValue.GDS_CERT_LIST)):
+            sslPath = os.path.join(os.path.join(gphost, tempDir),
+                                   DefaultValue.GDS_CERT_LIST[num])
+            cm_dss_sslcert_cert_path_list.append(sslPath)
+        for num in range(len(DefaultValue.SERVER_CERT_LIST)):
+            sslPath = os.path.join(os.path.join(gphost, tempDir),
+                                   DefaultValue.SERVER_CERT_LIST[num])
+            server_sslcert_cert_path_list.append(sslPath)
+
+        # distribute dss SSL cert
+        if os.path.isdir(dss_ssl_dir) and EnvUtil.get_dss_ssl_status(
+                getpass.getuser()) == 'on':
+            self.distribute_ssl_cert((cm_dss_sslcert_cert_path_list,
+                                     dss_ssl_dir,
+                                     DefaultValue.GDS_CERT_LIST,
+                                     DefaultValue.MIN_FILE_MODE))
+            self.regen_dss_cert()
+            self.logger.log("Successfully replace dss ssl cert files.")
+
+        # distribute cm SSL cert
+        if os.path.isdir(cm_ssl_dir):
+            self.distribute_ssl_cert((cm_dss_sslcert_cert_path_list,
+                                     cm_ssl_dir,
+                                     DefaultValue.GDS_CERT_LIST,
+                                     DefaultValue.MIN_FILE_MODE))
+            self.logger.log("Successfully replace cm ssl cert files.")
+
+        # distribute om SSL cert
+        if os.path.isdir(om_ssl_dir):
+            self.distribute_ssl_cert((server_sslcert_cert_path_list,
+                                     om_ssl_dir,
+                                     DefaultValue.SERVER_CERT_LIST,
+                                     DefaultValue.KEY_FILE_MODE))
+            self.logger.log("Successfully replace om ssl cert files.")
 
     def distributeDNCert(self, certList, dnDict=None):
         """
@@ -807,15 +1075,16 @@ class OmImpl:
             localDnDir = dnDict[NetUtil.GetHostIpOrName()]
             for num in range(len(certList)):
                 # distribute gsql SSL cert
-                if (os.path.isfile(os.path.join(localDnDir, certList[num]))):
+                if os.path.isfile(os.path.join(localDnDir, certList[num])):
                     os.remove(os.path.join(localDnDir, certList[num]))
-                if (os.path.isfile(certPathList[num])):
+                if os.path.isfile(certPathList[num]):
                     FileUtil.cpFile(certPathList[num],
-                                  os.path.join(localDnDir, certList[num]))
+                                    os.path.join(localDnDir, certList[num]))
                     FileUtil.changeMode(DefaultValue.KEY_FILE_MODE,
-                                      os.path.join(localDnDir, certList[num]))
+                                        os.path.join(localDnDir, certList[num]))
 
-                    # remove 'sslcrl-file.crl' file
+            self.distribute_cert()
+            # remove 'sslcrl-file.crl' file
             if (DefaultValue.SSL_CRL_FILE not in certList and
                     os.path.isfile(
                         os.path.join(localDnDir, DefaultValue.SSL_CRL_FILE))):
@@ -926,6 +1195,8 @@ class OmImpl:
                                         [node],
                                         self.context.g_opts.mpprcFile)
             self.logger.log("%s replace SSL cert files successfully." % node)
+
+        self.distribute_cert()
 
     ###########################################################################
     # Kerberos Flow

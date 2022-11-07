@@ -32,6 +32,7 @@ from base_utils.executor.cmd_executor import CmdExecutor
 from domain_utils.cluster_file.cluster_dir import ClusterDir
 from base_utils.os.env_util import EnvUtil
 
+
 #############################################################################
 # Const variables
 #   INSTALL_STEP: the signal about install
@@ -333,6 +334,12 @@ class InstallImpl:
         """
         pass
 
+    def create_ca_for_dss(self):
+        """
+        Create DSS CA file
+        """
+        pass
+
     def doInstall(self):
         """
         function: do install
@@ -363,6 +370,7 @@ class InstallImpl:
             self.context.logger.log("begin to create CA cert files")
             self.context.createServerCa()
             self.create_ca_for_cm()
+            self.create_ca_for_dss()
             if DefaultValue.is_create_grpc(self.context.logger,
                                            self.context.clusterInfo.appPath):
                 self.context.createGrpcCa()
@@ -565,6 +573,10 @@ class InstallImpl:
                 self.context.sshTool,
                 self.context.isSingle or self.context.localMode,
                 self.context.mpprcFile, [hostname])
+        if DefaultValue.get_cm_server_num_from_static(
+                self.context.clusterInfo) == 0:
+            # no cm
+            OMCommand.wait_for_normal(self.context.logger, self.context.user)
 
         self.context.logger.log("Successfully started cluster.")
 

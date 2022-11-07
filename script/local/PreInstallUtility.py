@@ -29,6 +29,7 @@ import time
 import pwd
 import grp
 import configparser
+import re
 
 
 sys.path.append(sys.path[0] + "/../")
@@ -46,6 +47,7 @@ from base_utils.os.cmd_util import CmdUtil
 from domain_utils.cluster_file.cluster_dir import ClusterDir
 from domain_utils.cluster_file.cluster_log import ClusterLog
 from base_utils.os.file_util import FileUtil
+from base_utils.os.disk_util import DiskUtil
 from domain_utils.cluster_file.profile_file import ProfileFile
 from domain_utils.cluster_file.version_info import VersionInfo
 from domain_utils.cluster_file.package_info import PackageInfo
@@ -56,6 +58,8 @@ from os_platform.linux_distro import LinuxDistro
 from domain_utils.cluster_os.cluster_user import ClusterUser
 from gspylib.common.aes_cbc_util import AesCbcUtil
 from base_utils.os.user_util import UserUtil
+from gspylib.component.DSS.dss_comp import DssInitCfg, Dss, UdevContext
+from gspylib.component.DSS.dss_checker import DssConfig
 
 ACTION_PREPARE_PATH = "prepare_path"
 ACTION_CHECK_OS_VERSION = "check_os_Version"
@@ -80,6 +84,7 @@ ACTION_FIX_SERVER_PACKAGE_OWNER = "fix_server_package_owner"
 ACTION_CHANGE_TOOL_ENV = "change_tool_env"
 ACTION_SET_CGROUP = "set_cgroup"
 ACTION_CHECK_CONFIG = "check_config"
+ACTION_DSS_NIT = "dss_init"
 
 g_nodeInfo = None
 envConfig = {}
@@ -258,7 +263,7 @@ Common options:
                           ACTION_CHECK_ENVFILE, ACTION_CHECK_OS_SOFTWARE, \
                           ACTION_SET_ARM_OPTIMIZATION,
                           ACTION_CHECK_DISK_SPACE, ACTION_SET_WHITELIST,
-                          ACTION_FIX_SERVER_PACKAGE_OWNER,
+                          ACTION_FIX_SERVER_PACKAGE_OWNER, ACTION_DSS_NIT,
                           ACTION_CHANGE_TOOL_ENV, ACTION_CHECK_CONFIG]
         if self.action == "":
             GaussLog.exitWithError(
@@ -476,6 +481,7 @@ Common options:
                 fileList = os.listdir(onePath)
                 if "pg_location" in fileList:
                     fileList.remove("pg_location")
+
                 if len(fileList) != 0:
                     self.logger.logExit(
                         ErrorCode.GAUSS_502["GAUSS_50202"] % onePath)
@@ -846,8 +852,119 @@ Common options:
         self.prepareInstallPath(needCheckEmpty)
         self.prepareTmpPath(needCheckEmpty)
         self.prepareDataPath(needCheckEmpty)
+        if self.clusterInfo.enable_dss == 'on':
+            idx = DssConfig.get_current_dss_id_by_dn(self.clusterInfo.dbNodes,
+                                                     self.dbNodeInfo)
+            if idx != -1:
+                self.prepare_dss_home_path(idx)
+            else:
+                self.logger.debug('In dss-mode, the dn does not ' \
+                     'exist on the current node.')
 
         self.logger.debug("Successfully created paths for cluster.")
+
+
+    def prepare_dss_inst_ini(self, dss_home, dss_id):
+        '''
+        Preparing the DSS Configuration File
+        '''
+
+        dss_inst_ini = os.path.realpath(
+            os.path.join(dss_home, 'cfg', 'dss_inst.ini'))
+        context = list(
+            DssInitCfg(dss_id,
+                       dss_home,
+                       self.clusterInfo.dss_config,
+                       dss_ssl=False))
+        FileUtil.write_custom_context(
+            dss_inst_ini, context, authority=DefaultValue.KEY_FILE_MODE_IN_OS)
+
+    def prepare_dss_vg_ini(self, dss_home):
+        '''
+        Preparing the VG Configuration File
+        '''
+
+        dss_vg_ini = os.path.realpath(
+            os.path.join(dss_home, 'cfg', 'dss_vg_conf.ini'))
+        lun_map = UdevContext.get_all_vgname_disk_pair(
+            self.clusterInfo.dss_shared_disks, self.clusterInfo.dss_pri_disks,
+            self.user)
+
+        context = [':'.join([k, v]) for k, v in lun_map.items()]
+        FileUtil.write_custom_context(
+            dss_vg_ini, context, authority=DefaultValue.KEY_FILE_MODE_IN_OS)
+
+
+    def prepare_dss_home_path(self, dss_id):
+        '''
+        Preparing the DSS Home Directory
+        '''
+
+        dss_home = self.clusterInfo.dss_home
+        dss_cfg = os.path.join(dss_home, 'cfg')
+        dss_log = os.path.join(dss_home, 'log')
+        self.prepareGivenPath(dss_cfg, False)
+        self.prepareGivenPath(dss_log, False)
+        self.prepare_dss_inst_ini(dss_home, dss_id)
+        self.prepare_dss_soft_link()
+        self.prepare_dss_vg_ini(dss_home)
+
+
+    def prepare_dss_soft_link(self):
+        '''
+        Creating a disk soft link
+        '''
+
+        self.logger.debug("Creating disk link.")
+        context = list(
+            UdevContext((self.user, self.group), self.clusterInfo,
+                        DiskUtil.get_scsi_dev_id))
+
+        self.logger.debug("Checking udev directory.")
+        if os.path.isdir(UdevContext.DSS_UDEV_DIR):
+            rule_file = os.path.join(UdevContext.DSS_UDEV_DIR,
+                                     UdevContext.DSS_UDEV_NAME) % self.user
+
+            for disk in UdevContext.get_all_phy_disk(self.clusterInfo):
+                cmd = "cd %s; grep -iro '%s' | grep -v grep | grep -v '%s'" % (
+                    UdevContext.DSS_UDEV_DIR, DiskUtil.get_scsi_dev_id(disk),
+                    UdevContext.DSS_UDEV_NAME % self.user)
+                sts, out = subprocess.getstatusoutput(cmd)
+                if sts == 1:
+                    continue
+                if sts != 0 :
+                    raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
+                                    "Error: \n%s" % out)
+                if out.strip():
+                    raise Exception(ErrorCode.GAUSS_514["GAUSS_51406"] %
+                                    (disk, UdevContext.DSS_UDEV_DIR) +
+                                    " Error information: \n%s." % out)
+        else:
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] %
+                            UdevContext.DSS_UDEV_DIR)
+
+        if os.path.isfile(rule_file):
+            os.remove(rule_file)
+        FileUtil.write_custom_context(rule_file,
+                                      context,
+                                      authority=DefaultValue.KEY_HOSTS_FILE)
+        FileUtil.changeMode(DefaultValue.SQL_FILE_MODE, rule_file)
+        FileUtil.changeOwner('root', rule_file)
+
+        retry = 30
+        for times in range(retry):
+            DiskUtil.active_udev()
+            flags = all([
+                os.path.islink(link) for link in UdevContext.get_all_disk_alias(
+                    self.user, self.group, self.clusterInfo)
+            ])
+            if not flags and times == retry - 1:
+                raise Exception(ErrorCode.GAUSS_516['GAUSS_51656'])
+            elif not flags:
+                time.sleep(1)
+            elif flags:
+                break
+        self.logger.debug("Successfully created disk link.")
 
     def prepareGaussLogPath(self):
         """
@@ -1434,6 +1551,8 @@ Common options:
 
         # clean GPHOME
         FileUtil.deleteLine(userProfile, "^\\s*export\\s*GPHOME=.*$")
+        # clean GPHOME
+        FileUtil.deleteLine(userProfile, "^\\s*export\\s*UNPACKPATH=.*$")
         self.logger.debug(
             "Deleting crash GPHOME in user environment variables.")
 
@@ -1490,6 +1609,8 @@ Common options:
             # set GPHOME
             FileUtil.writeFile(userProfile,
                              ["export GPHOME=%s" % self.clusterToolPath])
+            package_dir = os.path.realpath(os.path.join(os.path.realpath(__file__), "../../../"))
+            FileUtil.writeFile(userProfile, ["export UNPACKPATH=%s" % package_dir])
             # set PATH
             if userProfile is ClusterConstants.ETC_PROFILE:
                 FileUtil.writeFile(userProfile, [
@@ -2542,6 +2663,60 @@ Common options:
             FileUtil.changeMode(DefaultValue.MIN_FILE_MODE, "%s/version.cfg" %
                               package_path)
 
+    def fix_dss_dir_permission(self):
+        '''
+        Modify the permissions on some DSS-related directories and
+        escalate the permissions in binary mode.
+        '''
+        dss_home = self.clusterInfo.dss_home
+        cfg_dir = os.path.realpath(os.path.join(dss_home, 'cfg'))
+        log_path = os.path.realpath(os.path.join(dss_home, 'log'))
+        FileUtil.changeOwner(self.user, dss_home, link=True, recursive=True)
+
+        dirs = [cfg_dir, log_path]
+        for dir_ in dirs:
+            FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, dir_)
+
+        files = ["{}/*ini".format(cfg_dir)]
+        for file_ in files:
+            FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, file_)
+
+        clib_path = os.path.realpath(
+            os.path.join(self.clusterToolPath, "script/gspylib/clib"))
+
+        dss_files = ['dsscmd', 'perctrl', 'dss_clear.sh']
+        for file_ in dss_files:
+            FileUtil.changeMode(DefaultValue.BIN_FILE_MODE,
+                                os.path.join(clib_path, file_))
+
+        caps = ['perctrl', 'cm_persist']
+        for file_ in caps:
+            FileUtil.change_caps(DefaultValue.CAP_WIO,
+                                 os.path.join(clib_path, file_))
+
+
+    def fix_dss_disk_permission(self):
+        '''
+        Modifying DSS Disk Permissions
+        '''
+
+        vg_path = self.clusterInfo.dss_vg_info
+        for file_ in list(filter(None, re.split(r',|:', vg_path)))[1::2]:
+            self.logger.debug("Modifying dss disk permissions: %s" % file_)
+            FileUtil.changeOwner(self.user, path=file_)
+            FileUtil.changeMode(DefaultValue.DSS_DISK_MODE, path=file_)
+
+    def fix_cm_disk_permission(self):
+        cm_vote_disk = self.clusterInfo.cm_vote_disk
+        self.logger.debug("Modifying cm disk permissions: %s" % cm_vote_disk)
+        FileUtil.changeOwner(self.user, path=cm_vote_disk)
+        FileUtil.changeMode(DefaultValue.DSS_DISK_MODE, path=cm_vote_disk)
+
+        self.logger.log("Modifying cm disk permissions: %s" % cm_vote_disk)
+        cm_share_disk = self.clusterInfo.cm_share_disk
+        FileUtil.changeOwner(self.user, path=cm_share_disk)
+        FileUtil.changeMode(DefaultValue.DSS_DISK_MODE, path=cm_share_disk)
+
     def fix_owner_and_permission(self):
         """
         function: fix owner and permission
@@ -2551,6 +2726,16 @@ Common options:
         self.fixop_package_path()
         self.fixop_tool_path()
         self.fixop_xml_and_mpp_file()
+        if self.clusterInfo.enable_dss == 'on':
+            idx = DssConfig.get_current_dss_id_by_dn(self.clusterInfo.dbNodes,
+                                                     self.dbNodeInfo)
+            if idx == -1:
+                self.logger.debug('In dss-mode, the dn does not' \
+                     ' exist on the current node.')
+                return
+            self.fix_dss_dir_permission()
+            self.fix_dss_disk_permission()
+            self.fix_cm_disk_permission()
 
     def fix_server_pkg_permission(self):
         """
@@ -2560,6 +2745,63 @@ Common options:
         self.fix_owner_and_permission()
         self.separate_root_scripts()
 
+    def dss_init(self):
+        '''
+        unreg the disk of the dss and about
+        '''
+
+        idx = DssConfig.get_current_dss_id_by_dn(self.clusterInfo.dbNodes,
+                                                 self.dbNodeInfo)
+        if idx == -1:
+            self.logger.debug('In dss-mode, the dn does not' \
+                    ' exist on the current node.')
+            return
+
+
+        clib = os.path.realpath(
+            os.path.join(self.clusterToolPath, 'script', 'gspylib', 'clib'))
+        Dss.unreg_disk(self.clusterInfo.dss_home,
+                       user=self.user,
+                       clib=clib,
+                       logger=self.logger)
+
+    def clean_dss_env(self, mpprc_file):
+        '''
+        Clearing DSS Environment Variables
+        '''
+
+        for env in [
+            'VGNAME', 'CM_VOTE_DISK', 'CM_SHARE_DISK', 'DSS_HOME',
+            'RDMA_TYPE', 'RDMA_CONFIG', 'DSS_SSL'
+        ]:
+            FileUtil.deleteLine(mpprc_file, "^\\s*export\\s*{}=.*$".format(env))
+            self.logger.debug(
+                "Deleting crash {} in user environment variables.".format(env))
+
+    def add_dss_env(self, mpprc_file):
+        '''
+        Setting DSS Environment Variables
+        '''
+        if self.clusterInfo.ss_interconnect_type == 'RDMA':
+            FileUtil.writeFile(mpprc_file, [
+                "export RDMA_TYPE={}".format(
+                    self.clusterInfo.ss_interconnect_type)
+            ])
+            if self.clusterInfo.ss_rdma_work_config:
+                FileUtil.writeFile(mpprc_file, [
+                    "export RDMA_CONFIG={}".format(
+                        self.clusterInfo.ss_rdma_work_config.replace(
+                            ' ', '/'))
+                ])
+        if self.clusterInfo.dss_ssl_enable == 'on':
+            FileUtil.writeFile(mpprc_file, ["export DSS_SSL=on"])
+        FileUtil.writeFile(
+            mpprc_file,
+            ["export VGNAME={}".format(self.clusterInfo.dss_vgname)])
+        FileUtil.writeFile(
+            mpprc_file,
+            ["export DSS_HOME={}".format(self.clusterInfo.dss_home)])
+
     def changeToolEnv(self):
         """
         function: change software tool env path
@@ -2567,11 +2809,20 @@ Common options:
         """
         userpath = pwd.getpwnam(self.user).pw_dir
         userProfile = os.path.join(userpath, ".bashrc")
+
+        if self.clusterInfo.enable_dss == 'on' and self.mpprcFile and os.path.isfile(
+                self.mpprcFile):
+            userProfile = self.mpprcFile
+            self.clean_dss_env(userProfile)
+            self.add_dss_env(userProfile)
+            return
+
         if not os.path.exists(userProfile):
             self.logger.logExit(ErrorCode.GAUSS_502[
                                     "GAUSS_50201"] % 'user profile'
                                 + " Please create %s." % userProfile)
         self.clean_tool_env(userProfile)
+        self.clean_dss_env(userProfile)
         # set GPHOME
         FileUtil.writeFile(userProfile,
                          ["export GPHOME=%s" % self.clusterToolPath])
@@ -2587,6 +2838,9 @@ Common options:
             "export LD_LIBRARY_PATH=$GPHOME/lib:$LD_LIBRARY_PATH"])
         # set PYTHONPATH
         FileUtil.writeFile(userProfile, ["export PYTHONPATH=$GPHOME/lib"])
+
+        if self.clusterInfo.enable_dss == 'on':
+            self.add_dss_env(userProfile)
 
     def clean_tool_env(self, userProfile):
         # clean GPHOME
@@ -2618,6 +2872,7 @@ Common options:
                           "^\\s*export\\s*PYTHONPATH=\\$GPHOME\\/lib")
         self.logger.debug(
             "Deleting crash PYTHONPATH in user environment variables.")
+
 
     def run(self):
         """
@@ -2703,6 +2958,8 @@ Common options:
                 self.checkOSSoftware()
             elif self.action == ACTION_FIX_SERVER_PACKAGE_OWNER:
                 self.fix_server_pkg_permission()
+            elif self.action == ACTION_DSS_NIT:
+                self.dss_init()
             elif self.action == ACTION_CHANGE_TOOL_ENV:
                 self.changeToolEnv()
             elif self.action == ACTION_SET_CGROUP:

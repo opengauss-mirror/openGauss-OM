@@ -113,11 +113,10 @@ class SecurityChecker(object):
             raise ValidationError(ErrorCode.GAUSS_500["GAUSS_50024"] % description)
 
     @staticmethod
-    def check_port_valid(description, value):
+    def check_port_valid(description, value, max_value=65535, des2=''):
         SecurityChecker.check_is_digit(description, value)
         value = int(value) if not isinstance(value, int) else value
-        if value > 65535 or value < 0:
-            raise ValidationError(ErrorCode.GAUSS_500['GAUSS_50022']
-                                  % (description, 'between 0 and 65535'))
-
-
+        if value > max_value or value < 0:
+            raise ValidationError(ErrorCode.GAUSS_500['GAUSS_50022'] %
+                                  (description, 'between 0 and {}{}'.format(
+                                      str(max_value), des2)))

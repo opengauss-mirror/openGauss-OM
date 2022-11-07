@@ -27,6 +27,8 @@ import sys
 import re
 import pwd
 import copy
+import json
+
 
 sys.path.append(os.path.split(os.path.realpath(__file__))[0] + "/../../")
 from gspylib.common.ErrorCode import ErrorCode
@@ -38,6 +40,7 @@ from domain_utils.domain_common.cluster_constants import ClusterConstants
 from base_utils.common.constantsbase import ConstantsBase
 from base_utils.os.env_util import EnvUtil
 from base_utils.security.security_checker import SecurityChecker
+from gspylib.component.DSS.dss_checker import DssSimpleChecker, DssConfig
 
 ###########################
 # instance role 
@@ -67,6 +70,7 @@ BASE_ID_DUMMYDATANODE = 3001
 BASE_ID_COORDINATOR = 5001
 BASE_ID_DATANODE = 6001
 BASE_ID_ETCD = 7001
+BASE_ID_DSS = 8001
 DIRECTORY_PERMISSION = 0o750
 
 # For primary/standby instance When the ID > 7000 ,
@@ -402,8 +406,12 @@ def compareObject(Object_A, Object_B, instName, tempbuffer=None, model=None,
             tempbuffer.append(str(Object_A))
             tempbuffer.append(str(Object_B))
             return False, tempbuffer
+        dss_ignore = [
+            "enable_dss", "dss_config", "dss_home", "cm_vote_disk", "cm_share_disk",
+            "dss_pri_disks", "dss_shared_disks", "dss_vg_info", "dss_vgname", "dss_ssl_enable",
+            "ss_rdma_work_config", "ss_interconnect_type"]
         for i in Object_A_list:
-            if (i.startswith("_") or ignoreCheck(Object_A, i, model)):
+            if i.startswith("_") or ignoreCheck(Object_A, i, model) or i in dss_ignore:
                 continue
             Inst_A = getattr(Object_A, i)
             try:
@@ -921,7 +929,7 @@ class dbClusterInfo():
         self.cmsFloatIp = ""
         self.__newInstanceId = [BASE_ID_CMSERVER, BASE_ID_GTM, BASE_ID_ETCD,
                                 BASE_ID_COORDINATOR, BASE_ID_DATANODE,
-                                BASE_ID_CMAGENT]
+                                BASE_ID_CMAGENT, BASE_ID_DSS]
         self.__newDummyStandbyId = BASE_ID_DUMMYDATANODE
         self.__newMirrorId = 0
         self.clusterRings = []
@@ -959,6 +967,19 @@ class dbClusterInfo():
         # add for dcf
         self.enable_dcf = ""
         self.dcf_config = ""
+        # add for dss
+        self.enable_dss = ""
+        self.dss_config = ""
+        self.dss_home = ""
+        self.cm_vote_disk = ""
+        self.cm_share_disk = ""
+        self.dss_pri_disks = {}
+        self.dss_shared_disks = {}
+        self.dss_vg_info = ""
+        self.dss_vgname = ""
+        self.dss_ssl_enable = ""
+        self.ss_rdma_work_config = ""
+        self.ss_interconnect_type = ""
         self.local_stream_ip_map = []
         self.remote_stream_ip_map = []
         self.remote_dn_base_port = 0
@@ -978,6 +999,37 @@ class dbClusterInfo():
             retStr += "\n%s" % str(dbNode)
 
         return retStr
+
+    def init_dss_config(self, xml_entiy):
+        '''
+        init dss input parameter
+        '''
+
+        # dss
+        _, self.dss_home = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "dss_home", "cluster")
+        _, self.dss_vgname = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "ss_dss_vg_name", "cluster")
+        _, self.dss_vg_info = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "dss_vg_info", "cluster")
+        # cm
+        _, self.cm_vote_disk = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "votingDiskPath", "cluster")
+        _, self.cm_share_disk = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "shareDiskDir", "cluster")
+
+        # dss ssl
+        _, self.dss_ssl_enable = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "dss_ssl_enable", "cluster")
+
+        # rdma
+        _, self.ss_rdma_work_config = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "ss_rdma_work_config", "cluster")
+        _, self.ss_interconnect_type = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "ss_interconnect_type", "cluster")
+
+        DssSimpleChecker.check_dss_some_param(self)
+
 
     def check_conf_cm_state(self):
         """
@@ -1590,7 +1642,7 @@ class dbClusterInfo():
         except Exception as e:
             raise Exception(ErrorCode.GAUSS_503["GAUSS_50300"] % user)
 
-    def __getStaticConfigFilePath(self, user):
+    def __getStaticConfigFilePath(self, user, ignore_err=False):
         """
         function : get the path of static configuration file. 
         input : String
@@ -1617,11 +1669,16 @@ class dbClusterInfo():
             return staticConfigFile
         elif (os.path.exists(staticConfigBak)):
             return staticConfigBak
-
+        elif ignore_err:
+            return ''
         else:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % \
                             ("static configuration file [%s] of "
                              "designated user [%s]" % (staticConfig, user)))
+
+    def get_staic_conf_path(self, user, ignore_err=False):
+        return self.__getStaticConfigFilePath(user=user, ignore_err=ignore_err)
+
 
     def __getEnvironmentParameterValue(self, environmentParameterName, user):
         """
@@ -2466,13 +2523,18 @@ class dbClusterInfo():
         """
         Check cm_server config
         """
-        if self.cmscount > 0 and len(self.dbNodes) < 2:
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51236"] +
-                            "The cm_server instance can be "
-                            "configured only on three or more nodes.")
-        if 0 < self.cmscount < 2:
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51236"] +
-                            "At least three cm_server instances are required.")
+        if self.enable_dss == 'on':
+            if self.cmscount < 1:
+                raise Exception(ErrorCode.GAUSS_512["GAUSS_51236"] +
+                                'The cm_server instances are required.')
+        else:
+            if self.cmscount > 0 and len(self.dbNodes) < 2:
+                raise Exception(ErrorCode.GAUSS_512["GAUSS_51236"] +
+                                    "The cm_server instance can be "
+                                    "configured only on three or more nodes.")
+            if 0 < self.cmscount < 2:
+                raise Exception(ErrorCode.GAUSS_512["GAUSS_51236"] +
+                                "At least three cm_server instances are required.")
 
     def initFromXml(self, xmlFile):
         """
@@ -2509,6 +2571,7 @@ class dbClusterInfo():
         self.__checkAZForSingleInst()
         IpPort = self.__checkInstancePortandIP()
         self.__check_cms_config()
+        DssConfig.init_dss_config(self)
         return IpPort
 
     def __read_cluster_node_info_for_one(self):
@@ -2906,6 +2969,18 @@ class dbClusterInfo():
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50213"] % \
                             ("%s log path(%s)" % (
                                 VersionInfo.PRODUCT_NAME, self.logPath)))
+
+        _, self.enable_dss = ClusterConfigFile.readOneClusterConfigItem(xmlRootNode,
+                                                            "enable_dss",
+                                                            "cluster")
+        if self.enable_dss.strip() == "on":
+            self.enable_dss = self.enable_dss.strip()
+            self.init_dss_config(xml_entiy=xmlRootNode)
+        elif self.enable_dss.strip() not in ['off', '']:
+            raise Exception(ErrorCode.GAUSS_500["GAUSS_50011"] %
+                                ('enable_dss', self.enable_dss))
+
+
         # Read enable_dcf
         ret_status, self.enable_dcf = ClusterConfigFile.readOneClusterConfigItem(xmlRootNode,
                                                                "enable_dcf",
@@ -2913,6 +2988,10 @@ class dbClusterInfo():
         if self.enable_dcf not in ['', 'on', 'off']:
             raise Exception(ErrorCode.GAUSS_500["GAUSS_50011"] %
                                 ('enable_dcf', self.enable_dcf))
+
+        if self.enable_dcf == 'on' and self.enable_dss == 'on':
+            raise Exception('Only one DSS or DCF can be enabled.')
+
         if self.enable_dcf == 'on':
             (ret_status, ret_value) = ClusterConfigFile.readOneClusterConfigItem(
                 xmlRootNode, "dcf_config", "CLUSTER")

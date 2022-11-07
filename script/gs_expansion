@@ -61,7 +61,10 @@ ABORT_CHECK_PROPERTY = ["xmlFile", "id", "gtmNum", "instanceId",
                         "_dbClusterInfo__newMirrorId", "version",
                         "installTime", "localNodeId", "nodeCount",
                         "_dbClusterInfo__newGroupId", "cmsNum", "datadir",
-                        "enable_dcf", "dcf_config", "dcf_data_path", "cmscount", "casecadeRole"]
+                        "enable_dcf", "dcf_config", "dcf_data_path", "cmscount", "casecadeRole",
+                        "enable_dss", "dss_config", "dss_home", "cm_vote_disk", "cm_share_disk",
+                        "dss_pri_disks", "dss_shared_disks", "dss_vg_info", "dss_vgname",
+                        "dss_ssl_enable", "ss_rdma_work_config", "ss_interconnect_type"]
 IGNORE_CHECK_KEY = ["cascadeRole"]
 
 class Expansion(ParallelBaseOM):

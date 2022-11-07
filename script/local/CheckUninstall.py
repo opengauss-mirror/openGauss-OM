@@ -34,6 +34,9 @@ from gspylib.common.ErrorCode import ErrorCode
 from domain_utils.cluster_file.cluster_log import ClusterLog
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from domain_utils.cluster_os.cluster_user import ClusterUser
+from base_utils.os.env_util import EnvUtil
+from gspylib.component.DSS.dss_comp import Dss
+from domain_utils.cluster_file.cluster_dir import ClusterDir
 
 
 class CheckUninstall:
@@ -95,7 +98,25 @@ class CheckUninstall:
         self.__checkOSVersion()
         self.__checkOsUser()
         self.__checkInstanllPath()
+        self.unregister()
         self.logger.closeLog()
+
+    def unregister(self):
+        '''
+        Deregistering a Disk in dss-mode
+        '''
+        gausshome = ClusterDir.getInstallDir(self.user)
+        dsscmd = os.path.realpath(os.path.join(gausshome, 'bin', 'dsscmd'))
+        if os.path.isfile(dsscmd):
+            dss_home = EnvUtil.get_dss_home(self.user)
+            cfg = os.path.join(dss_home, 'cfg', 'dss_inst.ini')
+            if os.path.isfile(cfg):
+                Dss.unreg_disk(dss_home, logger=self.logger)
+                self.logger.log("Successfully unregist the lun.")
+            else:
+                self.logger.log(f"The {cfg} not exist.")
+        else:
+            self.logger.debug("Non-dss-mode or not find dsscmd.")
 
     def __checkParameters(self):
         """

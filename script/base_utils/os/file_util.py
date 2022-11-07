@@ -317,9 +317,20 @@ class FileUtil(object):
         """
         Write or add content in file, create if not exist.
         """
+
         if not os.path.isfile(file_path):
             FileUtil.createFileInSafeMode(file_path, mode=authority)
         FileUtil.writeFile(file_path, [content])
+
+    @staticmethod
+    def write_custom_context(file_path, content, authority, p_mode="w"):
+        '''
+        Write file in overwrite mode
+        '''
+
+        if not os.path.isfile(file_path):
+            FileUtil.createFileInSafeMode(file_path, mode=authority)
+        FileUtil.writeFile(file_path, content, p_mode)
 
     @staticmethod
     def withAsteriskPath(path):
@@ -374,6 +385,19 @@ class FileUtil(object):
         else:
             os.chmod(path, mode)
         return True
+
+    @staticmethod
+    def change_caps(cap_mode, path):
+        '''
+        Add the read and write permissions of some root users.
+        '''
+
+        cmd = 'setcap {}+ep {}'.format(cap_mode, path)
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_501["GAUSS_50107"] % path +
+                            " Error:\n%s." % output + "The cmd is %s" % cmd)
+
 
     @staticmethod
     def changeOwner(user, path, recursive=False, cmd_type="shell",

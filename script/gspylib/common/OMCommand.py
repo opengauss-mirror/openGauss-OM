@@ -21,6 +21,7 @@ import os
 import sys
 import time
 import subprocess
+from datetime import datetime, timedelta
 from multiprocessing.dummy import Pool as ThreadPool
 
 sys.path.append(sys.path[0] + "/../../")
@@ -31,6 +32,7 @@ from gspylib.common.ErrorCode import ErrorCode
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.file_util import FileUtil
 from base_utils.os.user_util import UserUtil
+from base_utils.os.cmd_util import CmdUtil
 
 
 class OMCommand():
@@ -256,3 +258,48 @@ class OMCommand():
                 pool.join()
             except Exception as e:
                 raise Exception(str(e))
+
+    @staticmethod
+    def wait_for_normal(logger, user, timeout=300, delta=5):
+
+        status_file = "/home/%s/gauss_check_status_%d.dat" % (user, os.getpid())
+
+        try:
+            logger.debug("Waiting for cluster status being satisfied.")
+            end_time = None if timeout <= 0 else datetime.now() + timedelta(
+                seconds=timeout)
+            check_status = 0
+            while True:
+                time.sleep(delta)
+                if end_time is not None and datetime.now() >= end_time:
+                    check_status = 1
+                    logger.debug("Timeout. The cluster is not available.")
+                    break
+                # View the cluster status
+                cmd = ClusterCommand.getQueryStatusCmd(outFile=status_file)
+                status, output = CmdUtil.retryGetstatusoutput(cmd, retry_time=0)
+                if status != 0:
+                    logger.debug(
+                        "Failed to obtain the cluster status. Error: \n%s" %
+                        output)
+                    continue
+                # Determine whether the cluster status is normal or degraded
+                cluster_status = DbClusterStatus()
+                cluster_status.initFromFile(status_file)
+                if cluster_status.clusterStatus == "Normal":
+                    logger.log("The cluster status is Normal.")
+                    break
+                else:
+                    logger.debug("Cluster status is %s(%s)." %
+                                 (cluster_status.clusterStatus,
+                                  cluster_status.clusterStatusDetail))
+
+            if check_status != 0:
+                raise Exception(ErrorCode.GAUSS_528["GAUSS_52800"] %
+                                (cluster_status.clusterStatus,
+                                 cluster_status.clusterStatusDetail))
+            logger.debug("Successfully wait for cluster status become Normal.",
+                         "constant")
+        finally:
+            if os.path.exists(status_file):
+                os.remove(status_file)

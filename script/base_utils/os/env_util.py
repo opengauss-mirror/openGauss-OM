@@ -205,3 +205,28 @@ class EnvUtil(object):
         SecurityChecker.check_injection_char(output.strip())
 
         return output.strip()
+
+    @staticmethod
+    def get_rdma_type(user=""):
+        if os.getuid() == 0 and user == "":
+            return ""
+        return EnvUtil.getEnvironmentParameterValue("RDMA_TYPE", user)
+
+    @staticmethod
+    def get_rdma_config(user=""):
+        if os.getuid() == 0 and user == "":
+            return ""
+        return EnvUtil.getEnvironmentParameterValue("RDMA_CONFIG",
+                                                    user).replace("/", " ")
+
+    @staticmethod
+    def get_dss_ssl_status(user=""):
+        if os.getuid() == 0 and user == "":
+            return ""
+        return EnvUtil.getEnvironmentParameterValue("DSS_SSL", user)
+
+    @staticmethod
+    def get_dss_home(user=""):
+        if os.getuid() == 0 and user == "":
+            return ""
+        return EnvUtil.getEnvironmentParameterValue("DSS_HOME", user)

@@ -203,6 +203,7 @@ class DefaultValue():
     FILE_MODE = 640
     FILE_MODE_PERMISSION = 0o640
     KEY_FILE_MODE = 600
+    BIN_FILE_MODE = 700
     KEY_FILE_MODE_IN_OS = 0o600
     MIN_FILE_MODE = 400
     SPE_FILE_MODE = 500
@@ -221,11 +222,14 @@ class DefaultValue():
     GREY_DISK_SIZE = 10
     # The remaining space of device
     INSTANCE_DISK_SIZE = 200
+    DSS_DISK_MODE = 660
 
     ###########################
     # upgrade parameter
     ###########################
     GREY_UPGRADE_STEP_UPGRADE_PROCESS = 3
+
+    CAP_WIO = "CAP_SYS_RAWIO"
 
     # env parameter
     MPPRC_FILE_ENV = "MPPDB_ENV_SEPARATE_PATH"
@@ -622,6 +626,7 @@ class DefaultValue():
             NetWorkConfFile = output.strip()
 
         return NetWorkConfFile
+
 
     @staticmethod
     def get_remote_ips(host, mpp_file):

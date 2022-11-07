@@ -29,6 +29,7 @@ import re
 import base64
 import json
 import datetime
+import getpass
 
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.DbClusterInfo import dbClusterInfo
@@ -44,6 +45,8 @@ from base_utils.os.file_util import FileUtil
 from base_utils.os.net_util import NetUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from domain_utils.cluster_os.cluster_user import ClusterUser
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from gspylib.component.DSS.dss_comp import Dss
 
 ###########################
 # instance type. only for CN/DN
@@ -505,6 +508,10 @@ def system_check():
         if status != 0:
             if "Permission denied" in output:
                 output = "can not print info to file: Permission denied"
+            elif 'iostat' in cmd and 'command not found' in str(
+                    output).lower().strip():
+                output = ErrorCode.GAUSS_514["GAUSS_51405"] % " iostat." + str(
+                    output).lstrip().strip()
             g_jobInfo.failedTask[cmd] = replaceInvalidStr(output)
             g_logger.debug(
                 "Failed to collect OS information. Error:\n%s" % output)
@@ -528,7 +535,10 @@ def appendCommand(cmds, newCommand, dataFileName):
                 "%s \n" \
                 "************************************' >> %s 2>&1" % \
                 (newCommand, dataFileName))
-    cmds.append("%s >> %s 2>&1" % (newCommand, dataFileName))
+    if 'iostat' in newCommand:
+        cmds.append("%s >> %s" % (newCommand, dataFileName))
+    else:
+        cmds.append("%s >> %s 2>&1" % (newCommand, dataFileName))
 
 
 def database_check():
@@ -678,6 +688,26 @@ def log_check(logFileName):
         if len(c) > 0 and c in logFileName.lower():
             return 1
     return 0
+
+def dss_cert_replacer(logger):
+    '''
+    Re-generate the ciphertext of the DSS.
+    '''
+
+    logger.debug("Start to replace the ciphertext of the DSS locally")
+    user = getpass.getuser()
+    gausshome = ClusterDir.getInstallDir(user)
+    dsscmd = os.path.realpath(os.path.join(gausshome, 'bin', 'dsscmd'))
+    if os.path.isfile(dsscmd):
+        dss_home = EnvUtil.get_dss_home(user)
+        cfg = os.path.join(dss_home, 'cfg', 'dss_inst.ini')
+        if os.path.isfile(cfg):
+            Dss.write_dss_context_with_file()
+            logger.debug("Successfully generate the ciphertext of the DSS.")
+        else:
+            logger.log(f"The {cfg} not exist.")
+    else:
+        logger.debug("Non-dss-mode or not find dsscmd.")
 
 
 def log_copy():
@@ -1340,12 +1370,15 @@ def getBakConfCmd(Inst):
                   DefaultValue.KEY_DIRECTORY_MODE, g_resultdir, g_current_time,
                   Inst.instanceId)
             cmd = "%s && cp -rf '%s'/postgresql.conf '%s'/pg_hba." \
-                  "conf '%s'/global/pg_control" \
+                  "conf {}" \
                   " '%s'/gaussdb.state  %s/pg_replslot/ %s/pg_ident.conf" \
                   " '%s'/configfiles/config_%s/dn_%s/" % \
-                  (cmd, Inst.datadir, Inst.datadir, Inst.datadir, Inst.datadir,
+                  (cmd, Inst.datadir, Inst.datadir, Inst.datadir,
                    Inst.datadir, Inst.datadir,
                    g_resultdir, g_current_time, Inst.instanceId)
+            pg_conf_dir = os.path.realpath(
+                os.path.join(Inst.datadir, 'global/pg_control'))
+            cmd = cmd.format(pg_conf_dir if os.path.isdir(pg_conf_dir) else "")
         else:
             cmd = "mkdir -p -m %s '%s/gstackfiles/gstack_%s/dn_%s'" % \
                   (
@@ -1444,6 +1477,8 @@ def main():
         # Make a copy of the log file
         elif g_opts.action == "log_copy":
             log_copy()
+        elif g_opts.action == "dss_cert_replacer":
+            dss_cert_replacer(g_logger)
         # Copy configuration files, and get g stack
         elif g_opts.action == "Config":
             conf_gstack("Config")

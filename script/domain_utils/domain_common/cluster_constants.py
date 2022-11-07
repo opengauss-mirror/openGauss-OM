@@ -2,10 +2,13 @@
 class ClusterConstants:
     TOOL_PATH_ENV = "GPHOME"
 
+
     # default GPHOME
     CLUSTER_TOOL_PATH = "/opt/huawei/wisequery"
     # gauss log dir
     GAUSSDB_DIR = "/var/log/gaussdb"
+    # dss home
+    DSS_ROOT_HOME = "/opt/huawei/dss_root_home"
     # gs
     GS_VIRTULIP_LOG_PATH = "/var/log/gs_virtualip"
     # env file

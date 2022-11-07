@@ -194,16 +194,21 @@ class InstallImplOLAP(InstallImpl):
         cmd += "%s -U %s %s -l %s" % (
             OMCommand.getLocalScript("Local_Init_Instance"), self.context.user,
             cmdParam, self.context.localLog)
+
         if self.context.clusterInfo.enable_dcf == 'on':
             cmd += " --paxos_mode"
+        elif self.context.clusterInfo.enable_dss == 'on':
+            cmd += " --dss_mode"
         self.context.logger.debug(
             "Command for initializing instances: %s" % cmd)
 
         cmd = self.singleCmd(cmd)
 
+        parallelism = False if self.context.clusterInfo.enable_dss == 'on' else True
         CmdExecutor.execCommandWithMode(cmd,
                                         self.context.sshTool,
-                                        self.context.isSingle)
+                                        self.context.isSingle,
+                                        parallelism=parallelism)
         self.context.logger.debug("Successfully initialized node instance.")
 
     def configInstance(self):
@@ -454,6 +459,14 @@ class InstallImplOLAP(InstallImpl):
         Check CM server node number
         """
         cm_server_number = DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo)
+
+        if self.context.clusterInfo.enable_dss == 'on':
+            if cm_server_number < 1:
+                raise Exception(ErrorCode.GAUSS_527["GAUSS_52708"] %
+                                "CM server number" +
+                                " CM server number must be more than 0.")
+            return
+
         if 0 < cm_server_number < 2:
             raise Exception(
                 ErrorCode.GAUSS_527["GAUSS_52708"] % "CM server number" +
@@ -506,3 +519,26 @@ class InstallImplOLAP(InstallImpl):
 
         local_cm.create_cm_ca(self.context.sshTool)
 
+    def create_ca_for_dss(self):
+        '''
+        Create DSS CA file
+        '''
+        dss_mode = True if self.context.clusterInfo.enable_dss == 'on' else False
+        dss_ssl_enable = True if self.context.clusterInfo.dss_ssl_enable == 'on' else False
+
+        if dss_mode and dss_ssl_enable and DefaultValue.get_cm_server_num_from_static(
+                self.context.clusterInfo) > 0:
+            local_cm = [
+                cm_component for cm_component in self.context.cmCons
+                if cm_component.instInfo.hostname == NetUtil.GetHostIpOrName()
+            ][0]
+
+            local_cm.create_cm_ca(self.context.sshTool, ca_org='dss')
+        elif dss_mode and dss_ssl_enable and DefaultValue.get_cm_server_num_from_static(
+                self.context.clusterInfo) == 0:
+            raise Exception(
+                'The DSS mode does not support cluster installation without cm.'
+            )
+        elif not dss_ssl_enable:
+            self.context.logger.log(
+                "Non-dss_ssl_enable, no need to create CA for DSS")

@@ -1023,6 +1023,7 @@ class UpgradeImpl:
                 # will update the catalog in the old version
                 if self.context.action == const.ACTION_LARGE_UPGRADE:
                     self.updateCatalog()
+                self.greySyncGuc()
                 self.recordNodeStep(GreyUpgradeStep.STEP_SWITCH_NEW_BIN)
                 self.CopyCerts()
                 self.upgradeAgain()
@@ -1056,7 +1057,6 @@ class UpgradeImpl:
                 # so if it create in the old appPath after copy to the
                 # newAppPath but not switch to new bin
                 # the new version may not recognize the C function
-                self.greySyncGuc()
                 self.greyUpgradeSyncOldConfigToNew()
                 # 11. switch the cluster version to new version
                 self.getOneDNInst(checkNormal=True)
@@ -1162,7 +1162,7 @@ class UpgradeImpl:
                self.context.upgradeBackupPath,
                self.context.localLog)
         self.context.logger.debug("Command for sync GUC in upgrade: %s" % cmd)
-        hostList = copy.deepcopy(self.context.nodeNames)
+        hostList = copy.deepcopy(self.context.clusterNodes)
         self.context.sshTool.executeCommand(cmd, hostList=hostList)
         self.context.logger.debug("Successfully sync guc.")
 

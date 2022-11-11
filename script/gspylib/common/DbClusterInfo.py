@@ -27,6 +27,7 @@ import sys
 import re
 import pwd
 import copy
+import socket
 import json
 
 
@@ -610,6 +611,7 @@ class instanceInfo():
         self.localRole = ""
         self.peerInstanceInfos = []
         self.syncNum = -1
+        self.syncNumFirst = ""
         self.cascadeRole = "off"
         # dcf_data_path
         self.dcf_data_path = ""
@@ -771,7 +773,7 @@ class dbNodeInfo():
     def appendInstance(self, instId, mirrorId, instRole, instanceType,
                        listenIps=None,
                        haIps=None, datadir="", ssddir="", level=1,
-                       xlogdir="", syncNum=-1, dcf_data=""):
+                       xlogdir="", syncNum=-1, syncNumFirst="", dcf_data=""):
         """
         function : Classify the instance of cmserver/gtm
         input : int,int,String,String
@@ -831,6 +833,7 @@ class dbNodeInfo():
             dbInst.haPort = dbInst.port + 1
             dbInst.ssdDir = ssddir
             dbInst.syncNum = syncNum
+            dbInst.syncNumFirst = syncNumFirst
             dbInst.dcf_data_path = dcf_data
             self.datanodes.append(dbInst)
         # cm_agent
@@ -2605,6 +2608,7 @@ class dbClusterInfo():
             db_inst.haPort = db_inst.port + 1
             db_inst.ssdDir = ""
             db_inst.syncNum = -1
+            db_inst.syncNumFirst = ""
             db_inst.azName = db_node.azName
             self.dbNodes[0].datanodes.append(db_inst)
         self.dbNodes[0].appendInstance(1, MIRROR_ID_AGENT, INSTANCE_ROLE_CMAGENT,
@@ -3405,6 +3409,7 @@ class dbClusterInfo():
         dcf_data_lists = [[] for row in range(masterNode.dataNum)]
         ssdInfoList = [[] for row in range(masterNode.dataNum)]
         syncNumList = [-1 for row in range(masterNode.dataNum)]
+        syncNumFirstList = [[] for row in range(masterNode.dataNum)]
         totalDnInstanceNum = 0
         # Whether the primary and standby have SET XLOG PATH , must be
         # synchronized
@@ -3485,14 +3490,14 @@ class dbClusterInfo():
             key = "dataNode%d_syncNum" % (i + 1)
             syncNum_temp = self.__readNodeStrValue(masterNode.name, key)
             if syncNum_temp is not None:
-                syncNum = int(syncNum_temp)
-                if syncNum < 0 or syncNum >= totalDnInstanceNum:
-                    raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % \
-                                    ("database node configuration on host [%s]"
-                                     % masterNode.name)
-                                    + " The information of [%s] is wrong."
-                                    % key)
-                syncNumList[i] = syncNum
+               syncNum = int(syncNum_temp)
+               if syncNum < 0 or syncNum >= totalDnInstanceNum:
+                   raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % \
+                                   ("database node configuration on host [%s]"
+                                    % masterNode.name)
+                                   + " The information of [%s] is wrong."
+                                   % key)
+               syncNumList[i] = syncNum
 
         # check ip num
         if dnListenIps is not None and len(dnListenIps[0]) != 0:
@@ -3528,6 +3533,12 @@ class dbClusterInfo():
         instIndex = 0
         for i in range(masterNode.dataNum):
             dnInfoList = dnInfoLists[i]
+            key = "syncNode_%s" % (masterNode.name)
+            if self.__readNodeStrValue(masterNode.name, key) is not None:
+                syncNumFirst_temp = self.__readNodeStrValue(masterNode.name, key)
+                if syncNumFirst_temp is not None:
+                    syncNumFirst = syncNumFirst_temp
+                syncNumFirstList[i] = syncNumFirst
 
             # Because xlog may not be set to prevent the array from crossing
             # the boundary
@@ -3550,6 +3561,7 @@ class dbClusterInfo():
                                               dnHaIps[instIndex],
                                               dnInfoList[0], ssddirList[0],
                                               syncNum=syncNumList[i],
+                                              syncNumFirst=syncNumFirstList[i],
                                               dcf_data=dcf_data_list[0])
                     else:
                         masterNode.appendInstance(instId, groupId,
@@ -3558,7 +3570,8 @@ class dbClusterInfo():
                                                   dnListenIps[instIndex],
                                                   dnHaIps[instIndex],
                                                   dnInfoList[0], ssddirList[0],
-                                                  syncNum=syncNumList[i])
+                                                  syncNum=syncNumList[i],
+                                                  syncNumFirst=syncNumFirstList[i])
                 else:
                     masterNode.appendInstance(instId, groupId,
                                               INSTANCE_ROLE_DATANODE,
@@ -3567,7 +3580,8 @@ class dbClusterInfo():
                                               dnHaIps[instIndex],
                                               dnInfoList[0], ssddirList[0],
                                               xlogdir=xlogInfoList[0],
-                                              syncNum=syncNumList[i])
+                                              syncNum=syncNumList[i],
+                                              syncNumFirst=syncNumFirstList[i])
             else:
                 if xlogInfoListLen == 0:
                     if self.enable_dcf == "on":
@@ -3578,6 +3592,7 @@ class dbClusterInfo():
                                               dnHaIps[instIndex],
                                               dnInfoList[0],
                                               syncNum=syncNumList[i],
+                                              syncNumFirst=syncNumFirstList[i],
                                               dcf_data=dcf_data_list[0])
                     else:
                         masterNode.appendInstance(instId, groupId,
@@ -3586,7 +3601,8 @@ class dbClusterInfo():
                                                   dnListenIps[instIndex],
                                                   dnHaIps[instIndex],
                                                   dnInfoList[0],
-                                                  syncNum=syncNumList[i])
+                                                  syncNum=syncNumList[i],
+                                                  syncNumFirst=syncNumFirstList[i])
                 else:
                     masterNode.appendInstance(instId, groupId,
                                               INSTANCE_ROLE_DATANODE,
@@ -3595,7 +3611,8 @@ class dbClusterInfo():
                                               dnHaIps[instIndex],
                                               dnInfoList[0],
                                               xlogdir=xlogInfoList[0],
-                                              syncNum=syncNumList[i])
+                                              syncNum=syncNumList[i],
+                                              syncNumFirst=syncNumFirstList[i])
 
             instIndex += 1
 
@@ -3608,6 +3625,14 @@ class dbClusterInfo():
                                     + " There is no host named %s."
                                     % dnInfoList[nodeLen * 2 + 1])
                 instId = self.__assignNewInstanceId(INSTANCE_ROLE_DATANODE)
+                
+                syncNumFirstList[i] = ""
+                key = "syncNode_%s" % (dbNode.name)
+                if self.__readNodeStrValue(dbNode.name, key) is not None:
+                    syncNumFirst_temp = self.__readNodeStrValue(dbNode.name, key)
+                    if syncNumFirst_temp is not None:
+                        syncNumFirst = syncNumFirst_temp
+                    syncNumFirstList[i] = syncNumFirst
 
                 # ssd doesn't supply ,this branch will not arrive when len(
                 # ssdInfoList[i])  is 0
@@ -3622,6 +3647,7 @@ class dbClusterInfo():
                                               dnInfoList[nodeLen * 2 + 2],
                                               ssddirList[nodeLen * 2 + 1],
                                               syncNum=syncNumList[i],
+                                              syncNumFirst=syncNumFirstList[i],
                                               dcf_data=dcf_data_list[0])
                         else:
                             dbNode.appendInstance(instId, groupId,
@@ -3631,7 +3657,8 @@ class dbClusterInfo():
                                                   dnHaIps[instIndex],
                                                   dnInfoList[nodeLen * 2 + 2],
                                                   ssddirList[nodeLen * 2 + 1],
-                                                  syncNum=syncNumList[i])
+                                                  syncNum=syncNumList[i],
+                                                  syncNumFirst=syncNumFirstList[i])
                     else:
                         if self.enable_dcf == "on":
                             dbNode.appendInstance(instId, groupId,
@@ -3643,6 +3670,7 @@ class dbClusterInfo():
                                               ssddirList[nodeLen * 2 + 1],
                                               xlogdir=xlogInfoList[nodeLen + 1],
                                               syncNum=syncNumList[i],
+                                              syncNumFirst=syncNumFirstList[i],
                                               dcf_data=dcf_data_list[0])
                         else:
                             dbNode.appendInstance(instId, groupId,
@@ -3653,7 +3681,8 @@ class dbClusterInfo():
                                                   dnInfoList[nodeLen * 2 + 2],
                                                   ssddirList[nodeLen * 2 + 1],
                                                   xlogdir=xlogInfoList[nodeLen + 1],
-                                                  syncNum=syncNumList[i])
+                                                  syncNum=syncNumList[i],
+                                                  syncNumFirst=syncNumFirstList[i])
                 else:
                     if xlogInfoListLen == 0:
                         if self.enable_dcf == "on":
@@ -3664,6 +3693,7 @@ class dbClusterInfo():
                                               dnHaIps[instIndex],
                                               dnInfoList[nodeLen * 2 + 2],
                                               syncNum=syncNumList[i],
+                                              syncNumFirst=syncNumFirstList[i],
                                               dcf_data=dcf_data_list[0])
                         else:
                             dbNode.appendInstance(instId, groupId,
@@ -3672,7 +3702,8 @@ class dbClusterInfo():
                                                   dnListenIps[instIndex],
                                                   dnHaIps[instIndex],
                                                   dnInfoList[nodeLen * 2 + 2],
-                                                  syncNum=syncNumList[i])
+                                                  syncNum=syncNumList[i],
+                                                  syncNumFirst=syncNumFirstList[i])
                     else:
                         if self.enable_dcf == "on":
                             dbNode.appendInstance(instId, groupId,
@@ -3683,6 +3714,7 @@ class dbClusterInfo():
                                               dnInfoList[nodeLen * 2 + 2],
                                               xlogdir=xlogInfoList[nodeLen + 1],
                                               syncNum=syncNumList[i],
+                                              syncNumFirst=syncNumFirstList[i],
                                               dcf_data=dcf_data_list[0])
                         else:
                             dbNode.appendInstance(instId, groupId,
@@ -3692,7 +3724,8 @@ class dbClusterInfo():
                                                   dnHaIps[instIndex],
                                                   dnInfoList[nodeLen * 2 + 2],
                                                   xlogdir=xlogInfoList[nodeLen + 1],
-                                                  syncNum=syncNumList[i])
+                                                  syncNum=syncNumList[i],
+                                                  syncNumFirst=syncNumFirstList[i])
                 if dbNode.cascadeRole == "on":
                     if self.enable_dcf != "on":
                         for inst in dbNode.datanodes:
@@ -3924,6 +3957,8 @@ class dbClusterInfo():
         elif (retStatus == 2 and "dataNodeXlogPath" in key):
             return defValue
         elif (retStatus == 2 and "syncNum" in key):
+            return None
+        elif (retStatus == 2 and "syncNode" in key):
             return None
         else:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % \

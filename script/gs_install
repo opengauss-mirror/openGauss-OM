@@ -293,7 +293,7 @@ if __name__ == '__main__':
         install.initGlobals()
         # set action flag file
         DefaultValue.setActionFlagFile("gs_install")
-
+        
         impl = InstallImplOLAP(install)
         # Perform the whole install process
         impl.run()

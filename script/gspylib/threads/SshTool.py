@@ -715,7 +715,7 @@ class SshTool():
 
         return resultMap
 
-    def scpFiles(self, srcFile, targetDir, sshHostList=None, env_file="",
+    def scpFiles(self, srcFile, targetDir, hostList=None, env_file="",
                  gp_path="", parallel_num=300):
         """
         function: copy files to other path
@@ -726,9 +726,9 @@ class SshTool():
         outputCollect = ""
         localMode = False
         resultMap = {}
-        hostList = []
-        if sshHostList is None:
-            sshHostList = []
+        ssh_hosts = []
+        if hostList is None:
+            hostList = []
         try:
             if env_file != "":
                 mpprcFile = env_file
@@ -748,20 +748,20 @@ class SshTool():
                 GPHOME = gp_path.strip()
             pscppre = "python3 %s/script/gspylib/pssh/bin/pscp" % GPHOME
 
-            if len(sshHostList) == 0:
-                hostList = copy.deepcopy(self.hostNames)
+            if len(hostList) == 0:
+                ssh_hosts = copy.deepcopy(self.hostNames)
             else:
-                hostList = copy.deepcopy(sshHostList)
-            if len(hostList) == 1 and hostList[0] == socket.gethostname() and \
+                ssh_hosts = copy.deepcopy(hostList)
+            if len(ssh_hosts) == 1 and ssh_hosts[0] == socket.gethostname() and \
                 srcFile != targetDir and \
                 srcFile != os.path.join(targetDir, os.path.split(srcFile)[1]):
                 localMode = True
                 scpCmd = "cp -r %s %s" % (srcFile, targetDir)
             else:
                 # cp file on local node
-                if socket.gethostname() in hostList:
-                    localhost_idx = hostList.index(socket.gethostname())
-                    hostList.pop(localhost_idx)
+                if socket.gethostname() in ssh_hosts:
+                    localhost_idx = ssh_hosts.index(socket.gethostname())
+                    ssh_hosts.pop(localhost_idx)
                     cpcmd = "cp -r %s %s" % (srcFile, targetDir)
                     if srcFile != targetDir and srcFile != os.path.join(targetDir, os.path.basename(srcFile)):
                         (status, output) = subprocess.getstatusoutput(cpcmd)
@@ -773,7 +773,7 @@ class SshTool():
                 scpCmd += " && %s -r -v -t %s -p %s -H %s -o %s -e %s %s %s" \
                           " 2>&1 | tee %s" % (pscppre, self.__timeout,
                                               parallel_num,
-                                              " -H ".join(hostList),
+                                              " -H ".join(ssh_hosts),
                                               self.__outputPath,
                                               self.__errorPath, srcFile,
                                               targetDir, self.__resultFile)
@@ -799,38 +799,38 @@ class SshTool():
             if localMode:
                 dir_permission = 0o700
                 if status == 0:
-                    resultMap[hostList[0]] = DefaultValue.SUCCESS
-                    outputCollect = "[%s] %s:\n%s" % ("SUCCESS", hostList[0],
+                    resultMap[ssh_hosts[0]] = DefaultValue.SUCCESS
+                    outputCollect = "[%s] %s:\n%s" % ("SUCCESS", ssh_hosts[0],
                                                       SensitiveMask.mask_pwd(output))
 
                     if not os.path.exists(self.__outputPath):
                         os.makedirs(self.__outputPath, mode=dir_permission)
-                    file_path = os.path.join(self.__outputPath, hostList[0])
+                    file_path = os.path.join(self.__outputPath, ssh_hosts[0])
                     FileUtil.createFileInSafeMode(file_path)
                     with open(file_path, "w") as fp:
                         fp.write(SensitiveMask.mask_pwd(output))
                         fp.flush()
                         fp.close()
                 else:
-                    resultMap[hostList[0]] = DefaultValue.FAILURE
-                    outputCollect = "[%s] %s:\n%s" % ("FAILURE", hostList[0],
+                    resultMap[ssh_hosts[0]] = DefaultValue.FAILURE
+                    outputCollect = "[%s] %s:\n%s" % ("FAILURE", ssh_hosts[0],
                                                       SensitiveMask.mask_pwd(output))
 
                     if not os.path.exists(self.__errorPath):
                         os.makedirs(self.__errorPath, mode=dir_permission)
-                    file_path = os.path.join(self.__errorPath, hostList[0])
+                    file_path = os.path.join(self.__errorPath, ssh_hosts[0])
                     FileUtil.createFileInSafeMode(file_path)
                     with open(file_path, "w") as fp:
                         fp.write(SensitiveMask.mask_pwd(output))
                         fp.flush()
                         fp.close()
             else:
-                resultMap, outputCollect = self.parseSshResult(hostList)
+                resultMap, outputCollect = self.parseSshResult(ssh_hosts)
         except Exception as e:
             self.clenSshResultFiles()
             raise Exception(str(e))
 
-        for host in hostList:
+        for host in ssh_hosts:
             if resultMap.get(host) != DefaultValue.SUCCESS:
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50216"]
                                 % ("file [%s]" % srcFile) +

@@ -366,7 +366,7 @@ General options:
         if status != 0:
             bin_cmd = 'tar -xpf `ls openGauss*.tar.bz2|tail -1` ./version.cfg'
             cm_cmd = 'tar -xpf `ls openGauss*cm.tar.gz|tail -1`'
-            self.get_dec_package_cmd(bin_cmd, cm_cmd)
+            cmd = self.get_dec_package_cmd(bin_cmd, cm_cmd)
             status, output = subprocess.getstatusoutput(cmd)
             GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"] %
                                    "version.cfg" + "The cmd is %s. " % cmd +

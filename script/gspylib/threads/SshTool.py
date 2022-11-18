@@ -769,7 +769,8 @@ class SshTool():
                             resultMap[socket.gethostname()] = DefaultValue.SUCCESS
                         else:
                             resultMap[socket.gethostname()] = DefaultValue.FAILURE
-                    
+                if not ssh_hosts:
+                    return
                 scpCmd += " && %s -r -v -t %s -p %s -H %s -o %s -e %s %s %s" \
                           " 2>&1 | tee %s" % (pscppre, self.__timeout,
                                               parallel_num,

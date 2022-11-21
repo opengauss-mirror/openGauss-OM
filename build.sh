@@ -79,13 +79,13 @@ declare package_name="${package_pre_name}.tar.gz"
 declare sha256_name="${package_pre_name}.sha256"
 
 if [ ${binarylib_dir} != 'None' ] && [ -d ${binarylib_dir} ]; then
-    BINARYLIBS_PATH="${binarylib_dir}/dependency/${PLAT_FORM_STR}"
-    BUILD_TOOLS_PATH="${binarylib_dir}/buildtools/${PLAT_FORM_STR}"
-    BINARYLIBS_PATH_INSTALL_TOOLS="${binarylib_dir}/dependency/install_tools_${PLAT_FORM_STR}"
+    BINARYLIBS_PATH="${binarylib_dir}/kernel/dependency/"
+    BUILD_TOOLS_PATH="${binarylib_dir}/buildtools/"
+    BINARYLIBS_PATH_INSTALL_TOOLS="${binarylib_dir}/install_tools"
 else
-    BINARYLIBS_PATH="${ROOT_DIR}/binarylibs/dependency/${PLAT_FORM_STR}"
-    BUILD_TOOLS_PATH="${ROOT_DIR}/binarylibs/buildtools/${PLAT_FORM_STR}"
-    BINARYLIBS_PATH_INSTALL_TOOLS="${ROOT_DIR}/dependency/install_tools_${PLAT_FORM_STR}"	
+    BINARYLIBS_PATH="${ROOT_DIR}/binarylibs/kernel/dependency/"
+    BUILD_TOOLS_PATH="${ROOT_DIR}/binarylibs/buildtools/"
+    BINARYLIBS_PATH_INSTALL_TOOLS="${ROOT_DIR}/install_tools"	
 fi
 
 log()
@@ -130,12 +130,7 @@ function copy_script_file()
     if [ $? -ne 0 ]; then
         die "cp -r $ROOT_DIR/script $PKG_TMP_DIR failed "
     fi
-    chmod -R +x $PKG_TMP_DIR/script/
-    
-    cp -rf $ROOT_DIR/simpleInstall $PKG_TMP_DIR/
-    if [ $? -ne 0 ]; then
-        die "cp -r $ROOT_DIR/simpleInstall $PKG_TMP_DIR/ failed "
-    fi    
+    chmod -R +x $PKG_TMP_DIR/script/   
 }
 
 function version_cfg()

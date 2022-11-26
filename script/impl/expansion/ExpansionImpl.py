@@ -558,7 +558,7 @@ class ExpansionImpl():
         """
         fresh cluster info state
         """
-        self.logger.debug("Start refresh cluster info state.\n")
+        self.logger.debug("Start refresh cluster info state.")
         # get xml config node info
         clusterInfoDict = self.context.clusterInfoDict
         nodeNames = self.context.nodeNameList
@@ -567,9 +567,11 @@ class ExpansionImpl():
         result = self.commonGsCtl.queryOmCluster(primaryHost, self.envFile)
         instances = re.split('(?:\|)|(?:\n)', result)
         pattern = re.compile('(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*')
+        host_ip = []
         for ins in instances:
             if re.findall('Primary', ins):
                 host_ip = pattern.findall(ins)
+                break
         # update xml config node info
         primary_host_ip = "".join(host_ip)
         for nodename in nodeNames:

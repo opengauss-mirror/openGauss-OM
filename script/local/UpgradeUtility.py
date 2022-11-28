@@ -2333,8 +2333,10 @@ def  cleanInstallPath():
            " fi) &&" % (installPath, installPath)
     cmd += "(if [ -e '%s/version.cfg' ]; then rm -rf '%s/version.cfg'; fi) &&"\
            % (installPath, installPath)
-    cmd += "(if [ -e '%s/.gaussUDF.socket' ]; then rm -rf '%s/.gaussUDF.socket'; fi)" \
+    cmd += "(if [ -e '%s/.gaussUDF.socket' ]; then rm -rf '%s/.gaussUDF.socket'; fi) && " \
            % (installPath, installPath)
+    cmd += "(if [ -d '%s/tool' ]; then rm -rf '%s/tool'; fi)" % \
+           (installPath, installPath)
     CmdExecutor.execCommandLocally(cmd)
     if os.listdir(installPath):
         g_logger.log(

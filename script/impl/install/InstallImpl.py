@@ -123,43 +123,50 @@ class InstallImpl:
         clusterInfo.initFromXml(self.context.xmlFile)
         dbNodes = clusterInfo.dbNodes
 
-        dn = dict()
+        dn_instanceId = dict()
+        dn_syncNodeHostname = dict()
         for dbinfo in dbNodes:
             if dbinfo is None:
                 self.context.logger.debug("the number of DN is zero")
                 break
-            datanodes = dbinfo.datanodes
+            datanodes = dbinfo.datanodes      
             if datanodes[0].hostname == hostname:
                 syncNumFirst = datanodes[0].syncNumFirst
                 syncNum = datanodes[0].syncNum
             for datainfo in datanodes:
-                dn[datainfo.hostname] = datainfo.instanceId
-            self.context.logger.debug(dn)
-        if syncNumFirst and syncNum != -1:
-            raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] % "syncNode_hostname and dataNode1 cannot be exist at the same time")
-        if syncNumFirst and syncNum == -1:
-            syncNumFirstRe = re.sub('[,\s]', '', syncNumFirst)
-            if re.match('(ANY[0-8](.*){1,8})', syncNumFirstRe) or re.match('(FIRST[0-8](.*){1,8})',syncNumFirstRe):
-                self.context.logger.debug("Successfully. matching is correct")
-            else:
-                raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] % "syncNode_hostname, the match of syncNode_hostname is wrong.")
-            for sync in dn.keys():
-                if syncNumFirst.count(sync) > 1:
-                    raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] % "syncNode_hostname, the node in syncNode_hostname is must be the unique.")
-                elif syncNumFirst.count(sync) == 0:
-                    if sync == hostname:
-                        self.context.logger.debug("syncNode_hostname, the syncNode_hostname does not including own hostname.")
-                    else:
-                        self.context.logger.debug("syncNode_hostname is including non-host nodes.")
-                elif syncNumFirst.count(sync) == 1:
-                    if sync == hostname:
-                        raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] % "syncNode_hostname, the syncNode_hostname is including own hostname.")
-                elif syncNumFirst.count("ANY") and syncNumFirst.count("FIRST"):
-                    raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] % "syncNode_hostname, it can be only one of 'ANY' or 'FIRST'.")
+                dn_instanceId[datainfo.hostname] = datainfo.instanceId
+                dn_syncNodeHostname[datanodes[0].hostname] = datanodes[0].syncNumFirst
+            self.context.logger.debug(dn_instanceId)
+        for syncNode in dn_syncNodeHostname.keys():
+            syncNumFirst = dn_syncNodeHostname[syncNode]
+            hostname = syncNode
+            if syncNumFirst and syncNum != -1:
+                raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] % "syncNode_hostname and dataNode1 cannot be exist at the same time")
+            if syncNumFirst and syncNum == -1:
+                syncNumFirstRe = re.sub('[,\s]', '', syncNumFirst)
+                if re.match('(ANY[0-8](.*){1,8})', syncNumFirstRe) or re.match('(FIRST[0-8](.*){1,8})',syncNumFirstRe):
+                    self.context.logger.debug("Successfully. matching is correct")
                 else:
-                    syncNumFirst = syncNumFirst.replace(sync,'dn_%s' % (dn[sync]))
-            self.context.logger.debug("Check syncNode_hostname is correct.")
-            self.context.logger.debug(syncNumFirst)
+                    raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] % "syncNode_hostname, the match of syncNode_hostname is wrong.")
+                for sync in dn_instanceId.keys():
+                    if syncNumFirst.count(sync) > 1:
+                        raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] % "syncNode_hostname, the node in syncNode_hostname is must be the unique.")
+                    elif syncNumFirst.count(sync) == 0:
+                        if sync == hostname:
+                            self.context.logger.debug("syncNode_hostname, the syncNode_hostname does not including own hostname.")
+                        else:
+                            self.context.logger.debug("syncNode_hostname is including non-host nodes.")
+                    elif syncNumFirst.count(sync) == 1:
+                        if sync == hostname:
+                            raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] % "syncNode_hostname, the syncNode_hostname is including own hostname.")
+                    elif syncNumFirst.count("ANY") and syncNumFirst.count("FIRST"):
+                        raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] % "syncNode_hostname, it can be only one of 'ANY' or 'FIRST'.")
+                    else:
+                        syncNumFirst = syncNumFirst.replace(sync,'dn_%s' % (dn_instanceId[sync]))
+                self.context.logger.debug("Check syncNode_hostname is correct.")
+                self.context.logger.debug(syncNumFirst)
+            if len(syncNumFirst) == 0 and syncNum == -1:
+                raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] % "syncNode_hostname is must be exist in every hostnode")
 
     def checkTimeout(self):
         """

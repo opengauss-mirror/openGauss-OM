@@ -512,6 +512,7 @@ class ExpansionImpl():
            (2) build new instances
         5. generate cluster static file and send to each node.
         """
+        self.refreshClusterInfoState()
         self.setGucConfig()
         self.addTrust()
         if DefaultValue.is_create_grpc(self.logger,
@@ -553,6 +554,32 @@ class ExpansionImpl():
                 self.existingHosts.append(existing_hosts_ip[0])
         self.existingHosts = list(set(self.existingHosts))
 
+    def refreshClusterInfoState(self):
+        """
+        fresh cluster info state
+        """
+        self.logger.debug("Start refresh cluster info state.")
+        # get xml config node info
+        clusterInfoDict = self.context.clusterInfoDict
+        nodeNames = self.context.nodeNameList
+        # get gs_om node info
+        primaryHost = self.getPrimaryHostName()
+        result = self.commonGsCtl.queryOmCluster(primaryHost, self.envFile)
+        instances = re.split('(?:\|)|(?:\n)', result)
+        pattern = re.compile('(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*')
+        host_ip = []
+        for ins in instances:
+            if re.findall('Primary', ins):
+                host_ip = pattern.findall(ins)
+                break
+        # update xml config node info
+        primary_host_ip = "".join(host_ip)
+        for nodename in nodeNames:
+            if clusterInfoDict[nodename]["instanceType"] == MASTER_INSTANCE:
+                clusterInfoDict[nodename]["instanceType"] = STANDBY_INSTANCE
+            if clusterInfoDict[nodename]["backIp"] == primary_host_ip:
+                clusterInfoDict[nodename]["instanceType"] = MASTER_INSTANCE
+        
     def setGucConfig(self):
         """
         set replconninfo on all hosts

@@ -125,17 +125,20 @@ class InstallImpl:
 
         dn_instanceId = dict()
         dn_syncNodeHostname = dict()
+        flag = False
         for dbinfo in dbNodes:
             if dbinfo is None:
                 self.context.logger.debug("the number of DN is zero")
                 break
-            datanodes = dbinfo.datanodes      
+            datanodes = dbinfo.datanodes
             if datanodes[0].hostname == hostname:
                 syncNumFirst = datanodes[0].syncNumFirst
                 syncNum = datanodes[0].syncNum
             for datainfo in datanodes:
                 dn_instanceId[datainfo.hostname] = datainfo.instanceId
                 dn_syncNodeHostname[datanodes[0].hostname] = datanodes[0].syncNumFirst
+                if datanodes[0].syncNumFirst:
+                    flag = True
             self.context.logger.debug(dn_instanceId)
         for syncNode in dn_syncNodeHostname.keys():
             syncNumFirst = dn_syncNodeHostname[syncNode]
@@ -165,7 +168,7 @@ class InstallImpl:
                         syncNumFirst = syncNumFirst.replace(sync,'dn_%s' % (dn_instanceId[sync]))
                 self.context.logger.debug("Check syncNode_hostname is correct.")
                 self.context.logger.debug(syncNumFirst)
-            if len(syncNumFirst) == 0 and syncNum == -1:
+            if len(syncNumFirst) == 0 and syncNum == -1 and flag:
                 raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] % "syncNode_hostname is must be exist in every hostnode")
 
     def checkTimeout(self):

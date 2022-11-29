@@ -501,6 +501,9 @@ def SetLimitsConf(typename, item, value, limitfile):
     """
     g_logger.debug("Setting limits config.")
     clusterUser = getClusterUser()
+    cmd = """sed -i '/^.*root * %s *%s .*$/d' %s &&
+           echo "root       %s    %s  %s" >> %s && """ \
+          % (typename, item, limitfile, typename, item, value, limitfile)
     cmd += """sed -i '/^.*%s * %s *%s .*$/d' %s &&
             echo "%s       %s    %s  %s" >> %s""" \
            % (clusterUser, typename, item, limitfile, clusterUser, typename, item, value, limitfile)

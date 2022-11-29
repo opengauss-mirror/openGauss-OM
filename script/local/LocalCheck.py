@@ -501,11 +501,9 @@ def SetLimitsConf(typename, item, value, limitfile):
     """
     g_logger.debug("Setting limits config.")
     clusterUser = getClusterUser()
-    cmd = """sed -i '/^.* %s *%s .*$/d' %s &&
-           echo "root       %s    %s  %s" >> %s && """ \
-          % (typename, item, limitfile, typename, item, value, limitfile)
-    cmd += """echo "%s       %s    %s  %s" >> %s""" \
-           % (clusterUser, typename, item, value, limitfile)
+    cmd += """sed -i '/^.*%s * %s *%s .*$/d' %s &&
+            echo "%s       %s    %s  %s" >> %s""" \
+           % (clusterUser, typename, item, limitfile, clusterUser, typename, item, value, limitfile)
     (status, output) = subprocess.getstatusoutput(cmd)
     if (status != 0):
         g_logger.debug("The cmd is %s " % cmd)

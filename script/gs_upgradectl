@@ -99,8 +99,8 @@ class Upgrade(ParallelBaseOM):
         ##static parameter
         self.binTarName = "binary_%s.tar" % NetUtil.GetHostIpOrName()
         self.rollback = False
-        self.is_inplace_upgrade = True
-        self.is_grey_upgrade = False
+        self.is_inplace_upgrade = False
+        self.is_grey_upgrade = True
         self.guc_paras = {}
         self.newClusterVersion = None
         self.newClusterNumber = None
@@ -125,7 +125,7 @@ Usage:
   gs_upgradectl -? | --help
   gs_upgradectl -V | --version
   gs_upgradectl -t chose-strategy [-l LOGFILE]
-  gs_upgradectl -t auto-upgrade -X XMLFILE [-l LOGFILE] [--grey]
+  gs_upgradectl -t auto-upgrade -X XMLFILE [-l LOGFILE] [--grey] [--inplace-upgrade]
   gs_upgradectl -t auto-rollback -X XMLFILE [-l LOGFILE] [--force]
   gs_upgradectl -t commit-upgrade -X XMLFILE [-l LOGFILE]
 
@@ -141,7 +141,8 @@ General options:
   -l                              Path of log file.
   --force                         Force to rollback when cluster status is
                                   not normal
-  --grey                          Use grey-binary-upgrade
+  --grey                          Use grey-binary-upgrade.
+  --inplace-upgrade               Use inplace-upgrade.
 Option for grey upgrade
   -h                              Under grey upgrade, specified nodes name.
   --continue                      Under grey upgrade, continue to upgrade
@@ -170,9 +171,9 @@ Option for grey upgrade
         # get logFile information
         if "logFile" in ParaDict.keys():
             self.logFile = ParaDict.get("logFile")
-        if "grey" in ParaDict.keys():
-            self.is_grey_upgrade = True
-            self.is_inplace_upgrade = False
+        if "inplace_upgrade" in ParaDict.keys():
+            self.is_grey_upgrade = False
+            self.is_inplace_upgrade = True
         if "nodename" in ParaDict.keys():
             self.nodeNames = ParaDict.get("nodename")
         if "continue" in ParaDict.keys():

@@ -16,12 +16,16 @@ class SqlCommands:
 
     @staticmethod
     def getSQLCommand(port, database=ConstantsBase.DEFAULT_DB_NAME,
-                      gsqlBin="gsql"):
+                      gsqlBin="gsql", user_name="", user_pwd=""):
         """
         function : get SQL command
         input : port, database
         output : cmd
         """
+        if user_name and user_pwd:
+            cmd = ConstantsBase.SQL_EXEC_COMMAND_WITHOUT_HOST_WITH_USER % (
+                gsqlBin, str(port), database, user_name, user_pwd)
+            return cmd
         cmd = ConstantsBase.SQL_EXEC_COMMAND_WITHOUT_HOST_WITHOUT_USER % (
             gsqlBin, str(int(port) + 1), database)
         return cmd

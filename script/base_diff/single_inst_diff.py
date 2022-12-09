@@ -23,8 +23,15 @@ class SingleInstDiff:
     """utility for single instance"""
     @staticmethod
     def get_package_tar_lists(is_single_inst, packageDir):
+        """
+        When compressing the lib directory of om[openGauss-Package-bak_commitid.tar.gz], 
+        always some users decompress all om and server packages together.
+        we should excluded the server library to avoid influence each other.
+        But sometimes libpython3.*.so is needed.
+        """
         tarDir = "*.log script version.cfg lib"
-        tar_lists = "--exclude=script/*.log --exclude=%s %s %s" % \
+        tar_lists = "lib/libpython* --exclude=lib/lib*.so* "\
+        "--exclude=script/*.log --exclude=%s --ignore-failed-read %s %s" % \
                     (tarDir, CommConstants.UPGRADE_SQL_SHA,
                      CommConstants.UPGRADE_SQL_FILE)
         return tar_lists

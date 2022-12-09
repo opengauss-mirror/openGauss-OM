@@ -76,7 +76,7 @@ class CheckperfImplOLAP(CheckperfImpl):
                     dnInst.instanceId)
                 if (instStatus is not None and
                         instStatus.isInstanceHealthy() and
-                        instStatus.status == "Primary"):
+                        instStatus.status in ["Primary"]):
                     normalDNList.append(dnInst)
 
         if (len(normalDNList) == 0):
@@ -1791,7 +1791,6 @@ class CheckperfImplOLAP(CheckperfImpl):
              pmk_last_collect_start_time, last_snapshot_id) = \
                 self.getMetaData(hostname, port)
             self.deleteExpiredSnapShots(hostname, port)
-
             # collect pmk stat
             self.collectPMKData(pmk_curr_collect_start_time,
                                 pmk_last_collect_start_time,
@@ -1825,8 +1824,8 @@ class CheckperfImplOLAP(CheckperfImpl):
             self.handleNodeStat()
             # insert the node stat of all hosts into the cluster
             self.insertNodeStat(hostname, port,
-                                pmk_curr_collect_start_time,
-                                pmk_last_collect_start_time, last_snapshot_id)
+                                 pmk_curr_collect_start_time,
+                                 pmk_last_collect_start_time, last_snapshot_id)
 
             # display pmk stat
             showDetail = ""

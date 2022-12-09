@@ -108,6 +108,24 @@ BINARY_UPGRADE_STEP_START_NODE = 5
 BINARY_UPGRADE_STEP_PRE_COMMIT = 6
 
 
+# dual cluster stage
+class DualClusterStage:
+    """
+    Dual cluster stage upgrade marking
+    """
+    def __init__(self):
+        pass
+
+    (STEP_UPGRADE_END,
+     STEP_UPGRADE_UNFINISHED,
+     STEP_UPGRADE_FINISH,
+     STEP_UPGRADE_COMMIT,
+     ) = list(range(0, 4))
+
+    def __str__(self):
+        pass
+
+
 # grey upgrade
 class GreyUpgradeStep:
     def __init__(self):
@@ -175,3 +193,17 @@ UPGRADE_VERSION_64bit_xid = 91.208
 ENABLE_STREAM_REPLICATION_VERSION = "92.149"
 ENABLE_STREAM_REPLICATION_NAME = "enable_stream_replication"
 RELMAP_4K_VERSION = "92.420"
+
+# streaming cluster
+GS_SECURE_FILES = "gs_secure_files"
+UPGRADE_PHASE_INFO = "upgrade_phase_info"
+HARD_KEY_CIPHER = "hadr.key.cipher"
+HARD_KEY_RAND = "hadr.key.rand"
+DISASTER_RECOVERY_GUC = "backup_open"
+INSTALL_TYPE_GUC = "install_type"
+REMOTE_INFO_GUC = {
+    "dual-standby-streamDR": "replconninfo",
+    "dual-primary-streamDR": "replconninfo"
+}
+LENGTH_STORAGE_INFO_LEN = 4
+ACTION_CLEAN_GS_SECURE_FILES = "clean_gs_secure_files"

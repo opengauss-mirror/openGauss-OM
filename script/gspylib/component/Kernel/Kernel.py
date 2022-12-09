@@ -19,6 +19,8 @@ import sys
 import os
 import subprocess
 import re
+import pwd
+import json
 
 sys.path.append(sys.path[0] + "/../../../")
 from gspylib.common.ErrorCode import ErrorCode
@@ -28,6 +30,7 @@ from gspylib.common.Common import DefaultValue
 from base_utils.os.cmd_util import CmdUtil
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.file_util import FileUtil
+from base_utils.security.security_checker import SecurityChecker
 from domain_utils.cluster_os.cluster_user import ClusterUser
 
 MAX_PARA_NUMBER = 1000
@@ -403,7 +406,7 @@ class Kernel(BaseComponent):
 
         return tempCommonDict
 
-    def doGUCConfig(self, action, GUCParasStr, isHab=False):
+    def doGUCConfig(self, action, GUCParasStr, isHab=False, try_reload=False):
         """
         """
         # check instance data directory
@@ -424,6 +427,16 @@ class Kernel(BaseComponent):
         if (not os.path.exists(configFile)):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % configFile)
 
+        if try_reload:
+            cmd_reload = "%s/gs_guc %s -D %s %s " % (self.binPath, 'reload',
+                                                     self.instInfo.datadir, GUCParasStr)
+            status, output = CmdUtil.retryGetstatusoutput(cmd_reload, 3, 3)
+            if status != 0:
+                self.logger.log("Failed to reload guc params with commander:[%s]" % cmd_reload)
+            else:
+                self.logger.log("Successfully to reload guc params with commander:[%s]"
+                                % cmd_reload)
+                return
         cmd = "%s/gs_guc %s -D %s %s " % (self.binPath, action,
                                           self.instInfo.datadir, GUCParasStr)
         self.logger.debug("gs_guc command is: {0}".format(cmd))
@@ -455,6 +468,39 @@ class Kernel(BaseComponent):
 
         for parasStr in guc_paras_str_list:
             self.doGUCConfig(setMode, parasStr, False)
+
+    def get_streaming_relate_dn_ips(self, instance):
+        """
+        function: Streaming disaster cluster, obtain the IP address of the DN
+        with the same shards.
+        input: NA
+        :return: Cn ip
+        """
+        self.logger.debug("Start parse cluster_conf_record.")
+        pg_host = EnvUtil.getEnv("PGHOST")
+        config_param_file = os.path.realpath(
+            os.path.join(pg_host, "streaming_cabin", "cluster_conf_record"))
+        if not os.path.isfile(config_param_file):
+            self.logger.debug("Not found streaming cluster config file.")
+            return []
+
+        with open(config_param_file, "r") as fp_read:
+            param_dict = json.load(fp_read)
+        dn_ip_list = []
+        remote_cluster_conf = param_dict.get("remoteClusterConf")
+        shards = remote_cluster_conf.get('shards')
+        for shard in shards:
+            for node_info in shard:
+                shard_num = node_info.get("shardNum", '1')
+                node_ip = node_info.get("dataIp")
+                SecurityChecker.check_ip_valid("check ip from cluster_conf_record", node_ip)
+                if not all([shard_num, node_ip]):
+                    raise Exception(ErrorCode.GAUSS_516['GAUSS_51632']
+                                    % "obtain remote conf from cluster_conf_record")
+                if str(shard_num) == str(instance.mirrorId):
+                    dn_ip_list.append(node_ip)
+        self.logger.debug("Got streaming cluster pg_hba ips %s." % dn_ip_list)
+        return dn_ip_list
 
     def removeIpInfoOnPghbaConfig(self, ipAddressList):
         """

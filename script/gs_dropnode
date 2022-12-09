@@ -86,7 +86,7 @@ class Dropnode(ParallelBaseOM):
 
     def usage(self):
         """
-gs_dropnode is a utility to delete the standby node from a cluster.
+gs_dropnode is a utility to delete the standby node from a cluster, streaming cluster does not yet support.
 
 Usage:
     gs_dropnode -? | --help
@@ -335,6 +335,7 @@ if __name__ == "__main__":
     dropNode = Dropnode()
     dropNode.parseCommandLine()
     dropNode.initLogs()
+    DefaultValue.check_is_streaming_dr_cluster()
     dropNode.check_repeat_process()
     dropNode.checkParameters()
     dropNode.checkConnection(list(dropNode.backIpNameMap.keys()),

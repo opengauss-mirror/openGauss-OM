@@ -130,7 +130,7 @@ gs_upgradectl_chose_strategy = ["-t:", "-?", "--help", "-V", "--version",
                                 "-l:"]
 # auto-upgrade parameter lists
 gs_upgradectl_auto_upgrade = ["-t:", "-?", "--help", "-V", "--version", "-l:",
-                              "-X:", "--grey", "-h:", "--continue"]
+                              "-X:", "--grey", "-h:", "--continue", "--inplace-upgrade"]
 # auto-rollback parameter lists
 gs_upgradectl_auto_rollback = ["-t:", "-?", "--help", "-V", "--version",
                                "-l:", "-X:", "--force"]

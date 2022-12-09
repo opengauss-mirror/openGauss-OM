@@ -3092,12 +3092,24 @@ class UpgradeImpl:
             fileNameList.sort(reverse=True)
         else:
             fileNameList.sort()
+        """
+        we move the 506 at last one,because it change the pg_proc index, 
+        and rebuild index,it will hold the level 1 lock, and it make upgrade
+        mode slow and sometimes will not send the Invalid message, it cause 
+        some function can't be found, so move it to last ont to avoid it.
+        """
         if 'rollback_catalog_maindb_92_506.sql' in fileNameList:
             fileNameList.remove('rollback_catalog_maindb_92_506.sql')
             fileNameList.append('rollback_catalog_maindb_92_506.sql')
         if 'rollback_catalog_otherdb_92_506.sql' in fileNameList:
             fileNameList.remove('rollback_catalog_otherdb_92_506.sql')
             fileNameList.append('rollback_catalog_otherdb_92_506.sql')
+        if 'rollback-post_catalog_maindb_92_506.sql' in fileNameList:
+            fileNameList.remove('rollback-post_catalog_maindb_92_506.sql')
+            fileNameList.append('rollback-post_catalog_maindb_92_506.sql')
+        if 'rollback-post_catalog_otherdb_92_506.sql' in fileNameList:
+            fileNameList.remove('rollback-post_catalog_otherdb_92_506.sql')
+            fileNameList.append('rollback-post_catalog_otherdb_92_506.sql') 
         fileName = "{0}_catalog_{1}_tmp.sql".format(mode, dbType)
         self.context.logger.debug("The real file list for %s: %s" % (
             dbType, fileNameList))
@@ -3110,12 +3122,24 @@ class UpgradeImpl:
         header = ["START TRANSACTION;"]
         fileNameList = self.getFileNameList("check_upgrade")
         fileNameList.sort()
+        """
+        we move the 506 at last one,because it change the pg_proc index, 
+        and rebuild index,it will hold the level 1 lock, and it make upgrade
+        mode slow and sometimes will not send the Invalid message, it cause 
+        some function can't be found, so move it to last ont to avoid it.
+        """
         if 'rollback_catalog_maindb_92_506.sql' in fileNameList:
             fileNameList.remove('rollback_catalog_maindb_92_506.sql')
             fileNameList.append('rollback_catalog_maindb_92_506.sql')
         if 'rollback_catalog_otherdb_92_506.sql' in fileNameList:
             fileNameList.remove('rollback_catalog_otherdb_92_506.sql')
             fileNameList.append('rollback_catalog_otherdb_92_506.sql')
+        if 'rollback-post_catalog_maindb_92_506.sql' in fileNameList:
+            fileNameList.remove('rollback-post_catalog_maindb_92_506.sql')
+            fileNameList.append('rollback-post_catalog_maindb_92_506.sql')
+        if 'rollback-post_catalog_otherdb_92_506.sql' in fileNameList:
+            fileNameList.remove('rollback-post_catalog_otherdb_92_506.sql')
+            fileNameList.append('rollback-post_catalog_otherdb_92_506.sql')
         self.context.logger.debug("The real file list for checking upgrade: "
                                   "%s" % fileNameList)
         self.togetherFile(header, "check_upgrade", fileNameList,

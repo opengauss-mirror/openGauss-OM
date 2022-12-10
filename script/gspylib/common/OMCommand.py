@@ -126,7 +126,9 @@ class OMCommand():
             "Local_Check_SshAgent": os.path.normpath(Current_Path
                                                      + "/../../local/CheckSshAgent.py"),
             "Local_Upgrade_Utility": os.path.normpath(
-                Current_Path + "/../../local/UpgradeUtility.py")
+                Current_Path + "/../../local/UpgradeUtility.py"),
+            "Local_Upgrade_CM": os.path.normpath(
+                Current_Path + "/../../local/upgrade_cm_utility.py")
         }
 
         return "python3 '%s'" % LocalScript[script]

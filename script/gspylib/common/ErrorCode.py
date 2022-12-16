@@ -130,7 +130,8 @@ class ErrorCode():
                        "permission of %s.",
         'GAUSS_50109': "[GAUSS-50109] : Only a user with the root permission "
                        "can check SSD information.",
-        'GAUSS_50110': "[GAUSS-50110] : Cannot execute this script on %s."
+        'GAUSS_50110': "[GAUSS-50110] : Cannot execute this script on %s.",
+        'GAUSS_50111': "[GAUSS-50111] : The %s directory has no permission."
     }
 
     ###########################################################################

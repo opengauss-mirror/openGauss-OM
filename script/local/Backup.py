@@ -223,6 +223,10 @@ class LocalBackup(LocalBaseOM):
                     ErrorCode.GAUSS_502["GAUSS_50208"] % self.backupDir
                     + " Error:\n%s" % e)
 
+        if (not os.access(self.backupDir, os.R_OK | os.W_OK)):
+            raise Exception(
+                ErrorCode.GAUSS_501["GAUSS_50111"] % self.backupDir)
+                
         self.logger.log("Successfully checked backup directory.")
 
     def doBackup(self):

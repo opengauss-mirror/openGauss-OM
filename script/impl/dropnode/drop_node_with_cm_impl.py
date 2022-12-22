@@ -119,7 +119,7 @@ class DropNodeWithCmImpl(DropnodeImpl):
         # for flush dcc configuration
         DefaultValue.remove_metadata_and_dynamic_config_file(self.user,
                                                              self.ssh_tool, self.logger)
-        self.cm_component.startCluster(self.user)
+        self.cm_component.startCluster(self.user, isSwitchOver=False)
 
     def run(self):
         """

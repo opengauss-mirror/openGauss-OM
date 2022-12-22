@@ -1700,9 +1700,8 @@ Common options:
         self.initNodeInfo()
         app_path = self.clusterInfo.appPath
         tmp_path = ClusterConfigFile.readClusterTmpMppdbPath(self.user, self.clusterConfig)
-        log_path = ClusterConfigFile.readClusterLogPath(self.clusterConfig)
         tool_path = self.clusterToolPath
-        for path in [app_path, tmp_path, log_path, tool_path]:
+        for path in [app_path, tmp_path, tool_path]:
             UserUtil.check_path_owner(path)
         # check cm, cn, gtm, etcd, dn
         # check cm

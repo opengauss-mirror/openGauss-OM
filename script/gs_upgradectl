@@ -139,7 +139,7 @@ General options:
   -V, --version                   Show version information.
   -t                              Subcommand for upgrade. It can be
                                   chose-strategy, auto-upgrade, auto-rollback,
-                                  commit-upgrade.
+                                  commit-upgrade, upgrade-cm.
   -X                              Path of the XML configuration file of the
                                   later version cluster.
   -l                              Path of log file.

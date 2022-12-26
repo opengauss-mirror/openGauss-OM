@@ -74,17 +74,16 @@ class LocalBackup(LocalBaseOM):
     output: NA
     """
 
-    def __init__(self, logFile="", user="", tmpBackupDir="", backupDir="", \
+    def __init__(self, logFile="", user="", tmpBackupDir="", \
                  backupPara=False, backupBin=False, nodeName=""):
         """
         function: initialize variable
-        input : user, tmpBackupDir, backupDir, backupPara,
+        input : user, tmpBackupDir, backupPara,
         backupBin, logFile, nodeName
         output: parameter
         """
         LocalBaseOM.__init__(self, logFile, user)
         self.tmpBackupDir = tmpBackupDir
-        self.backupDir = backupDir
         self.backupPara = backupPara
         self.backupBin = backupBin
         self.nodeName = nodeName
@@ -199,30 +198,20 @@ class LocalBackup(LocalBaseOM):
         self.logger.log("Checking backup directory.")
 
         try:
-            if (not os.path.exists(self.tmpBackupDir)):
-                os.makedirs(self.tmpBackupDir,
-                            ConstantsBase.KEY_DIRECTORY_PERMISSION)
+            if not os.path.exists(self.tmpBackupDir):
+                os.makedirs(self.tmpBackupDir, ConstantsBase.KEY_DIRECTORY_PERMISSION)
+            if not os.access(self.tmpBackupDir, os.R_OK | os.W_OK):
+                raise Exception(ErrorCode.GAUSS_501["GAUSS_50111"] % self.tmpBackupDir)
             needSize = DefaultValue.APP_DISK_SIZE
             vfs = os.statvfs(self.tmpBackupDir)
             availableSize = vfs.f_bavail * vfs.f_bsize // (1024 * 1024)
             # 100M for binary files and parameter files
-            if (availableSize < needSize):
+            if availableSize < needSize:
                 raise Exception(ErrorCode.GAUSS_504["GAUSS_50400"] % (
                     self.tmpBackupDir, str(needSize)))
         except Exception as e:
-
             raise Exception(str(e))
-
-        if (self.backupDir != ""):
-            try:
-                if (not os.path.exists(self.backupDir)):
-                    os.makedirs(self.backupDir,
-                                ConstantsBase.KEY_DIRECTORY_PERMISSION)
-            except Exception as e:
-                raise Exception(
-                    ErrorCode.GAUSS_502["GAUSS_50208"] % self.backupDir
-                    + " Error:\n%s" % e)
-
+                
         self.logger.log("Successfully checked backup directory.")
 
     def doBackup(self):
@@ -479,7 +468,6 @@ def main():
     global g_clusterUser
     global g_ignoreMiss
     tmpBackupDir = ""
-    backupDir = ""
     backupPara = False
     backupBin = False
     logFile = ""
@@ -492,8 +480,6 @@ def main():
             g_clusterUser = value.strip()
         elif (key == "-P" or key == "--position"):
             tmpBackupDir = value.strip()
-        elif (key == "-B" or key == "--backupdir"):
-            backupDir = value.strip()
         elif (key == "-p" or key == "--parameter"):
             backupPara = True
         elif (key == "-b" or key == "--binary_file"):
@@ -526,7 +512,7 @@ def main():
     checkTmpBackupDir(tmpBackupDir)
     try:
         LocalBackuper = LocalBackup(logFile, g_clusterUser, tmpBackupDir,
-                                    backupDir, backupPara, backupBin, nodeName)
+                                    backupPara, backupBin, nodeName)
         LocalBackuper.run()
     except Exception as e:
         GaussLog.exitWithError(str(e))

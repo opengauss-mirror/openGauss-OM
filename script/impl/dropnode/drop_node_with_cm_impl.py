@@ -20,9 +20,13 @@
 
 import sys
 import os
+import re
+import subprocess
+from time import sleep
 
 sys.path.append(sys.path[0] + "/../../../../")
 from base_utils.os.net_util import NetUtil
+from base_utils.os.env_util import EnvUtil
 from base_utils.executor.cmd_executor import CmdExecutor
 
 from gspylib.common.ErrorCode import ErrorCode
@@ -113,13 +117,42 @@ class DropNodeWithCmImpl(DropnodeImpl):
         """
         Restart cluster
         """
-        self.logger.log("Restart cluster ...")
-        stop_para = (0, "", 300, "", "")
-        self.cm_component.stop_cluster(stop_para)
+        self.logger.log("Restarting cm_server cluster ...")
+        stopCMProcessesCmd = "pkill -9 om_monitor -U {user}; pkill -9 cm_agent -U {user}; " \
+            "pkill -9 cm_server -U {user};".format(user=self.user)
+        self.logger.debug("stopCMProcessesCmd: " + stopCMProcessesCmd)
+        gaussHome = EnvUtil.getEnv("GAUSSHOME")
+        gaussLog = EnvUtil.getEnv("GAUSSLOG")
+        hostList = [node.name for node in self.context.clusterInfo.dbNodes]
+        CmdExecutor.execCommandWithMode(stopCMProcessesCmd, self.ssh_tool, host_list=hostList)
         # for flush dcc configuration
-        DefaultValue.remove_metadata_and_dynamic_config_file(self.user,
-                                                             self.ssh_tool, self.logger)
-        self.cm_component.startCluster(self.user, isSwitchOver=False)
+        DefaultValue.remove_metadata_and_dynamic_config_file(self.user, self.ssh_tool, self.logger)
+        # execute gsctl reload
+        dataPath = self.context.hostMapForExist[self.localhostname]['datadir'][0]
+        gsctlReloadCmd = "source %s; gs_ctl reload -N all -D %s" % (self.envFile, dataPath)
+        self.logger.debug("gsctlReloadCmd: " + gsctlReloadCmd)
+        CmdExecutor.execCommandWithMode(gsctlReloadCmd, self.ssh_tool, host_list=[self.localhostname])
+        # start CM processes
+        startCMProcessedCmd = "source %s; nohup %s/bin/om_monitor -L %s/cm/om_monitor >> /dev/null 2>&1 &" % \
+            (self.envFile, gaussHome, gaussLog)
+        self.logger.debug("startCMProcessedCmd: " + startCMProcessedCmd)
+        CmdExecutor.execCommandWithMode(startCMProcessedCmd, self.ssh_tool, host_list=hostList)
+        queryClusterCmd = "source %s; cm_ctl query -Cv" % self.envFile
+        self.logger.debug("queryClusterCmd: " + queryClusterCmd)
+        tryCount = 0
+        while tryCount <= 120:
+            sleep(5)
+            tryCount += 1
+            status, output = subprocess.getstatusoutput(queryClusterCmd)
+            if status != 0:
+                continue
+            if re.findall("cluster_state.*:.*Normal", output) != []:
+                break
+        if tryCount > 120:
+            self.logger.logExit(
+                "All steps of drop have finished, but failed to wait cluster to be normal in 600s!\n"
+                "HINT: Maybe the cluster is continually being started in the background.\n"
+                "You can wait for a while and check whether the cluster starts.")
 
     def run(self):
         """

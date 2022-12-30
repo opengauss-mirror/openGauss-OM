@@ -380,7 +380,8 @@ class Parameter():
                            "--non-print": "nonPrinting",
                            "--dynamic": "dynamic",
                            "--delete-root-trust": "root_delete_flag",
-                           "--unused-third-party": "unused_third_party"
+                           "--unused-third-party": "unused_third_party",
+                           "--inplace-upgrade": "inplace_upgrade"
                            }
         parameterIsBool_keys = parameterIsBool.keys()
 

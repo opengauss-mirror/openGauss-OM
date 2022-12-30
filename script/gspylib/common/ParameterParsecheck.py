@@ -395,7 +395,8 @@ class Parameter():
                            "--dynamic": "dynamic",
                            "--delete-root-trust": "root_delete_flag",
                            "--unused-third-party": "unused_third_party",
-                           "--enable-perf-config": "enable_perf_config"
+                           "--enable-perf-config": "enable_perf_config",
+                           "--inplace-upgrade": "inplace_upgrade"
                            }
         parameterIsBool_keys = parameterIsBool.keys()
 

@@ -457,11 +457,17 @@ class OperCommon:
                 "[gs_dropnode]Parse synchronous_standby_names failed:" + output)
             GaussLog.exitWithError(ErrorCode.GAUSS_358["GAUSS_35809"])
         output_v = output.split("'")[-2]
-        if output_v == '*':
-            resultDict['syncStandbyStr'] = output_v
-        else:
-            resultDict['syncStandbyStr'] = self.check_syncStandbyStr(dnId,
-                                                                     output_v)
+        resultDict['syncStandbyStr'] = output_v
+        if output_v.upper().count("ANY") > 1:
+            output_group = output_v.split("ANY")
+            new_list = ''
+            for i in range(len(output_group)):
+                temp_group = self.check_syncStandbyStr(dnId, output_group[i])
+                if len(temp_group):
+                    new_list = new_list + "ANY" + temp_group
+            resultDict['syncStandbyStr'] = new_list
+        elif output_v != '*':
+            resultDict['syncStandbyStr'] = self.check_syncStandbyStr(dnId, output_v)
 
         cmd = "grep '^host.*trust' %s" % pghbaConfName
         (statusMap, output) = sshTool.getSshStatusOutput(cmd, [host], envfile)
@@ -489,25 +495,24 @@ class OperCommon:
         else:
             output_dn = output
         output_dn_nospace = re.sub(' *', '', output_dn)
-        init_no = len(output_dn_nospace.split(','))
+        output_dn_list = output_dn_nospace.split(',')
+        init_no = len(output_dn_list)
+        if init_no == 0:
+            return ''
         quorum_no = int(init_no / 2) + 1
         half_no = quorum_no - 1
         count_dn = 0
-        list_output1 = '*'
         for dninst in dnlist:
-            if dninst in output_dn_nospace:
-                list_output1 = output_dn_nospace.split(',')
-                list_output1.remove(dninst)
-                list_output1 = ','.join(list_output1)
-                output_dn_nospace = list_output1
+            if output_dn_list.count(dninst) > 0:
+                output_dn_list.remove(dninst)
                 init_no -= 1
                 count_dn += 1
         if count_dn == 0:
             return output_result
+        list_output1 = ','.join(output_dn_list)
         if list_output1 == '':
             return ''
-        if list_output1 != '*':
-            output_result = output.replace(output_dn, list_output1)
+        output_result = output.replace(output_dn, list_output1)
         if output_no == '0':
             return output_result
         if int(output_no) == quorum_no:

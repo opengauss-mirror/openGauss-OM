@@ -81,14 +81,23 @@ declare package_name="${package_pre_name}.tar.gz"
 declare sha256_name="${package_pre_name}.sha256"
 
 if [ ${binarylib_dir} != 'None' ] && [ -d ${binarylib_dir} ]; then
+    if [[ $(python -V | awk '{print $2}') =~ "3.9" ]]; then
+        BINARYLIBS_PATH_INSTALL_TOOLS="${binarylib_dir}/install_tools_python39"
+    else
+        BINARYLIBS_PATH_INSTALL_TOOLS="${binarylib_dir}/install_tools"
+    fi
     BINARYLIBS_PATH="${binarylib_dir}/kernel/dependency/"
     BUILD_TOOLS_PATH="${binarylib_dir}/buildtools/"
-    BINARYLIBS_PATH_INSTALL_TOOLS="${binarylib_dir}/install_tools"
 else
+    if [[ $(python -V | awk '{print $2}') =~ "3.9" ]]; then
+        BINARYLIBS_PATH_INSTALL_TOOLS="${ROOT_DIR}/install_tools_python39"
+    else
+        BINARYLIBS_PATH_INSTALL_TOOLS="${ROOT_DIR}/install_tools"
+    fi
     BINARYLIBS_PATH="${ROOT_DIR}/binarylibs/kernel/dependency/"
     BUILD_TOOLS_PATH="${ROOT_DIR}/binarylibs/buildtools/"
-    BINARYLIBS_PATH_INSTALL_TOOLS="${ROOT_DIR}/install_tools"	
 fi
+
 
 log()
 {

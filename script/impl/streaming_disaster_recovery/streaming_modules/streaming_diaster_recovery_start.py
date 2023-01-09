@@ -123,6 +123,7 @@ class StreamingStartHandler(StreamingBase):
         if step >= 5:
             return
         self.logger.debug("Start fifth step of streaming start.")
+        self.set_stream_cluster_run_mode_guc("set")
         self.set_data_in_dcc(self.backup_open_key, "0", only_mode='primary')
         self.set_data_in_dcc(self.backup_open_key, "2", only_mode='disaster_standby')
         self.stop_cluster_by_node(only_mode='disaster_standby')

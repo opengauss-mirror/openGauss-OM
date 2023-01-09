@@ -19,6 +19,7 @@
 #############################################################################
 
 import os
+import re
 import sys
 import datetime
 import subprocess
@@ -26,6 +27,7 @@ import stat
 import socket
 
 from multiprocessing import Process, Value
+from time import sleep
 
 from base_utils.os.env_util import EnvUtil
 
@@ -465,20 +467,55 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         Start cluster
         """
-        self.logger.debug("Ready to restart cluster.")
+        self.logger.debug("Ready to restart cm_server cluster.")
         self._change_user_without_root()
-        cm_component = CM_OLAP()
-        cm_component.logger = self.logger
-        cm_component.binPath = "%s/bin" % self.static_cluster_info.appPath
-        cm_component.stop_cluster((0, "", 0, "", ""))
-        DefaultValue.remove_metadata_and_dynamic_config_file(self.user,
-                                                             self.ssh_tool, self.logger)
-        if self.xml_cluster_info.enable_dcf == "on":
-            cm_component.startCluster(self.user, isSwitchOver=False,
-                                      timeout=DefaultValue.TIMEOUT_EXPANSION_SWITCH)
-        else:
-            cm_component.startCluster(self.user, timeout=DefaultValue.TIMEOUT_EXPANSION_SWITCH)
+        # stop CM processes in existed nodes
+        clusterInfo = dbClusterInfo()
+        clusterInfo.initFromStaticConfig(self.user)
+        stopCMProcessesCmd = "pkill -9 om_monitor -U {user}; pkill -9 cm_agent -U {user}; " \
+            "pkill -9 cm_server -U {user};".format(user=self.user)
+        self.logger.debug("stopCMProcessesCmd: " + stopCMProcessesCmd)
+        hostList = [node.name for node in clusterInfo.dbNodes]
+        newNodesList = [node.name for node in self.new_nodes]
+        existingHosts = [host for host in hostList if host not in newNodesList]
+        gaussHome = EnvUtil.getEnv("GAUSSHOME")
+        gaussLog = EnvUtil.getEnv("GAUSSLOG")
+        CmdExecutor.execCommandWithMode(stopCMProcessesCmd, self.ssh_tool, host_list=existingHosts)
+        DefaultValue.remove_metadata_and_dynamic_config_file(self.user, self.ssh_tool, self.logger)
+        # execute gs_guc reload
+        self._gsctlReload()
+        # start CM processes on old and new nodes
+        startCMProcessesCmd = "source %s; nohup %s/bin/om_monitor -L %s/cm/om_monitor >> /dev/null 2>&1 & \n" \
+            "rm %s/bin/cluster_manual_start -rf" % (self.envFile, gaussHome, gaussLog, gaussHome)
+        self.logger.debug("startCMProcessesCmd: " + startCMProcessesCmd)
+        CmdExecutor.execCommandWithMode(startCMProcessesCmd, self.ssh_tool, host_list=hostList)
+        queryClusterCmd = "source %s; cm_ctl query -Cv" % self.envFile
+        self.logger.debug("queryClusterCmd: " + queryClusterCmd)
+        tryCount = 0
+        while tryCount <= 120:
+            sleep(5)
+            tryCount += 1
+            status, output = subprocess.getstatusoutput(queryClusterCmd)
+            if status != 0:
+                continue
+            if re.findall("cluster_state.*:.*Normal", output) != []:
+                break
+        if tryCount > 120:
+            self.logger.logExit(
+                "All steps of expansion have finished, but failed to wait cluster to be normal in 600s!\n"
+                "HINT: Maybe the cluster is continually being started in the background.\n"
+                "You can wait for a while and check whether the cluster starts.")
         p_value.value = 1
+
+    def _gsctlReload(self):
+        # execute gs_ctl reload
+        ctlPath = os.path.join(os.path.realpath(self.static_cluster_info.appPath), "bin", "gs_ctl")
+        nodeDict = self.context.clusterInfoDict
+        localHost = socket.gethostname()
+        dataPath = nodeDict[localHost]["dataNode"]
+        ctlReloadCmd = "source %s; %s reload -N all -D %s" % (self.envFile, ctlPath, dataPath)
+        self.logger.debug("ctlReloadCmd: " + ctlReloadCmd)
+        CmdExecutor.execCommandWithMode(ctlReloadCmd, self.ssh_tool, host_list=[localHost])
 
     def run(self):
         """

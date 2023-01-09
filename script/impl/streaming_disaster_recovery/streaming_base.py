@@ -2262,6 +2262,7 @@ class StreamingBase(object):
         if stream_disaster_step < 3:
             self.set_cmserver_guc("backup_open", "0", "set")
             self.stream_disaster_set_cmagent_guc("agent_backup_open", "0", "set")
+            self.set_stream_cluster_run_mode_guc("set", fail_over=True)
             self.write_streaming_step("3_set_backup_open_for_failover")
         # 4.Delete the relevant guc parameters and remove the disaster tolerance relationship
         # based on streaming disaster recovery cluster, No need to delete for switchover.

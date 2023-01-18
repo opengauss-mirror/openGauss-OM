@@ -1208,6 +1208,19 @@ General options:
                                                                         abspath(__file__)),
                                                         "gspylib",
                                                         "clib"))
+        encrypt_path = os.path.join(encrypt_dir_path, "encrypt")
+        if (not os.path.exists(encrypt_path)) :
+            root = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..')
+            clib = os.path.join(root, "script/gspylib/clib")
+            bin_files = ['./bin/encrypt']
+            bin_cmd = 'tar -xpf `ls openGauss*.tar.bz2`'
+            cmd = 'cd {} && '.format(root)
+            cmd += '{} {} && '.format(bin_cmd, ''.join(' '.join(bin_files)))
+            cmd += '\mv {} {} && '.format(' '.join(bin_files), clib)
+            cmd += 'cd {} && rm -rf bin'.format(root)
+            status, output = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                raise Exception("Failed to copy encrypt, error:%s." % output)
         cmd = " cd %s && ./encrypt '%s' %s %s" % (encrypt_dir_path, secret_word,
                                                   cipher_path, rand_path)
         if os_system_type.find("x86") != -1:

@@ -32,6 +32,7 @@ from base_utils.os.env_util import EnvUtil
 from base_utils.os.file_util import FileUtil
 from base_utils.os.net_util import NetUtil
 from domain_utils.cluster_file.version_info import VersionInfo
+from gspylib.component.DSS.dss_checker import DssConfig
 
 ROLLBACK_FAILED = 3
 
@@ -198,7 +199,9 @@ class InstallImplOLAP(InstallImpl):
         if self.context.clusterInfo.enable_dcf == 'on':
             cmd += " --paxos_mode"
         elif self.context.clusterInfo.enable_dss == 'on':
-            cmd += " --dss_mode"
+            dss_config = DssConfig.get_value_b64_handler(
+                'dss_nodes_list', self.context.clusterInfo.dss_config)
+            cmd += f" --dss_mode --dss_config={dss_config}"
         self.context.logger.debug(
             "Command for initializing instances: %s" % cmd)
 

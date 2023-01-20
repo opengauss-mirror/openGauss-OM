@@ -21,6 +21,8 @@ import os
 import stat
 import re
 import sys
+import base64
+import json
 
 try:
     sys.path.append(sys.path[0] + "/../../../")
@@ -114,6 +116,23 @@ class DssConfig():
         if set(dns).intersection(set(cur_dns)):
             return dns.index(cur_dns[0])
         return -1
+
+    @staticmethod
+    def get_value_b64_handler(key, value, action='encode'):
+        '''
+        Quick use of base64
+        '''
+        if action == 'encode':
+            b64_ans = base64.urlsafe_b64encode(
+                json.dumps({
+                    key: value
+                }).encode()).decode()
+        else:
+            b64_ans = json.loads(
+                base64.urlsafe_b64decode(value.encode()).decode()).get(
+                    key, '')
+        return b64_ans
+
 
     def __str__(self):
         '''

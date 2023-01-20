@@ -43,7 +43,8 @@ class LocalBaseOM(object):
                  initParas=None,
                  gtmInitParas=None,
                  paxos_mode=False,
-                 dss_mode=False):
+                 dss_mode=False,
+                 dss_config=""):
         '''
         Constructor
         '''
@@ -72,6 +73,7 @@ class LocalBaseOM(object):
         self.dss_cons = []
         self.paxos_mode = paxos_mode
         self.dss_mode = dss_mode
+        self.dss_config = dss_config
 
     def initComponent(self, paxos_mode=False):
         """
@@ -105,6 +107,8 @@ class LocalBaseOM(object):
         component.binPath = "%s/bin" % self.clusterInfo.appPath
         component.dwsMode = self.dws_mode
         component.dss_mode = self.dss_mode
+        if self.dss_mode:
+            component.dss_config = self.dss_config
 
     def initCmComponent(self):
         """

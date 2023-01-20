@@ -54,6 +54,7 @@ class BaseComponent(object):
         self.clusterType = DefaultValue.CLUSTER_TYPE_SINGLE_INST
         self.paxos_mode = ''
         self.dss_mode = ''
+        self.dss_config = ''
 
     def install(self):
         pass

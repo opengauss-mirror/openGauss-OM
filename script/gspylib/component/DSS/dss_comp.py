@@ -88,15 +88,11 @@ class DssInst():
         else:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % vg_cfg)
 
-    def get_dms_url(self):
+    @staticmethod
+    def get_dms_url(nodes_list):
         '''
         The DMS port number is the DSS port number plus 10.
         '''
-
-        nodes_list = self.parser.get('DSS_NODES_LIST', '')
-        if not nodes_list:
-            return nodes_list
-
         try:
             # The DMS port number is the DSS port number plus 10.
             return str(DssConfig(unzip_str=nodes_list, offset=10))
@@ -122,8 +118,8 @@ class DssInst():
                 if "'{}'".format(ip) in str(cur_db_inst):
                     return dss_ids[idx]
         except Exception as e:
-            raise Exception(ErrorCode.GAUSS_500["GAUSS_50012"] %
-                            'inst_id. Error: {}'.format(e))
+            raise Exception(ErrorCode.GAUSS_500["GAUSS_50012"] % 'inst_id' +
+                            'Error: {}'.format(e))
 
     @staticmethod
     def get_dss_id_from_key(dss_home):
@@ -214,12 +210,12 @@ class Dss(BaseComponent):
         if logger:
             logger.debug(f'The result of the unreg: {out}')
 
-    def start_dss_server(self, kill_server=True, unrej=False):
+    def start_dss_server(self, kill_server=True, unrej=False, exist_so=False):
         '''
         The OM manually starts the DSS server to obtain the socket file.
         '''
 
-        Dss.write_dss_context_with_file()
+        Dss.write_dss_context_with_file(exist_so=exist_so)
 
         if kill_server:
             Dss.kill_dss_server()
@@ -259,7 +255,7 @@ class Dss(BaseComponent):
         self.start_dss_server()
 
     @staticmethod
-    def catch_err():
+    def catch_err(exist_so=True):
         '''
         This command is used to kill the dsserver after
         the dn initialization is complete to prevent
@@ -275,15 +271,22 @@ class Dss(BaseComponent):
                 finally:
                     if args and args[0] and hasattr(
                             args[0], 'dss_mode') and args[0].dss_mode:
-                        logger = args if hasattr(args[0], 'logger') else None
+                        logger = args[0].logger if hasattr(args[0],
+                                                           'logger') else None
                         Dss.kill_dss_server(logger=logger)
+                        dss_nodes_list = DssConfig.get_value_b64_handler(
+                            'dss_nodes_list',
+                            args[0].dss_config,
+                            action='decode')
+                        Dss.write_dss_context_with_file(
+                            dss_nodes_list=dss_nodes_list, exist_so=exist_so)
 
             return wrapper
 
         return _func
 
     @staticmethod
-    def write_dss_context_with_file():
+    def write_dss_context_with_file(dss_nodes_list='', exist_so=True):
         dss_home = EnvUtil.get_dss_home(user=getpass.getuser())
         init_cfg = os.path.realpath(
             os.path.join(dss_home, 'cfg', 'dss_inst.ini'))
@@ -292,11 +295,16 @@ class Dss(BaseComponent):
             app_dir = ClusterDir.get_gauss_home()
             cert_path = os.path.join(app_dir, 'share/sslcert/dss')
             confs = DssInitCfg(dss_ssl=True,
+                               dss_nodes_list=dss_nodes_list,
                                cipher_pwd=Dss.get_dss_cipher_text(cert_path),
                                cert_path=cert_path,
+                               exist_so=exist_so,
                                **confs)
         else:
-            confs = DssInitCfg(dss_ssl=False, **confs)
+            confs = DssInitCfg(dss_nodes_list=dss_nodes_list,
+                               dss_ssl=False,
+                               exist_so=exist_so,
+                               **confs)
 
         if os.path.isfile(init_cfg):
             os.remove(init_cfg)
@@ -326,7 +334,7 @@ class DssInitCfg():
     def __init__(self,
                  inst_id='',
                  dss_home='',
-                 node_list='',
+                 dss_nodes_list='',
                  exist_so=True,
                  dss_ssl=True,
                  cert_path='',
@@ -334,18 +342,24 @@ class DssInitCfg():
                  **kwargs):
         self.INST_ID = inst_id
         self.LSNR_PATH = dss_home
-        self.DSS_NODES_LIST = node_list
         for key, value in kwargs.items():
             setattr(self, key, value)
+        if dss_nodes_list:
+            self.DSS_NODES_LIST = dss_nodes_list
+        self.STORAGE_MODE = "RAID"
         # _SHM_KEY value range: 1–64
         self._SHM_KEY = os.getuid() % 64 + 1
         self._LOG_LEVEL = '7'
-        if len(self.DSS_NODES_LIST.split(',')) > 1:
-            self.STORAGE_MODE = "CLUSTER_RAID"
-        else:
-            self.STORAGE_MODE = "RAID"
         if exist_so:
             self.DSS_CM_SO_NAME = "libclient.so"
+            if hasattr(self, 'DSS_NODES_LIST') and len(
+                    self.DSS_NODES_LIST.split(',')) > 1:
+                self.STORAGE_MODE = "CLUSTER_RAID"
+        else:
+            if hasattr(self, 'DSS_CM_SO_NAME'):
+                del self.DSS_CM_SO_NAME
+            if hasattr(self, 'DSS_NODES_LIST'):
+                del self.DSS_NODES_LIST
         if dss_ssl:
             self.SSL_CA = os.path.join(cert_path, 'cacert.pem')
             self.SSL_KEY = os.path.join(cert_path, 'server.key')

@@ -33,6 +33,8 @@ from base_utils.os.file_util import FileUtil
 from domain_utils.cluster_os.cluster_user import ClusterUser
 from base_utils.os.grep_util import GrepUtil
 from base_utils.os.user_util import UserUtil
+from gspylib.component.DSS.dss_checker import DssConfig
+
 
 METHOD_TRUST = "trust"
 METHOD_SHA = "sha256"
@@ -100,7 +102,7 @@ class DN_OLAP(Kernel):
         FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, "%s/server.key.rand" %
                           self.instInfo.datadir)
 
-    @Dss.catch_err()
+    @Dss.catch_err(exist_so=True)
     def initInstance(self):
         """
         function:
@@ -146,9 +148,10 @@ class DN_OLAP(Kernel):
                     raise Exception('The dssserver process does not exist.')
                 vgname = EnvUtil.getEnv('VGNAME')
                 dss_home = EnvUtil.getEnv('DSS_HOME')
-                cfg_path = os.path.join(dss_home, 'cfg', 'dss_inst.ini')
                 inst_id = DssInst.get_dss_id_from_key(dss_home)
-                cfg_context = DssInst(cfg_path).get_dms_url()
+                dss_nodes_list = DssConfig.get_value_b64_handler(
+                    'dss_nodes_list', self.dss_config, action='decode')
+                cfg_context = DssInst.get_dms_url(dss_nodes_list)
                 pri_vgname = DssInst.get_private_vgname_by_ini(dss_home, inst_id)
                 cmd += " -n --vgname=\"{}\" --enable-dss --dms_url=\"{}\" -I {}" \
                     " --socketpath=\"{}\"".format(

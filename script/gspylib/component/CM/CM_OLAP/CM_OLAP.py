@@ -40,6 +40,7 @@ try:
     from domain_utils.cluster_file.cluster_dir import ClusterDir
     from domain_utils.cluster_file.cluster_log import ClusterLog
     from gspylib.component.DSS.dss_comp import DssInst, UdevContext
+    from gspylib.component.DSS.dss_checker import DssConfig
 
 except ImportError as e:
     sys.exit("[GAUSS-52200] : Unable to import module: %s." % str(e))
@@ -850,9 +851,14 @@ class CM_OLAP(CM):
                                  attr=DssInstAttr(
                                      node_id=db_inst.id,
                                      dss_id=DssInst.get_current_dss_id(
-                                         dss_home, db_inst),
-                                     dss_home="{};{}".format(dss_home,
-                                     db_inst.datanodes[0].datadir)))))
+                                         dss_home, db_inst,
+                                         DssConfig.get_value_b64_handler(
+                                             'dss_nodes_list',
+                                             self.dss_config,
+                                             action='decode')),
+                                     dss_home="{};{}".format(
+                                         dss_home,
+                                         db_inst.datanodes[0].datadir)))))
         return "source {}; {}".format(EnvUtil.getMpprcFile(), ' ;'.join(cmd))
 
     def init_cm_res_json(self, rm_cm_json=True):

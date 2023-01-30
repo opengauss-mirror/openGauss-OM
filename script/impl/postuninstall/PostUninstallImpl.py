@@ -829,7 +829,10 @@ class PostUninstallImpl:
             retry_times = 0
             while True:
                 try:
-                    self.sshTool.createTrust(username, Ips, self.mpprcFile)
+                    self.sshTool.createTrust(username,
+                                             Ips,
+                                             self.mpprcFile,
+                                             action='gs_postuninstall')
                     break
                 except Exception as err_msg:
                     if retry_times == 2:

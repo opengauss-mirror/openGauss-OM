@@ -26,7 +26,7 @@ import datetime
 import weakref
 import time
 from random import sample
-
+import copy
 sys.path.append(sys.path[0] + "/../../")
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.Common import DefaultValue
@@ -143,7 +143,7 @@ class SshTool():
         """
         self._finalizer()
 
-    def createTrust(self, user, ips=[], mpprcFile="", skipHostnameSet=False):
+    def createTrust(self, user, ips=[], mpprcFile="", skipHostnameSet=False, action=''):
         """
         function: create trust for specified user with both ip and hostname,
         when using N9000 tool create trust failed
@@ -151,6 +151,11 @@ class SshTool():
         input : user, pwd, ips, mpprcFile, skipHostnameSet 
         output: NA
         """
+        tmp_log_file = copy.deepcopy(self.__logFile)
+        if action == 'gs_postuninstall' and self.__logFile:
+            tmp_log_file = os.path.realpath(
+                os.path.join(os.path.dirname(self.__logFile), f'{action}.log'))
+
         tmp_hosts = Constants.TMP_HOSTS_FILE % self.__pid
         status = 0
         output = ""
@@ -175,25 +180,24 @@ class SshTool():
             if user == "root":
                 if mpprcFile != "" and FileUtil.check_file_permission(mpprcFile, True) and \
                         self.checkMpprcfile(user, mpprcFile):
-                    cmd = "source %s; %s -f %s -l '%s'" % \
-                          (mpprcFile, create_trust_file,
-                           tmp_hosts, self.__logFile)
+                    cmd = "source %s; %s -f %s -l '%s'" % (
+                        mpprcFile, create_trust_file, tmp_hosts, tmp_log_file)
                 elif mpprcFile == "" and FileUtil.check_file_permission(
                         ClusterConstants.ETC_PROFILE, True):
-                    cmd = "source %s; %s -f %s -l '%s'" % (ClusterConstants.ETC_PROFILE,
-                                                           create_trust_file, tmp_hosts,
-                                                           self.__logFile)
+                    cmd = "source %s; %s -f %s -l '%s'" % (
+                        ClusterConstants.ETC_PROFILE, create_trust_file,
+                        tmp_hosts, tmp_log_file)
             else:
                 if mpprcFile != "" and FileUtil.check_file_permission(mpprcFile, True) and \
                         self.checkMpprcfile(user, mpprcFile):
-                    cmd = "source %s; %s/script/%s -f %s -l '%s'" % \
-                          (mpprcFile, gphome,
-                           create_trust_file, tmp_hosts, self.__logFile)
+                    cmd = "source %s; %s/script/%s -f %s -l '%s'" % (
+                        mpprcFile, gphome, create_trust_file, tmp_hosts,
+                        tmp_log_file)
                 elif mpprcFile == "" and FileUtil.check_file_permission(
                         ClusterConstants.ETC_PROFILE, True):
-                    cmd = "source %s; %s/script/%s -f %s -l '%s'" % \
-                          (ClusterConstants.ETC_PROFILE, gphome, create_trust_file,
-                           tmp_hosts, self.__logFile)
+                    cmd = "source %s; %s/script/%s -f %s -l '%s'" % (
+                        ClusterConstants.ETC_PROFILE, gphome,
+                        create_trust_file, tmp_hosts, tmp_log_file)
 
             if skipHostnameSet:
                 cmd += " --skip-hostname-set"

@@ -35,9 +35,9 @@ class UpgradeCmImpl(UpgradeImpl):
         Check upgrade parameter
         """
         if not self.upgrade_context.upgrade_package:
-            self.logger.logExit(ErrorCode.GAUSS_500["GAUSS_50001"] % "--package-package")
+            self.logger.logExit(ErrorCode.GAUSS_500["GAUSS_50001"] % "-upgrade-package")
         if not os.path.isfile(self.upgrade_context.upgrade_package):
-            self.logger.logExit(ErrorCode.GAUSS_500["GAUSS_50004"] % "--package-package" + 
+            self.logger.logExit(ErrorCode.GAUSS_500["GAUSS_50004"] % "-upgrade-package" + 
                                 "File [%s] not exist." % self.upgrade_context.upgrade_package)
 
     def get_cm_current_version(self):

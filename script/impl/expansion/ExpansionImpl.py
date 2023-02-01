@@ -371,13 +371,9 @@ class ExpansionImpl():
         existingStandbys = list(set(self.existingHosts) - (set([primaryHostIp])))
         failedInstallHosts = []
         notInstalledCascadeHosts = []
-        for newHost,appName in zip(standbyHosts, \
-            self.getIncreaseAppNames(len(standbyHosts))):
+        for newHost in standbyHosts:
             if not self.expansionSuccess[newHost]:
                 continue
-            log_path = ClusterDir.getUserLogDirWithUser(self.user)
-            log_dir = "%s/pg_log/dn_%d" % (log_path, appName)
-            audit_dir = "%s/pg_audit/dn_%d" % (log_path, appName)
             hostName = self.context.backIpNameMap[newHost]
             sshIp = self.context.clusterInfoDict[hostName]["sshIp"]
             port = self.context.clusterInfoDict[hostName]["port"]
@@ -439,12 +435,8 @@ class ExpansionImpl():
             inst_dir = self.context.clusterInfoDict[hostName]["dataNode"]
             guc_path = os.path.join(self.context.clusterInfoDict["appPath"],
                                 "bin", "gs_guc")
-            para_str = " -c \"application_name='dn_{0}'\" " \
-                "-c \"log_directory='{1}'\" " \
-                " -c \"audit_directory='{2}'\" " \
-                " -c \"listen_addresses='localhost,{3}'\"" \
-                " -c \"port='{4}'\"" \
-                "".format(appName, log_dir, audit_dir, newHost, port)
+            para_str = " -c \"listen_addresses='localhost,{0}'\"" \
+                " -c \"port='{1}'\"".format(newHost, port)
             cmd = "source {0}; {1} set -D {2} {3}".format(self.envFile, 
                                                           guc_path, inst_dir, para_str)
             self.logger.debug(
@@ -465,7 +457,27 @@ class ExpansionImpl():
         self.logger.log("Finish to install database on all nodes.")
         if self._isAllFailed():
             GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35706"] % "install")
-    
+
+    def resetStandbyAppName(self, hostName, sshIp):
+        if not self.newInsIds:
+            return
+        appName = self.newInsIds[0]
+        logPath = ClusterDir.getUserLogDirWithUser(self.user)
+        logDir = "%s/pg_log/dn_%d" % (logPath, appName)
+        auditDir = "%s/pg_audit/dn_%d" % (logPath, appName)
+        instDir = self.context.clusterInfoDict[hostName]["dataNode"]
+        gucPath = os.path.join(self.context.clusterInfoDict["appPath"],
+            "bin", "gs_guc")
+        paraStr = " -c \"application_name='dn_{0}'\" " \
+            "-c \"log_directory='{1}'\" " \
+            " -c \"audit_directory='{2}'\" " \
+            "".format(appName, logDir, auditDir)
+        cmd = "source {0}; {1} set -D {2} {3}".format(
+            self.envFile, gucPath, instDir, paraStr)
+        self.logger.debug("Command for set guc params: %s" % cmd)
+        sshTool = SshTool([sshIp], timeout=300)
+        self.guc_executor(sshTool, cmd, sshIp)
+
     def preInstallOnHosts(self):
         """
         execute preinstall step
@@ -824,6 +836,8 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
                 hostRole = ROLE_STANDBY
             self.logger.log("Start to build %s %s." % (hostRole, host))
             self.checkTmpDir(hostName)
+            # reset current standby's application name before started
+            self.resetStandbyAppName(hostName=hostName, sshIp=host)
             # start new host as standby mode
             self.commonGsCtl.stopInstance(hostName, dataNode, self.envFile)
             result, output = self.commonGsCtl.startInstanceWithMode(host,
@@ -905,6 +919,9 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
                 if self.context.newHostCasRoleMap[host] == "off":
                     existingStandbys.append(host)
                 self.logger.log("\rBuild %s %s success." % (hostRole, host))
+                # after current standby build successfully,
+                # the minimum dn id has been used, so pop it from newInsIds
+                self.newInsIds.pop(0)
             else:
                 self.expansionSuccess[host] = False
                 self.logger.log("\rBuild %s %s failed." % (hostRole, host))
@@ -1567,6 +1584,8 @@ remoteservice={remoteservice}'"
         # change to db manager user. the below steps run with db manager user.
         self.changeUser()
 
+        # newInsIds indicates unused dn id list
+        self.newInsIds = self.getIncreaseAppNames(len(self.context.newHostList))
         if not self.context.standbyLocalMode:
             self.logger.log("Start to install database on new nodes.")
             self.installDatabaseOnHosts()

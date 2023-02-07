@@ -62,6 +62,7 @@ class Uninstall(LocalBaseOM):
         self.keepData = True
         self.method = ""
         self.action = ""
+        self.del_static_cfg_file = False
 
     ##########################################################################
     # Help context. U:R:oC:v: 
@@ -80,6 +81,7 @@ class Uninstall(LocalBaseOM):
         print("  -U         the database program and cluster owner")
         print("  -R         the database program install path")
         print("  -l         the log path")
+        print("  --delete-static-file     delete static_config_file in uninstall step")
         print("  --help     show this help, then exit")
         print(" ")
 
@@ -185,7 +187,7 @@ class Uninstall(LocalBaseOM):
         """
         try:
             opts, args = getopt.getopt(sys.argv[1:], "t:U:R:l:X:M:T",
-                                       ["help", "delete-data"])
+                                       ["help", "delete-data", "delete-static-file"])
         except getopt.GetoptError as e:
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"]
                                    % str(e))
@@ -212,6 +214,8 @@ class Uninstall(LocalBaseOM):
                 self.method = value
             elif key == "-t":
                 self.action = value
+            elif key == "--delete-static-file":
+                self.del_static_cfg_file = True
             else:
                 GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"]
                                        % key)
@@ -309,8 +313,9 @@ class Uninstall(LocalBaseOM):
                         binFileList = os.listdir(filePath)
                         for binFile in binFileList:
                             fileInBinPath = os.path.join(filePath, binFile)
-                            if os.path.isfile(fileInBinPath) and \
-                                    binFile != "cluster_static_config":
+                            if os.path.isfile(fileInBinPath):
+                                if binFile == "cluster_static_config" and not self.del_static_cfg_file:
+                                    continue
                                 os.remove(fileInBinPath)
                             elif os.path.islink(fileInBinPath):
                                 os.remove(fileInBinPath)

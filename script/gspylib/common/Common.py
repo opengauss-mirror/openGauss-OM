@@ -3259,7 +3259,7 @@ class DefaultValue():
         try:
             if nodes:
                 logger.debug(
-                    "check if the nodes %s step is %s " (nodes, step))
+                    "check if the nodes %s step is %s " % (nodes, step))
             else:
                 logger.debug(
                     "check if all the nodes step is %s" % step)

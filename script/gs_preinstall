@@ -36,6 +36,13 @@ if "--unused-third-party" in sys.argv:
     clib_files = os.path.join(package_path, "gspylib/clib/*.so*")
     FileUtil.cleanDirectoryContent(lib_path)
     FileUtil.removeFile(clib_files)
+    
+    # use system pip dependecies
+    import psutil
+    import netifaces
+    import cryptography
+    import paramiko
+    
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode

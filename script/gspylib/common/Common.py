@@ -38,6 +38,7 @@ import csv
 import copy
 from subprocess import PIPE
 from subprocess import Popen
+from base_utils.os.password_util import PasswordUtil
 
 # The installation starts, but the package is not decompressed completely.
 # The lib64/libz.so.1 file is incomplete, and the hashlib depends on the
@@ -3830,6 +3831,8 @@ class ClusterCommand():
     @staticmethod
     def aes_cbc_encrypt_with_multi(passwd, dest_path, logger):
 
+        # # check if the password contains illegal characters
+        PasswordUtil.checkPasswordVaild(passwd)
         # encrypt tool path
         encrypt_path = os.path.realpath("%s/../clib" % os.path.dirname(os.path.realpath(__file__)))
         # encrypt ca path

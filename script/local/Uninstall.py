@@ -108,9 +108,14 @@ class Uninstall(LocalBaseOM):
         '''
         Deregistering a Disk in dss-mode
         '''
+        self.logger.log("Start to unregist the lun.")
         gausshome = ClusterDir.getInstallDir(self.user)
         dsscmd = os.path.realpath(os.path.join(gausshome, 'bin', 'dsscmd'))
-        if os.path.isfile(dsscmd):
+        perctrl = os.path.realpath(os.path.join(gausshome, 'bin', 'perctrl'))
+        if os.path.isfile(dsscmd) and os.path.isfile(perctrl):
+            if not FileUtil.get_caps(perctrl):
+                self.logger.log("The perctrl does not have permissions.")
+                return
             dss_home = EnvUtil.get_dss_home(self.user)
             cfg = os.path.join(dss_home, 'cfg', 'dss_inst.ini')
             if os.path.isfile(cfg):
@@ -119,7 +124,7 @@ class Uninstall(LocalBaseOM):
             else:
                 self.logger.log(f"The {cfg} not exist.")
         else:
-            self.logger.debug("Non-dss-mode or not find dsscmd.")
+            self.logger.log("Non-dss-mode or not find dsscmd.")
 
     def __changeuserEnv(self):
         """

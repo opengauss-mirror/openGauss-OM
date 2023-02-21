@@ -144,7 +144,7 @@ class DN_OLAP(Kernel):
             if self.paxos_mode:
                 cmd += " -c"
             elif self.dss_mode:
-                if not Dss.check_dss_exist():
+                if not DssConfig.check_process_exist('dssserver'):
                     raise Exception('The dssserver process does not exist.')
                 vgname = EnvUtil.getEnv('VGNAME')
                 dss_home = EnvUtil.getEnv('DSS_HOME')

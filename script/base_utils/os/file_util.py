@@ -212,6 +212,19 @@ class FileUtil(object):
         return True
 
     @staticmethod
+    def is_in_file_with_context(file_path,
+                                call_back_name=lambda _: True,
+                                call_back_context=lambda _: True):
+        '''
+        Easy to match strings in files
+        '''
+        if call_back_name(file_path):
+            with open(file_path, 'r') as fr_any:
+                if call_back_context(fr_any.read()):
+                    return True
+        return False
+
+    @staticmethod
     def readFile(filename, keyword="", rows=0):
         """
         function: read the content of a file
@@ -397,6 +410,18 @@ class FileUtil(object):
         if status != 0:
             raise Exception(ErrorCode.GAUSS_501["GAUSS_50107"] % path +
                             " Error:\n%s." % output + "The cmd is %s" % cmd)
+
+    @staticmethod
+    def get_caps(path):
+        '''
+        Get the permissions of some root users.
+        '''
+        cmd = f'getcap {path}'
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_501["GAUSS_50107"] % path +
+                            " Error:\n%s." % output + "The cmd is %s" % cmd)
+        return output.strip()
 
 
     @staticmethod
@@ -920,7 +945,7 @@ class FileUtil(object):
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % "log file" +
                             " Directory:%s." % user_dir + " Error: \n%s" % file_output)
-    
+
     @staticmethod
     def checkFileExists(file):
         """

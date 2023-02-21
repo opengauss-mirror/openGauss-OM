@@ -52,6 +52,7 @@ from domain_utils.cluster_file.profile_file import ProfileFile
 from domain_utils.cluster_file.version_info import VersionInfo
 from domain_utils.cluster_file.package_info import PackageInfo
 from base_utils.os.sshd_config import SshdConfig
+from base_utils.os.env_util import EnvUtil
 from base_utils.os.net_util import NetUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from os_platform.linux_distro import LinuxDistro
@@ -855,11 +856,12 @@ Common options:
         if self.clusterInfo.enable_dss == 'on':
             idx = DssConfig.get_current_dss_id_by_dn(self.clusterInfo.dbNodes,
                                                      self.dbNodeInfo)
-            if idx != -1:
+            if idx != -1 and not EnvUtil.is_fuzzy_upgrade(
+                    self.user, self.logger, self.mpprcFile):
                 self.prepare_dss_home_path(idx)
             else:
                 self.logger.debug('In dss-mode, the dn does not ' \
-                     'exist on the current node.')
+                     'exist on the current node or in upgrade.')
 
         self.logger.debug("Successfully created paths for cluster.")
 
@@ -915,12 +917,12 @@ Common options:
         Creating a disk soft link
         '''
 
-        self.logger.debug("Creating disk link.")
+        self.logger.debug("Creating dss disk link.")
         context = list(
             UdevContext((self.user, self.group), self.clusterInfo,
                         DiskUtil.get_scsi_dev_id))
 
-        self.logger.debug("Checking udev directory.")
+        self.logger.debug("Checking dss udev directory.")
         if os.path.isdir(UdevContext.DSS_UDEV_DIR):
             rule_file = os.path.join(UdevContext.DSS_UDEV_DIR,
                                      UdevContext.DSS_UDEV_NAME) % self.user
@@ -964,7 +966,7 @@ Common options:
                 time.sleep(1)
             elif flags:
                 break
-        self.logger.debug("Successfully created disk link.")
+        self.logger.debug("Successfully created dss disk link.")
 
     def prepareGaussLogPath(self):
         """
@@ -1100,6 +1102,13 @@ Common options:
         self.logger.debug("Install path %s." % installPath)
         self.prepareGivenPath(installPath, needCheckEmpty)
         self.checkUpperPath(needCheckEmpty, installPath)
+
+        if self.clusterInfo.enable_dss:
+            dss_app = os.path.realpath(
+                os.path.join(os.path.dirname(installPath),
+                             f'dss_app_{commitid}'))
+            self.logger.debug("Dss app path %s." % dss_app)
+            self.prepareGivenPath(dss_app, False)
 
         self.logger.debug("Successfully created installation path.")
 
@@ -2662,11 +2671,32 @@ Common options:
             FileUtil.changeMode(DefaultValue.MIN_FILE_MODE, "%s/version.cfg" %
                               package_path)
 
+    def fix_dss_cap_permission(self):
+        '''
+        Modifying the dss binary cap permissions.
+        '''
+        self.logger.debug("Modifying dss cap permissions.")
+        clib_app = os.path.realpath(
+            os.path.join(self.clusterToolPath, "script/gspylib/clib",
+                         f"dss_app_{VersionInfo.getCommitid()}"))
+
+        dss_files = ['dsscmd', 'perctrl', 'dss_clear.sh']
+        for file_ in dss_files:
+            FileUtil.changeMode(DefaultValue.BIN_FILE_MODE,
+                                os.path.join(clib_app, file_))
+
+        caps = ['perctrl', 'cm_persist']
+        for file_ in caps:
+            FileUtil.change_caps(DefaultValue.CAP_WIO,
+                                 os.path.join(clib_app, file_))
+        self.logger.debug("Successfully modified dss cap permissions.")
+
     def fix_dss_dir_permission(self):
         '''
         Modify the permissions on some DSS-related directories and
         escalate the permissions in binary mode.
         '''
+        self.logger.debug("Modifying dss home permissions.")
         dss_home = self.clusterInfo.dss_home
         cfg_dir = os.path.realpath(os.path.join(dss_home, 'cfg'))
         log_path = os.path.realpath(os.path.join(dss_home, 'log'))
@@ -2679,20 +2709,7 @@ Common options:
         files = ["{}/*ini".format(cfg_dir)]
         for file_ in files:
             FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, file_)
-
-        clib_path = os.path.realpath(
-            os.path.join(self.clusterToolPath, "script/gspylib/clib"))
-
-        dss_files = ['dsscmd', 'perctrl', 'dss_clear.sh']
-        for file_ in dss_files:
-            FileUtil.changeMode(DefaultValue.BIN_FILE_MODE,
-                                os.path.join(clib_path, file_))
-
-        caps = ['perctrl', 'cm_persist']
-        for file_ in caps:
-            FileUtil.change_caps(DefaultValue.CAP_WIO,
-                                 os.path.join(clib_path, file_))
-
+        self.logger.debug("Successfully modified dss home permissions.")
 
     def fix_dss_disk_permission(self):
         '''
@@ -2732,6 +2749,9 @@ Common options:
                 self.logger.debug('In dss-mode, the dn does not' \
                      ' exist on the current node.')
                 return
+            self.fix_dss_cap_permission()
+            if EnvUtil.is_fuzzy_upgrade(self.user, self.logger, self.mpprcFile):
+                return
             self.fix_dss_dir_permission()
             self.fix_dss_disk_permission()
             self.fix_cm_disk_permission()
@@ -2756,12 +2776,16 @@ Common options:
                     ' exist on the current node.')
             return
 
+        if EnvUtil.is_fuzzy_upgrade(self.user, self.logger, self.mpprcFile):
+            self.logger.debug('In upgrade, the disk lock will not to be unregistered.')
+            return
 
-        clib = os.path.realpath(
-            os.path.join(self.clusterToolPath, 'script', 'gspylib', 'clib'))
+        clib_app = os.path.realpath(
+            os.path.join(self.clusterToolPath, 'script', 'gspylib', 'clib',
+                         f'dss_app_{VersionInfo.getCommitid()}'))
         Dss.unreg_disk(self.clusterInfo.dss_home,
                        user=self.user,
-                       clib=clib,
+                       clib_app=clib_app,
                        logger=self.logger)
 
     def clean_dss_env(self, mpprc_file):

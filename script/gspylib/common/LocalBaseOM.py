@@ -21,6 +21,7 @@ import os
 sys.path.append(sys.path[0] + "/../../")
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.DbClusterInfo import dbClusterInfo
+from gspylib.common.DbClusterStatus import DbClusterStatus
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.component.CM.CM_OLAP.CM_OLAP import CM_OLAP
 from gspylib.component.DSS.dss_comp import Dss
@@ -28,6 +29,10 @@ from gspylib.component.Kernel.DN_OLAP.DN_OLAP import DN_OLAP
 from domain_utils.cluster_file.version_info import VersionInfo
 from base_utils.os.net_util import NetUtil
 from base_utils.os.user_util import UserUtil
+from base_utils.os.env_util import EnvUtil
+from gspylib.component.DSS.dss_checker import DssConfig
+import impl.upgrade.UpgradeConst as const
+ 
 
 
 class LocalBaseOM(object):
@@ -157,13 +162,14 @@ class LocalBaseOM(object):
         output: NA
         """
         try:
+            is_dss_mode = EnvUtil.is_dss_mode(self.user)
             self.clusterInfo = dbClusterInfo()
             hostName = NetUtil.GetHostIpOrName()
             dynamicFileExist = False
             if self.__class__.__name__ == "Start":
                 dynamicFileExist = \
                     self.clusterInfo.dynamicConfigExists(self.user)
-            if dynamicFileExist:
+            if dynamicFileExist and not is_dss_mode:
                 self.clusterInfo.readDynamicConfig(self.user)
                 self.dbNodeInfo = self.clusterInfo.getDbNodeByName(hostName)
             else:

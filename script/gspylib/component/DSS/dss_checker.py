@@ -23,16 +23,24 @@ import re
 import sys
 import base64
 import json
+import getpass
+import time
 
 try:
     sys.path.append(sys.path[0] + "/../../../")
     from gspylib.common.ErrorCode import ErrorCode
     from base_utils.security.security_checker import SecurityChecker
+    from domain_utils.cluster_file.cluster_dir import ClusterDir
+    from base_utils.os.file_util import FileUtil
+    from base_utils.os.cmd_util import CmdUtil
+
 except ImportError as e:
     sys.exit("[GAUSS-52200] : Unable to import module: %s." % str(e))
 
 
 class DssConfig():
+    DMS_DEFAULT_RESTART_DELAY = 1
+    DMS_TMP_RESTART_DELAY = 300
 
     def __init__(self, attr='', unzip_str='', offset=0):
         self.ids = ''
@@ -128,11 +136,103 @@ class DssConfig():
                     key: value
                 }).encode()).decode()
         else:
+            if not value.strip():
+                return ''
             b64_ans = json.loads(
-                base64.urlsafe_b64decode(value.encode()).decode()).get(
-                    key, '')
+                base64.urlsafe_b64decode(value.encode()).decode()).get(key, '')
         return b64_ans
 
+    @staticmethod
+    def get_cm_inst_path(cur_db_info, inst_type='cm_agent'):
+        if inst_type == 'cm_agent':
+            return DssConfig.get_simple_value(
+                DssConfig.get_simple_value(cur_db_info, ['cmagents']),
+                ['datadir'])
+        elif inst_type == 'cm_server':
+            return DssConfig.get_simple_value(
+                DssConfig.get_simple_value(cur_db_info, ['cmservers']),
+                ['datadir'])
+        return []
+
+    @staticmethod
+    def check_process_exist(check_flag, user=''):
+        if not user:
+            user = getpass.getuser()
+        check_cmd = 'ps -u {} v'.format(user)
+        sts, out = CmdUtil.getstatusoutput_by_fast_popen(check_cmd)
+        if sts not in [0]:
+            raise Exception(ErrorCode.GAUSS_512["GAUSS_51252"] +
+                            ' Error: {}.'.format(str(out).strip()))
+        if str(out).find(check_flag) > -1:
+            return True
+        else:
+            return False
+
+    @staticmethod
+    def set_cm_manual_flag(inst_id, flag, logger):
+        gauss_home = ClusterDir.get_gauss_home()
+        file_ = os.path.realpath(
+            os.path.join(gauss_home,
+                         f'bin/instance_manual_start_{str(inst_id)}'))
+        logger.debug(
+            "Start to delete or add manual flag file: {}.".format(file_))
+        if flag == 'start' and os.path.isfile(file_):
+            os.remove(file_)
+            logger.debug("End to delete manual flag file: {}.".format(file_))
+        elif flag == 'stop' and not os.path.isfile(file_):
+            FileUtil.createFileInSafeMode(file_)
+            logger.debug("End to add manual flag file: {}.".format(file_))
+
+    @staticmethod
+    def get_cma_res_value(cma_path, key, res_name='dms_res'):
+        cma_res = os.path.join(cma_path, 'cm_resource.json')
+        if os.path.isfile(cma_res):
+            with open(cma_res, 'r') as fr:
+                res_dict = json.loads(fr.read())
+                for dict_ in res_dict.get('resources', {}):
+                    if dict_.get('name') == res_name:
+                        return str(dict_.get(key, ''))
+        return ''
+
+    @staticmethod
+    def wait_for_process_start(logger, flag, check_flag='', timeout=300):
+        if not check_flag:
+            check_flag = flag
+        logger.log(f"Start to wait for {flag} to be started.")
+        while timeout > 0:
+            if not DssConfig.check_process_exist(check_flag=check_flag):
+                if timeout % 5 == 0:
+                    logger.debug(f'The process {flag} if not running.')
+                timeout -= 1
+                time.sleep(1)
+                continue
+            else:
+                break
+        if timeout == 0:
+            raise Exception(ErrorCode.GAUSS_516['GAUSS_51657'] % flag)
+        logger.log(f'The process {flag} is running.')
+
+    @staticmethod
+    def reload_cm_resource(logger, timeout=300, wait_for_start=True):
+        logger.debug('Start to reload the cm resource file.')
+        edit_cmd = f'cm_ctl res --edit --res_name="dms_res" ' \
+            f'--res_attr="restart_delay={timeout}"'
+        logger.debug(f'The cmd of the reload: {edit_cmd}.')
+        sts, out = CmdUtil.getstatusoutput_by_fast_popen(edit_cmd)
+        if sts not in [0]:
+            raise Exception(ErrorCode.GAUSS_535["GAUSS_53507"] % edit_cmd +
+                            "Error:%s." + out)
+        kill_cmd = "ps ux | grep 'bin/cm_agent' | grep -v grep " \
+             "| awk '{print $2}' | xargs -r -n 100 kill -9"
+        logger.debug(f'The cmd of the kill cm agent is: %s.' % kill_cmd)
+        status, _ = CmdUtil.retryGetstatusoutput(kill_cmd, 3, 5)
+        if status == 0:
+            logger.log("Successfully kill the cm agent.")
+        else:
+            raise Exception("Failed to kill the cm agent.")
+        if wait_for_start:
+            DssConfig.wait_for_process_start(logger, 'cm_agent', 'bin/cm_agent')
+        logger.debug("End to kill the cm agent.")
 
     def __str__(self):
         '''

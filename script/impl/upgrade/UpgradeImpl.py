@@ -24,6 +24,7 @@ import csv
 import traceback
 import copy
 import re
+import getpass
 
 from datetime import datetime, timedelta
 
@@ -51,6 +52,8 @@ from domain_utils.cluster_file.package_info import PackageInfo
 from domain_utils.cluster_file.version_info import VersionInfo
 from domain_utils.sql_handler.sql_result import SqlResult
 from base_utils.os.net_util import NetUtil
+from gspylib.component.DSS.dss_checker import DssConfig
+
 
 
 class OldVersionModules():
@@ -240,7 +243,7 @@ class UpgradeImpl:
                             + "Error: \n%s" % str(output))
 
         if (not self.context.isSingle):
-                # send file to remote nodes
+            # send file to remote nodes
             self.context.sshTool.scpFiles(filePath, self.context.tmpDir)
         self.context.logger.debug("Successfully write file %s." % filePath)
 
@@ -1420,7 +1423,43 @@ class UpgradeImpl:
         self.context.logger.debug("Old cluster exclude CMS instance. So no need to switch UDF.")
         return False
 
+    def waif_for_om_monitor_start(self, is_rollback):
+        if not EnvUtil.is_dss_mode(self.context.user):
+            self.context.logger.debug(
+                "In non-dss-enabled, no need to wait for om_monitor to start.")
+        self.context.logger.log("Start to wait for om_monitor.")
+        is_rolling = False
+        start_time = timeit.default_timer()
+        cmd = "%s -t %s -U %s -V %d --old_cluster_app_path=%s " \
+              "--new_cluster_app_path=%s -X '%s' -l %s" % \
+              (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+               const.ACTION_WAIT_OM_MONITOR,
+               self.context.user,
+               int(float(self.context.oldClusterNumber) * 1000),
+               self.context.oldClusterAppPath,
+               self.context.newClusterAppPath,
+               self.context.xmlFile,
+               self.context.localLog)
+
+        if is_rollback:
+            cmd += " --rollback"
+        if self.context.forceRollback:
+            cmd += " --force"
+        if len(self.context.nodeNames) != len(self.context.clusterNodes):
+            is_rolling = True
+        if self.need_rolling(is_rollback) or is_rolling:
+            cmd += " --rolling"
+        self.context.logger.debug("Command for waiting for om_monitor: %s." % cmd)
+        hostList = copy.deepcopy(self.context.nodeNames)
+        self.context.sshTool.executeCommand(cmd, hostList=hostList)
+        elapsed = timeit.default_timer() - start_time
+        self.context.logger.debug("Time to wait for om_monitor: %s." %
+                                  elapsed)
+
     def switchDn(self, isRollback):
+
+        self.waif_for_om_monitor_start(is_rollback=isRollback)
+
         self.context.logger.log("Switching DN processes.")
         is_rolling = False
         start_time = timeit.default_timer()
@@ -1446,8 +1485,19 @@ class UpgradeImpl:
         if self.need_rolling(isRollback) or is_rolling:
             self.context.logger.log("Switch DN processes for rolling upgrade.")
             cmd += " --rolling"
+        if EnvUtil.is_dss_mode(
+                getpass.getuser()) and DefaultValue.isgreyUpgradeNodeSpecify(
+                    self.context.user,
+                    DefaultValue.GREY_UPGRADE_STEP_UPGRADE_PROCESS, None,
+                    self.context.logger):
+            self.context.logger.debug(
+                "In dss_mode, have cm configuration, upgrade all nodes together."
+            )
+            cmd += " --upgrade_dss_config={}".format(
+                DssConfig.get_value_b64_handler('dss_upgrade_all', 'on'))
+
         self.context.logger.debug(
-            "Command for switching DN processes: %s" % cmd)
+            "Command for switching DN processes: %s." % cmd)
         hostList = copy.deepcopy(self.context.nodeNames)
         self.context.sshTool.executeCommand(cmd, hostList=hostList)
         start_cluster_time = timeit.default_timer()
@@ -2622,6 +2672,7 @@ class UpgradeImpl:
             cmd = ClusterCommand.getQueryStatusCmd("", outFile=tmpFile)
             SharedFuncs.runShellCmd(cmd, self.context.user,
                                     self.context.userProfile)
+            self.context.logger.debug(f"The generator cmd is {cmd}.")
             if not os.path.exists(tmpFile):
                 raise Exception("Can not genetate dynamic info file")
             self.context.distributeFileToSpecialNode(tmpFile,
@@ -4183,6 +4234,9 @@ class UpgradeImpl:
         output: NA
         """
         try:
+            if EnvUtil.is_dss_mode(self.context.user):
+                # there is any dss_clear process
+                self.stop_strategy(is_final=False)
             self.start_strategy(is_final=False)
             self.setUpgradeFromParam(const.UPGRADE_UNSET_NUM)
             self.setUpgradeMode(0)

@@ -628,7 +628,8 @@ class ErrorCode():
                        " version from function.",
         'GAUSS_51655': "[GAUSS-51655] : There is %s on the cluster when operating on a cluster"
                        "the %s parameter is not needed.",
-        'GAUSS_51656': "[GAUSS-51656] : Waiting for udev trigger to end timeout"
+        'GAUSS_51656': "[GAUSS-51656] : Waiting for udev trigger to end timeout",
+        'GAUSS_51657': "[GAUSS-51657] : Waiting for start %s to end timeout"
     }
 
     ###########################################################################

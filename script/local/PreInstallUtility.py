@@ -749,7 +749,9 @@ Common options:
 
         # user exists and input group not exists
         if userstatus == 0 and groupstatus != 0:
-            self.logger.logExit(ErrorCode.GAUSS_503["GAUSS_50305"] % self.group)
+            self.logger.logExit(ErrorCode.GAUSS_503["GAUSS_50305"]
+                                + " User:Group[%s:%s]" 
+                                % (self.user, self.group))
 
         # user exists and group exists
         if userstatus == 0 and groupstatus == 0:

@@ -26,6 +26,7 @@ import os
 import subprocess
 import pwd
 import re
+import getpass
 import time
 import timeit
 import traceback
@@ -65,6 +66,8 @@ from domain_utils.sql_handler.sql_result import SqlResult
 from domain_utils.sql_handler.sql_file import SqlFile
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from base_diff.sql_commands import SqlCommands
+from gspylib.component.DSS.dss_comp import Dss, DssInst
+from gspylib.component.DSS.dss_checker import DssConfig
 
 
 
@@ -141,6 +144,7 @@ class CmdOptions():
         self.fromFile = False
         self.setType = "reload"
         self.isSingleInst = False
+        self.upgrade_dss_config = ''
 
 
 class OldVersionModules():
@@ -313,11 +317,12 @@ def parseCommandLine():
     output: NA
     """
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "t:U:R:l:V:X:",
-                                   ["help", "upgrade_bak_path=", "script_type=",
-                                    "old_cluster_app_path=", "new_cluster_app_path=", "rollback",
-                                    "force", "rolling", "oldcluster_num=", "guc_string=",
-                                    "fromFile", "setType=", "HA"])
+        opts, args = getopt.getopt(sys.argv[1:], "t:U:R:l:V:X:", [
+            "help", "upgrade_bak_path=", "script_type=",
+            "old_cluster_app_path=", "new_cluster_app_path=", "rollback",
+            "force", "rolling", "oldcluster_num=", "guc_string=", "fromFile",
+            "setType=", "HA", "upgrade_dss_config="
+        ])
     except Exception as er:
         usage()
         raise Exception(ErrorCode.GAUSS_500["GAUSS_50000"] % str(er))
@@ -384,6 +389,8 @@ def parseLongOptions(key, value):
         if "=" in value and len(value.split("=")) == 2 and "'" not in value.split("=")[1]:
             value = value.split("=")[0] + "=" + "'%s'" % value.split("=")[1]
         g_opts.gucStr = value
+    elif key == "--upgrade_dss_config":
+        g_opts.upgrade_dss_config = value
     elif key == "--fromFile":
         g_opts.fromFile = True
     elif key == "--setType":
@@ -409,6 +416,7 @@ def checkParameter():
                          const.ACTION_COPY_CERTS,
                          const.ACTION_GREY_UPGRADE_CONFIG_SYNC,
                          const.ACTION_SWITCH_DN,
+                         const.ACTION_WAIT_OM_MONITOR,
                          const.ACTION_GREY_RESTORE_CONFIG] and \
             (not g_opts.newClusterAppPath or not g_opts.oldClusterAppPath):
         GaussLog.exitWithError(
@@ -708,12 +716,12 @@ def touchInstanceInitFile():
         g_logger.logExit(str(e))
 
 
-def reloadCmagent():
+def reloadCmagent(signal=1):
     """
     reload the cm_agent instance, make the guc parameter working
     """
     cmd = "ps ux | grep '%s/bin/cm_agent' | grep -v grep | awk '{print $2}' | " \
-          "xargs -r -n 100 kill -1" % g_clusterInfo.appPath
+          "xargs -r -n 100 kill -%s" % (g_clusterInfo.appPath, str(signal))
     g_logger.debug("Command for reload cm_agent:%s" % cmd)
     (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
     if status == 0:
@@ -1528,7 +1536,18 @@ def backupConfig():
         g_logger.debug("Backup CM cert files command: %s" % back_up_cm_cert_file_cmd)
         CmdExecutor.execCommandLocally(back_up_cm_cert_file_cmd)
         g_logger.debug("Backup CM cert files successfully.")
-        
+
+        dss_cert_file_dir = os.path.realpath(
+            os.path.join(clusterAppPath, 'share/sslcert/dss'))
+        if os.path.isdir(dss_cert_file_dir):
+            back_up_dss_cert_file_cmd = "if [ -d '%s' ]; " \
+                                    "then cp -r '%s' '%s'; fi" % (dss_cert_file_dir,
+                                                                    dss_cert_file_dir, bakPath)
+            g_logger.debug("Backup dss cert files command: %s" %
+                           back_up_dss_cert_file_cmd)
+            CmdExecutor.execCommandLocally(back_up_dss_cert_file_cmd)
+            g_logger.debug("Backup dss cert files successfully.")
+
         om_cert_file_dir = "'%s'/share/sslcert/om" % clusterAppPath
         back_up_om_cert_file_cmd = "if [ -d '%s' ]; " \
                                    "then cp -r '%s' '%s'; fi" % (om_cert_file_dir,
@@ -1876,10 +1895,9 @@ def restoreConfig():
         
         cm_cert_backup_dir = os.path.realpath(os.path.join(bakPath, "cm"))
         cm_cert_dest_dir = os.path.realpath(os.path.join(clusterAppPath, "share", "sslcert"))
-        restore_cm_cert_file_cmd = "if [ -d '%s' ]; " \
-                                   "then cp -r '%s' '%s'; fi" % (cm_cert_backup_dir,
-                                                                 cm_cert_backup_dir,
-                                                                 cm_cert_dest_dir)
+        restore_cm_cert_file_cmd = "if [ -d '{0}' ]; then " \
+             "cp -r '{0}' '{1}'; chmod -R 400 {1}/cm/*; fi".format(
+            cm_cert_backup_dir, cm_cert_dest_dir)
         g_logger.debug("Restore CM cert files command: %s" % restore_cm_cert_file_cmd)
         CmdExecutor.execCommandLocally(restore_cm_cert_file_cmd)
         g_logger.debug("Restore CM cert files successfully.")
@@ -2260,6 +2278,14 @@ def  cleanInstallPath():
     output : NA
     """
     installPath = g_opts.appPath
+    commit_id = installPath[-8:]
+    if commit_id:
+        dss_app = os.path.realpath(
+            os.path.join(os.path.dirname(installPath), f'dss_app_{commit_id}'))
+        cmd = "(if [ -d '%s' ]; then rm -rf '%s'; fi)" % (dss_app, dss_app)
+        g_logger.log("Command for cleaning install path: %s." % cmd)
+        CmdExecutor.execCommandLocally(cmd)
+
     if not os.path.exists(installPath):
         g_logger.debug(ErrorCode.GAUSS_502[
                            "GAUSS_50201"] % installPath + " No need to clean.")
@@ -2295,6 +2321,9 @@ def  cleanInstallPath():
     cmd += " && (if [ -d '%s' ]; then chmod -R %d '%s'; fi)" % (cm_cert_dir, 
                                                                 DefaultValue.KEY_DIRECTORY_MODE, 
                                                                 cm_cert_dir)
+    dss_cert_dir = os.path.realpath(os.path.join(installPath, "share", "sslcert", "dss"))
+    cmd += " && (if [ -d '%s' ]; then chmod -R %d '%s'; fi)" % (
+        dss_cert_dir, DefaultValue.KEY_DIRECTORY_MODE, dss_cert_dir)
     appBakPath = "%s/to_be_delete" % tmpDir
     cmd += " && (if [ -d '%s' ]; then chmod -R %d '%s'; fi)" % (appBakPath, 
                                                                 DefaultValue.KEY_DIRECTORY_MODE, 
@@ -2378,6 +2407,23 @@ def copyCerts():
     
     FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, "%s/*" %
                       newOmSslCerts)
+
+    if EnvUtil.is_dss_mode(getpass.getuser()) and EnvUtil.get_dss_ssl_status(
+            getpass.getuser()) == 'on':
+        old_dss_certs = os.path.join(g_opts.oldClusterAppPath,
+                                     "share/sslcert/dss")
+        new_dss_certs = os.path.join(g_opts.newClusterAppPath,
+                                     "share/sslcert/dss")
+        FileUtil.createDirectory(new_dss_certs,
+                                 mode=DefaultValue.KEY_DIRECTORY_MODE)
+        for cert_file in DefaultValue.GDS_CERT_LIST:
+            cert_ = os.path.realpath(os.path.join(old_dss_certs, cert_file))
+            if FileUtil.checkFileExists(cert_):
+                FileUtil.cpFile(cert_, new_dss_certs)
+        FileUtil.changeMode(DefaultValue.MIN_FILE_MODE, "%s/*" % new_dss_certs)
+
+
+
 
 
 def prepareUpgradeSqlFolder():
@@ -2768,7 +2814,12 @@ def backupOldClusterCatalogPhysicalFiles():
     connect to each cn and dn,
     connect to each database, and do backup
     """
+    if EnvUtil.is_dss_mode(getpass.getuser()):
+        g_logger.log(
+            "In dss-enabled, the physical catalog file is not to be backuped.")
+        return
     g_logger.log("Backing up old cluster catalog physical files.")
+
     try:
         InstanceList = []
         # find all instances need to do backup
@@ -3057,6 +3108,12 @@ def restoreOneInstanceOldClusterCatalogPhysicalFiles(instance):
     read database and catalog info from file
     connect each database, do restore
     """
+    if EnvUtil.is_dss_mode(getpass.getuser()):
+        g_logger.log(
+            "In dss-enabled, there is no backup file" \
+                " for physical catalog file to restore."
+        )
+        return
     g_logger.debug("Restore instance catalog physical files. "
                    "Instance data dir: %s" % instance.datadir)
     try:
@@ -3218,6 +3275,12 @@ def cleanOldClusterCatalogPhysicalFiles():
     connect to each cn and dn,
     connect to each database, and do backup
     """
+    if EnvUtil.is_dss_mode(getpass.getuser()):
+        g_logger.log(
+            "In dss-enabled, there is no backup file" \
+                " for physical catalog file to clean up."
+        )
+        return
     g_logger.log("Cleaning old cluster catalog physical files.")
     try:
         # kill any pending processes that are
@@ -4094,11 +4157,51 @@ def setOneInstanceGuc(instance):
         raise Exception(ErrorCode.GAUSS_500["GAUSS_50007"] % cmd + " Error: \n%s" % str(output))
 
 
+def switch_dss_server():
+    is_dss_mode = EnvUtil.is_dss_mode(getpass.getuser())
+    if not is_dss_mode:
+        g_logger.debug("Non-dss-enabled, no need to switch dssserver.")
+        return
+    # Start the dssserver firstly.
+    DssConfig.set_cm_manual_flag(DssInst.get_dss_id_from_key() + 20001, 'start',
+                                 g_logger)
+    g_logger.log("Start to kill dssserver.")
+    Dss.kill_dss_server(logger=g_logger)
+    g_logger.log("End to kill dssserver.")
+
+
+def wait_for_om_monitor_start():
+    is_dss_mode = EnvUtil.is_dss_mode(getpass.getuser())
+    if not is_dss_mode:
+        g_logger.debug("Non-dss-enabled, no need to wait om_monitor.")
+        return
+    if isNeedSwitch('cm_agent', True):
+        DssConfig.wait_for_process_start(g_logger, 'om_monitor',
+                                         'bin/om_monitor')
+
 def switchDnNodeProcess():
     """
     function: switch node process which CN or DN exits
     :return:
     """
+    is_cm_killed = False
+    is_dss_mode = EnvUtil.is_dss_mode(getpass.getuser())
+    is_all_upgrade = DssConfig.get_value_b64_handler('dss_upgrade_all',
+                                                     g_opts.upgrade_dss_config,
+                                                     action='decode') == 'on'
+    if is_dss_mode and g_opts.rolling and not is_all_upgrade:
+        if isNeedSwitch('cm_agent', True):
+            # disabling cm from starting the dn process
+            DssConfig.reload_cm_resource(
+                g_logger,
+                timeout=DssConfig.DMS_TMP_RESTART_DELAY,
+                wait_for_start=False)
+        is_cm_killed = True
+
+    if is_dss_mode and g_opts.rolling and not is_cm_killed:
+        if isNeedSwitch('cm_agent', True):
+            reloadCmagent(signal=9)
+
     if g_opts.rolling:
         # for rolling upgrade, gaussdb fenced udf will be
         # switched after cm_agent has been switched
@@ -4112,6 +4215,8 @@ def switchDnNodeProcess():
     switchDn()
     elapsed = timeit.default_timer() - start_time
     g_logger.log("Time to switch DN: %s" % getTimeFormat(elapsed))
+    if is_dss_mode and isNeedSwitch('dssserver'):
+        switch_dss_server()
 
 
 def switchFencedUDFProcess():
@@ -4134,7 +4239,7 @@ def switchFencedUDFProcess():
         raise Exception("Failed to kill gaussdb fenced UDF master process.")
 
 
-def isNeedSwitch(process, dataDir=""):
+def isNeedSwitch(process, dataDir="", is_dss_mode=False):
     """
     get the pid from ps ux command, and then get the realpth of this pid from
     /proc/$pid/exe, under upgrade, if we can find the new path, then we do not
@@ -4157,6 +4262,20 @@ def isNeedSwitch(process, dataDir=""):
               r"xargs `; if [ `echo $dir | grep %s` ];then echo 'True'; " \
               r"else echo 'False'; fi; done"
         cmd = cmd % (process, g_gausshome, dataDir, path)
+    elif is_dss_mode and process == 'cm_agent':
+        cmd = r"pidList=`ps ux | grep '\<%s\>' | grep -v 'grep'" \
+              r" | awk '{print $2}' | xargs `; " \
+              r"for pid in $pidList; do dir=`readlink -f /proc/$pid/exe | " \
+              r"xargs `; if [ `echo $dir | grep %s` ];then echo 'True'; " \
+              r"else echo 'False'; fi; done"
+        cmd = cmd % (process, path)
+    elif process == 'dssserver':
+        cmd = r"pidList=`ps ux | grep -E 'dssserver[ ]+-D' | grep -v 'grep'" \
+              r" | awk '{print $2}' | xargs `; " \
+              r"for pid in $pidList; do dir=`readlink -f /proc/$pid/exe | " \
+              r"xargs `; if [ `echo $dir | grep %s` ];then echo 'True'; " \
+              r"else echo 'False'; fi; done"
+        cmd = cmd % path
     else:
         cmd = r"pidList=`ps ux | grep '\<%s\>' | grep '%s' | grep -v 'grep'" \
               r" | awk '{print $2}' | xargs `; " \
@@ -4735,6 +4854,7 @@ def checkAction():
              const.ACTION_GREY_UPGRADE_CONFIG_SYNC,
              const.ACTION_CREATE_CM_CA_FOR_ROLLING_UPGRADE,
              const.ACTION_SWITCH_DN,
+             const.ACTION_WAIT_OM_MONITOR,
              const.ACTION_GET_LSN_INFO,
              const.ACTION_GREY_RESTORE_CONFIG,
              const.ACTION_GREY_RESTORE_GUC,
@@ -4797,6 +4917,7 @@ def main():
             const.ACTION_GREY_UPGRADE_CONFIG_SYNC: greyUpgradeSyncConfig,
             const.ACTION_CREATE_CM_CA_FOR_ROLLING_UPGRADE: createCmCaForRollingUpgrade,
             const.ACTION_SWITCH_DN: switchDnNodeProcess,
+            const.ACTION_WAIT_OM_MONITOR: wait_for_om_monitor_start,
             const.ACTION_CLEAN_GS_SECURE_FILES: clean_gs_secure_files,
             const.ACTION_GET_LSN_INFO: getLsnInfo,
             const.ACTION_GREY_RESTORE_CONFIG: greyRestoreConfig,

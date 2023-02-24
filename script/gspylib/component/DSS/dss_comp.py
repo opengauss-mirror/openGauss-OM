@@ -122,11 +122,14 @@ class DssInst():
                             'Error: {}'.format(e))
 
     @staticmethod
-    def get_dss_id_from_key(dss_home):
+    def get_dss_id_from_key(dss_home=''):
         '''
         Obtaining INST_ID Through Configuration Items
         '''
         try:
+            if not dss_home:
+                dss_home = EnvUtil.get_dss_home(getpass.getuser())
+
             cfg = os.path.join(dss_home, 'cfg', 'dss_inst.ini')
             inst_id = DssInst(cfg_path=cfg).parser.get('INST_ID', '')
             if inst_id.isdigit():
@@ -179,7 +182,7 @@ class Dss(BaseComponent):
         time.sleep(0.5)
 
     @staticmethod
-    def unreg_disk(dss_home, user='', clib='', logger=None):
+    def unreg_disk(dss_home, user='', clib_app='', logger=None):
         '''
         The minimum ID is 0 and the maximum ID is 8.
         There are nine instances in total.
@@ -192,12 +195,12 @@ class Dss(BaseComponent):
 
         un_reg_cmd_str = f'sh {dsscmd_path} {dss_home}; '
 
-        if clib:
+        if clib_app:
             dsscmd_path = os.path.realpath(
-                os.path.join(clib, Dss.DSS_IOFENCE_FILENAME))
+                os.path.join(clib_app, Dss.DSS_IOFENCE_FILENAME))
             cmd_str = f'su - {user} -c "export DSS_HOME={dss_home}; '
-            cmd_str += f'export LD_LIBRARY_PATH={clib}; '
-            cmd_str += f'export PATH={clib}:$PATH; '
+            cmd_str += f'export LD_LIBRARY_PATH={clib_app}; '
+            cmd_str += f'export PATH={clib_app}:$PATH; '
             un_reg_cmd_str = cmd_str + f'sh {dsscmd_path} {dss_home}; "'
 
         if logger:
@@ -210,7 +213,12 @@ class Dss(BaseComponent):
         if logger:
             logger.debug(f'The result of the unreg: {out}')
 
-    def start_dss_server(self, kill_server=True, unrej=False, exist_so=False):
+    @staticmethod
+    def start_dss_server(logger=None,
+                         bin_path='',
+                         kill_server=True,
+                         unrej=False,
+                         exist_so=False):
         '''
         The OM manually starts the DSS server to obtain the socket file.
         '''
@@ -222,42 +230,32 @@ class Dss(BaseComponent):
 
         dss_home = EnvUtil.get_dss_home(getpass.getuser())
         if unrej:
-            Dss.unreg_disk(dss_home, logger=self.logger)
+            Dss.unreg_disk(dss_home, logger=logger)
+        if bin_path:
+            dss_cmd = os.path.realpath(os.path.join(bin_path, 'dssserver'))
+        else:
+            dss_cmd = 'dssserver'
 
         cmd = 'sh -c "source {} && nohup {} -D {} >/dev/null 2>&1 & "'.format(
-            EnvUtil.getMpprcFile(), os.path.join(self.binPath, 'dssserver'),
-            dss_home)
+            EnvUtil.getMpprcFile(), dss_cmd, dss_home)
         proc = FastPopen(cmd)
         out, err = proc.communicate()
         if proc.returncode != 0:
             raise Exception(ErrorCode.GAUSS_512["GAUSS_51252"] +
                             ' Error: {}'.format(str(err + out).strip()))
-        self.logger.debug('Successfully start dss server')
-
-    @staticmethod
-    def check_dss_exist():
-        user = getpass.getuser()
-        check_cmd = 'ps -u {} v | grep dssserver | grep -v grep'.format(user)
-        sts, out = CmdUtil.getstatusoutput_by_fast_popen(check_cmd)
-        if sts != 0:
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51252"] +
-                            ' Error: {}'.format(str(out).strip()))
-
-        if str(out).find('dssserver'):
-            return True
-        else:
-            return False
+        if logger:
+            logger.debug('Successfully start dss server.')
 
     def initInstance(self):
         '''
         om init dss server
         '''
-        self.start_dss_server()
+        Dss.start_dss_server(self.logger, self.binPath)
 
     @staticmethod
     def catch_err(exist_so=True):
         '''
-        This command is used to kill the dsserver after
+        This command is used to kill the dssserver after
         the dn initialization is complete to prevent
         the initialization process from exiting.
         '''

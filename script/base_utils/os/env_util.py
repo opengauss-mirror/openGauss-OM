@@ -230,3 +230,38 @@ class EnvUtil(object):
         if os.getuid() == 0 and user == "":
             return ""
         return EnvUtil.getEnvironmentParameterValue("DSS_HOME", user)
+
+    @staticmethod
+    def is_fuzzy_upgrade(user, logger=None, env_file=None):
+        '''
+        If gauss_env is 2 or the $GAUSSHOME/bin is exist, is upgrade.
+        '''
+        app_bin = os.path.realpath(
+            os.path.join(
+                EnvUtil.getEnvironmentParameterValue('GAUSSHOME',
+                                                     user,
+                                                     env_file=env_file),
+                'bin'))
+        gauss_env = EnvUtil.getEnvironmentParameterValue('GAUSS_ENV',
+                                                         user,
+                                                         env_file=env_file)
+        if os.path.isdir(app_bin):
+            if logger:
+                logger.debug("The $GAUSSHOME/bin is exist.")
+        if gauss_env in ["1", "2"]:
+            if logger:
+                logger.debug(f"The $GAUSS_ENV is {gauss_env}.")
+        if os.path.isdir(app_bin) or gauss_env in ["2"]:
+            if logger:
+                logger.debug("There is the upgrade is in progress.")
+            return True
+        return False
+
+    @staticmethod
+    def is_dss_mode(user):
+        dss_home = EnvUtil.get_dss_home(user)
+        vgname = EnvUtil.getEnv('VGNAME')
+        if os.path.isdir(dss_home) and vgname:
+            return True
+        else:
+            return False

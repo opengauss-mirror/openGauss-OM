@@ -18,6 +18,7 @@ import subprocess
 import os
 import pwd
 import sys
+import re
 import getpass
 
 sys.path.append(sys.path[0] + "/../")
@@ -976,6 +977,8 @@ class PreinstallImpl:
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle,
                 self.context.mpprcFile)
+            self.context.logger.debug(
+                f"The cmd of the create cluster path: {cmd}.")
         except Exception as e:
             raise Exception(str(e))
         self.context.logger.log("Successfully created cluster's path.",
@@ -1625,9 +1628,15 @@ class PreinstallImpl:
             # close log file
             self.context.logger.closeLog()
         except Exception as e:
+            is_upgrade_func = lambda x: re.findall(r'GAUSS_ENV[ ]*=[ ]*2', x)
             for rmPath in self.context.needFixOwnerPaths:
                 if os.path.isfile(rmPath):
-                    FileUtil.removeFile(rmPath)
+                    if FileUtil.is_in_file_with_context(
+                            rmPath, call_back_context=is_upgrade_func):
+                        self.context.logger.debug(
+                            f'In upgrade process, no need to delete {rmPath}.')
+                    else:
+                        FileUtil.removeFile(rmPath)
                 elif os.path.isdir(rmPath):
                     FileUtil.removeDirectory(rmPath)
             self.context.logger.logExit(str(e))

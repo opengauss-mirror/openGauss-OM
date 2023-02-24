@@ -21,6 +21,7 @@ import subprocess
 import sys
 import re
 import time
+import getpass
 
 sys.path.append(sys.path[0] + "/../../../../")
 from gspylib.common.DbClusterInfo import queryCmd
@@ -32,6 +33,10 @@ from gspylib.common.OMCommand import OMCommand
 from impl.om.OmImpl import OmImpl
 from gspylib.os.gsfile import g_file
 from base_utils.os.net_util import NetUtil
+from base_utils.os.env_util import EnvUtil
+from gspylib.component.DSS.dss_checker import DssConfig
+
+
 
 
 ###########################################
@@ -154,6 +159,15 @@ class OmImplOLAP(OmImpl):
 
         cluster_normal_status = [DbClusterStatus.CLUSTER_STATUS_NORMAL,
                                  DbClusterStatus.CLUSTER_STATUS_DEGRADED]
+
+        if EnvUtil.is_dss_mode(self.context.g_opts.user):
+            cma_paths = DssConfig.get_cm_inst_path(
+                self.clusterInfo.dbNodes[nodeId])
+            if cma_paths and DssConfig.get_cma_res_value(
+                    cma_paths[0], key='restart_delay') != str(
+                        DssConfig.DMS_DEFAULT_RESTART_DELAY):
+                DssConfig.reload_cm_resource(
+                    self.logger, timeout=DssConfig.DMS_DEFAULT_RESTART_DELAY)
         if nodeId == 0 and self.dataDir:
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51655"] % ("cm", "-D"))
         # start cluster

@@ -67,7 +67,7 @@ class Kernel(BaseComponent):
     """
 
     def start(self, time_out=DefaultValue.TIMEOUT_CLUSTER_START,
-              security_mode="off", cluster_number=None):
+              security_mode="off", cluster_number=None, is_dss_mode=False):
         """
         """
         if cluster_number:
@@ -77,12 +77,12 @@ class Kernel(BaseComponent):
         else:
             cmd = "%s/gs_ctl start -D %s " % (
                 self.binPath, self.instInfo.datadir)
-        if self.instInfo.instanceType == DefaultValue.MASTER_INSTANCE:
+        if not is_dss_mode and self.instInfo.instanceType == DefaultValue.MASTER_INSTANCE:
             if len(self.instInfo.peerInstanceInfos) > 0:
                 cmd += "-M primary"
-        elif self.instInfo.instanceType == DefaultValue.CASCADE_STANDBY:
+        elif not is_dss_mode and self.instInfo.instanceType == DefaultValue.CASCADE_STANDBY:
             cmd += "-M cascade_standby"
-        elif self.instInfo.instanceType == DefaultValue.STANDBY_INSTANCE:
+        elif not is_dss_mode and self.instInfo.instanceType == DefaultValue.STANDBY_INSTANCE:
             cmd += "-M standby"
         if time_out is not None:
             cmd += " -t %s" % time_out

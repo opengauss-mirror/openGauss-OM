@@ -354,11 +354,17 @@ class PreinstallImplOLAP(PreinstallImpl):
         Create a VG on the first node.
         '''
         if not self.context.clusterInfo.enable_dss == 'on':
-            self.context.logger.debug('The mode is non-dss')
+            self.context.logger.debug('The mode is non-dss.')
             return
 
-        clib_path = os.path.join(self.context.clusterToolPath,
-                                 'script/gspylib/clib')
+        self.context.logger.debug('Start to create vg.')
+        if EnvUtil.is_fuzzy_upgrade(self.context.user, self.context.logger,
+                                    self.context.mpprcFile):
+            return
+
+        clib_app = os.path.join(self.context.clusterToolPath,
+                                'script/gspylib/clib',
+                                f'dss_app_{VersionInfo.getCommitid()}')
         dss_home = self.context.clusterInfo.dss_home
         for vgname, dss_disk in UdevContext.get_all_vgname_disk_pair(
                 self.context.clusterInfo.dss_shared_disks,
@@ -371,13 +377,13 @@ class PreinstallImplOLAP(PreinstallImpl):
                   '{2}/dsscmd showdisk -g {3} -s vg_header -D {1}"'
             cv_cmd = 'su - {0} -c "export DSS_HOME={1}; export LD_LIBRARY_PATH={2};' \
                  '{2}/dsscmd cv -g {3} -v {4} -s {5} -D {1}"'
-            show_cmd = show_cmd.format(self.context.user, dss_home, clib_path,
+            show_cmd = show_cmd.format(self.context.user, dss_home, clib_app,
                                        vgname, dss_disk)
-            cv_cmd = cv_cmd.format(self.context.user, dss_home, clib_path,
+            cv_cmd = cv_cmd.format(self.context.user, dss_home, clib_app,
                                    vgname, dss_disk, au_size)
             self.context.logger.debug(
-                'The cmd of the showdisk: {}'.format(show_cmd))
-            self.context.logger.debug('The cmd of the cv: {}'.format(cv_cmd))
+                'The cmd of the showdisk: {}.'.format(show_cmd))
+            self.context.logger.debug('The cmd of the cv: {}.'.format(cv_cmd))
             sts, out = subprocess.getstatusoutput(show_cmd)
             if sts == 0:
                 if out.find('vg_name = {}'.format(vgname)) > -1:
@@ -396,6 +402,7 @@ class PreinstallImplOLAP(PreinstallImpl):
                 raise Exception(
                     "Failed to query the volume using dsscmd, cmd: {}, Error: {}"
                     .format(show_cmd, out.strip()))
+        self.context.logger.debug("End to create vg.")
 
 
     def reset_lun_device(self):
@@ -403,17 +410,16 @@ class PreinstallImplOLAP(PreinstallImpl):
         Low-level user disk with dd
         '''
         if not self.context.clusterInfo.enable_dss == 'on':
-            self.context.logger.debug('The mode is non-dss')
+            self.context.logger.debug('The mode is non-dss.')
             return
 
-        if EnvUtil.getEnvironmentParameterValue(
-                'GAUSS_ENV', self.context.user) not in ["", "1"]:
+        if EnvUtil.is_fuzzy_upgrade(self.context.user, self.context.logger,
+                                    self.context.mpprcFile):
             self.context.logger.debug(
-                "If the value of GAUSS_ENV is not empty or 1, the LUN does not need to be reset."
-            )
+                "The luns doesn't need to be reset in the upgrade.")
             return
 
-
+        self.context.logger.log("Cleaning up the dss luns.", "addStep")
         infos = list(
             filter(None, re.split(r':|,',
                                   self.context.clusterInfo.dss_vg_info)))
@@ -424,17 +430,8 @@ class PreinstallImplOLAP(PreinstallImpl):
                 self.context.clusterInfo.cm_share_disk
             ]))
 
-        app_bin = os.path.realpath(
-            os.path.join(
-                EnvUtil.getEnvironmentParameterValue('GAUSSHOME',
-                                                     self.context.user), 'bin'))
-        if os.path.isdir(app_bin):
-            self.context.logger.debug(
-                'The $GAUSSHOME/bin directory exists. LUNs are not cleared.')
-            return
-
         self.context.logger.debug(
-            "LUNs are about to be cleared, contains: {}.".format(
+            "The luns are about to be cleared, contains: {}.".format(
                 ', '.join(cm_devs + dss_devs)))
 
         cmd = []
@@ -445,7 +442,7 @@ class PreinstallImplOLAP(PreinstallImpl):
         self.context.logger.debug("Clear lun cmd: {}.".format(' && '.join(cmd)))
 
         CmdExecutor.execCommandLocally(' && '.join(cmd))
-        self.context.logger.log("Successfully Cleaning Up Lun.")
+        self.context.logger.log("Successfully cleaned up the dss lun.")
 
     def setPssh(self):
         """
@@ -726,9 +723,9 @@ class PreinstallImplOLAP(PreinstallImpl):
         DSS initialization
         '''
         if not self.context.clusterInfo.enable_dss == 'on':
-            self.context.logger.debug('The mode is Non-dss')
+            self.context.logger.debug('The mode is non-dss.')
             return
-        self.context.logger.log("Unreg the dss lun.", "addStep")
+        self.context.logger.log("Unreging the dss lun.", "addStep")
         try:
             cmd = (
                 "%s -t %s -u %s -g %s -X %s -Q %s -l %s" %
@@ -746,6 +743,7 @@ class PreinstallImplOLAP(PreinstallImpl):
                                             self.context.localMode,
                                             self.context.mpprcFile,
                                             parallelism=False)
+            self.context.logger.log("Successfully unreg the dss lun.")
 
         except Exception as e:
             raise Exception(str(e))

@@ -98,7 +98,6 @@ class CheckUninstall:
         self.__checkOSVersion()
         self.__checkOsUser()
         self.__checkInstanllPath()
-        self.unregister()
         self.logger.closeLog()
 
     def unregister(self):

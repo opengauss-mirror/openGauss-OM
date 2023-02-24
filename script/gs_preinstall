@@ -36,13 +36,13 @@ if "--unused-third-party" in sys.argv:
     clib_files = os.path.join(package_path, "gspylib/clib/*.so*")
     FileUtil.cleanDirectoryContent(lib_path)
     FileUtil.removeFile(clib_files)
-    
+
     # use system pip dependecies
     import psutil
     import netifaces
     import cryptography
     import paramiko
-    
+
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
@@ -53,8 +53,10 @@ from gspylib.threads.SshTool import SshTool
 from domain_utils.cluster_file.cluster_config_file import ClusterConfigFile
 from domain_utils.cluster_file.cluster_dir import ClusterDir
 from domain_utils.cluster_file.profile_file import ProfileFile
+from domain_utils.cluster_file.version_info import VersionInfo
 from domain_utils.cluster_os.cluster_user import ClusterUser
 from base_utils.os.net_util import NetUtil
+from base_utils.os.file_util import FileUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from base_utils.os.user_util import UserUtil
 
@@ -375,28 +377,36 @@ General options:
             cm_cmd = 'tar -xpf `ls openGauss*cm.tar.gz|tail -1`'
             cmd = self.get_dec_package_cmd(bin_cmd, cm_cmd)
             status, output = subprocess.getstatusoutput(cmd)
-            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"] %
-                                   "version.cfg" + "The cmd is %s. " % cmd +
-                                   "The output is %s." % output)
+            if status != 0:
+                GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"] %
+                                    "version.cfg" + "The cmd is %s. " % cmd +
+                                    "The output is %s." % output)
 
     def get_dec_package_cmd(self, bin_cmd, cm_cmd):
 
         root = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..')
         clib = os.path.join(root, "script/gspylib/clib")
         bin_files = ['./bin/encrypt']
+        clib_app = os.path.realpath(
+            os.path.join(f'{clib}',
+                         f"dss_app_$(cat {root}/version.cfg | tail -n 1)"))
+        dss_files = []
+        cm_files = []
         if self.clusterInfo.enable_dss == 'on':
             cm_files = ['bin/cm_persist']
-            bin_files.extend([
+            dss_files = [
                 './bin/perctrl', './bin/dsscmd', './lib/libdssapi.so',
                 './bin/dss_clear.sh'
-            ])
+            ]
         else:
             cm_files = []
         cmd = 'cd {} && '.format(root)
-        cmd += '{} {} && '.format(bin_cmd, ''.join(' '.join(bin_files)))
+        cmd += '{} {} && '.format(bin_cmd, ' '.join(bin_files + dss_files))
         if cm_files:
-            cmd += '{} {} && '.format(cm_cmd, ''.join(' '.join(cm_files)))
-        cmd += '\mv {} {} && '.format(' '.join(bin_files + cm_files), clib)
+            cmd += '{} {} && '.format(cm_cmd, ' '.join(cm_files))
+            cmd += 'mkdir -p {0} -m u=rwx && '.format(clib_app)
+            cmd += 'mv {} {} && '.format(' '.join(cm_files + dss_files), clib_app)
+        cmd += '\mv {} {} && '.format(' '.join(bin_files), clib)
         cmd += 'cd {} && rm -rf bin'.format(root)
         return cmd
 

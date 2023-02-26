@@ -28,14 +28,6 @@ def checkPythonVersion():
         raise Exception("[GAUSS-52200] : version of python"
                         " is not correct: %s." %
                         distName + " should use Python 3.*")
-    if re.search("oe1", distName) is not None:
-        if not pythonVersion == (3, 7):
-            print("Warnging version of python doesnot meet the expection, maybe third-party libs "
-                  "need to be compiled by yourself")
-    else:
-        if not pythonVersion == (3, 6):
-            print("Warnging version of python doesnot meet the expection, maybe third-party libs "
-                  "need to be compiled by yourself")
     return True
 
 def check_python_compiler_option():

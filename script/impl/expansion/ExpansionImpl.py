@@ -650,6 +650,23 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
         if self._isAllFailed():
             GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35706"] % "set guc")
 
+    def get_add_float_ip_cmd(self, host_ip):
+        """
+        Get cmd for adding float IP to pg_hba.conf
+        """
+        if not self.context.clusterInfo.float_ips:
+            self.logger.debug("The current cluster does not support VIP.")
+            return ""
+
+        cmd = ""
+        name = self.context.backIpNameMap[host_ip]
+        node = self.context.clusterInfo.getDbNodeByName(name)
+        for inst in node.datanodes:
+            for float_ip in inst.float_ips:
+                cmd += " -h 'host    all    all    %s/32    sha256'" % \
+                       self.context.clusterInfo.float_ips[float_ip]
+        return cmd
+
     def addTrust(self):
         """
         add authentication rules about new host ip in existing hosts and
@@ -666,13 +683,13 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             cmd = "source %s;gs_guc set -D %s" % (self.envFile, dataNode)
             if hostExec in self.existingHosts:
                 for hostParam in self.context.newHostList:
-                    cmd += " -h 'host    all    all    %s/32    trust'" % \
-                        hostParam
+                    cmd += " -h 'host    all    all    %s/32    trust'" % hostParam
+                    cmd += self.get_add_float_ip_cmd(hostParam)
             else:
                 for hostParam in allHosts:
                     if hostExec != hostParam:
-                        cmd += " -h 'host    all    all    %s/32    trust'" % \
-                            hostParam
+                        cmd += " -h 'host    all    all    %s/32    trust'" % hostParam
+                        cmd += self.get_add_float_ip_cmd(hostParam)
             self.logger.debug("[%s] trustCmd:%s" % (hostExec, cmd))
             sshTool = SshTool([hostExec])
             sshTool.getSshStatusOutput(cmd, [hostExec], self.envFile)

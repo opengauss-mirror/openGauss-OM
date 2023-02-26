@@ -203,6 +203,7 @@ class ConfigHba(LocalBaseOM):
             for inst in nodeinfo.datanodes:
                 self.allIps += inst.haIps
                 self.allIps += inst.listenIps
+                self.allIps += inst.float_ips
         # get all ips. Remove the duplicates ips 
         self.allIps = DefaultValue.Deduplication(self.allIps)
 
@@ -260,7 +261,8 @@ class ConfigHba(LocalBaseOM):
             self.logger.debug("The %s does not exist." % hbaFile)
             return
 
-        component.setPghbaConfig(self.allIps, try_reload=self.try_reload)
+        component.setPghbaConfig(self.allIps, try_reload=self.try_reload,
+                                 float_ips=self.clusterInfo.float_ips)
         if len(self.removeIps) != 0:
             component.removeIpInfoOnPghbaConfig(self.removeIps)
             self.remove_streaming_config(component)

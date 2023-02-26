@@ -30,6 +30,8 @@ try:
     from gspylib.common.DbClusterStatus import DbClusterStatus
     from gspylib.os.gsfile import g_file
     from gspylib.component.CM.CM import CM
+    from gspylib.component.CM.CM import VipInstAttr, VipAddInst, VipDelInst
+    from gspylib.component.CM.CM import VipCmResCtrlCmd, VipResAttr
     from gspylib.common.DbClusterInfo import dbClusterInfo
     from base_utils.os.crontab_util import CrontabUtil
     from base_utils.os.env_util import EnvUtil
@@ -801,3 +803,104 @@ class CM_OLAP(CM):
             self.logger.log("There is not exists [%s]." % create_ca_script)
 
 
+    def get_add_cm_res_cmd(self, cm_res_info):
+        """
+        Get add CM resource information cmd for VIP
+        """
+        cmd_list = []
+        for res_name, _list in cm_res_info.items():
+            check_res = "cm_ctl res --list --res_name=\"%s\"" % res_name
+            stat, out= subprocess.getstatusoutput(check_res)
+            if stat != 0 or not out:
+                cmd_list.append(str(VipCmResCtrlCmd("add_res", res_name,
+                                    attr=VipResAttr(_list[0][0]))))
+            for _tup in _list:
+                check_inst = "cm_ctl res --list --res_name=\"%s\" --list_inst" \
+                             " | grep \"%s\"" % (res_name, _tup[1])
+                stat, out= subprocess.getstatusoutput(check_inst)
+                if stat != 0 or not out:
+                    cmd_list.append(str(VipCmResCtrlCmd("add_inst", res_name,
+                                        inst=VipAddInst(_tup[2], _tup[3]),
+                                        attr=VipInstAttr(_tup[1]))))
+        cmd = "source %s; %s" % (EnvUtil.getMpprcFile(), ' ;'.join(cmd_list))
+        self.logger.log("Add cm resource information cmd: \n%s" % cmd)
+        return cmd
+
+    def _get_cm_res_info(self, base_ip):
+        """
+        Get the CM resource info for reducing
+        """
+        # Get resource name
+        cmd = "cm_ctl res --list | grep \"VIP\" | awk -F \"|\" '{print $1}'" \
+                  " | xargs -i cm_ctl res --list --res_name={} --list_inst" \
+                  " | grep \"base_ip=%s\" | awk -F \"|\" '{print $1}'" % base_ip
+        stat, out= subprocess.getstatusoutput(cmd)
+        if stat != 0:
+            raise Exception("Failed to get res name. Cmd: \n%s" % cmd)
+        if not out:
+            return "", -1, -1
+        res_name = out.strip()
+
+        # Get intance ID
+        cmd = "cm_ctl res --list --res_name=\"%s\" --list_inst | grep " \
+                  "\"base_ip=%s\" | awk -F \"|\" '{print $4}'" % (res_name, base_ip)
+        stat, out= subprocess.getstatusoutput(cmd)
+        if stat != 0 or not out:
+            raise Exception("Failed to get the intance ID. Cmd: \n%s" % cmd)
+        inst_id = int(out.strip())
+
+        # Get the number of instances contained in a resource
+        cmd = "cm_ctl res --list --res_name=\"%s\" --list_inst" \
+                  " | grep \"VIP\" | wc -l" % res_name
+        stat, out= subprocess.getstatusoutput(cmd)
+        if stat != 0 or not out:
+            raise Exception("Failed to get the number of instances. Cmd: %s" % cmd)
+        inst_num = int(out.strip())
+
+        self.logger.log("CM resource info: res_name=%s,inst_id=%d,inst_num=%d   q" \
+                        "" % (res_name, inst_id, inst_num))
+        return res_name, inst_id, inst_num
+
+    def get_reduce_cm_res_cmd(self, base_ips):
+        """
+        Get reduce cm resource information cmd for VIP
+        """
+        cmd_list = []
+        for base_ip in base_ips:
+            res_name, inst_id, inst_num = self._get_cm_res_info(base_ip)
+            if not res_name:
+                self.logger.log("The base IP is not found: %s" % base_ip)
+                continue
+            if  inst_num > 1:
+                cmd_list.append(str(VipCmResCtrlCmd("del_inst", res_name,
+                                    inst=VipDelInst(inst_id))))
+            else:
+                cmd_list.append(str(VipCmResCtrlCmd("del_res", res_name)))
+        cmd = "source %s; %s" % (EnvUtil.getMpprcFile(), ' ;'.join(cmd_list))
+        self.logger.log("Reduce cm resource information cmd: \n%s" % cmd)
+        return cmd
+
+    def config_cm_res_json(self, base_ips, cm_res_info):
+        """
+        Config cm resource file for vip
+        """
+        if not base_ips and not cm_res_info:
+            raise Exception("The parameters cannot be empty at the same time")
+
+        cmd = self.get_reduce_cm_res_cmd(base_ips)
+        stat, out = subprocess.getstatusoutput(cmd)
+        if stat != 0:
+            raise Exception("Failed to reduce the CM resource for VIP." \
+                            " Cmd: \n%s, Error: \n%s" % (cmd, str(out)))
+
+        cmd = self.get_add_cm_res_cmd(cm_res_info)
+        stat, out = subprocess.getstatusoutput(cmd)
+        if stat != 0:
+            raise Exception("Failed to add the CM resource for VIP." \
+                            " Cmd: \n%s, Error: \n%s" % (cmd, str(out)))
+
+        cmd = "cm_ctl res --check"
+        stat, out = subprocess.getstatusoutput(cmd)
+        if stat != 0:
+            raise Exception("Failed to config the CM resource file for VIP." \
+                            " Cmd: \n%s, Error: \n%s" % (cmd, str(out)))

@@ -393,7 +393,7 @@ class SshTool():
                 unpathpath = os.path.dirname(os.path.realpath(__file__))
                 GPHOME = os.path.realpath(os.path.join(unpathpath, "../../../"))
             else:
-                GPHOME = self.getGPHOMEPath(osProfile)
+                GPHOME = self.getGPHOMEPath(userProfile)
             psshpre = "python3 %s/script/gspylib/pssh/bin/pssh" % GPHOME
 
             # clean result file
@@ -559,7 +559,7 @@ class SshTool():
                 unpathpath = os.path.dirname(os.path.realpath(__file__))
                 GPHOME = os.path.realpath(os.path.join(unpathpath, "../../../"))
             else:
-                GPHOME = self.getGPHOMEPath(osProfile)
+                GPHOME = self.getGPHOMEPath(userProfile)
             psshpre = "python3 %s/script/gspylib/pssh/bin/pssh" % GPHOME
             if ssh_config:
                 if os.path.exists(ssh_config) and os.path.isfile(ssh_config):

@@ -1008,6 +1008,8 @@ Common options:
             self.logger.logExit(
                 ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + "Error: \n%s" % str(
                     output))
+        if output:
+            output = output.splitlines()[-1]
         if output == "1":
             return
         fileList = os.listdir(upperDir)

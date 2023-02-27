@@ -455,7 +455,8 @@ class SshTool():
                     dss_cmd = sshCmd.replace('parallelism_flag',
                                             '-H ' + dss_host)
                     status, output = subprocess.getstatusoutput(dss_cmd)
-                    if output.find("Timed out, Killed by signal 9") > 0:
+                    # killed by signal 9 or Signals.SIGKILL
+                    if output.find("Timed out, Killed by signal") > 0:
                         self.timeOutClean(cmd, psshpre, hostList, env_file,
                                         parallel_num)
                         isTimeOut = True
@@ -475,7 +476,7 @@ class SshTool():
                 status, output = subprocess.getstatusoutput(sshCmd)
             # when the pssh is time out, kill parent and child process
             if not localMode and parallelism:
-                if output.find("Timed out, Killed by signal 9") > 0:
+                if output.find("Timed out, Killed by signal") > 0:
                     self.timeOutClean(cmd, psshpre, hostList, env_file,
                                       parallel_num)
                     isTimeOut = True
@@ -616,7 +617,8 @@ class SshTool():
             (status, output) = subprocess.getstatusoutput(sshCmd)
             # when the pssh is time out, kill parent and child process
             if not localMode:
-                if output.find("Timed out, Killed by signal 9") > 0:
+                # killed by signal 9 or Signals.SIGKILL
+                if output.find("Timed out, Killed by signal") > 0:
                     isTimeOut = True
                     self.timeOutClean(cmd, psshpre, hostList, env_file,
                                       parallel_num)

@@ -47,7 +47,9 @@ from domain_utils.cluster_file.cluster_dir import ClusterDir
 from gspylib.component.CM.CM_OLAP.CM_OLAP import CM_OLAP
 
 
+# Action type
 ACTION_INSTALL_CLUSTER = "install_cluster"
+ACTION_EXPAND_NODE ="expansion_node"
 
 
 def change_user_executor(perform_method):
@@ -116,8 +118,9 @@ class ExpansionImplWithCm(ExpansionImpl):
                                                                DefaultValue.MAX_DIRECTORY_MODE)
         create_dir_cmd += " && chown {0}:{1} {2}".format(self.user, self.group, xml_dir)
         self.ssh_tool.executeCommand(create_dir_cmd)
-        self.ssh_tool.scpFiles(self.context.xmlFile, self.context.xmlFile,
-                               hostList=self.get_node_names(self.new_nodes))
+        self.ssh_tool.scpFiles(self.context.xmlFile, self.context.xmlFile)
+        cmd = "chown %s:%s %s" % (self.user, self.group, self.context.xmlFile)
+        self.ssh_tool.executeCommand(cmd)
         self.logger.log("Success to send XML to new nodes")
 
     def preinstall_run(self):
@@ -302,11 +305,16 @@ class ExpansionImplWithCm(ExpansionImpl):
                 datains = node.datanodes[0]
                 log_dir = "%s/pg_log/dn_%d" % (log_path, appname)
                 audit_dir = "%s/pg_audit/dn_%d" % (log_path, appname)
+                if "127.0.0.1" in datains.listenIps:
+                    listen_ips = "%s" % ",".join(datains.listenIps)
+                else:
+                    listen_ips = "localhost,%s" % ",".join(datains.listenIps)
                 new_nodes_para_list.extend([
                     (node.name, datains.datadir, "port", datains.port),
                     (node.name, datains.datadir, "application_name", "dn_%s" % appname),
                     (node.name, datains.datadir, "log_directory", "%s" % log_dir),
-                    (node.name, datains.datadir, "audit_directory", "%s" % audit_dir)
+                    (node.name, datains.datadir, "audit_directory", "%s" % audit_dir),
+                    (node.name, datains.datadir, "listen_addresses", listen_ips)
                 ])
 
         for new_node_para in new_nodes_para_list:
@@ -381,6 +389,9 @@ class ExpansionImplWithCm(ExpansionImpl):
         cmd = "source {0};gs_guc set -D {1}".format(self.envFile, new_inst.datadir)
         cmd += " -h 'host    all    %s    %s/32    trust'" % (self.user, host_ip)
         cmd += " -h 'host    all    all    %s/32    sha256'" % host_ip
+        if self.xml_cluster_info.float_ips:
+            cmd += " -h 'host    all    all    %s/32    sha256'" % \
+                   self.xml_cluster_info.float_ips[new_inst.float_ips[0]]
         self.logger.log("Ready to perform command on node [{0}]. "
                         "Command is : {1}".format(new_node.name, cmd))
         CmdExecutor.execCommandWithMode(cmd, self.ssh_tool, host_list=[new_node.name])
@@ -394,6 +405,22 @@ class ExpansionImplWithCm(ExpansionImpl):
             self._config_new_node_hba(node)
         self.logger.log("Successfully set hba on all nodes.")
 
+    def _update_cm_res_json(self):
+        """
+        Update cm resource json file.
+        """
+        if not self.xml_cluster_info.float_ips:
+            self.logger.log("The current cluster does not support VIP.")
+            return
+        self.logger.log("Updating cm resource file on all nodes.")
+        cmd = "source %s; " % self.envFile
+        cmd += "%s -t %s -U %s -X '%s' -l '%s' " % (
+               OMCommand.getLocalScript("Local_Config_CM_Res"), ACTION_EXPAND_NODE,
+               self.context.user, self.context.xmlFile, self.context.localLog)
+        self.logger.debug("Command for updating cm resource file: %s" % cmd)
+        CmdExecutor.execCommandWithMode(cmd, self.ssh_tool)
+        self.logger.log("Successfully updated cm resource file.")
+
     def _config_instance(self):
         """
         Config instance
@@ -402,6 +429,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         self.generateClusterStaticFile()
         self.setGucConfig()
         self._set_other_guc_para()
+        self._update_cm_res_json()
         self._config_pg_hba()
         self.distributeCipherFile()
 

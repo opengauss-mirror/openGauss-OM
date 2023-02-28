@@ -204,8 +204,7 @@ General options:
 
     def check_repeat_process(self):
         """
-        function: Check whether only one node be left in the cluster
-        return a flag
+        Check whether the same gs_dropnode command be run at the same time
         """
         cmd = "ps -ef | grep 'gs_dropnode -U %s -G %s' | grep -v grep" \
               % (self.user, self.group)

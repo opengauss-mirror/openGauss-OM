@@ -36,6 +36,9 @@ from gspylib.component.DSS.dss_checker import DssConfig
 
 ROLLBACK_FAILED = 3
 
+# Action type
+ACTION_INSTALL_CLUSTER = "install_cluster"
+
 
 class InstallImplOLAP(InstallImpl):
     """
@@ -221,6 +224,8 @@ class InstallImplOLAP(InstallImpl):
         output: NA
         """
         # config instance applications
+        if self.context.clusterInfo.float_ips:
+            self.config_cm_res_json()
         self.updateInstanceConfig()
         self.updateHbaConfig()
 
@@ -371,6 +376,22 @@ class InstallImplOLAP(InstallImpl):
                                         self.context.sshTool,
                                         self.context.isSingle)
         self.context.logger.debug("Successfully configured node instance.")
+
+    def config_cm_res_json(self):
+        """
+        Config cm resource json file.
+        """
+        self.context.logger.log("Configuring cm resource file on all nodes.")
+        cmd = "source %s; " % self.context.mpprcFile
+        cmd += "%s -t %s -U %s -X '%s' -l '%s' " % (
+               OMCommand.getLocalScript("Local_Config_CM_Res"), ACTION_INSTALL_CLUSTER,
+               self.context.user, self.context.xmlFile, self.context.localLog)
+        self.context.logger.debug(
+            "Command for configuring cm resource file: %s" % cmd)
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle)
+        self.context.logger.log("Successfully configured cm resource file.")
 
     def updateHbaConfig(self):
         """

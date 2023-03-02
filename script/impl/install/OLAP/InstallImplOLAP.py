@@ -20,6 +20,7 @@
 import subprocess
 import os
 import sys
+import re
 
 sys.path.append(sys.path[0] + "/../../../")
 from gspylib.common.Common import DefaultValue
@@ -33,6 +34,8 @@ from base_utils.os.file_util import FileUtil
 from base_utils.os.net_util import NetUtil
 from domain_utils.cluster_file.version_info import VersionInfo
 from gspylib.component.DSS.dss_checker import DssConfig
+from base_utils.os.cmd_util import CmdUtil
+from gspylib.component.DSS.dss_comp import UdevContext
 
 ROLLBACK_FAILED = 3
 
@@ -124,6 +127,9 @@ class InstallImplOLAP(InstallImpl):
         output: NA
         """
         self.context.cleanNodeConfig()
+        is_dss_mode = self.context.clusterInfo.enable_dss == 'on'
+        self.reset_lun_device(is_dss_mode)
+        self.create_dss_vg(is_dss_mode)
         self.checkNodeConfig()
 
     def checkNodeConfig(self):
@@ -179,6 +185,86 @@ class InstallImplOLAP(InstallImpl):
                                         self.context.isSingle)
         self.context.logger.debug("Successfully checked node's installation.",
                                   "constant")
+
+    def create_dss_vg(self, is_dss_mode=False):
+        '''
+        Create a VG on the first node.
+        '''
+        if not is_dss_mode:
+            self.context.logger.debug(
+                'The mode is non-dss, no need to create the dss vg.')
+            return
+
+        self.context.logger.log('Start to create the dss vg.')
+        for vgname, dss_disk in UdevContext.get_all_vgname_disk_pair(
+                self.context.clusterInfo.dss_shared_disks,
+                self.context.clusterInfo.dss_pri_disks,
+                self.context.user).items():
+            au_size = '2048'
+            if dss_disk.find('shared') == -1:
+                au_size = '65536'
+            source_cmd = "source %s; " % self.context.mpprcFile
+            show_cmd = source_cmd + f'dsscmd showdisk -g {vgname} -s vg_header'
+            cv_cmd = source_cmd + f'dsscmd cv -g {vgname} -v {dss_disk} -s {au_size}'
+            self.context.logger.debug(
+                'The cmd of the showdisk: {}.'.format(show_cmd))
+            self.context.logger.debug('The cmd of the cv: {}.'.format(cv_cmd))
+
+            sts, out = subprocess.getstatusoutput(show_cmd)
+            if sts == 0:
+                if out.find('vg_name = {}'.format(vgname)) > -1:
+                    self.context.logger.debug(
+                        'volume group {} mounted'.format(dss_disk))
+                else:
+                    sts, out = CmdUtil.retry_exec_by_popen(cv_cmd)
+                    if sts:
+                        self.context.logger.debug(
+                            'The volume {} is successfully created. Result: {}'.
+                            format(dss_disk, str(out)))
+                    else:
+                        raise Exception(
+                            ErrorCode.GAUSS_512['GAUSS_51257'] +
+                            "Failed to create the volume: {}".format(str(out)))
+            else:
+                raise Exception(
+                    ErrorCode.GAUSS_512['GAUSS_51257'] +
+                    "Failed to query the volume using dsscmd, cmd: {}, Error: {}"
+                    .format(show_cmd, out.strip()))
+        self.context.logger.log("End to create the dss vg.")
+
+    def reset_lun_device(self, is_dss_mode=False):
+        '''
+        Low-level user disk with dd
+        '''
+        if not is_dss_mode:
+            self.context.logger.debug(
+                'The mode is non-dss, no need to clear the disk.')
+            return
+
+        self.context.logger.log("Start to clean up the dss luns.")
+        infos = list(
+            filter(None, re.split(r':|,',
+                                  self.context.clusterInfo.dss_vg_info)))
+        dss_devs = list(map(os.path.realpath, infos[1::2]))
+        cm_devs = list(
+            map(os.path.realpath, [
+                self.context.clusterInfo.cm_vote_disk,
+                self.context.clusterInfo.cm_share_disk
+            ]))
+
+        self.context.logger.debug(
+            "The luns are about to be cleared, contains: {}.".format(
+                ', '.join(cm_devs + dss_devs)))
+
+        cmd = []
+        for ds in dss_devs:
+            cmd.append('dd if=/dev/zero bs=64K count=1024 of={}'.format(ds))
+        for cs in cm_devs:
+            cmd.append('dd if=/dev/zero bs=1M count=256 of={}'.format(cs))
+        self.context.logger.debug("Clear lun cmd: {}.".format(' && '.join(cmd)))
+
+        CmdExecutor.execCommandLocally(' && '.join(cmd))
+        self.context.logger.log("End to clean up the dss luns.")
 
     def initNodeInstance(self):
         """

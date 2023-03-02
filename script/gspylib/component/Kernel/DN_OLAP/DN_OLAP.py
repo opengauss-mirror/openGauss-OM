@@ -159,7 +159,8 @@ class DN_OLAP(Kernel):
                     "UDS:{}/.dss_unix_d_socket".format(dss_home))
             self.logger.debug("Command for initializing database "
                               "node instance: %s" % cmd)
-            (status, output) = CmdUtil.retryGetstatusoutput(cmd)
+            status, output = CmdUtil.retryGetstatusoutput(
+                cmd, retry_time=0 if self.dss_mode else 3)
             if (status != 0):
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51615"] +
                                 " Command:%s. Error:\n%s" % (cmd, output))

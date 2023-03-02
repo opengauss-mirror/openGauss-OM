@@ -486,18 +486,6 @@ class PreinstallImpl:
         '''
         pass
 
-    def create_dss_vg(self):
-        '''
-        Create a VG on the first node.
-        '''
-        pass
-
-    def reset_lun_device(self):
-        '''
-        Low-level user disk with dd
-        '''
-        pass
-
     def installToolsPhase2(self):
         """
         function: install the tools
@@ -1602,11 +1590,6 @@ class PreinstallImpl:
 
         # unreg the disk of the dss and about
         self.dss_init()
-
-        self.reset_lun_device()
-        # Low-level user disk with dd
-        # create a vg on the first node
-        self.create_dss_vg()
 
         # set user cron
         self.set_user_crontab()

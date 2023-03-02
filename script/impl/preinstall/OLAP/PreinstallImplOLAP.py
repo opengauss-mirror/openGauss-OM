@@ -18,7 +18,6 @@ import subprocess
 import os
 import sys
 import time
-import re
 
 sys.path.append(sys.path[0] + "/../../")
 
@@ -26,16 +25,13 @@ from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.OMCommand import OMCommand
 from base_utils.executor.cmd_executor import CmdExecutor
-from base_utils.os.cmd_util import CmdUtil
 from base_utils.os.compress_util import CompressUtil
 from base_utils.os.file_util import FileUtil
 from domain_utils.cluster_file.package_info import PackageInfo
 from domain_utils.cluster_file.version_info import VersionInfo
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from base_utils.os.net_util import NetUtil
-from base_utils.os.env_util import EnvUtil
 from impl.preinstall.PreinstallImpl import PreinstallImpl
-from gspylib.component.DSS.dss_comp import UdevContext
 
 
 # action name
@@ -348,101 +344,6 @@ class PreinstallImplOLAP(PreinstallImpl):
         except Exception as e:
             raise Exception(str(e))
         self.context.logger.log("Successfully set core path.", "constant")
-
-    def create_dss_vg(self):
-        '''
-        Create a VG on the first node.
-        '''
-        if not self.context.clusterInfo.enable_dss == 'on':
-            self.context.logger.debug('The mode is non-dss.')
-            return
-
-        self.context.logger.debug('Start to create vg.')
-        if EnvUtil.is_fuzzy_upgrade(self.context.user, self.context.logger,
-                                    self.context.mpprcFile):
-            return
-
-        clib_app = os.path.join(self.context.clusterToolPath,
-                                'script/gspylib/clib',
-                                f'dss_app_{VersionInfo.getCommitid()}')
-        dss_home = self.context.clusterInfo.dss_home
-        for vgname, dss_disk in UdevContext.get_all_vgname_disk_pair(
-                self.context.clusterInfo.dss_shared_disks,
-                self.context.clusterInfo.dss_pri_disks,
-                self.context.user).items():
-            au_size = '2048'
-            if dss_disk.find('shared') == -1:
-                au_size = '65536'
-            show_cmd = 'su - {0} -c "export DSS_HOME={1}; export LD_LIBRARY_PATH={2};' \
-                  '{2}/dsscmd showdisk -g {3} -s vg_header -D {1}"'
-            cv_cmd = 'su - {0} -c "export DSS_HOME={1}; export LD_LIBRARY_PATH={2};' \
-                 '{2}/dsscmd cv -g {3} -v {4} -s {5} -D {1}"'
-            show_cmd = show_cmd.format(self.context.user, dss_home, clib_app,
-                                       vgname, dss_disk)
-            cv_cmd = cv_cmd.format(self.context.user, dss_home, clib_app,
-                                   vgname, dss_disk, au_size)
-            self.context.logger.debug(
-                'The cmd of the showdisk: {}.'.format(show_cmd))
-            self.context.logger.debug('The cmd of the cv: {}.'.format(cv_cmd))
-            sts, out = subprocess.getstatusoutput(show_cmd)
-            if sts == 0:
-                if out.find('vg_name = {}'.format(vgname)) > -1:
-                    self.context.logger.debug(
-                        'volume group {} mounted'.format(dss_disk))
-                else:
-                    sts, out = CmdUtil.retry_exec_by_popen(cv_cmd)
-                    if sts:
-                        self.context.logger.debug(
-                            'The volume {} is successfully created. Result: {}'.
-                            format(dss_disk, str(out)))
-                    else:
-                        raise Exception(
-                            "Failed to create the volume: {}".format(str(out)))
-            else:
-                raise Exception(
-                    "Failed to query the volume using dsscmd, cmd: {}, Error: {}"
-                    .format(show_cmd, out.strip()))
-        self.context.logger.debug("End to create vg.")
-
-
-    def reset_lun_device(self):
-        '''
-        Low-level user disk with dd
-        '''
-        if not self.context.clusterInfo.enable_dss == 'on':
-            self.context.logger.debug('The mode is non-dss.')
-            return
-
-        if EnvUtil.is_fuzzy_upgrade(self.context.user, self.context.logger,
-                                    self.context.mpprcFile):
-            self.context.logger.debug(
-                "The luns doesn't need to be reset in the upgrade.")
-            return
-
-        self.context.logger.log("Cleaning up the dss luns.", "addStep")
-        infos = list(
-            filter(None, re.split(r':|,',
-                                  self.context.clusterInfo.dss_vg_info)))
-        dss_devs = list(map(os.path.realpath, infos[1::2]))
-        cm_devs = list(
-            map(os.path.realpath, [
-                self.context.clusterInfo.cm_vote_disk,
-                self.context.clusterInfo.cm_share_disk
-            ]))
-
-        self.context.logger.debug(
-            "The luns are about to be cleared, contains: {}.".format(
-                ', '.join(cm_devs + dss_devs)))
-
-        cmd = []
-        for ds in dss_devs:
-            cmd.append('dd if=/dev/zero bs=64K count=1024 of={}'.format(ds))
-        for cs in cm_devs:
-            cmd.append('dd if=/dev/zero bs=1M count=256 of={}'.format(cs))
-        self.context.logger.debug("Clear lun cmd: {}.".format(' && '.join(cmd)))
-
-        CmdExecutor.execCommandLocally(' && '.join(cmd))
-        self.context.logger.log("Successfully cleaned up the dss lun.")
 
     def setPssh(self):
         """

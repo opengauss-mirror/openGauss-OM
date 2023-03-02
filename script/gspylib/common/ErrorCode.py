@@ -492,7 +492,7 @@ class ErrorCode():
         'GAUSS_51254': "[GAUSS-51254] : Failed to kill dssserver. Error %s.",
         'GAUSS_51255': "[GAUSS-51255] : Failed to reencrypt the password with dsscmd",
         'GAUSS_51256': "[GAUSS-51256] : Failed to get the encrypted text with dsscmd",
-
+        'GAUSS_51257': "[GAUSS-51257] : There are some errors about dsscmd. ",
 
     }
 

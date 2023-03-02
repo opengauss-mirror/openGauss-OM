@@ -491,6 +491,18 @@ class InstallImpl:
         """
         pass
 
+    def reset_lun_device(self, is_dss_mode=False):
+        '''
+        Low-level user disk with dd
+        '''
+        pass
+
+    def create_dss_vg(self, is_dss_mode=False):
+        '''
+        Create a VG on the first node.
+        '''
+        pass
+
     # for ap
     def prepareConfigCluster(self):
         """

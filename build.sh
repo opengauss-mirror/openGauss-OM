@@ -81,19 +81,11 @@ declare package_name="${package_pre_name}.tar.gz"
 declare sha256_name="${package_pre_name}.sha256"
 
 if [ ${binarylib_dir} != 'None' ] && [ -d ${binarylib_dir} ]; then
-    if [[ $(python -V | awk '{print $2}') =~ "3.9" ]]; then
-        BINARYLIBS_PATH_INSTALL_TOOLS="${binarylib_dir}/install_tools_python39"
-    else
-        BINARYLIBS_PATH_INSTALL_TOOLS="${binarylib_dir}/install_tools"
-    fi
+    BINARYLIBS_PATH_INSTALL_TOOLS="${binarylib_dir}/install_tools"
     BINARYLIBS_PATH="${binarylib_dir}/kernel/dependency/"
     BUILD_TOOLS_PATH="${binarylib_dir}/buildtools/"
 else
-    if [[ $(python -V | awk '{print $2}') =~ "3.9" ]]; then
-        BINARYLIBS_PATH_INSTALL_TOOLS="${ROOT_DIR}/install_tools_python39"
-    else
-        BINARYLIBS_PATH_INSTALL_TOOLS="${ROOT_DIR}/install_tools"
-    fi
+    BINARYLIBS_PATH_INSTALL_TOOLS="${ROOT_DIR}/install_tools"
     BINARYLIBS_PATH="${ROOT_DIR}/binarylibs/kernel/dependency/"
     BUILD_TOOLS_PATH="${ROOT_DIR}/binarylibs/buildtools/"
 fi
@@ -201,6 +193,7 @@ function lib_copy()
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/six.py               ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/_cffi_backend.py     ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/_cffi_backend.so*    ${PKG_TMP_DIR}/lib
+    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/_cffi_backend_*      ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/paramiko             ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psutil               ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/netifaces            ${PKG_TMP_DIR}/lib

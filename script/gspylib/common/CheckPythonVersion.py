@@ -32,9 +32,9 @@ def checkPythonVersion():
 
 def check_python_compiler_option():
     config_args = sysconfig.get_config_var("CONFIG_ARGS")
-    if "--enable-shared" and "-fPIC" not in config_args:
+    if "--enable-shared" not in config_args:
         raise Exception("[GAUSS-52200] : When compiling python, \
-            carry the -enable-shared and -fpic parameters")
+            carry the -enable-shared parameters")
     return True
 
 

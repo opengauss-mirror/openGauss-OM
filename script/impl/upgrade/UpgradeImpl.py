@@ -329,6 +329,16 @@ class UpgradeImpl:
             else:
                 self.context.logger.error(str(e))
                 self.exitWithRetCode(action, False, str(e))
+        finally:
+            # only used under grey upgrade, grey upgrade commit or grey upgrade rollback
+            # under force and standby cluster upgrade, we don't close enable_transaction_read_only
+            # at beginning, so no need to restore
+            if not (self.context.is_inplace_upgrade or self.context.standbyCluster):
+                cm_nodes = []
+                for node in self.context.clusterInfo.dbNodes:
+                    if node.cmservers:
+                        cm_nodes.append(node.name)
+                self.restore_cm_server_guc(const.GREY_CLUSTER_CMSCONF_FILE, False, cm_nodes)
 
     def commonCheck(self):
         """
@@ -367,6 +377,18 @@ class UpgradeImpl:
                 if self.unSetClusterReadOnlyMode() != 0:
                     raise Exception("NOTICE: "
                                     + ErrorCode.GAUSS_529["GAUSS_52907"])
+            if self.context.forceRollback and not self.context.is_inplace_upgrade:
+                self.close_cm_server_gucs_before_install()
+                self.context.logger.debug("no need to check read only in "
+                                          "force rollback after grey upgrade")
+                return
+            if (self.context.action == const.ACTION_AUTO_UPGRADE and
+                    not self.context.is_inplace_upgrade or
+                    (os.path.isfile(greyUpgradeFlagFile) and
+                     self.context.action in [const.ACTION_AUTO_ROLLBACK, const.ACTION_COMMIT_UPGRADE])):
+                gucStr = "default_transaction_read_only:%s" % "off"
+                self.checkParam(gucStr, False)
+                self.close_cm_server_gucs_before_install()
         except Exception as e:
             raise Exception(str(e))
 
@@ -796,6 +818,294 @@ class UpgradeImpl:
             self.context.mpprcFile)
         self.context.logger.log("Successfully started cluster.")
 
+    def set_cm_parameters(self, cm_nodes, cms_para_dict):
+        """
+        function:set cms parameters
+        """
+        # set cm_server parameters
+        for cm_node in cm_nodes:
+            cmserver_file = os.path.join(cm_node.cmservers[0].datadir, "cm_server.conf")
+            cmd = "echo -e '\n' > /dev/null 2>&1"
+            for para in list(cms_para_dict.keys()):
+                cmd += " && sed -i '/\<%s\>/d' '%s' && echo '%s = %s' >> '%s'" % \
+                       (para, cmserver_file, para, cms_para_dict[para], cmserver_file)
+            self.context.logger.debug("Command for setting CMServer parameters: %s." % cmd)
+
+            if self.context.isSingle:
+                (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
+                if status != 0 and not self.context.ignoreInstance:
+                    raise Exception(ErrorCode.GAUSS_500["GAUSS_50007"] %
+                                    ",".join(list(cms_para_dict.keys())) + " Error:%s." % output)
+            else:
+                (status, output) = self.context.sshTool.getSshStatusOutput(cmd, [cm_node.name])
+                if status[cm_node.name] != DefaultValue.SUCCESS:
+                    raise Exception(ErrorCode.GAUSS_500["GAUSS_50007"] %
+                                    ",".join(list(cms_para_dict.keys())) + " Error:%s." % output)
+
+    def save_cm_server_guc(self, cmsParaDict, fileName):
+        """
+        function : Save the old parameters to the json file
+                   will create an empty file if the cmsParaDict is empty
+        @param cmsParaDict: parameter dict
+        @param fileName: json file name
+        """
+        try:
+            self.context.logger.debug("Start to save the old parameters to the json file")
+            # Save the parameters to one file
+            FileUtil.createFileInSafeMode(fileName)
+            with open(fileName, 'w') as fp_json:
+                json.dump(cmsParaDict, fp_json)
+
+            if not self.context.isSingle:
+                self.context.sshTool.scpFiles(fileName, os.path.dirname(fileName) + "/",
+                                              hostList=self.context.clusterNodes)
+            self.context.logger.debug("Successfully written and send file %s. "
+                                      "The list context is %s." % (fileName, cmsParaDict))
+        except Exception as er:
+            if not self.context.forceRollback:
+                raise Exception(str(er))
+            self.context.logger.debug("WARNING: Failed to save the CMServer parameters.")
+
+    def set_cm_server_guc(self, cmsParaDict, needReload=True):
+        """
+        function : set cm_server parameters and restart cm_server instance
+        @param cmsParaDict: parameter dict
+        @param needReload: kill -1
+        """
+        self.context.logger.debug("Start set and restart cm_server instance.")
+        if len(cmsParaDict.keys()) == 0 or self.context.standbyCluster:
+            self.context.logger.debug("no need to do.")
+            return
+
+        cmNodes = []
+        # Get all the nodes that contain the CMSERVER instance
+        for dbNode in self.context.clusterInfo.dbNodes:
+            if len(dbNode.cmservers) > 0:
+                cmNodes.append(dbNode)
+
+        self.set_cm_parameters(cmNodes, cmsParaDict)
+
+        if not needReload:
+            return
+
+        # Restart the instance CMSERVERS
+
+        # Reload cm parameters using kill -1
+        cmd = DefaultValue.killInstProcessCmd("cm_server", False, 1)
+        self.context.logger.debug("Command for reloading CMServer instances: %s." % cmd)
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
+        if status != 0:
+            self.context.logger.warn("Kill CMS failed. OUTPUT: {0}".format(output))
+        # Waiting for CMS instance to automatically refresh and reload
+        time.sleep(10)
+        self.context.logger.debug("Successfully set and reload CMServer instance.")
+
+    def base_close_cm_server_guc(self):
+        """
+        function: Close cm_server guc parameter interface
+        """
+        if self.context.is_inplace_upgrade:
+            self.close_cm_server_guc(const.CLUSTER_CMSCONF_FILE,
+                                     const.CMSERVER_GUC_DEFAULT_HA,
+                                     const.CMSERVER_GUC_CLOSE_HA)
+        else:
+            self.close_cm_server_guc(const.GREY_CLUSTER_CMSCONF_FILE,
+                                     const.CMSERVER_GUC_GREYUPGRADE_DEFAULT,
+                                     const.CMSERVER_GUC_GREYUPGRADE_CLOSE)
+        self.set_enable_ssl("off")
+
+    def close_cm_server_gucs_before_install(self):
+        """
+        function: Close CM parameter before install new binary
+        """
+        if DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) == 0:
+            self.context.logger.debug("Old cluster not exist CM component, "
+                                      "no need close guc parameter in before install binary files.")
+            return
+        self.context.logger.debug("Close cm_server parameters start before install binary files.")
+        self.base_close_cm_server_guc()
+
+    def close_cm_server_gucs_after_install(self):
+        """
+        function: Close CM parameter after install new binary
+        """
+        if DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) != 0:
+            self.context.logger.debug("Old cluster not exist CM component, "
+                                      "no need close guc parameter in after install binary files.")
+            return
+        self.context.logger.debug("Close cm_server parameters start after install binary files.")
+        self.base_close_cm_server_guc()
+
+    def close_cm_server_guc(self, backUpFile, OriginalGUCparas, closedGUCparas):
+        """
+        function: save old cm_server parameters, set new value by backUpFile
+        input : NA
+        output: NA
+        """
+        if DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo) == 0:
+            self.context.logger.debug("New cluster not exist CM component, no need to restore guc parameter.")
+            return
+        self.context.logger.debug("Start to close CMServer parameters.")
+        if self.context.standbyCluster:
+            self.context.logger.debug("No need to close CMServer guc under force upgrade.")
+            return
+        closeGUCparas = {}
+        try:
+            cmsGucFile = os.path.join(EnvUtil.getTmpDirFromEnv(), backUpFile)
+            cmsGucFileSet = cmsGucFile + ".done"
+            if os.path.isfile(cmsGucFileSet):
+                self.context.logger.debug("Result: The file [%s] exists, it means that the GUC "
+                                          "parameter values have been closed." % cmsGucFileSet)
+                return
+
+            # If the backup file already exists, read it through the backup file, otherwise,
+            # connect to the database to get it
+            if os.path.isfile(cmsGucFile):
+                try:
+                    with open(cmsGucFile, "r") as fp:
+                        oldGUCParas = json.load(fp)
+                except Exception as _:
+                    # if file exists, but not available, we need to remove it firsts
+                    self.context.logger.debug("WARNING: the cms guc back file is unavailable. "
+                                              "Maybe we should keep guc consistent manually "
+                                              "if failed")
+                    cmd = "%s '%s'" % (CmdUtil.getRemoveCmd("file"), cmsGucFile)
+                    hostList = copy.deepcopy(self.context.clusterNodes)
+                    self.context.execCommandInSpecialNode(cmd, hostList)
+                    oldGUCParas = self.getCMServerGUC(OriginalGUCparas)
+            else:
+                oldGUCParas = self.getCMServerGUC(OriginalGUCparas)
+            if len(list(oldGUCParas.keys())) == 0:
+                self.context.logger.debug("There is no GUC parameters on CMS instance, "
+                                          "so don't need to close them.")
+                self.save_cm_server_guc(oldGUCParas, cmsGucFileSet)
+                return
+
+            for para in list(oldGUCParas.keys()):
+                if para in list(closedGUCparas.keys()):
+                    closeGUCparas[para] = closedGUCparas[para]
+
+            self.save_cm_server_guc(oldGUCParas, cmsGucFile)
+            self.set_cm_server_guc(closeGUCparas)
+
+            cmd = "mv '%s' '%s'" % (cmsGucFile, cmsGucFileSet)
+            hostList = copy.deepcopy(self.context.clusterNodes)
+            self.context.execCommandInSpecialNode(cmd, hostList)
+
+            # make sure all cm_server child process has been killed. Example: gs_check
+            gaussHome = ClusterDir.getInstallDir(self.context.user)
+            cmServerFile = "%s/bin/cm_server" % gaussHome
+            cmNodes = []
+            # Get all the nodes that contain the CMSERVER instance
+            for dbNode in self.context.clusterInfo.dbNodes:
+                if len(dbNode.cmservers) > 0:
+                    cmNodes.append(dbNode)
+            # only kill the child process, not including cm_server
+            pstree = "%s -c" % os.path.realpath(
+                os.path.dirname(os.path.realpath(__file__)) + "/../../py_pstree.py")
+            if self.context.isSingle:
+                cmd = "pidList=`ps aux | grep \"%s\" | grep -v 'grep' | awk '{print $2}' | " \
+                      "xargs `; " % cmServerFile
+                cmd += "for pid in $pidList; do %s $pid | xargs -r -n 100 kill -9; done" % pstree
+                (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
+            else:
+                cmd = "pidList=\`ps aux | grep \"%s\" | grep -v 'grep' | awk '{print \$2}' | " \
+                      "xargs \`; " % cmServerFile
+                cmd += "for pid in \$pidList; do %s \$pid | xargs -r -n 100 kill -9; done" % pstree
+                (status, output) = self.context.sshTool.getSshStatusOutput(
+                                    cmd, [cmNode.name for cmNode in cmNodes])
+            self.context.logger.debug("Command for killing all cm_server child process: %s." % cmd)
+            self.context.logger.debug("The result of kill cm_server child process commands. "
+                                      "Status:%s, Output:%s." % (status, output))
+            self.waitClusterNormalDegrade(waitTimeOut=60)
+
+            self.context.logger.debug("Successfully closed the CMServer parameters.", "constant")
+        except Exception as er:
+            if not self.context.forceRollback:
+                raise Exception(str(er))
+            self.context.logger.debug("WARNING: Failed to close the CMServer parameters.")
+
+    def restore_cm_server_guc(self, backUpFile, isCommit=False, hostList=None):
+        """
+        function: restore cm_server parameters
+        input : NA
+        output: NA
+        """
+        if DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo) == 0:
+            self.context.logger.debug("Origin cluster not exist CM component, no need to restore guc parameter.")
+            return
+        if hostList is None:
+            hostList = []
+        old_guc_paras = dict()
+        filename = ""
+        self.context.logger.debug("Start to restore the CMServer parameters in file.")
+        if self.context.standbyCluster:
+            self.context.logger.debug("No need to restore the CMServer guc in standby cluster.")
+            return
+        try:
+            cms_guc_file = os.path.join(EnvUtil.getTmpDirFromEnv(), backUpFile)
+            cms_guc_file_set = cms_guc_file + ".done"
+            if not os.path.isfile(cms_guc_file_set) and not os.path.isfile(cms_guc_file):
+                self.context.logger.debug("The CMServer parameters file [%s] and [%s] does not "
+                                          "exists, so don't need to restore them." %
+                                          (cms_guc_file_set, cms_guc_file))
+            else:
+                if os.path.isfile(cms_guc_file_set):
+                    filename = cms_guc_file_set
+                else:
+                    filename = cms_guc_file
+                with open(filename) as fp_json:
+                    old_guc_paras = json.load(fp_json)
+                self.context.logger.debug("Get CMServer parameters from [{0}]:"
+                                          "{1}".format(filename, old_guc_paras))
+
+            if isCommit:
+                self.context.logger.debug("Set CMServer parameters for upgrade commit.")
+                for cmsPara in list(const.CMSERVER_GUC_DEFAULT.keys()):
+                    if cmsPara not in list(old_guc_paras.keys()):
+                        old_guc_paras[cmsPara] = const.CMSERVER_GUC_DEFAULT[cmsPara]
+
+            if len(list(old_guc_paras.keys())) != 0:
+                self.set_cm_server_guc(old_guc_paras)
+            else:
+                self.context.logger.debug("There is no GUC parameters in file %s, "
+                                          "so don't need to restore them.But still need clean file." % filename)
+
+            cmd = g_file.SHELL_CMD_DICT["deleteFile"] % (cms_guc_file_set, cms_guc_file_set)
+            cmd += " && {0}".format(g_file.SHELL_CMD_DICT["deleteFile"] % (cms_guc_file, cms_guc_file))
+            
+            if len(hostList) == 0:
+                hosts = copy.deepcopy(self.context.clusterNodes)
+                self.context.execCommandInSpecialNode(cmd, hosts)
+            else:
+                self.context.execCommandInSpecialNode(cmd, copy.deepcopy(hostList))
+            self.context.logger.debug("Successfully restored the CMServer parameters.")
+        except Exception as er:
+            if not self.context.forceRollback:
+                raise Exception(str(er) + "\nFailed to restore CMServer parameters. " + 
+                                "You may restore manually with file.")
+            self.context.logger.debug("WARNING: Failed to restore the CMServer parameters.")
+        # open enable_ssl parameter
+        self.set_enable_ssl("on")
+
+    def clean_cms_param_file(self):
+        """
+        Clean enable_ssl_on and cluster_cmsconf.json.done in PGHOST
+        """
+        enable_ssl_on_file = os.path.join(EnvUtil.getTmpDirFromEnv(), "enable_ssl_on")
+        enable_ssl_off_file = os.path.join(EnvUtil.getTmpDirFromEnv(), "enable_ssl_off")
+        cms_param_json_file = os.path.join(EnvUtil.getTmpDirFromEnv(), "cluster_cmsconf.json.done")
+        cmd = g_file.SHELL_CMD_DICT["deleteFile"] % (enable_ssl_on_file, enable_ssl_on_file)
+        cmd += " && {0}".format(g_file.SHELL_CMD_DICT["deleteFile"] % (enable_ssl_off_file, enable_ssl_off_file))
+        cmd += " && {0}".format(g_file.SHELL_CMD_DICT["deleteFile"] % (cms_param_json_file, cms_param_json_file))
+
+        self.context.logger.debug("Clean cms param file CMD is: {0}".format(cmd))
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle,
+                                        self.context.mpprcFile)
+        self.context.logger.debug("Clean cms param file success.")
+
     def createCommitFlagFile(self):
         """
         function: create a flag file, if this file exists,
@@ -1036,6 +1346,113 @@ class UpgradeImpl:
         """
         self.setGUCValue("vacuum_defer_cleanup_age", "100000", "reload")
 
+    def is_config_cm_params(self):
+        """
+        Check conditions for ssl_enable
+        """
+        self.context.logger.log("Start check CMS parameter.")
+        new_version = int(float(self.context.newClusterNumber) * 1000)
+        old_version = int(float(self.context.oldClusterNumber) * 1000)
+        check_version = 92574
+        self.context.logger.debug("New version: [{0}]. Old version: [{1}]. "
+                                  "Check version: [{2}]".format(new_version, 
+                                                                old_version, 
+                                                                check_version))
+
+        if DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo) == 0:
+            self.context.logger.debug("Not exist CM component. No need to check CMS parameter.")
+            return False
+
+        if new_version >= check_version > old_version:
+            self.context.logger.debug(
+                "Old cluster cm_server not supported ssl_enable parameter. New version supported.")
+            return True
+
+        self.context.logger.log("Old cluster version number less than 92574.")
+        return False
+
+    def get_current_enable_ssl_value(self):
+        """
+        Get the value of enable_ssl from remote node
+        """
+        all_cm_server_inst = [inst for node in self.context.clusterInfo.dbNodes for inst in node.cmservers]
+        first_cms_inst = all_cm_server_inst[0]
+        server_conf_file = os.path.join(first_cms_inst.datadir, "cm_server.conf")
+        remote_cmd = "grep -E '^enable_ssl = ' {0}".format(server_conf_file)
+        ssh_cmd = "pssh -s -H {0} \"{1}\"".format(first_cms_inst.hostname, remote_cmd)
+        status, output = subprocess.getstatusoutput(ssh_cmd)
+        if status != 0 or "=" not in output:
+            self.context.logger.warn("Get enable_ssl failed. Output:: [{0}]".format(output))
+            return False
+        self.context.logger.debug("Get the value of enable_ssl is [{0}] "
+                                  "from node [{1}].".format(output.split("=")[1].strip(), first_cms_inst.hostname))
+        return output.split("=")[1].strip()
+
+    def generate_enable_ssl_flag_file(self):
+        """
+        Generate enable_ssl flag file for upgrade commit
+        Please ensure that there are CMS nodes in the cluster.
+        """
+        enable_ssl_value = self.get_current_enable_ssl_value()
+        if not enable_ssl_value:
+            self.context.logger.debug("No exist enable_ssl value.")
+            return
+
+        flag_file_name = "enable_ssl_on" if enable_ssl_value == "on" else "enable_ssl_off"
+        flag_file_path = os.path.join(EnvUtil.getTmpDirFromEnv(), flag_file_name)
+        generate_cmd = "touch {0} && chmod 400 {0}".format(flag_file_path)
+        self.context.sshTool.executeCommand(generate_cmd, hostList=self.context.clusterInfo.getClusterNodeNames())
+        self.context.logger.debug("Generate enable_ssl flag file [{0}] successfully.".format(flag_file_path))
+
+    def set_enable_ssl(self, value):
+        """
+        Check CM parameter ssl_enable
+        """
+        self.context.logger.debug("Turn {0} enable_ssl parameter.".format(value))
+        if not self.is_config_cm_params():
+            return
+
+        if value == "off":
+            self.context.logger.debug("Backup file before disabling the parameter.")
+            self.generate_enable_ssl_flag_file()
+        else:
+            self.context.logger.debug("Get enable_ssl flag file.")
+            ssl_off_flag = os.path.join(EnvUtil.getTmpDirFromEnv(), "enable_ssl_off")
+            ssl_on_flag = os.path.join(EnvUtil.getTmpDirFromEnv(), "enable_ssl_on")
+            if os.path.isfile(ssl_off_flag):
+                self.context.logger.debug("Old cluster turn off enable_ssl.")
+                rm_flag_cmd = "rm -f {0}".format(ssl_off_flag)
+                self.context.sshTool.executeCommand(rm_flag_cmd,
+                                                    hostList=self.context.clusterInfo.getClusterNodeNames())
+                return
+            if os.path.isfile(ssl_on_flag):
+                self.context.logger.debug("Old cluster turn on enable_ssl [{0}].".format(ssl_on_flag))
+                rm_flag_cmd = "rm -f {0}".format(ssl_on_flag)
+                self.context.sshTool.executeCommand(rm_flag_cmd,
+                                                    hostList=self.context.clusterInfo.getClusterNodeNames())
+            else:
+                self.context.logger.debug("Old cluster not set enable_ssl parameter.")
+                return
+
+        cm_nodes = [node for node in self.context.clusterInfo.dbNodes if node.cmservers]
+        cm_node_names = [node.name for node in cm_nodes]
+        if not cm_nodes:
+            raise Exception(ErrorCode.GAUSS_512["GAUSS_51212"] % "CMS")
+        cm_server_dir = cm_nodes[0].cmservers[0].datadir
+        cm_agent_dir = os.path.join(cm_nodes[0].cmDataDir, "cm_agent")
+        cms_conf_file = os.path.join(cm_server_dir, "cm_server.conf")
+        cma_conf_file = os.path.join(cm_agent_dir, "cm_agent.conf")
+        origin_value = "off" if value == "on" else "on"
+
+        cmd = "sed -i 's/enable_ssl = {0}/enable_ssl = {1}/g' {2}".format(origin_value, value, cma_conf_file)
+        self.context.sshTool.executeCommand(cmd, hostList=cm_node_names)
+
+        cmd = "sed -i 's/enable_ssl = {0}/enable_ssl = {1}/g' {2}".format(origin_value, value, cms_conf_file)
+        self.context.sshTool.executeCommand(cmd, hostList=self.context.clusterInfo.getClusterNodeNames())
+
+        self.reload_cmserver()
+        self.context.logger.debug("Turn {0} enable_ssl parameter.".format(value))
+
 
     def doGreyBinaryUpgrade(self):
         """
@@ -1167,6 +1584,8 @@ class UpgradeImpl:
                 # create CA for CM
                 if len(self.context.nodeNames) == len(self.context.clusterNodes):
                     self.create_ca_for_cm()
+                    # turn off enable_ssl for upgrade
+                    self.set_enable_ssl("off")
                 else:
                     self.createCmCaForRollingUpgrade()
 
@@ -1847,6 +2266,8 @@ class UpgradeImpl:
                 self.context.sshTool.executeCommand(cmd)
                 self.context.logger.log("Successfully uninstall Kerberos.")
                 self.start_strategy(is_final=False)
+            # Disable CM parameter in normal scenarios
+            self.close_cm_server_gucs_before_install()
             if self.unSetClusterReadOnlyMode() != 0:
                 raise Exception("NOTICE: "
                                 + ErrorCode.GAUSS_529["GAUSS_52907"])
@@ -1925,6 +2346,7 @@ class UpgradeImpl:
             #    gds files
             #    cn cert files
             #    At the same time, sync newly added guc for instances
+            #    Install CM instance
             self.restoreClusterConfig()
             self.syncNewGUC()
             # unset cluster readonly
@@ -1932,6 +2354,8 @@ class UpgradeImpl:
             if self.unSetClusterReadOnlyMode() != 0:
                 raise Exception("NOTICE: "
                                 + ErrorCode.GAUSS_529["GAUSS_52907"])
+            # Disable the CM parameter in the upgrade scenario from no CM component to with CM component.
+            self.close_cm_server_gucs_after_install()
             # flush new app dynamic configuration
             dynamicConfigFile = "%s/bin/cluster_dynamic_config" % \
                                 self.context.newClusterAppPath
@@ -2140,6 +2564,14 @@ class UpgradeImpl:
         self.context.logger.log("Cancel the upgrade status succeeded.", "constant")
         self.context.logger.log("Start to clean temp files for upgrade.", "addStep")
         time.sleep(10)
+
+        # restore the CM parameter
+        try:
+            self.restore_cm_server_guc(const.CLUSTER_CMSCONF_FILE, True)
+        except Exception as er:
+            self.context.logger.debug("Failed to restore CM parameter. " + str(er))
+            cleanUpSuccess = False
+
         # 3. clean backup catalog physical files if doing inplace upgrade
         if self.cleanBackupedCatalogPhysicalFiles() != 0:
             self.context.logger.debug(
@@ -3546,6 +3978,8 @@ class UpgradeImpl:
             self.recordDualClusterStage(self.newCommitId, DualClusterStage.STEP_UPGRADE_COMMIT)
 
             self.setActionFile()
+            # turn on enable_ssl for CM
+            self.set_enable_ssl("on")
             if self.context.action == const.ACTION_LARGE_UPGRADE:
                 if DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo) > 0:
                     self.setUpgradeFromParam(const.UPGRADE_UNSET_NUM)
@@ -3612,6 +4046,72 @@ class UpgradeImpl:
                 "IF EXISTS pmk CASCADE' manually.")
             self.context.logger.debug(str(e))
             return 1
+
+    def getCMServerGUC(self, defaultGUCparas, cmNodesIn=None):
+        """
+        function : get cm_servers parameters
+                   return an empty dict if no expected parameters found
+        input : NA
+        output: oldGUCparas
+        """
+        self.context.logger.debug("Start obtained the CMServer parameter list.")
+        if cmNodesIn is None:
+            cmNodesIn = []
+        oldGUCparas = {}
+        if len(list(defaultGUCparas.keys())) == 0:
+            return oldGUCparas
+
+        cmNodes = []
+        try:
+            # get ALL CMS node information
+            if cmNodesIn:
+                cmNodes = cmNodesIn
+            else:
+                for dbNode in self.context.clusterInfo.dbNodes:
+                    if len(dbNode.cmservers) > 0:
+                        cmNodes.append(dbNode)
+
+            for cmpara in list(defaultGUCparas.keys()):
+                for cmNode in cmNodes:
+                    matchExpression = "\<'%s'\>" % str(cmpara).strip()
+                    cmServerConfigFile = os.path.join(cmNode.cmservers[0].datadir, "cm_server.conf")
+                    cmd = "%s -E '%s' %s" % (
+                        CmdUtil.getGrepCmd(), matchExpression, cmServerConfigFile)
+                    if cmNode.name.strip() == NetUtil.GetHostIpOrName():
+                        executeCmd = cmd
+                    else:
+                        sshCmd = "%s " % CmdUtil.getSshCmd(cmNode.name)
+                        executeCmd = "%s \"%s\"" % (sshCmd, cmd)
+                    self.context.logger.debug(
+                        "Command for getting CMServer parameters: %s." % executeCmd)
+                    (status, output) = CmdUtil.retryGetstatusoutput(executeCmd, 5, 5)
+                    if status != 0 and status != const.ERR_GREP_NO_RESULT:
+                        raise Exception(
+                            ErrorCode.GAUSS_514["GAUSS_51400"] % executeCmd + "\nError: " + output)
+
+                    for line in output.split('\n'):
+                        confInfo = line.strip()
+                        if confInfo.startswith('#') or confInfo == "":
+                            continue
+                        elif confInfo.startswith(cmpara):
+                            configValue = confInfo.split('#')[0].split('=')[1].strip().lower()
+                            self.context.logger.debug(
+                                "configValue in cmnode %s is %s:" % (cmNode.name, configValue))
+                            if cmpara in oldGUCparas and oldGUCparas[cmpara] != configValue and \
+                                    not self.context.forceRollback:
+                                raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] %
+                                                "Parameter '%s', it is different in cm_servers" %
+                                                cmpara)
+                            oldGUCparas[cmpara] = configValue
+                            break
+            self.context.logger.debug("Successfully obtained the CMServer parameter list. "
+                                      "The list context is %s." % oldGUCparas)
+        except Exception as er:
+            if not self.context.forceRollback:
+                raise Exception(str(er))
+            self.context.logger.debug("WARNING: Failed to get the CMServer parameters.")
+
+        return oldGUCparas
 
     def cleanConfBakOld(self):
         """
@@ -4051,6 +4551,11 @@ class UpgradeImpl:
                     const.BINARY_UPGRADE_STEP_INIT_STATUS)
 
             if step >= const.BINARY_UPGRADE_STEP_INIT_STATUS:
+                # restore the CM parameters
+                if DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) != 0:
+                    self.restore_cm_server_guc(const.CLUSTER_CMSCONF_FILE)
+                else:
+                    self.clean_cms_param_file()
                 if self.unSetClusterReadOnlyMode() != 0:
                     raise Exception("NOTICE: " +
                                     ErrorCode.GAUSS_529["GAUSS_52907"])

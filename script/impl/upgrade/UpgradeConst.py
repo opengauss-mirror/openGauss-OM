@@ -92,10 +92,12 @@ OPTION_PRECHECK = "before"
 OPTION_POSTCHECK = "after"
 INPLACE_UPGRADE_STEP_FILE = "upgrade_step.dat"
 GREY_UPGRADE_STEP_FILE = "upgrade_step.csv"
+CLUSTER_CMSCONF_FILE = "cluster_cmsconf.json"
 CLUSTER_CNSCONF_FILE = "cluster_cnconf.json"
 TMP_DYNAMIC_DN_INFO = "upgrade_gauss_dn_status.dat"
 GET_LSN_SQL_FILE = "get_lsn_sql"
 INPLACE_UPGRADE_FLAG_FILE = "inplace_upgrade_flag"
+GREY_CLUSTER_CMSCONF_FILE = "grey_cluster_cmsconf.json"
 POSTGRESQL_CONF_BAK_OLD = "postgresql.conf.bak.old"
 
 #step flag
@@ -109,6 +111,7 @@ BINARY_UPGRADE_STEP_UPGRADE_APP = 4
 BINARY_UPGRADE_STEP_START_NODE = 5
 BINARY_UPGRADE_STEP_PRE_COMMIT = 6
 
+ERR_GREP_NO_RESULT = 256
 # upgrade CM component
 ACTION_UPGRADE_PREPARE_UPGRADE_CM = "prepare_upgrade_cm"
 ACTION_UPGRADE_CM_UPGRADE_BINARY = "upgrade_cm"

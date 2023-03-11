@@ -85,6 +85,7 @@ class UpgradeImpl:
         self.__upgrade_across_64bit_xid = False
         self.action = upgrade.action
         self.primaryDn = None
+        self.operate_action = ""
 
     def exitWithRetCode(self, action, succeed=True, msg=""):
         """
@@ -264,6 +265,9 @@ class UpgradeImpl:
             self.initGlobalInfos()
             self.removeOmRollbackProgressFile()
             self.commonCheck()
+            
+            # record operate action when gs_upgradectl
+            self.operate_action = self.context.action
 
             # 4. get upgrade type
             # After choseStrategy, it will assign action to self.context.action
@@ -2926,7 +2930,42 @@ class UpgradeImpl:
         """
         self.context.logger.debug("Start to {0} catalog.".format(scriptType))
         try:
-            dnNodeName = self.dnInst.hostname
+            old_cluster_config_file = \
+            os.path.realpath(os.path.join(self.context.oldClusterAppPath,
+                                          "bin", "cluster_static_config"))
+            new_cluster_config_file = \
+            os.path.realpath(os.path.join(self.context.newClusterAppPath,
+                                          "bin", "cluster_static_config"))
+
+            # Cm have no maintain during switching process in grey upgrade due to ensure RTO time.
+            # So there exists occasion that primary and stadby is likely to change during switching
+            # process in grey upgrade.
+            # There are conditions to need to handle when cluster has cm.
+            # (1) Cluster mode possibly change after switching process in grey quto-upgrade, So primary
+            # has to be aquired in real time from cm_ctl query before executing rollback-post script.
+            # (2) when executing upgrade-post script, primary has been aquired in executing rollback-post.
+            # (3) Cluster mode possibly change after switching process in grey auto-rollback, So primary
+            # has to be aquired in real time from cm_ctl query before executing rollback script.
+            if self.get_cms_num(new_cluster_config_file) > 0 and (scriptType == "rollback-post" or \
+               scriptType == "upgrade-post"):
+                if (scriptType == "rollback-post"):
+                    self.getPrimaryDN(checkNormal=True)
+                    dnNodeName = self.primaryDn.hostname
+                else:
+                    dnNodeName = self.primaryDn.hostname
+                self.context.logger.debug("Primary dn {0} from cm_ctl query".format(
+                                           dnNodeName))
+            elif self.operate_action == const.ACTION_AUTO_ROLLBACK and \
+                 self.get_cms_num(old_cluster_config_file) > 0 and scriptType == "rollback":
+                self.getPrimaryDN(checkNormal=True)
+                dnNodeName = self.primaryDn.hostname
+                self.context.logger.debug("Primary dn {0} from cm_ctl query".format(
+                                          dnNodeName))
+            else:
+                dnNodeName = self.dnInst.hostname
+                self.context.logger.debug("Primary dn {0} from config file".format(
+                                          dnNodeName))
+                                          
             if dnNodeName == "":
                 raise Exception(ErrorCode.GAUSS_526["GAUSS_52602"])
             self.context.logger.debug("dn nodes is {0}".format(dnNodeName))

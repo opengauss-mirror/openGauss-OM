@@ -699,7 +699,7 @@ General options:
             self.updateKnow_hostsFile(result)
             self.addRemoteAuthorization()
             self.determinePublicAuthorityFile()
-            self.synchronizationLicenseFile()
+            self.synchronizationLicenseFile(result)
             self.retry_register_other_ssh_agent()
             self.verifyTrust()
             self.logger.log("Successfully created SSH trust.")
@@ -1047,7 +1047,7 @@ General options:
             for key in tab:
                 f.write(tab[key])
 
-    def sendTrustFile(self, hostname):
+    def send_trust_file(self, hostname):
         '''
         function: Set or update the authentication files on  hostname
         input : hostname
@@ -1066,19 +1066,44 @@ General options:
                     self.known_hosts_fname, hostname, self.known_hosts_fname,
                     self.known_hosts_fname)
         (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50223"] %"the authentication"
-                            + "cmd is %s; Node:%s. Error:\n%s" % (cmd, hostname, output))
+        return status, output, cmd
 
-    def synchronizationLicenseFile(self):
+    def synchronizationLicenseFile(self, result):
         '''
         function: Distribution of documents through concurrent execution ThreadPool.
         input : NA
         output: NA
         '''
         self._log("Distributing SSH trust file to all node.", "addStep")
+        local_ip = ""
+        for ip in result:
+            if result[ip] == self.localHost:
+                local_ip = ip
+                break
         try:
-            parallelTool.parallelExecute(self.sendTrustFile, self.hostList)
+            for hostip in self.hostList:
+                if hostip == local_ip:
+                    continue
+
+                max_try_times = 3
+                status, output, cmd = self.send_trust_file(hostip)
+                
+                while status != 0 and max_try_times > 0:
+                    self.logger.debug(f"send_trust_file failed, coutdown {max_try_times}, retry again.")
+                    self.logger.debug("errorinfo: hostip: %s, status: %d, output: %s, "
+                                      % (hostip, status, output))
+                    self.logger.debug("check os info: %s\n %s" % (
+                        subprocess.getoutput(f"ls -la {self.homeDir} | grep .ssh"),
+                        subprocess.getoutput(f"ls -la {self.sshDir}")
+                    ))
+                    time.sleep(10)
+                    max_try_times -= 1
+                    status, output, cmd = self.send_trust_file(hostip)
+                
+                if status != 0 and max_try_times == 0:
+                    raise Exception(ErrorCode.GAUSS_502["GAUSS_50223"] %"the authentication"
+                            + "cmd is %s; Node:%s. Error:\n %d, %s" % (cmd, hostip, status, output))
+                
             self.logger.log("Distributing trust keys file to all node successfully.")
             # send protect file to remote
             parallelTool.parallelExecute(self.send_protect_file, self.hostList)

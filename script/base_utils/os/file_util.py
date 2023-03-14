@@ -405,7 +405,8 @@ class FileUtil(object):
         Add the read and write permissions of some root users.
         '''
 
-        cmd = 'setcap {}+ep {}'.format(cap_mode, path)
+        cmd = 'export PATH=$PATH:/usr/sbin:/usr/bin:/sbin:/bin; '
+        cmd = cmd + 'setcap {}+ep {}'.format(cap_mode, path)
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_501["GAUSS_50107"] % path +
@@ -416,10 +417,11 @@ class FileUtil(object):
         '''
         Get the permissions of some root users.
         '''
-        cmd = f'getcap {path}'
+        cmd = 'export PATH=$PATH:/usr/sbin:/usr/bin:/sbin:/bin; '
+        cmd = cmd + f'getcap {path}'
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
-            raise Exception(ErrorCode.GAUSS_501["GAUSS_50107"] % path +
+            raise Exception(ErrorCode.GAUSS_501["GAUSS_50112"] % path +
                             " Error:\n%s." % output + "The cmd is %s" % cmd)
         return output.strip()
 

@@ -3978,8 +3978,6 @@ class UpgradeImpl:
             self.recordDualClusterStage(self.newCommitId, DualClusterStage.STEP_UPGRADE_COMMIT)
 
             self.setActionFile()
-            # turn on enable_ssl for CM
-            self.set_enable_ssl("on")
             if self.context.action == const.ACTION_LARGE_UPGRADE:
                 if DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo) > 0:
                     self.setUpgradeFromParam(const.UPGRADE_UNSET_NUM)
@@ -3988,6 +3986,8 @@ class UpgradeImpl:
                 if "dual-standby" not in self.context.clusterType:
                     self.setUpgradeMode(0)
             time.sleep(10)
+            # turn on enable_ssl for CM
+            self.set_enable_ssl("on")
             if self.dropPMKSchema() != 0:
                 raise Exception(ErrorCode.GAUSS_529["GAUSS_52917"])
 

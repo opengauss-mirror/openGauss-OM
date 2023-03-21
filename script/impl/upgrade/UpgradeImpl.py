@@ -3199,8 +3199,10 @@ class UpgradeImpl:
                 self.context.logger.debug("Not post upgrade.")
                 self.setUpgradeFromParam(self.context.oldClusterNumber)
                 if self.context.action == const.ACTION_INPLACE_UPGRADE:
-                    self.setUpgradeMode(1, "set")
+                    # Must set guc after start cluster by setUpgradeMode, because checking guc
+                    # needs to connect database to execute sql statement.
                     self.start_strategy(is_final=False)
+                    self.setUpgradeMode(1, "reload")
                     self.touchInitFile()
                 else:
                     # the guc parameter upgrade_from need to restart cmagent to take effect

@@ -1088,6 +1088,9 @@ class UpgradeImpl:
                 raise Exception(str(er) + "\nFailed to restore CMServer parameters. " + 
                                 "You may restore manually with file.")
             self.context.logger.debug("WARNING: Failed to restore the CMServer parameters.")
+        if os.path.isfile(os.path.join(self.context.upgradeBackupPath, const.GREY_UPGRADE_STEP_FILE)) and \
+                     self.context.action not in [const.ACTION_AUTO_ROLLBACK, const.ACTION_COMMIT_UPGRADE]:
+            return
         # open enable_ssl parameter
         self.set_enable_ssl("on")
 

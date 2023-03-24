@@ -310,7 +310,7 @@ class UpgradeCmPrepareUtility(UpgradeCmUtility):
         if file_not_exist_list:
             self.logger.error("The CM package file is incorrect.")
             self.logger.error("The following file does not exist: {0}".format(file_not_exist_list))
-            sys.exist(-1)
+            sys.exit(-1)
         self.logger.log("Upgrade CM package is correct.")
 
     def generate_new_upgrade_package(self, decompress_dir):

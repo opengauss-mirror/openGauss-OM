@@ -598,7 +598,7 @@ class DefaultValue():
         NetWorkConfFile = ""
         distname, version, idnum = LinuxDistro.linux_distribution()
         distname = distname.lower()
-        if (distname in ("redhat", "centos", "euleros", "openEuler", "fusionos")):
+        if (distname in ("redhat", "centos", "euleros", "openeuler", "fusionos")):
             NetWorkConfFile = "%s/ifcfg-%s" % (RedHatNetWorkConfPath,
                                                networkCardNum)
         else:

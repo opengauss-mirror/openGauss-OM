@@ -44,6 +44,45 @@ if "--unused-third-party" in sys.argv:
     import paramiko
 
 from gspylib.common.GaussLog import GaussLog
+
+source = os.path.join(sys.path[0], '../lib/bcrypt/lib3.' + \
+         str(sys.version_info[1]), '_bcrypt.abi3.so')
+dest = os.path.join(sys.path[0], '../lib/bcrypt/')
+cmd = f"cp {source} {dest}"
+(status, output) = subprocess.getstatusoutput(cmd)
+if status != 0:
+    GaussLog.exitWithError("cp file failed.\nError:%s\nThe cmd is: %s\n" %
+                          (output, cmd))
+
+source = os.path.join(sys.path[0], '../lib/_cffi_backend_3.' + \
+         str(sys.version_info[1]), '_cffi_backend.so')
+dest = os.path.join(sys.path[0], '../lib/')
+cmd = f"cp {source} {dest}"
+(status, output) = subprocess.getstatusoutput(cmd)
+if status != 0:
+    GaussLog.exitWithError("cp file failed.\nError:%s\nThe cmd is: %s\n" %
+                          (output, cmd))
+
+
+source = os.path.join(sys.path[0], '../lib/cryptography/hazmat/bindings/lib3.' + \
+         str(sys.version_info[1]), '*.so')
+dest = os.path.join(sys.path[0], '../lib/cryptography/hazmat/bindings/')
+cmd = f"cp {source} {dest}"
+(status, output) = subprocess.getstatusoutput(cmd)
+if status != 0:
+    GaussLog.exitWithError("cp file failed.\nError:%s\nThe cmd is: %s\n" %
+                          (output, cmd))
+
+
+source = os.path.join(sys.path[0], '../lib/nacl/lib3.' + \
+         str(sys.version_info[1]), '_sodium.abi3.so')
+dest = os.path.join(sys.path[0], '../lib/nacl/')
+cmd = f"cp {source} {dest}"
+(status, output) = subprocess.getstatusoutput(cmd)
+if status != 0:
+    GaussLog.exitWithError("cp file failed.\nError:%s\nThe cmd is: %s\n" %
+                          (output, cmd))
+
 from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.ParallelBaseOM import ParallelBaseOM

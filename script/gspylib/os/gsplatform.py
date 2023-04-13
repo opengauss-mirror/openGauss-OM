@@ -1553,15 +1553,12 @@ class LinuxPlatform(GenericPlatform):
                                         prefixStr, packageVersion,
                                         PAK_UBUNTU,
                                         BIT_VERSION, postfixStr))
-<<<<<<< HEAD
-=======
         elif distname in UNIONTECH:
             fileName = os.path.join(dirName, "./../../../",
                                     "%s-%s-%s-%s.%s" % (
                                         prefixStr, packageVersion,
                                         PAK_UNIONTECH,
                                         BIT_VERSION, postfixStr))
->>>>>>> 12441ba (opengauss适配uos系统)
         else:
             raise Exception(ErrorCode.GAUSS_519["GAUSS_51900"] +
                             "Supported platforms are: %s." % str(

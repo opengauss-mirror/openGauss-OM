@@ -108,7 +108,6 @@ class Uninstall(LocalBaseOM):
         '''
         Deregistering a Disk in dss-mode
         '''
-        self.logger.log("Start to unregist the lun.")
         gausshome = ClusterDir.getInstallDir(self.user)
         dsscmd = os.path.realpath(os.path.join(gausshome, 'bin', 'dsscmd'))
         perctrl = os.path.realpath(os.path.join(gausshome, 'bin', 'perctrl'))
@@ -119,6 +118,7 @@ class Uninstall(LocalBaseOM):
             dss_home = EnvUtil.get_dss_home(self.user)
             cfg = os.path.join(dss_home, 'cfg', 'dss_inst.ini')
             if os.path.isfile(cfg):
+                self.logger.log("Start to unregist the lun.")
                 Dss.unreg_disk(dss_home, logger=self.logger)
                 self.logger.log("Successfully unregist the lun.")
             else:
@@ -306,6 +306,18 @@ class Uninstall(LocalBaseOM):
 
         self.logger.log("Removing the installation directory.")
         try:
+
+            dss_app = os.path.realpath(
+                os.path.join(
+                    os.path.dirname(self.installPath),
+                    f'dss_app_{os.path.realpath(self.installPath)[-8:]}'))
+            if os.path.isdir(dss_app):
+                for fn in os.listdir(dss_app):
+                    fp = os.path.realpath(os.path.join(dss_app, fn))
+                    if os.path.isfile(fp):
+                        os.remove(fp)
+                        self.logger.debug("Remove path:%s." % fp)
+
             fileList = os.listdir(self.installPath)
             for fileName in fileList:
                 fileName = fileName.replace("/", "").replace("..", "")

@@ -36,6 +36,7 @@ from base_utils.os.file_util import FileUtil
 from domain_utils.cluster_file.package_info import PackageInfo
 from base_utils.os.password_util import PasswordUtil
 from base_utils.os.net_util import NetUtil
+from base_utils.os.env_util import EnvUtil
 from domain_utils.cluster_file.profile_file import ProfileFile
 
 # action name
@@ -1621,6 +1622,13 @@ class PreinstallImpl:
                     else:
                         FileUtil.removeFile(rmPath)
                 elif os.path.isdir(rmPath):
-                    FileUtil.removeDirectory(rmPath)
+                    if not EnvUtil.is_fuzzy_upgrade(
+                            self.context.user,
+                            logger=self.context.logger,
+                            env_file=self.context.mpprcFile):
+                        FileUtil.removeDirectory(rmPath)
+                    else:
+                        self.context.logger.debug(
+                            f'In upgrade process, no need to delete {rmPath}.')
             self.context.logger.logExit(str(e))
         sys.exit(0)

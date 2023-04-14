@@ -126,6 +126,7 @@ class StreamingStartHandler(StreamingBase):
         self.set_stream_cluster_run_mode_guc("set")
         self.set_data_in_dcc(self.backup_open_key, "0", only_mode='primary')
         self.set_data_in_dcc(self.backup_open_key, "2", only_mode='disaster_standby')
+        self.set_most_available(mode="reload", raise_error=False)
         self.stop_cluster_by_node(only_mode='disaster_standby')
         self.write_streaming_step("5_set_wal_segments_step")
 

@@ -62,8 +62,6 @@ class CmdExecutor(object):
                             local_mode=False,
                             mpprc_file='',
                             host_list=None,
-                            logger="",
-                            timeout=0,
                             parallelism=True):
         """
         function: check the mode, if local mode, exec only on local node,
@@ -79,11 +77,6 @@ class CmdExecutor(object):
             CmdExecutor.execCommandLocally(cmd)
         else:
             # Non-native mode
-            if logger != "":
-                g_ssh_tool.executeCommand(cmd, ConstantsBase.SUCCESS, host_list, mpprc_file,
-                                          300, False, logger, timeout)
-                return
-
             g_ssh_tool.executeCommand(cmd,
                                       ConstantsBase.SUCCESS,
                                       host_list,

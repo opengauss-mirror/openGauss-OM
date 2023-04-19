@@ -193,7 +193,6 @@ function lib_copy()
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/six.py               ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/_cffi_backend.py     ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/_cffi_backend.so*    ${PKG_TMP_DIR}/lib
-    cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/_cffi_backend_*      ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/paramiko             ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psutil               ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/netifaces            ${PKG_TMP_DIR}/lib

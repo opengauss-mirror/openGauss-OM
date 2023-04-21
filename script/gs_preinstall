@@ -25,9 +25,10 @@ import pwd
 import sys
 import grp
 import subprocess
-from gspylib.common.CheckPythonVersion import checkPythonVersion, \
-    check_python_compiler_option
-checkPythonVersion()
+from gspylib.common.CheckPythonVersion import check_python_version, \
+    check_python_compiler_option, check_os_and_package_arch
+check_os_and_package_arch()
+check_python_version()
 check_python_compiler_option()
 from base_utils.os.file_util import FileUtil
 if "--unused-third-party" in sys.argv:
@@ -506,8 +507,8 @@ def clearHistTimeFormat():
     (status, output) = subprocess.getstatusoutput(cmd)
     if status != 0:
         GaussLog.exitWithError("Clear HISTTIMEFORMAT from /etc/profile "
-                               "failed.\nError: %s\nThe cmd is: %s\n" %
-                               (output,cmd))
+                            "failed.\nError: %s\nThe cmd is: %s\n" %
+                            (output,cmd))
 
 if __name__ == '__main__':
     """

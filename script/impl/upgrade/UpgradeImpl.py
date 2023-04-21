@@ -3841,7 +3841,7 @@ class UpgradeImpl:
                 raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
                                 " Error: \n%s" % str(output))
         sql = """START TRANSACTION;SET IsInplaceUpgrade = on;
-        drop index pg_proc_proname_args_nsp_index;SET LOCAL 
+        drop index if exists pg_proc_proname_args_nsp_index;SET LOCAL 
         inplace_upgrade_next_system_object_oids=IUO_CATALOG,false,
         true,0,0,0,2691;create UNIQUE INDEX pg_proc_proname_args_nsp_index 
         ON pg_proc USING btree (proname, proargtypes, pronamespace);SET 

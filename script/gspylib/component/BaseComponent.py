@@ -55,6 +55,7 @@ class BaseComponent(object):
         self.paxos_mode = ''
         self.dss_mode = ''
         self.dss_config = ''
+        self.dorado_config = ''
 
     def install(self):
         pass

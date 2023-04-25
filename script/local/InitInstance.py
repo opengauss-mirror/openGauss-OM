@@ -62,6 +62,7 @@ class CmdOptions():
         self.paxos_mode = False
         self.dss_mode = False
         self.dss_config = ""
+        self.dorado_config = ""
 
 
 def usage():
@@ -79,7 +80,7 @@ def parseCommandLine():
     try:
         opts, args = getopt.getopt(sys.argv[1:], "U:P:G:l:?", [
             "help", "dws_mode", "vc_mode", "paxos_mode", "dss_mode",
-            "dss_config="
+            "dss_config=", "dorado_config="
         ])
     except Exception as e:
         usage()
@@ -112,6 +113,8 @@ def parseCommandLine():
             g_opts.dss_mode = True
         elif key == "--dss_config":
             g_opts.dss_config = value.strip()
+        elif key == "--dorado_config":
+            g_opts.dorado_config = value.strip()
         Parameter.checkParaVaild(key, value)
 
 
@@ -178,7 +181,8 @@ class initDbNode(LocalBaseOM):
                  dbInitParams=None,
                  paxos_mode=False,
                  dss_mode=False,
-                 dss_config=""):
+                 dss_config="",
+                 dorado_config = ""):
         """
         function: init instance
         input : logFile, user, clusterConf, dbInitParams
@@ -194,7 +198,8 @@ class initDbNode(LocalBaseOM):
                              dbInitParams,
                              paxos_mode,
                              dss_mode=dss_mode,
-                             dss_config=dss_config)
+                             dss_config=dss_config,
+                             dorado_config=dorado_config)
         if self.clusterConfig == "":
             # Read config from static config file
             self.readConfigInfo()
@@ -269,7 +274,8 @@ if __name__ == '__main__':
                             g_opts.dbInitParams,
                             g_opts.paxos_mode,
                             dss_mode=g_opts.dss_mode,
-                            dss_config=g_opts.dss_config)
+                            dss_config=g_opts.dss_config,
+                            dorado_config=g_opts.dorado_config)
         dbInit.initNodeInst(g_opts.vc_mode)
 
     except Exception as e:

@@ -63,6 +63,8 @@ sys.path.insert(0, localDirPath + "/../../../lib")
 try:
     import psutil
 except ImportError as e:
+    if not bool(os.listdir(localDirPath + "/../../../lib")):
+        raise
     # mv psutil mode .so file by python version
     pythonVer = str(sys.version_info[0]) + '.' + str(sys.version_info[1])
     psutilLinux = os.path.join(localDirPath,

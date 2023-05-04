@@ -1357,14 +1357,14 @@ class dbClusterInfo():
                             roleStatus = "Unknown"
                             dbState = "Unknown"
                     else:
-                        res = re.findall(r'local_role\s*:\s*(\w+)', output)
+                        res = re.findall(r'local_role\s*:\s*(\w+)', output, re.IGNORECASE)
                         roleStatus = res[0]
-                        res = re.findall(r'db_state\s*:\s*(\w+)', output)
+                        res = re.findall(r'db_state\s*:\s*(\w+)', output, re.IGNORECASE)
                         dbState = res[0]
 
                     if (dbState == "Need"):
                         detailInformation = re.findall(
-                            r'detail_information\s*:\s*(\w+)', output)
+                            r'detail_information\s*:\s*(\w+)', output, re.IGNORECASE)
                         dbState = "Need repair(%s)" % detailInformation[0]
                     roleStatusArray.append(roleStatus)
                     dbStateArray.append(dbState)

@@ -41,6 +41,7 @@ from gspylib.common.Constants import Constants
 try:
     import paramiko
 except ImportError as ex:
+    print(ex)
     try:
         local_path = os.path.dirname(os.path.realpath(__file__))
         clib_path = os.path.realpath(os.path.join(local_path, "../../gspylib/clib/"))

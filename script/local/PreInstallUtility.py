@@ -1541,16 +1541,7 @@ Common options:
         self.logger.debug(
             "Successfully set %s  user profile." % VersionInfo.PRODUCT_NAME)
 
-    def setToolEnv(self):
-        """
-        function: set environment variables
-        input : NA
-        output: NA
-        """
-        self.logger.debug("Setting tool ENV.")
-
-        userProfile = self.getUserProfile()
-
+    def clearToolEnv(self, userProfile):
         # clean ENV in os profile
         self.logger.debug("OS profile exists. Deleting crash old tool ENV.")
         # clean MPPRC FILE PATH
@@ -1568,7 +1559,8 @@ Common options:
         FileUtil.deleteLine(userProfile, "^\\s*export\\s*UNPACKPATH=.*$")
         self.logger.debug(
             "Deleting crash GPHOME in user environment variables.")
-
+        # clean PGDATA
+        FileUtil.deleteLine(userProfile, "^\\s*export\\s*PGDATA*")
         # clean LD_LIBRARY_PATH
         FileUtil.deleteLine(userProfile,
                           "^\\s*export\\s*LD_LIBRARY_PATH=\\$GPHOME\\/script"
@@ -1600,12 +1592,22 @@ Common options:
                           "^\\s*export\\s*PATH=\\/root\\/gauss_om\\/%s\\"
                           "/script:\\$PATH$" % self.user)
         self.logger.debug("Deleting crash PATH in user environment variables.")
-
         # clean PYTHONPATH
         FileUtil.deleteLine(userProfile,
                           "^\\s*export\\s*PYTHONPATH=\\$GPHOME\\/lib")
         self.logger.debug(
             "Deleting crash PYTHONPATH in user environment variables.")
+
+    def setToolEnv(self):
+        """
+        function: set environment variables
+        input : NA
+        output: NA
+        """
+        self.logger.debug("Setting tool ENV.")
+        userProfile = self.getUserProfile()
+
+        self.clearToolEnv(userProfile)
 
         # set ENV in os profile
         self.logger.debug(
@@ -1624,6 +1626,12 @@ Common options:
                              ["export GPHOME=%s" % self.clusterToolPath])
             package_dir = os.path.realpath(os.path.join(os.path.realpath(__file__), "../../../"))
             FileUtil.writeFile(userProfile, ["export UNPACKPATH=%s" % package_dir])
+            # set PGDATA
+            hostName = NetUtil.GetHostIpOrName()
+            node_info = self.clusterInfo.getDbNodeByName(hostName)
+            datadir = node_info.datanodes[0].datadir
+            FileUtil.writeFile(userProfile,
+                             ["export PGDATA=%s" % datadir])
             # set PATH
             if userProfile is ClusterConstants.ETC_PROFILE:
                 FileUtil.writeFile(userProfile, [

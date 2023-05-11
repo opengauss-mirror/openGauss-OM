@@ -2154,71 +2154,67 @@ class DefaultValue():
                                 "in the content." % rac)
 
     @staticmethod
+    def calculate_dynamic_size(raw_str, dynamic_para_list):
+        if (int(dynamic_para_list[0]) < 256):
+            ratioNum = 1
+        elif (int(dynamic_para_list[0]) < 512):
+            ratioNum = 2
+        else:
+            ratioNum = 3
+        value = raw_str.replace("PHYSIC_MEMORY", dynamic_para_list[1]) \
+                .replace("MAX_MASTER_DATANUM_IN_ONENODE", dynamic_para_list[2]) \
+                .replace("N", str(ratioNum))
+        try:
+            value = eval(value)
+        except:
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51632"] %
+                            "calculate: %s " % raw_str)
+        return value # float, 单位 GB
+
+    @staticmethod
     def initGuc(gucDict, dynamicParaList, gucXml=False):
         """
+        dynamicParaList 格式：
+        [主dn的个数, 集群中最小物理内存(单位GB), dn的总数]
         """
-        for guc in gucDict:
+        gucDict = {k: v for k, v in gucDict.items() if v}
+        for guc, value in gucDict.items():
             if (guc == "comm_max_datanode" and not gucXml):
-                if (int(dynamicParaList[0]) < 256):
+                primary_dn_num = int(dynamicParaList[0])
+                if primary_dn_num < 256:
                     gucDict[guc] = 256
-                elif (int(dynamicParaList[0]) < 512):
+                elif primary_dn_num < 512:
                     gucDict[guc] = 512
-                elif (int(dynamicParaList[0]) < 1024):
+                elif primary_dn_num < 1024:
                     gucDict[guc] = 1024
-                elif (int(dynamicParaList[0]) < 2048):
+                elif primary_dn_num < 2048:
                     gucDict[guc] = 2048
                 else:
                     gucDict[guc] = 4096
                 continue
-            elif (guc == "max_process_memory"):
-                if (gucDict[guc] == "80GB"):
+            elif guc == "max_process_memory":
+                if "PHYSIC_MEMORY" not in value \
+                and "MAX_MASTER_DATANUM_IN_ONENODE" not in value:
                     continue
-                if (int(dynamicParaList[0]) < 256):
-                    ratioNum = 1
-                elif (int(dynamicParaList[0]) < 512):
-                    ratioNum = 2
-                else:
-                    ratioNum = 3
-                gucDict[guc] = gucDict[guc].replace(
-                    "PHYSIC_MEMORY", dynamicParaList[1])
-                gucDict[guc] = gucDict[guc].replace(
-                    "MAX_MASTER_DATANUM_IN_ONENODE", dynamicParaList[2])
-                gucDict[guc] = gucDict[guc].replace("N", str(ratioNum))
-                try:
-                    gucDict[guc] = eval(gucDict[guc])
-                except Exception as e:
-                    raise Exception(ErrorCode.GAUSS_516["GAUSS_51632"] %
-                                    "calculate: %s" % gucDict[guc])
-                gucDict[guc] = int(gucDict[guc])
-                if (gucDict[guc] >= 2 and gucDict[guc] <= 2047):
-                    gucDict[guc] = str(gucDict[guc]) + "GB"
-                elif (gucDict[guc] < 2):
+                # 下面是依据物理内存计算
+                gigabytes = DefaultValue.calculate_dynamic_size(value, dynamicParaList)
+                if (gigabytes >= 2 and gigabytes <= 2047):
+                    gucDict[guc] = str(int(gigabytes)) + "GB"
+                elif (gigabytes < 2):
                     gucDict[guc] = "2GB"
                 else:
                     gucDict[guc] = "2047GB"
                 continue
             elif guc == "shared_buffers":
-                if (int(dynamicParaList[0]) < 256):
-                    ratioNum = 1
-                elif (int(dynamicParaList[0]) < 512):
-                    ratioNum = 2
-                else:
-                    ratioNum = 3
-                gucDict[guc] = gucDict[guc].replace(
-                    "PHYSIC_MEMORY", dynamicParaList[1])
-                gucDict[guc] = gucDict[guc].replace(
-                    "MAX_MASTER_DATANUM_IN_ONENODE", dynamicParaList[2])
-                gucDict[guc] = gucDict[guc].replace("N", str(ratioNum))
-                try:
-                    gucDict[guc] = eval(gucDict[guc])
-                except Exception as e:
-                    raise Exception(ErrorCode.GAUSS_516["GAUSS_51632"] %
-                                    "calculate: %s" % gucDict[guc])
-                gucDict[guc] = int(gucDict[guc] * 1024)
-                if gucDict[guc] >= 1024:
+                if "PHYSIC_MEMORY" not in value \
+                and "MAX_MASTER_DATANUM_IN_ONENODE" not in value:
+                    continue
+                gigabytes = DefaultValue.calculate_dynamic_size(value, dynamicParaList)
+                megabytes = int(gigabytes * 1024)
+                if megabytes >= 1024:
                     gucDict[guc] = "1GB"
                 else:
-                    gucDict[guc] = str(gucDict[guc]) + "MB"
+                    gucDict[guc] = str(megabytes) + "MB"
         return gucDict
 
     @staticmethod

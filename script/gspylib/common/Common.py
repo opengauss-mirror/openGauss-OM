@@ -1044,7 +1044,7 @@ class DefaultValue():
 
     @staticmethod
     def cleanUserEnvVariable(userProfile, cleanGAUSS_WARNING_TYPE=False,
-                             cleanGS_CLUSTER_NAME=True):
+                             cleanGS_CLUSTER_NAME=True, cleanLD_LIBRARY=True):
         """
         function : Clean the user environment variable
         input : String,boolean 
@@ -1056,18 +1056,19 @@ class DefaultValue():
                 # clean version
                 FileUtil.deleteLine(userProfile, "^\\s*export\\"
                                                "s*GAUSS_VERSION=.*$")
-                # clean lib
-                FileUtil.deleteLine(userProfile,
-                                  "^\\s*export\\s*LD_LIBRARY_PATH=\\"
-                                  "$GAUSSHOME\\/lib:\\$LD_LIBRARY_PATH$")
-                FileUtil.deleteLine(userProfile,
-                                  "^\\s*export\\s*LD_LIBRARY_PATH=\\"
-                                  "$GAUSSHOME\\/lib\\/libsimsearch:\\"
-                                  "$LD_LIBRARY_PATH$")
-                FileUtil.deleteLine(userProfile,
-                                  "^\\s*export\\s*LD_LIBRARY_PATH=\\$GPHOME\\"
-                                  "/script\\/gspylib\\/clib:\\"
-                                  "$LD_LIBRARY_PATH$")
+                if (cleanLD_LIBRARY):
+                    # clean lib
+                    FileUtil.deleteLine(userProfile,
+                                      "^\\s*export\\s*LD_LIBRARY_PATH=\\"
+                                      "$GAUSSHOME\\/lib:\\$LD_LIBRARY_PATH$")
+                    FileUtil.deleteLine(userProfile,
+                                      "^\\s*export\\s*LD_LIBRARY_PATH=\\"
+                                      "$GAUSSHOME\\/lib\\/libsimsearch:\\"
+                                      "$LD_LIBRARY_PATH$")
+                    FileUtil.deleteLine(userProfile,
+                                      "^\\s*export\\s*LD_LIBRARY_PATH=\\$GPHOME\\"
+                                      "/script\\/gspylib\\/clib:\\"
+                                      "$LD_LIBRARY_PATH$")
                 # clean bin
                 FileUtil.deleteLine(userProfile,
                                   "^\\s*export\\s*PATH=\\$GAUSSHOME\\"

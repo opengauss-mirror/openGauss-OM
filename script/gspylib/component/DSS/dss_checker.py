@@ -77,7 +77,7 @@ class DssConfig():
                 ' The number of dns is {} and the number of dss volumes is {}'.
                 format(len(dss_ips), len(infos[::2])))
         for dp in dss_ports:
-            # The dms port is db port plus 10, and the dss port is db port plus 20.
+            # The dms port is db port plus 20, and the dss port is db port plus 10.
             SecurityChecker.check_port_valid(
                 'dataPortBase',
                 int(dp),

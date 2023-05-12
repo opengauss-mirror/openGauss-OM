@@ -598,6 +598,7 @@ class instanceInfo():
         self.controlPort = 0
         # az name
         self.azName = ""
+        self.azPriority = 0
         self.clusterName = ""
         # peer port etcd
         self.peerPort = 0
@@ -1901,6 +1902,7 @@ class dbClusterInfo():
         # set DB azName for OLAP
         for inst in dbNode.datanodes:
             inst.azName = dbNode.azName
+            inst.azPriority = dbNode.azPriority
 
         return dbNode
 
@@ -2616,6 +2618,7 @@ class dbClusterInfo():
             db_inst.syncNum = -1
             db_inst.syncNumFirst = ""
             db_inst.azName = db_node.azName
+            db_inst.azPriority = db_node.azPriority
             self.dbNodes[0].datanodes.append(db_inst)
         self.dbNodes[0].appendInstance(1, MIRROR_ID_AGENT, INSTANCE_ROLE_CMAGENT,
                                        INSTANCE_TYPE_UNDEFINED, [], None, "")
@@ -3118,6 +3121,7 @@ class dbClusterInfo():
         for node in self.dbNodes:
             for inst in node.datanodes:
                 inst.azName = node.azName
+                inst.azPriority = node.azPriority
         self.__setNodePortForSinglePrimaryMultiStandby()
 
     def __getPeerInstance(self, dbInst):

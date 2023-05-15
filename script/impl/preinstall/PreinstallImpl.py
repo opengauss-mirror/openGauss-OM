@@ -1462,6 +1462,26 @@ class PreinstallImpl:
                     raise Exception(ErrorCode.GAUSS_502["GAUSS_50232"] % (
                         dataInst.datadir, appPath))
 
+    def checkAzPriorityValue(self):
+        """
+        function : Check azName and azPriority value, The azName is different, and the value of azPriority must be different.
+        input : None
+        output : None
+        """
+        priority_map = {}
+        for db_node in self.context.clusterInfo.dbNodes:
+            for data_inst in db_node.datanodes:
+                az_name = data_inst.azName
+                priority = data_inst.azPriority
+                if (az_name not in priority_map):
+                    priority_map[az_name] = priority
+
+        result = set()
+        for value in priority_map.values():
+            result.add(value)
+        if len(result) < len(priority_map.values()):
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51658"])
+
     def checkOSSoftware(self):
         """
         function: setting the dynamic link library
@@ -1537,6 +1557,8 @@ class PreinstallImpl:
         # Check whether the instance directory
         # conflicts with the application directory.
         self.checkInstanceDir()
+        # check azPriotity
+        self.checkAzPriorityValue()
         # install tools phase1
         self.installToolsPhase1()
         # exchange user key for root user

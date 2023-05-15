@@ -23,9 +23,9 @@ import os
 
 from gspylib.common.ErrorCode import ErrorCode
 from os_platform.common import REDHAT, PAK_REDHAT, BIT_VERSION, \
-    CENTOS, PAK_EULER, PAK_CENTOS, ASIANUX, SUSE, PAK_ASIANUX, \
+    CENTOS, UNIONTECH, PAK_EULER, PAK_CENTOS, ASIANUX, SUSE, PAK_ASIANUX, \
     EULEROS, OPENEULER, KYLIN, PAK_OPENEULER, SUPPORT_WHOLE_PLATFORM_LIST,\
-    BLANK_SPACE, PAK_UBUNTU, DEBIAN, PAK_KYLIN, PAK_SUSE, PAK_DEBIAN, \
+    BLANK_SPACE, PAK_UBUNTU, DEBIAN, PAK_KYLIN, PAK_UNIONTECH, PAK_SUSE, PAK_DEBIAN, \
     FUSIONOS, PAK_FUSIONOS
 from os_platform.linux_distro import LinuxDistro
 
@@ -213,10 +213,11 @@ class LinuxPlatform(object):
                 self.package_file_path(prefix_str, packageVersion, PAK_CENTOS, postfix_str)
                 ]
         
-        elif distname == OPENEULER or distname == KYLIN:
+        elif distname == OPENEULER or distname == KYLIN or distname == UNIONTECH:
             file_name_list = [
                 self.package_file_path(prefix_str, packageVersion, PAK_OPENEULER, postfix_str),
-                self.package_file_path(prefix_str, packageVersion, PAK_KYLIN, postfix_str)
+                self.package_file_path(prefix_str, packageVersion, PAK_KYLIN, postfix_str),
+                self.package_file_path(prefix_str, packageVersion, PAK_UNIONTECH, postfix_str)
                 ]
         
         elif distname == DEBIAN:

@@ -67,8 +67,9 @@ OPENEULER = "openeuler"
 ASIANUX = "asianux"
 DEBIAN = "debian"
 UBUNTU = "ubuntu"
+UNIONTECH = "uniontech"
 SUPPORT_WHOLE_PLATFORM_LIST = [SUSE, REDHAT, CENTOS, EULEROS, FUSIONOS,
-                               OPENEULER, KYLIN, ASIANUX, DEBIAN, UBUNTU]
+                               OPENEULER, KYLIN, ASIANUX, DEBIAN, UBUNTU, UNIONTECH]
 # RedhatX platform
 SUPPORT_RHEL_SERIES_PLATFORM_LIST = [REDHAT, CENTOS, "kylin", "asianux"]
 SUPPORT_RHEL6X_VERSION_LIST = ["6.4", "6.5", "6.6", "6.7", "6.8", "6.9", "10"]
@@ -102,6 +103,7 @@ PAK_REDHAT = "RedHat"
 PAK_ASIANUX = "Asianux"
 PAK_UBUNTU = "Ubuntu"
 PAK_SUSE = "SUSE"
+PAK_UNIONTECH = "UnionTech"
 
 #######################################################
 _supported_dists = (
@@ -1550,6 +1552,12 @@ class LinuxPlatform(GenericPlatform):
                                     "%s-%s-%s-%s.%s" % (
                                         prefixStr, packageVersion,
                                         PAK_UBUNTU,
+                                        BIT_VERSION, postfixStr))
+        elif distname in UNIONTECH:
+            fileName = os.path.join(dirName, "./../../../",
+                                    "%s-%s-%s-%s.%s" % (
+                                        prefixStr, packageVersion,
+                                        PAK_UNIONTECH,
                                         BIT_VERSION, postfixStr))
         else:
             raise Exception(ErrorCode.GAUSS_519["GAUSS_51900"] +

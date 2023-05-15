@@ -31,8 +31,9 @@ FUSIONOS = "fusionos"
 ASIANUX = "asianux"
 DEBIAN = "debian"
 UBUNTU = "ubuntu"
+UNIONTECH = "uniontech"
 SUPPORT_WHOLE_PLATFORM_LIST = [SUSE, REDHAT, CENTOS, EULEROS, OPENEULER, KYLIN,
-                               FUSIONOS, ASIANUX, DEBIAN, UBUNTU]
+                               FUSIONOS, ASIANUX, DEBIAN, UBUNTU, UNIONTECH]
 # RedhatX platform
 SUPPORT_RHEL_SERIES_PLATFORM_LIST = [REDHAT, CENTOS, "kylin", "asianux"]
 SUPPORT_RHEL6X_VERSION_LIST = ["6.4", "6.5", "6.6", "6.7", "6.8", "6.9", "10"]
@@ -44,6 +45,8 @@ SUPPORT_RHEL_SERIES_VERSION_LIST = (SUPPORT_RHEL6X_VERSION_LIST +
                                     SUPPORT_RHEL8X_VERSION_LIST)
 # EulerOS 2.3 -> 2.0 SP3
 SUPPORT_EULEROS_VERSION_LIST = ["2.0"]
+# UnionTech 20
+SUPPORT_UNIONTECH_VERSION_LIST = ["20"]
 # SuSE platform
 SUSE11 = "11"
 SUSE12 = "12"
@@ -68,9 +71,9 @@ PAK_UBUNTU = "Ubuntu"
 PAK_KYLIN = "Kylin"
 PAK_SUSE = "SUSE"
 PAK_DEBIAN = "Debian"
-
+PAK_UNIONTECH = "UnionTech"
 #######################################################
 _supported_dists = (
     'SuSE', 'debian', 'fedora', 'redhat', 'centos', 'euleros', "openEuler",
     'mandrake', 'mandriva', 'rocks', 'slackware', 'yellowdog', 'gentoo',
-    "FusionOS", 'UnitedLinux', 'turbolinux', 'ubuntu', 'kylin', 'asianux')
+    "FusionOS", 'UnitedLinux', 'turbolinux', 'ubuntu', 'kylin', 'asianux', "UnionTech")

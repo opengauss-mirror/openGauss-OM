@@ -1804,6 +1804,12 @@ class dbClusterInfo():
                     info = fp.read(28)
                     (crc, lenth, version, currenttime, nodeNum,
                      localNodeId) = struct.unpack("=IIIqiI", info)
+
+                wait_info = struct.pack("IIqiI",lenth, version,  
+                                                 currenttime, nodeNum, localNodeId)
+                if self.__verify_crc(crc, wait_info) == False:
+                    raise Exception(ErrorCode.GAUSS_512["GAUSS_51258"]
+                                % ("headInfo", staticConfigFile))
                 self.version = version
                 self.installTime = currenttime
                 self.localNodeId = localNodeId
@@ -1874,36 +1880,43 @@ class dbClusterInfo():
             (crc, nodeId, nodeName) = struct.unpack("=II64s", info)
         nodeName = nodeName.decode().strip('\x00')
         dbNode = dbNodeInfo(nodeId, nodeName)
+        wait_info = struct.pack("I64s",nodeId,nodeName.encode("utf-8"))
         info = fp.read(68)
+        wait_info += info
         (azName, azPriority) = struct.unpack("=64sI", info)
         dbNode.azName = azName.decode().strip('\x00')
         dbNode.azPriority = azPriority
 
         # get backIps
-        self.__unPackIps(fp, dbNode.backIps)
+        wait_info += self.__unPackIps(fp, dbNode.backIps)
         # get sshIps
-        self.__unPackIps(fp, dbNode.sshIps)
+        wait_info += self.__unPackIps(fp, dbNode.sshIps)
         if (not isLCCluster):
             # get cm_server information
-            self.__unPackCmsInfo(fp, dbNode)
+            wait_info += self.__unPackCmsInfo(fp, dbNode)
             # get cm_agent information
-            self.__unpackAgentInfo(fp, dbNode)
+            wait_info += self.__unpackAgentInfo(fp, dbNode)
             # get gtm information
-            self.__unpackGtmInfo(fp, dbNode)
+            wait_info += self.__unpackGtmInfo(fp, dbNode)
             info = fp.read(404)
+            wait_info += info
             # get cn information
-            self.__unpackCooInfo(fp, dbNode)
+            wait_info += self.__unpackCooInfo(fp, dbNode)
         # get DB information
-        self.__unpackDataNode(fp, dbNode)
+        wait_info += self.__unpackDataNode(fp, dbNode)
         if (not isLCCluster):
             # get etcd information
-            self.__unpackEtcdInfo(fp, dbNode)
+            wait_info += self.__unpackEtcdInfo(fp, dbNode)
             info = fp.read(8)
+            wait_info += info
         # set DB azName for OLAP
         for inst in dbNode.datanodes:
             inst.azName = dbNode.azName
             inst.azPriority = dbNode.azPriority
 
+        if self.__verify_crc(crc,wait_info) == False:
+            raise Exception(ErrorCode.GAUSS_512["GAUSS_51258"]
+                                % ("nodeInfo", staticConfigFile))
         return dbNode
 
     def __unpackEtcdInfo(self, fp, dbNode):
@@ -1917,14 +1930,17 @@ class dbClusterInfo():
         etcdInst.hostname = dbNode.name
         etcdInst.instanceType = INSTANCE_TYPE_UNDEFINED
         info = fp.read(1100)
+        wait_info = info
         (etcdNum, etcdInst.instanceId, etcdInst.mirrorId, etcdhostname,
          etcdInst.datadir) = struct.unpack("=IIi64s1024s", info)
         etcdInst.datadir = etcdInst.datadir.decode().strip('\x00')
-        self.__unPackIps(fp, etcdInst.listenIps)
+        wait_info += self.__unPackIps(fp, etcdInst.listenIps)
         info = fp.read(4)
+        wait_info += info
         (etcdInst.port,) = struct.unpack("=I", info)
-        self.__unPackIps(fp, etcdInst.haIps)
+        wait_info += self.__unPackIps(fp, etcdInst.haIps)
         info = fp.read(4)
+        wait_info += info
         (etcdInst.haPort,) = struct.unpack("=I", info)
         if (etcdNum == 1):
             dbNode.etcdNum = 1
@@ -1933,6 +1949,7 @@ class dbClusterInfo():
         else:
             dbNode.etcdNum = 0
             dbNode.etcds = []
+        return wait_info
 
     def __unPackIps(self, fp, ips):
         """
@@ -1941,13 +1958,17 @@ class dbClusterInfo():
         output : NA
         """
         info = fp.read(4)
+        wait_info = info
         (n,) = struct.unpack("=i", info)
         for i in range(int(n)):
             info = fp.read(128)
+            wait_info += info
             (currentIp,) = struct.unpack("=128s", info)
             currentIp = currentIp.decode().strip('\x00')
             ips.append(str(currentIp.strip()))
         info = fp.read(128 * (MAX_IP_NUM - n))
+        wait_info += info
+        return wait_info
 
     def __unPackCmsInfo(self, fp, dbNode):
         """
@@ -1959,16 +1980,19 @@ class dbClusterInfo():
         cmsInst.instanceRole = INSTANCE_ROLE_CMSERVER
         cmsInst.hostname = dbNode.name
         info = fp.read(1164)
+        wait_info = info
         (cmsInst.instanceId, cmsInst.mirrorId, dbNode.cmDataDir, cmsInst.level,
          self.cmsFloatIp) = struct.unpack("=II1024sI128s", info)
         dbNode.cmDataDir = dbNode.cmDataDir.decode().strip('\x00')
         self.cmsFloatIp = self.cmsFloatIp.decode().strip('\x00')
         cmsInst.datadir = "%s/cm_server" % dbNode.cmDataDir
-        self.__unPackIps(fp, cmsInst.listenIps)
+        wait_info += self.__unPackIps(fp, cmsInst.listenIps)
         info = fp.read(4)
+        wait_info += info
         (cmsInst.port,) = struct.unpack("=I", info)
-        self.__unPackIps(fp, cmsInst.haIps)
+        wait_info += self.__unPackIps(fp, cmsInst.haIps)
         info = fp.read(8)
+        wait_info += info
         (cmsInst.haPort, cmsInst.instanceType) = struct.unpack("=II", info)
         if (cmsInst.instanceType == MASTER_INSTANCE):
             dbNode.cmsNum = 1
@@ -1978,12 +2002,14 @@ class dbClusterInfo():
             raise Exception(ErrorCode.GAUSS_512["GAUSS_51204"]
                             % ("CMServer", cmsInst.instanceType))
         info = fp.read(4 + 128 * MAX_IP_NUM + 4)
-
+        wait_info += info
         if (cmsInst.instanceId):
             dbNode.cmservers.append(cmsInst)
             self.cmscount += 1
         else:
             dbNode.cmservers = []
+
+        return wait_info
 
     def __unpackAgentInfo(self, fp, dbNode):
         """
@@ -1998,10 +2024,12 @@ class dbClusterInfo():
         cmaInst.hostname = dbNode.name
         cmaInst.instanceType = INSTANCE_TYPE_UNDEFINED
         info = fp.read(8)
+        wait_info = info
         (cmaInst.instanceId, cmaInst.mirrorId) = struct.unpack("=Ii", info)
-        self.__unPackIps(fp, cmaInst.listenIps)
+        wait_info += self.__unPackIps(fp, cmaInst.listenIps)
         cmaInst.datadir = "%s/cm_agent" % dbNode.cmDataDir
         dbNode.cmagents.append(cmaInst)
+        return wait_info
 
     def __unpackGtmInfo(self, fp, dbNode):
         """      
@@ -2013,11 +2041,13 @@ class dbClusterInfo():
         gtmInst.instanceRole = INSTANCE_ROLE_GTM
         gtmInst.hostname = dbNode.name
         info = fp.read(1036)
+        wait_info = info
         (gtmInst.instanceId, gtmInst.mirrorId, gtmNum,
          gtmInst.datadir) = struct.unpack("=III1024s", info)
         gtmInst.datadir = gtmInst.datadir.decode().strip('\x00')
-        self.__unPackIps(fp, gtmInst.listenIps)
+        wait_info += self.__unPackIps(fp, gtmInst.listenIps)
         info = fp.read(8)
+        wait_info += info
         (gtmInst.port, gtmInst.instanceType) = struct.unpack("=II", info)
         if (gtmInst.instanceType == MASTER_INSTANCE):
             dbNode.gtmNum = 1
@@ -2026,16 +2056,19 @@ class dbClusterInfo():
         else:
             raise Exception(ErrorCode.GAUSS_512["GAUSS_51204"] % (
                 "GTM", gtmInst.instanceType))
-        self.__unPackIps(fp, gtmInst.haIps)
+        wait_info += self.__unPackIps(fp, gtmInst.haIps)
         info = fp.read(4)
+        wait_info += info
         (gtmInst.haPort,) = struct.unpack("=I", info)
         info = fp.read(1024 + 4 + 128 * MAX_IP_NUM + 4)
-
+        wait_info += info
         if (gtmNum == 1):
             dbNode.gtms.append(gtmInst)
             self.gtmcount += 1
         else:
             dbNode.gtms = []
+
+        return wait_info
 
     def __unpackCooInfo(self, fp, dbNode):
         """      
@@ -2048,12 +2081,14 @@ class dbClusterInfo():
         cooInst.hostname = dbNode.name
         cooInst.instanceType = INSTANCE_TYPE_UNDEFINED
         info = fp.read(2060)
+        wait_info = info
         (cooInst.instanceId, cooInst.mirrorId, cooNum, cooInst.datadir,
          cooInst.ssdDir) = struct.unpack("=IiI1024s1024s", info)
         cooInst.datadir = cooInst.datadir.decode().strip('\x00')
         cooInst.ssdDir = cooInst.ssdDir.decode().strip('\x00')
-        self.__unPackIps(fp, cooInst.listenIps)
+        wait_info += self.__unPackIps(fp, cooInst.listenIps)
         info = fp.read(8)
+        wait_info += info
         (cooInst.port, cooInst.haPort) = struct.unpack("=II", info)
         if (cooNum == 1):
             dbNode.cooNum = 1
@@ -2061,6 +2096,7 @@ class dbClusterInfo():
         else:
             dbNode.cooNum = 0
             dbNode.coordinators = []
+        return wait_info
 
     def __unpackDataNode(self, fp, dbNode):
         """  
@@ -2069,6 +2105,7 @@ class dbClusterInfo():
         output : NA
         """
         info = fp.read(4)
+        wait_info = info
         (dataNodeNums,) = struct.unpack("=I", info)
         dbNode.dataNum = 0
 
@@ -2084,12 +2121,14 @@ class dbClusterInfo():
             # then rollback by fp.seek(), and exchange its(xlogdir) value
             # with ssddir.
             info = fp.read(2056)
+            wait_info += info
             (dnInst.instanceId, dnInst.mirrorId, dnInst.datadir,
              dnInst.xlogdir) = struct.unpack("=II1024s1024s", info)
             dnInst.datadir = dnInst.datadir.decode().strip('\x00')
             dnInst.xlogdir = dnInst.xlogdir.decode().strip('\x00')
 
             info = fp.read(1024)
+            wait_info += info
             (dnInst.ssdDir) = struct.unpack("=1024s", info)
             dnInst.ssdDir = dnInst.ssdDir[0].decode().strip('\x00')
             # if notsetXlog,ssdDir should not be null.use by upgrade.
@@ -2098,8 +2137,9 @@ class dbClusterInfo():
                 dnInst.ssdDir = dnInst.xlogdir
                 dnInst.xlogdir = ""
 
-            self.__unPackIps(fp, dnInst.listenIps)
+            wait_info += self.__unPackIps(fp, dnInst.listenIps)
             info = fp.read(8)
+            wait_info += info
             (dnInst.port, dnInst.instanceType) = struct.unpack("=II", info)
             if (dnInst.instanceType == MASTER_INSTANCE):
                 dbNode.dataNum += 1
@@ -2109,8 +2149,9 @@ class dbClusterInfo():
             else:
                 raise Exception(ErrorCode.GAUSS_512["GAUSS_51204"]
                                 % ("DN", dnInst.instanceType))
-            self.__unPackIps(fp, dnInst.haIps)
+            wait_info += self.__unPackIps(fp, dnInst.haIps)
             info = fp.read(4)
+            wait_info += info
             (dnInst.haPort,) = struct.unpack("=I", info)
             if (
                     self.clusterType ==
@@ -2120,34 +2161,42 @@ class dbClusterInfo():
                 for j in range(maxStandbyCount):
                     peerDbInst = peerInstanceInfo()
                     info = fp.read(1024)
+                    wait_info += info
                     (peerDbInst.peerDataPath,) = struct.unpack("=1024s", info)
                     peerDbInst.peerDataPath = \
                         peerDbInst.peerDataPath.decode().strip('\x00')
-                    self.__unPackIps(fp, peerDbInst.peerHAIPs)
+                    wait_info += self.__unPackIps(fp, peerDbInst.peerHAIPs)
                     info = fp.read(8)
+                    wait_info += info
                     (peerDbInst.peerHAPort,
                      peerDbInst.peerRole) = struct.unpack("=II", info)
                     dnInst.peerInstanceInfos.append(peerDbInst)
             else:
                 peerDbInst = peerInstanceInfo()
                 info = fp.read(1024)
+                wait_info += info
                 (peerDbInst.peerDataPath,) = struct.unpack("=1024s", info)
                 peerDbInst.peerDataPath = \
                     peerDbInst.peerDataPath.decode().strip('\x00')
-                self.__unPackIps(fp, peerDbInst.peerHAIPs)
+                wait_info += self.__unPackIps(fp, peerDbInst.peerHAIPs)
                 info = fp.read(8)
+                wait_info += info
                 (peerDbInst.peerHAPort, peerDbInst.peerRole) = \
                     struct.unpack("=II", info)
                 info = fp.read(1024)
+                wait_info += info
                 (peerDbInst.peerData2Path,) = struct.unpack("=1024s", info)
                 peerDbInst.peerData2Path = \
                     peerDbInst.peerDataPath.decode().strip('\x00')
-                self.__unPackIps(fp, peerDbInst.peer2HAIPs)
+                wait_info += self.__unPackIps(fp, peerDbInst.peer2HAIPs)
                 info = fp.read(8)
+                wait_info += info
                 (peerDbInst.peer2HAPort, peerDbInst.peer2Role) = \
                     struct.unpack("=II", info)
                 dnInst.peerInstanceInfos.append(peerDbInst)
             dbNode.datanodes.append(dnInst)
+            return wait_info
+
 
     def initFromStaticConfigWithoutUser(self, staticConfigFile):
         """ 
@@ -2172,6 +2221,11 @@ class dbClusterInfo():
                 info = fp.read(28)
                 (crc, lenth, version, currenttime, nodeNum,
                  localNodeId) = struct.unpack("=IIIqiI", info)
+
+            wait_info = struct.pack("IIqiI",lenth, version, currenttime, nodeNum, localNodeId)
+            if self.__verify_crc(crc, wait_info) == False:
+                raise Exception(ErrorCode.GAUSS_512["GAUSS_51258"]
+                               % ("headInfo", staticConfigFile))
             if (version <= 100):
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51637"]
                                 % ("cluster static config version[%s]"
@@ -4907,3 +4961,7 @@ class dbClusterInfo():
                     else:
                         raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % \
                                         "float IP." + " Error: \n%s" % ret_value)
+     
+    @classmethod                   
+    def __verify_crc(self, crc, info):
+        return crc == binascii.crc32(info)

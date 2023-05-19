@@ -130,13 +130,13 @@ class DN_OLAP(Kernel):
             # If xlogdir is set in xmlfile, an independent xlog
             # path will be created.
             if (self.instInfo.xlogdir != ''):
-                cmd = "%s/gs_initdb -D %s -X %s " \
+                cmd = "%s/gs_initdb --locale=C -D %s -X %s " \
                       "--nodename=%s %s -C %s" % (
                           self.binPath, self.instInfo.datadir,
                           self.instInfo.xlogdir, nodename,
                           " ".join(self.initParas), self.binPath)
             else:
-                cmd = "%s/gs_initdb -D %s --nodename=%s %s -C %s" \
+                cmd = "%s/gs_initdb --locale=C -D %s --nodename=%s %s -C %s" \
                       % \
                       (self.binPath, self.instInfo.datadir, nodename,
                        " ".join(self.initParas), self.binPath)

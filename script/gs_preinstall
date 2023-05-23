@@ -27,15 +27,18 @@ import grp
 import subprocess
 from gspylib.common.CheckPythonVersion import check_python_version, \
     check_python_compiler_option, check_os_and_package_arch
-check_os_and_package_arch()
-check_python_version()
-check_python_compiler_option()
+
+package_path = os.path.dirname(os.path.realpath(__file__))
+lib_path = os.path.join(package_path, "..", "lib")
+clib_files = os.path.join(package_path, "gspylib/clib/*.so*")
+if os.listdir(lib_path):
+    check_os_and_package_arch()
+    check_python_version()
+    check_python_compiler_option()
+
 from base_utils.os.file_util import FileUtil
 from gspylib.common.GaussLog import GaussLog
 if "--unused-third-party" in sys.argv:
-    package_path = os.path.dirname(os.path.realpath(__file__))
-    lib_path = os.path.join(package_path, "..", "lib")
-    clib_files = os.path.join(package_path, "gspylib/clib/*.so*")
     FileUtil.cleanDirectoryContent(lib_path)
     FileUtil.removeFile(clib_files)
 
@@ -45,6 +48,9 @@ if "--unused-third-party" in sys.argv:
     import cryptography
     import paramiko
 else:
+    check_os_and_package_arch()
+    check_python_version()
+    check_python_compiler_option()
     source = os.path.join(sys.path[0], '../lib/bcrypt/lib3.' + \
             str(sys.version_info[1]), '_bcrypt.abi3.so')
     dest = os.path.join(sys.path[0], '../lib/bcrypt/')

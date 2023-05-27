@@ -216,6 +216,9 @@ General options:
         # parameter --time-out
         if (ParaDict.__contains__("time_out")):
             self.time_out = ParaDict.get("time_out")
+        # parameter --dorado-info
+        if (ParaDict.__contains__("dorado-config")):
+            self.dorado_config = ParaDict.get("dorado-config")
 
     def checkUser(self):
         """

@@ -53,6 +53,9 @@ class BaseComponent(object):
         self.level = 1
         self.clusterType = DefaultValue.CLUSTER_TYPE_SINGLE_INST
         self.paxos_mode = ''
+        self.dss_mode = ''
+        self.dss_config = ''
+        self.dorado_config = ''
 
     def install(self):
         pass
@@ -181,4 +184,3 @@ class BaseComponent(object):
             self.logger.debug("Warning: Current instance port is in the "
                               "range of random port(%d - %d)." % (minPort,
                                                                   maxPort))
-

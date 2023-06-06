@@ -18,6 +18,7 @@ import subprocess
 import os
 import pwd
 import sys
+import re
 import getpass
 
 sys.path.append(sys.path[0] + "/../")
@@ -35,6 +36,7 @@ from base_utils.os.file_util import FileUtil
 from domain_utils.cluster_file.package_info import PackageInfo
 from base_utils.os.password_util import PasswordUtil
 from base_utils.os.net_util import NetUtil
+from base_utils.os.env_util import EnvUtil
 from domain_utils.cluster_file.profile_file import ProfileFile
 
 # action name
@@ -479,6 +481,12 @@ class PreinstallImpl:
         """
         pass
 
+    def dss_init(self):
+        '''
+        unreg the disk of the dss and about
+        '''
+        pass
+
     def installToolsPhase2(self):
         """
         function: install the tools
@@ -639,11 +647,16 @@ class PreinstallImpl:
                 self.context.localLog,
                 self.context.xmlFile,
                 self.context.clusterToolPath)
-            if self.context.mpprcFile == "":
-                CmdExecutor.execCommandWithMode(
-                    cmd,
-                    self.context.sshTool,
-                    self.context.localMode)
+            if os.path.isfile(self.context.mpprcFile
+                              ) and self.context.clusterInfo.enable_dss == 'on':
+                cmd += ' -s {}'.format(self.context.mpprcFile)
+
+            if self.context.mpprcFile == "" or (
+                    os.path.isfile(self.context.mpprcFile)
+                    and self.context.clusterInfo.enable_dss == 'on'):
+                CmdExecutor.execCommandWithMode(cmd, self.context.sshTool,
+                                                self.context.localMode)
+                self.context.logger.debug("Command for change env: %s" % cmd)
         except Exception as e:
             raise Exception(str(e))
 
@@ -936,11 +949,12 @@ class PreinstallImpl:
                     FileUtil.removeFile(topDirFile)
 
             # create the directory on all nodes
-            cmd = "%s -t %s -u %s -g %s -X '%s' -l '%s'" % (
+            cmd = "%s -t %s -u %s -g %s -Q %s -X '%s' -l '%s'" % (
                 OMCommand.getLocalScript("Local_PreInstall"),
                 ACTION_CREATE_CLUSTER_PATHS,
                 self.context.user,
                 self.context.group,
+                self.context.clusterToolPath,
                 self.context.xmlFile,
                 self.context.localLog)
             # check the env file
@@ -952,6 +966,8 @@ class PreinstallImpl:
                 self.context.sshTool,
                 self.context.localMode or self.context.isSingle,
                 self.context.mpprcFile)
+            self.context.logger.debug(
+                f"The cmd of the create cluster path: {cmd}.")
         except Exception as e:
             raise Exception(str(e))
         self.context.logger.log("Successfully created cluster's path.",
@@ -1446,6 +1462,26 @@ class PreinstallImpl:
                     raise Exception(ErrorCode.GAUSS_502["GAUSS_50232"] % (
                         dataInst.datadir, appPath))
 
+    def checkAzPriorityValue(self):
+        """
+        function : Check azName and azPriority value, The azName is different, and the value of azPriority must be different.
+        input : None
+        output : None
+        """
+        priority_map = {}
+        for db_node in self.context.clusterInfo.dbNodes:
+            for data_inst in db_node.datanodes:
+                az_name = data_inst.azName
+                priority = data_inst.azPriority
+                if (az_name not in priority_map):
+                    priority_map[az_name] = priority
+
+        result = set()
+        for value in priority_map.values():
+            result.add(value)
+        if len(result) < len(priority_map.values()):
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51658"])
+
     def checkOSSoftware(self):
         """
         function: setting the dynamic link library
@@ -1521,6 +1557,8 @@ class PreinstallImpl:
         # Check whether the instance directory
         # conflicts with the application directory.
         self.checkInstanceDir()
+        # check azPriotity
+        self.checkAzPriorityValue()
         # install tools phase1
         self.installToolsPhase1()
         # exchange user key for root user
@@ -1573,6 +1611,9 @@ class PreinstallImpl:
         # fix server package mode
         self.fixServerPackageOwner()
 
+        # unreg the disk of the dss and about
+        self.dss_init()
+
         # set user cron
         self.set_user_crontab()
         # set user env and a flag,
@@ -1593,10 +1634,23 @@ class PreinstallImpl:
             # close log file
             self.context.logger.closeLog()
         except Exception as e:
+            is_upgrade_func = lambda x: re.findall(r'GAUSS_ENV[ ]*=[ ]*2', x)
             for rmPath in self.context.needFixOwnerPaths:
                 if os.path.isfile(rmPath):
-                    FileUtil.removeFile(rmPath)
+                    if FileUtil.is_in_file_with_context(
+                            rmPath, call_back_context=is_upgrade_func):
+                        self.context.logger.debug(
+                            f'In upgrade process, no need to delete {rmPath}.')
+                    else:
+                        FileUtil.removeFile(rmPath)
                 elif os.path.isdir(rmPath):
-                    FileUtil.removeDirectory(rmPath)
+                    if not EnvUtil.is_fuzzy_upgrade(
+                            self.context.user,
+                            logger=self.context.logger,
+                            env_file=self.context.mpprcFile):
+                        FileUtil.removeDirectory(rmPath)
+                    else:
+                        self.context.logger.debug(
+                            f'In upgrade process, no need to delete {rmPath}.')
             self.context.logger.logExit(str(e))
         sys.exit(0)

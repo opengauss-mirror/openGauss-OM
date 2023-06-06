@@ -24,6 +24,7 @@ import stat
 import subprocess
 import pwd
 import grp
+import json
 from subprocess import PIPE
 
 from base_utils.common.constantsbase import ConstantsBase
@@ -211,6 +212,19 @@ class FileUtil(object):
         return True
 
     @staticmethod
+    def is_in_file_with_context(file_path,
+                                call_back_name=lambda _: True,
+                                call_back_context=lambda _: True):
+        '''
+        Easy to match strings in files
+        '''
+        if call_back_name(file_path):
+            with open(file_path, 'r') as fr_any:
+                if call_back_context(fr_any.read()):
+                    return True
+        return False
+
+    @staticmethod
     def readFile(filename, keyword="", rows=0):
         """
         function: read the content of a file
@@ -300,6 +314,38 @@ class FileUtil(object):
         return True
 
     @staticmethod
+    def write_update_file(file_path, content, authority, is_json=True):
+        """
+        Write or update file, create if not exist.
+        """
+        with os.fdopen(os.open(file_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+                               authority), "w") as fp_write:
+            if is_json:
+                json.dump(content, fp_write)
+            else:
+                fp_write.write(content)
+
+    @staticmethod
+    def write_add_file(file_path, content, authority):
+        """
+        Write or add content in file, create if not exist.
+        """
+
+        if not os.path.isfile(file_path):
+            FileUtil.createFileInSafeMode(file_path, mode=authority)
+        FileUtil.writeFile(file_path, [content])
+
+    @staticmethod
+    def write_custom_context(file_path, content, authority, p_mode="w"):
+        '''
+        Write file in overwrite mode
+        '''
+
+        if not os.path.isfile(file_path):
+            FileUtil.createFileInSafeMode(file_path, mode=authority)
+        FileUtil.writeFile(file_path, content, p_mode)
+
+    @staticmethod
     def withAsteriskPath(path):
         """
         function: deal with the path with *
@@ -352,6 +398,33 @@ class FileUtil(object):
         else:
             os.chmod(path, mode)
         return True
+
+    @staticmethod
+    def change_caps(cap_mode, path):
+        '''
+        Add the read and write permissions of some root users.
+        '''
+
+        cmd = 'export PATH=$PATH:/usr/sbin:/usr/bin:/sbin:/bin; '
+        cmd = cmd + 'setcap {}+ep {}'.format(cap_mode, path)
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_501["GAUSS_50107"] % path +
+                            " Error:\n%s." % output + "The cmd is %s" % cmd)
+
+    @staticmethod
+    def get_caps(path):
+        '''
+        Get the permissions of some root users.
+        '''
+        cmd = 'export PATH=$PATH:/usr/sbin:/usr/bin:/sbin:/bin; '
+        cmd = cmd + f'getcap {path}'
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_501["GAUSS_50112"] % path +
+                            " Error:\n%s." % output + "The cmd is %s" % cmd)
+        return output.strip()
+
 
     @staticmethod
     def changeOwner(user, path, recursive=False, cmd_type="shell",
@@ -874,7 +947,7 @@ class FileUtil(object):
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % "log file" +
                             " Directory:%s." % user_dir + " Error: \n%s" % file_output)
-    
+
     @staticmethod
     def checkFileExists(file):
         """

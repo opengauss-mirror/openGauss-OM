@@ -27,6 +27,7 @@ DELTA_NUM = 0.000001
 #external action
 ACTION_CHOSE_STRATEGY = "chose-strategy"
 ACTION_INPLACE_UPGRADE = "inplace-binary-upgrade"
+ACTION_UPGRADE_CM = "upgrade-cm"
 #grey upgrade
 ACTION_SMALL_UPGRADE = "small-binary-upgrade"
 ACTION_LARGE_UPGRADE = "large-binary-upgrade"
@@ -74,7 +75,9 @@ ACTION_CREATE_NEW_CSV_FILE = "create_new_csv_file"
 ACTION_RESTORE_DYNAMIC_CONFIG_FILE = "restore_dynamic_config_file"
 ACTION_GREY_SYNC_GUC = "grey_sync_guc"
 ACTION_GREY_UPGRADE_CONFIG_SYNC = "grey_upgrade_config_sync"
+ACTION_CREATE_CM_CA_FOR_ROLLING_UPGRADE = "create_cm_ca_for_rolling_upgrade"
 ACTION_SWITCH_DN = "switch_dn"
+ACTION_WAIT_OM_MONITOR = "wait_om_monitor"
 ACTION_GET_LSN_INFO = "get_lsn_info"
 ACTION_GREY_RESTORE_CONFIG = "grey_restore_config"
 ACTION_GREY_RESTORE_GUC = "grey_restore_guc"
@@ -89,10 +92,12 @@ OPTION_PRECHECK = "before"
 OPTION_POSTCHECK = "after"
 INPLACE_UPGRADE_STEP_FILE = "upgrade_step.dat"
 GREY_UPGRADE_STEP_FILE = "upgrade_step.csv"
+CLUSTER_CMSCONF_FILE = "cluster_cmsconf.json"
 CLUSTER_CNSCONF_FILE = "cluster_cnconf.json"
 TMP_DYNAMIC_DN_INFO = "upgrade_gauss_dn_status.dat"
 GET_LSN_SQL_FILE = "get_lsn_sql"
 INPLACE_UPGRADE_FLAG_FILE = "inplace_upgrade_flag"
+GREY_CLUSTER_CMSCONF_FILE = "grey_cluster_cmsconf.json"
 POSTGRESQL_CONF_BAK_OLD = "postgresql.conf.bak.old"
 
 #step flag
@@ -105,6 +110,35 @@ BINARY_UPGRADE_STEP_BACKUP_VERSION = 3
 BINARY_UPGRADE_STEP_UPGRADE_APP = 4
 BINARY_UPGRADE_STEP_START_NODE = 5
 BINARY_UPGRADE_STEP_PRE_COMMIT = 6
+
+ERR_GREP_NO_RESULT = 256
+# upgrade CM component
+ACTION_UPGRADE_PREPARE_UPGRADE_CM = "prepare_upgrade_cm"
+ACTION_UPGRADE_CM_UPGRADE_BINARY = "upgrade_cm"
+ACTION_UPGRADE_CM_ROLLBACK = "rollback_cm"
+
+UPGRADE_BACKUP_DIR = "upgrade_cm_backup_dir"
+UPGRADE_CM_DECOMPRESS_DIR = "cm_decompress_package"
+UPGRADE_TMP_BACKUP_DIR = "ready_backup_cm"
+UPGRADE_BACKUP_TAR_NAME = "upgrade_cm_backup.tar.gz"
+UPGRADE_BINARY_LIST_FILE_NAME = "upgrade_binary_list"
+
+# dual cluster stage
+class DualClusterStage:
+    """
+    Dual cluster stage upgrade marking
+    """
+    def __init__(self):
+        pass
+
+    (STEP_UPGRADE_END,
+     STEP_UPGRADE_UNFINISHED,
+     STEP_UPGRADE_FINISH,
+     STEP_UPGRADE_COMMIT,
+     ) = list(range(0, 4))
+
+    def __str__(self):
+        pass
 
 
 # grey upgrade
@@ -174,3 +208,17 @@ UPGRADE_VERSION_64bit_xid = 91.208
 ENABLE_STREAM_REPLICATION_VERSION = "92.149"
 ENABLE_STREAM_REPLICATION_NAME = "enable_stream_replication"
 RELMAP_4K_VERSION = "92.420"
+
+# streaming cluster
+GS_SECURE_FILES = "gs_secure_files"
+UPGRADE_PHASE_INFO = "upgrade_phase_info"
+HARD_KEY_CIPHER = "hadr.key.cipher"
+HARD_KEY_RAND = "hadr.key.rand"
+DISASTER_RECOVERY_GUC = "backup_open"
+INSTALL_TYPE_GUC = "install_type"
+REMOTE_INFO_GUC = {
+    "dual-standby-streamDR": "replconninfo",
+    "dual-primary-streamDR": "replconninfo"
+}
+LENGTH_STORAGE_INFO_LEN = 4
+ACTION_CLEAN_GS_SECURE_FILES = "clean_gs_secure_files"

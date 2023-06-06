@@ -19,6 +19,7 @@
 #############################################################################
 
 import os
+import re
 import sys
 import datetime
 import subprocess
@@ -26,6 +27,7 @@ import stat
 import socket
 
 from multiprocessing import Process, Value
+from time import sleep
 
 from base_utils.os.env_util import EnvUtil
 
@@ -45,7 +47,9 @@ from domain_utils.cluster_file.cluster_dir import ClusterDir
 from gspylib.component.CM.CM_OLAP.CM_OLAP import CM_OLAP
 
 
+# Action type
 ACTION_INSTALL_CLUSTER = "install_cluster"
+ACTION_EXPAND_NODE ="expansion_node"
 
 
 def change_user_executor(perform_method):
@@ -114,8 +118,9 @@ class ExpansionImplWithCm(ExpansionImpl):
                                                                DefaultValue.MAX_DIRECTORY_MODE)
         create_dir_cmd += " && chown {0}:{1} {2}".format(self.user, self.group, xml_dir)
         self.ssh_tool.executeCommand(create_dir_cmd)
-        self.ssh_tool.scpFiles(self.context.xmlFile, self.context.xmlFile,
-                               hostList=self.get_node_names(self.new_nodes))
+        self.ssh_tool.scpFiles(self.context.xmlFile, self.context.xmlFile)
+        cmd = "chown %s:%s %s" % (self.user, self.group, self.context.xmlFile)
+        self.ssh_tool.executeCommand(cmd)
         self.logger.log("Success to send XML to new nodes")
 
     def preinstall_run(self):
@@ -124,7 +129,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         self.logger.log("Start to perform perinstall on nodes: "
                         "{0}".format(ExpansionImplWithCm.get_node_names(self.new_nodes)))
-        pre_install_path = os.path.realpath(os.path.join(self.context.packagepath,
+        pre_install_path = os.path.realpath(os.path.join(self.remote_pkg_dir,
                                                          "script", "gs_preinstall"))
         sep_env_file = "--sep-env-file={0}".format(EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH")) \
             if EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH") else ""
@@ -300,11 +305,16 @@ class ExpansionImplWithCm(ExpansionImpl):
                 datains = node.datanodes[0]
                 log_dir = "%s/pg_log/dn_%d" % (log_path, appname)
                 audit_dir = "%s/pg_audit/dn_%d" % (log_path, appname)
+                if "127.0.0.1" in datains.listenIps:
+                    listen_ips = "%s" % ",".join(datains.listenIps)
+                else:
+                    listen_ips = "localhost,%s" % ",".join(datains.listenIps)
                 new_nodes_para_list.extend([
                     (node.name, datains.datadir, "port", datains.port),
                     (node.name, datains.datadir, "application_name", "dn_%s" % appname),
                     (node.name, datains.datadir, "log_directory", "%s" % log_dir),
-                    (node.name, datains.datadir, "audit_directory", "%s" % audit_dir)
+                    (node.name, datains.datadir, "audit_directory", "%s" % audit_dir),
+                    (node.name, datains.datadir, "listen_addresses", listen_ips)
                 ])
 
         for new_node_para in new_nodes_para_list:
@@ -345,15 +355,19 @@ class ExpansionImplWithCm(ExpansionImpl):
         # 1.set pgxc_node_name on old nodes
         gauss_home = os.path.realpath(self.static_cluster_info.appPath)
         guc_path = os.path.join(gauss_home, "bin", "gs_guc")
-        export_str = "export LD_LIBRARY_PATH={0}:" \
-                     "$LD_LIBRARY_PATH".format(os.path.join(gauss_home, "lib"))
-        cmd = "%s;%s set -N all -I all -c " \
-              "\\\"%s='%s'\\\"" % (export_str, guc_path,
+        cmd = "source %s; %s set -N all -I all -c " \
+              "\\\"%s='%s'\\\"" % (self.envFile, guc_path,
                                    "pgxc_node_name",
                                    self._get_pgxc_node_name_for_single_inst())
         su_cmd = """su - {0} -c "{1}" """.format(self.user, cmd)
         self.logger.debug("Set guc parameter command: {0}".format(su_cmd))
-        self.guc_executor(self.ssh_tool, su_cmd, socket.gethostname())
+        status, output = subprocess.getstatusoutput(su_cmd)
+        if status == 0:
+            self.logger.debug("Set pgxc_node_name successfully.")
+        else:
+            self.logger.debug("Set pgxc_node_name failed. "
+                              "result is : {0}".format(output))
+            raise Exception(ErrorCode.GAUSS_535["GAUSS_53507"] % su_cmd)
 
     def _get_new_node_by_back_ip(self, back_ip):
         """
@@ -375,6 +389,9 @@ class ExpansionImplWithCm(ExpansionImpl):
         cmd = "source {0};gs_guc set -D {1}".format(self.envFile, new_inst.datadir)
         cmd += " -h 'host    all    %s    %s/32    trust'" % (self.user, host_ip)
         cmd += " -h 'host    all    all    %s/32    sha256'" % host_ip
+        if self.xml_cluster_info.float_ips:
+            cmd += " -h 'host    all    all    %s/32    sha256'" % \
+                   self.xml_cluster_info.float_ips[new_inst.float_ips[0]]
         self.logger.log("Ready to perform command on node [{0}]. "
                         "Command is : {1}".format(new_node.name, cmd))
         CmdExecutor.execCommandWithMode(cmd, self.ssh_tool, host_list=[new_node.name])
@@ -388,6 +405,22 @@ class ExpansionImplWithCm(ExpansionImpl):
             self._config_new_node_hba(node)
         self.logger.log("Successfully set hba on all nodes.")
 
+    def _update_cm_res_json(self):
+        """
+        Update cm resource json file.
+        """
+        if not self.xml_cluster_info.float_ips:
+            self.logger.log("The current cluster does not support VIP.")
+            return
+        self.logger.log("Updating cm resource file on all nodes.")
+        cmd = "source %s; " % self.envFile
+        cmd += "%s -t %s -U %s -X '%s' -l '%s' " % (
+               OMCommand.getLocalScript("Local_Config_CM_Res"), ACTION_EXPAND_NODE,
+               self.context.user, self.context.xmlFile, self.context.localLog)
+        self.logger.debug("Command for updating cm resource file: %s" % cmd)
+        CmdExecutor.execCommandWithMode(cmd, self.ssh_tool)
+        self.logger.log("Successfully updated cm resource file.")
+
     def _config_instance(self):
         """
         Config instance
@@ -396,6 +429,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         self.generateClusterStaticFile()
         self.setGucConfig()
         self._set_other_guc_para()
+        self._update_cm_res_json()
         self._config_pg_hba()
         self.distributeCipherFile()
 
@@ -461,20 +495,55 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         Start cluster
         """
-        self.logger.debug("Ready to restart cluster.")
+        self.logger.debug("Ready to restart cm_server cluster.")
         self._change_user_without_root()
-        cm_component = CM_OLAP()
-        cm_component.logger = self.logger
-        cm_component.binPath = "%s/bin" % self.static_cluster_info.appPath
-        cm_component.stop_cluster((0, "", 0, "", ""))
-        DefaultValue.remove_metadata_and_dynamic_config_file(self.user,
-                                                             self.ssh_tool, self.logger)
-        if self.xml_cluster_info.enable_dcf == "on":
-            cm_component.startCluster(self.user, isSwitchOver=False,
-                                      timeout=DefaultValue.TIMEOUT_EXPANSION_SWITCH)
-        else:
-            cm_component.startCluster(self.user, timeout=DefaultValue.TIMEOUT_EXPANSION_SWITCH)
+        # stop CM processes in existed nodes
+        clusterInfo = dbClusterInfo()
+        clusterInfo.initFromStaticConfig(self.user)
+        stopCMProcessesCmd = "pkill -9 om_monitor -U {user}; pkill -9 cm_agent -U {user}; " \
+            "pkill -9 cm_server -U {user};".format(user=self.user)
+        self.logger.debug("stopCMProcessesCmd: " + stopCMProcessesCmd)
+        hostList = [node.name for node in clusterInfo.dbNodes]
+        newNodesList = [node.name for node in self.new_nodes]
+        existingHosts = [host for host in hostList if host not in newNodesList]
+        gaussHome = EnvUtil.getEnv("GAUSSHOME")
+        gaussLog = EnvUtil.getEnv("GAUSSLOG")
+        CmdExecutor.execCommandWithMode(stopCMProcessesCmd, self.ssh_tool, host_list=existingHosts)
+        DefaultValue.remove_metadata_and_dynamic_config_file(self.user, self.ssh_tool, self.logger)
+        # execute gs_guc reload
+        self._gsctlReload()
+        # start CM processes on old and new nodes
+        startCMProcessesCmd = "source %s; nohup %s/bin/om_monitor -L %s/cm/om_monitor >> /dev/null 2>&1 & \n" \
+            "rm %s/bin/cluster_manual_start -rf" % (self.envFile, gaussHome, gaussLog, gaussHome)
+        self.logger.debug("startCMProcessesCmd: " + startCMProcessesCmd)
+        CmdExecutor.execCommandWithMode(startCMProcessesCmd, self.ssh_tool, host_list=hostList)
+        queryClusterCmd = "source %s; cm_ctl query -Cv" % self.envFile
+        self.logger.debug("queryClusterCmd: " + queryClusterCmd)
+        tryCount = 0
+        while tryCount <= 120:
+            sleep(5)
+            tryCount += 1
+            status, output = subprocess.getstatusoutput(queryClusterCmd)
+            if status != 0:
+                continue
+            if re.findall("cluster_state.*:.*Normal", output) != []:
+                break
+        if tryCount > 120:
+            self.logger.logExit(
+                "All steps of expansion have finished, but failed to wait cluster to be normal in 600s!\n"
+                "HINT: Maybe the cluster is continually being started in the background.\n"
+                "You can wait for a while and check whether the cluster starts.")
         p_value.value = 1
+
+    def _gsctlReload(self):
+        # execute gs_ctl reload
+        ctlPath = os.path.join(os.path.realpath(self.static_cluster_info.appPath), "bin", "gs_ctl")
+        nodeDict = self.context.clusterInfoDict
+        localHost = socket.gethostname()
+        dataPath = nodeDict[localHost]["dataNode"]
+        ctlReloadCmd = "source %s; %s reload -N all -D %s" % (self.envFile, ctlPath, dataPath)
+        self.logger.debug("ctlReloadCmd: " + ctlReloadCmd)
+        CmdExecutor.execCommandWithMode(ctlReloadCmd, self.ssh_tool, host_list=[localHost])
 
     def run(self):
         """

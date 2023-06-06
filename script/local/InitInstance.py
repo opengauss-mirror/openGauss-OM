@@ -60,6 +60,9 @@ class CmdOptions():
         self.dws_mode = False
         self.vc_mode = False
         self.paxos_mode = False
+        self.dss_mode = False
+        self.dss_config = ""
+        self.dorado_config = ""
 
 
 def usage():
@@ -75,8 +78,10 @@ def parseCommandLine():
     """
     """
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "U:P:G:l:?",
-                                   ["help", "dws_mode", "vc_mode", "paxos_mode"])
+        opts, args = getopt.getopt(sys.argv[1:], "U:P:G:l:?", [
+            "help", "dws_mode", "vc_mode", "paxos_mode", "dss_mode",
+            "dss_config=", "dorado_config="
+        ])
     except Exception as e:
         usage()
         GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"] % str(e))
@@ -104,6 +109,12 @@ def parseCommandLine():
             g_opts.vc_mode = True
         elif key == "--paxos_mode":
             g_opts.paxos_mode = True
+        elif key == "--dss_mode":
+            g_opts.dss_mode = True
+        elif key == "--dss_config":
+            g_opts.dss_config = value.strip()
+        elif key == "--dorado_config":
+            g_opts.dorado_config = value.strip()
         Parameter.checkParaVaild(key, value)
 
 
@@ -163,7 +174,15 @@ class initDbNode(LocalBaseOM):
     classdocs
     '''
 
-    def __init__(self, logFile, user, dwsMode=False, dbInitParams=None, paxos_mode=False):
+    def __init__(self,
+                 logFile,
+                 user,
+                 dwsMode=False,
+                 dbInitParams=None,
+                 paxos_mode=False,
+                 dss_mode=False,
+                 dss_config="",
+                 dorado_config = ""):
         """
         function: init instance
         input : logFile, user, clusterConf, dbInitParams
@@ -171,7 +190,16 @@ class initDbNode(LocalBaseOM):
         """
         if dbInitParams is None:
             dbInitParams = []
-        LocalBaseOM.__init__(self, logFile, user, "", dwsMode, dbInitParams, paxos_mode)
+        LocalBaseOM.__init__(self,
+                             logFile,
+                             user,
+                             "",
+                             dwsMode,
+                             dbInitParams,
+                             paxos_mode,
+                             dss_mode=dss_mode,
+                             dss_config=dss_config,
+                             dorado_config=dorado_config)
         if self.clusterConfig == "":
             # Read config from static config file
             self.readConfigInfo()
@@ -196,13 +224,15 @@ class initDbNode(LocalBaseOM):
         self.logger.log("Initializing instance.")
 
         if not vc_mode:
-            components = self.etcdCons + self.cmCons + self.gtmCons\
+            components = self.etcdCons + self.cmCons + self.gtmCons \
                          + self.cnCons + self.dnCons
         else:
             # just init dn instance
             components = self.dnCons
         try:
             # config instance in paralle
+            if self.dss_cons:
+                parallelTool.parallelExecute(self.initInstance, self.dss_cons)
             parallelTool.parallelExecute(self.initInstance, components)
         except Exception as e:
             self.logger.logExit(str(e))
@@ -238,8 +268,14 @@ if __name__ == '__main__':
         # Initialize globals parameters
         # add g_opts.vc_mode parameter :
         # indicates whether it is a virtual cluster mode
-        dbInit = initDbNode(g_opts.logFile, g_opts.clusterUser,
-                            g_opts.dws_mode, g_opts.dbInitParams, g_opts.paxos_mode)
+        dbInit = initDbNode(g_opts.logFile,
+                            g_opts.clusterUser,
+                            g_opts.dws_mode,
+                            g_opts.dbInitParams,
+                            g_opts.paxos_mode,
+                            dss_mode=g_opts.dss_mode,
+                            dss_config=g_opts.dss_config,
+                            dorado_config=g_opts.dorado_config)
         dbInit.initNodeInst(g_opts.vc_mode)
 
     except Exception as e:

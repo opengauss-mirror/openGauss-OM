@@ -23,6 +23,8 @@ import json
 import csv
 import traceback
 import copy
+import re
+import getpass
 
 from datetime import datetime, timedelta
 
@@ -38,6 +40,7 @@ from gspylib.os.gsfile import g_file
 from gspylib.inspection.common import SharedFuncs
 from gspylib.component.CM.CM_OLAP.CM_OLAP import CM_OLAP
 from impl.upgrade.UpgradeConst import GreyUpgradeStep
+from impl.upgrade.UpgradeConst import DualClusterStage
 import impl.upgrade.UpgradeConst as const
 from base_utils.executor.cmd_executor import CmdExecutor
 from base_utils.executor.local_remote_cmd import LocalRemoteCmd
@@ -49,6 +52,8 @@ from domain_utils.cluster_file.package_info import PackageInfo
 from domain_utils.cluster_file.version_info import VersionInfo
 from domain_utils.sql_handler.sql_result import SqlResult
 from base_utils.os.net_util import NetUtil
+from gspylib.component.DSS.dss_checker import DssConfig
+
 
 
 class OldVersionModules():
@@ -82,6 +87,8 @@ class UpgradeImpl:
         self.isLargeInplaceUpgrade = False
         self.__upgrade_across_64bit_xid = False
         self.action = upgrade.action
+        self.primaryDn = None
+        self.operate_action = ""
 
     def exitWithRetCode(self, action, succeed=True, msg=""):
         """
@@ -145,8 +152,55 @@ class UpgradeImpl:
         self.context.sshTool = SshTool(
             self.context.clusterNodes, self.context.localLog,
             DefaultValue.TIMEOUT_PSSH_BINARY_UPGRADE)
+        self.initVersionInfo()
         self.initClusterConfig()
+        self.initClusterType()
         self.context.logger.debug("Successfully init global infos", "constant")
+
+    def initVersionInfo(self):
+        """
+        Initialize the old and new version information
+
+        :return:
+        """
+        newVersionFile = VersionInfo.get_version_file()
+        newClusterVersion, newClusterNumber, newCommitId = VersionInfo.get_version_info(
+            newVersionFile)
+        gaussHome = ClusterDir.getInstallDir(self.context.user)
+
+        newPath = gaussHome + "_%s" % newCommitId
+        oldPath = self.getClusterAppPath(const.OLD)
+
+        if oldPath == "":
+            oldPath = os.path.realpath(gaussHome)
+        oldVersionFile = "%s/bin/upgrade_version" % oldPath
+        try:
+
+            (oldClusterVersion, oldClusterNumber, oldCommitId) = VersionInfo.get_version_info(
+                oldVersionFile)
+            self.context.logger.debug("Successfully obtained version information of "
+                                      "old clusters by %s." % oldVersionFile)
+        except Exception as er:
+            if os.path.exists(self.context.upgradeBackupPath):
+                # if upgradeBackupPath exist, it means that we do rollback first.
+                # and we get cluster version from the backup file
+                possibOldVersionFile = "%s/old_upgrade_version" % self.context.upgradeBackupPath
+                self.context.logger.debug(str(er))
+                self.context.logger.debug("Try to get the version information "
+                                          "from %s." % possibOldVersionFile)
+                (oldClusterVersion, oldClusterNumber, oldCommitId) = VersionInfo.get_version_info(
+                    possibOldVersionFile)
+            else:
+                raise Exception(str(er))
+
+        self.context.newClusterVersion = newClusterVersion
+        self.context.newClusterNumber = newClusterNumber
+        self.context.oldClusterVersion = oldClusterVersion
+        self.context.oldClusterNumber = oldClusterNumber
+        self.context.newClusterAppPath = newPath
+        self.context.oldClusterAppPath = oldPath
+        self.newCommitId = newCommitId
+        self.oldCommitId = oldCommitId
 
     def setClusterDetailInfo(self):
         """
@@ -190,7 +244,7 @@ class UpgradeImpl:
                             + "Error: \n%s" % str(output))
 
         if (not self.context.isSingle):
-                # send file to remote nodes
+            # send file to remote nodes
             self.context.sshTool.scpFiles(filePath, self.context.tmpDir)
         self.context.logger.debug("Successfully write file %s." % filePath)
 
@@ -214,6 +268,9 @@ class UpgradeImpl:
             self.initGlobalInfos()
             self.removeOmRollbackProgressFile()
             self.commonCheck()
+            
+            # record operate action when gs_upgradectl
+            self.operate_action = self.context.action
 
             # 4. get upgrade type
             # After choseStrategy, it will assign action to self.context.action
@@ -268,11 +325,23 @@ class UpgradeImpl:
                     DefaultValue.TIMEOUT_PSSH_BINARY_UPGRADE)
             if action == const.ACTION_AUTO_ROLLBACK and \
                     self.checkBakPathNotExists():
+                if os.path.isfile(self.context.upgradePhaseInfoPath):
+                    self.recordDualClusterStage(self.oldCommitId, DualClusterStage.STEP_UPGRADE_END)
                 self.context.logger.log("No need to rollback.")
                 self.exitWithRetCode(action, True)
             else:
                 self.context.logger.error(str(e))
                 self.exitWithRetCode(action, False, str(e))
+        finally:
+            # only used under grey upgrade, grey upgrade commit or grey upgrade rollback
+            # under force and standby cluster upgrade, we don't close enable_transaction_read_only
+            # at beginning, so no need to restore
+            if not (self.context.is_inplace_upgrade or self.context.standbyCluster):
+                cm_nodes = []
+                for node in self.context.clusterInfo.dbNodes:
+                    if node.cmservers:
+                        cm_nodes.append(node.name)
+                self.restore_cm_server_guc(const.GREY_CLUSTER_CMSCONF_FILE, False, cm_nodes)
 
     def commonCheck(self):
         """
@@ -290,6 +359,11 @@ class UpgradeImpl:
          grey upgrade rollback if not in read only, then record the value of
           enable_transaction_read_only and set it to off
         """
+        # no need to check read only mode and close enable_transaction_read_only
+        if self.context.standbyCluster:
+            self.context.logger.debug("no need to check read only in force or"
+                                      " standby cluster mode upgrade")
+            return
         try:
             self.context.logger.debug("Check if in read only mode.")
             greyUpgradeFlagFile = os.path.join(self.context.upgradeBackupPath,
@@ -306,6 +380,18 @@ class UpgradeImpl:
                 if self.unSetClusterReadOnlyMode() != 0:
                     raise Exception("NOTICE: "
                                     + ErrorCode.GAUSS_529["GAUSS_52907"])
+            if self.context.forceRollback and not self.context.is_inplace_upgrade:
+                self.close_cm_server_gucs_before_install()
+                self.context.logger.debug("no need to check read only in "
+                                          "force rollback after grey upgrade")
+                return
+            if (self.context.action == const.ACTION_AUTO_UPGRADE and
+                    not self.context.is_inplace_upgrade or
+                    (os.path.isfile(greyUpgradeFlagFile) and
+                     self.context.action in [const.ACTION_AUTO_ROLLBACK, const.ACTION_COMMIT_UPGRADE])):
+                gucStr = "default_transaction_read_only:%s" % "off"
+                self.checkParam(gucStr, False)
+                self.close_cm_server_gucs_before_install()
         except Exception as e:
             raise Exception(str(e))
 
@@ -481,16 +567,9 @@ class UpgradeImpl:
                                     % newClusterNumber)
             self.context.logger.debug("The matched upgrade strategy is: %s."
                                       % upgradeAction)
-            self.context.newClusterVersion = newClusterVersion
-            self.context.newClusterNumber = newClusterNumber
-            self.context.oldClusterVersion = oldClusterVersion
-            self.context.oldClusterNumber = oldClusterNumber
-            self.context.newClusterAppPath = newPath
-            self.context.oldClusterAppPath = oldPath
-            self.newCommitId = newCommitId
-            self.oldCommitId = oldCommitId
             return upgradeAction
         except Exception as e:
+            self.clean_gs_secure_files()
             raise Exception(ErrorCode.GAUSS_529["GAUSS_52900"] % str(e)
                             + " Do nothing this time.")
 
@@ -665,12 +744,16 @@ class UpgradeImpl:
         """
         try:
             self.context.logger.debug("Setting up the cluster read-only mode.")
+            if self.context.standbyCluster:
+                self.context.logger.debug("no need to set cluster "
+                                          "read only mode under force or standby cluster upgrade")
+                return 0
             self.setGUCValue("default_transaction_read_only", "true")
             self.context.logger.debug("successfully set the cluster read-only mode.")
             return 0
-        except Exception:
+        except Exception as e:
             self.context.logger.debug("WARNING: Failed to set default_transaction_read_only "
-                                      "parameter.")
+                                      "parameter. %s" % str(e))
             return 1
 
     def unSetClusterReadOnlyMode(self):
@@ -682,12 +765,16 @@ class UpgradeImpl:
         """
         try:
             self.context.logger.debug("Canceling the cluster read-only mode.")
+            if self.context.standbyCluster:
+                self.context.logger.debug("no need to unset cluster "
+                                          "read only mode under force or standby cluster upgrade")
+                return 0
             self.setGUCValue("default_transaction_read_only", "false")
             self.context.logger.debug("Successfully cancelled the cluster read-only mode.")
             return 0
-        except Exception:
+        except Exception as e:
             self.context.logger.debug("WARNING: Failed to set default_transaction_read_only "
-                                      "parameter.")
+                                      "parameter. %s" % str(e))
             return 1
 
     def stopCluster(self):
@@ -733,6 +820,297 @@ class UpgradeImpl:
             self.context.isSingle or self.context.localMode,
             self.context.mpprcFile)
         self.context.logger.log("Successfully started cluster.")
+
+    def set_cm_parameters(self, cm_nodes, cms_para_dict):
+        """
+        function:set cms parameters
+        """
+        # set cm_server parameters
+        for cm_node in cm_nodes:
+            cmserver_file = os.path.join(cm_node.cmservers[0].datadir, "cm_server.conf")
+            cmd = "echo -e '\n' > /dev/null 2>&1"
+            for para in list(cms_para_dict.keys()):
+                cmd += " && sed -i '/\<%s\>/d' '%s' && echo '%s = %s' >> '%s'" % \
+                       (para, cmserver_file, para, cms_para_dict[para], cmserver_file)
+            self.context.logger.debug("Command for setting CMServer parameters: %s." % cmd)
+
+            if self.context.isSingle:
+                (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
+                if status != 0 and not self.context.ignoreInstance:
+                    raise Exception(ErrorCode.GAUSS_500["GAUSS_50007"] %
+                                    ",".join(list(cms_para_dict.keys())) + " Error:%s." % output)
+            else:
+                (status, output) = self.context.sshTool.getSshStatusOutput(cmd, [cm_node.name])
+                if status[cm_node.name] != DefaultValue.SUCCESS:
+                    raise Exception(ErrorCode.GAUSS_500["GAUSS_50007"] %
+                                    ",".join(list(cms_para_dict.keys())) + " Error:%s." % output)
+
+    def save_cm_server_guc(self, cmsParaDict, fileName):
+        """
+        function : Save the old parameters to the json file
+                   will create an empty file if the cmsParaDict is empty
+        @param cmsParaDict: parameter dict
+        @param fileName: json file name
+        """
+        try:
+            self.context.logger.debug("Start to save the old parameters to the json file")
+            # Save the parameters to one file
+            FileUtil.createFileInSafeMode(fileName)
+            with open(fileName, 'w') as fp_json:
+                json.dump(cmsParaDict, fp_json)
+
+            if not self.context.isSingle:
+                self.context.sshTool.scpFiles(fileName, os.path.dirname(fileName) + "/",
+                                              hostList=self.context.clusterNodes)
+            self.context.logger.debug("Successfully written and send file %s. "
+                                      "The list context is %s." % (fileName, cmsParaDict))
+        except Exception as er:
+            if not self.context.forceRollback:
+                raise Exception(str(er))
+            self.context.logger.debug("WARNING: Failed to save the CMServer parameters.")
+
+    def set_cm_server_guc(self, cmsParaDict, needReload=True):
+        """
+        function : set cm_server parameters and restart cm_server instance
+        @param cmsParaDict: parameter dict
+        @param needReload: kill -1
+        """
+        self.context.logger.debug("Start set and restart cm_server instance.")
+        if len(cmsParaDict.keys()) == 0 or self.context.standbyCluster:
+            self.context.logger.debug("no need to do.")
+            return
+
+        cmNodes = []
+        # Get all the nodes that contain the CMSERVER instance
+        for dbNode in self.context.clusterInfo.dbNodes:
+            if len(dbNode.cmservers) > 0:
+                cmNodes.append(dbNode)
+
+        self.set_cm_parameters(cmNodes, cmsParaDict)
+
+        if not needReload:
+            return
+
+        # Restart the instance CMSERVERS
+
+        # Reload cm parameters using kill -1
+        cmd = DefaultValue.killInstProcessCmd("cm_server", False, 1)
+        self.context.logger.debug("Command for reloading CMServer instances: %s." % cmd)
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
+        if status != 0:
+            self.context.logger.warn("Kill CMS failed. OUTPUT: {0}".format(output))
+        # Waiting for CMS instance to automatically refresh and reload
+        time.sleep(10)
+        self.context.logger.debug("Successfully set and reload CMServer instance.")
+
+    def base_close_cm_server_guc(self):
+        """
+        function: Close cm_server guc parameter interface
+        """
+        if self.context.is_inplace_upgrade:
+            self.close_cm_server_guc(const.CLUSTER_CMSCONF_FILE,
+                                     const.CMSERVER_GUC_DEFAULT_HA,
+                                     const.CMSERVER_GUC_CLOSE_HA)
+        else:
+            self.close_cm_server_guc(const.GREY_CLUSTER_CMSCONF_FILE,
+                                     const.CMSERVER_GUC_GREYUPGRADE_DEFAULT,
+                                     const.CMSERVER_GUC_GREYUPGRADE_CLOSE)
+        self.set_enable_ssl("off")
+
+    def close_cm_server_gucs_before_install(self):
+        """
+        function: Close CM parameter before install new binary
+        """
+        if DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) == 0:
+            self.context.logger.debug("Old cluster not exist CM component, "
+                                      "no need close guc parameter in before install binary files.")
+            return
+        self.context.logger.debug("Close cm_server parameters start before install binary files.")
+        self.base_close_cm_server_guc()
+
+    def close_cm_server_gucs_after_install(self):
+        """
+        function: Close CM parameter after install new binary
+        """
+        if DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) != 0:
+            self.context.logger.debug("Old cluster not exist CM component, "
+                                      "no need close guc parameter in after install binary files.")
+            return
+        self.context.logger.debug("Close cm_server parameters start after install binary files.")
+        self.base_close_cm_server_guc()
+
+    def close_cm_server_guc(self, backUpFile, OriginalGUCparas, closedGUCparas):
+        """
+        function: save old cm_server parameters, set new value by backUpFile
+        input : NA
+        output: NA
+        """
+        if DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo) == 0:
+            self.context.logger.debug("New cluster not exist CM component, no need to restore guc parameter.")
+            return
+        self.context.logger.debug("Start to close CMServer parameters.")
+        if self.context.standbyCluster:
+            self.context.logger.debug("No need to close CMServer guc under force upgrade.")
+            return
+        closeGUCparas = {}
+        try:
+            cmsGucFile = os.path.join(EnvUtil.getTmpDirFromEnv(), backUpFile)
+            cmsGucFileSet = cmsGucFile + ".done"
+            if os.path.isfile(cmsGucFileSet):
+                self.context.logger.debug("Result: The file [%s] exists, it means that the GUC "
+                                          "parameter values have been closed." % cmsGucFileSet)
+                return
+
+            # If the backup file already exists, read it through the backup file, otherwise,
+            # connect to the database to get it
+            if os.path.isfile(cmsGucFile):
+                try:
+                    with open(cmsGucFile, "r") as fp:
+                        oldGUCParas = json.load(fp)
+                except Exception as _:
+                    # if file exists, but not available, we need to remove it firsts
+                    self.context.logger.debug("WARNING: the cms guc back file is unavailable. "
+                                              "Maybe we should keep guc consistent manually "
+                                              "if failed")
+                    cmd = "%s '%s'" % (CmdUtil.getRemoveCmd("file"), cmsGucFile)
+                    hostList = copy.deepcopy(self.context.clusterNodes)
+                    self.context.execCommandInSpecialNode(cmd, hostList)
+                    oldGUCParas = self.getCMServerGUC(OriginalGUCparas)
+            else:
+                oldGUCParas = self.getCMServerGUC(OriginalGUCparas)
+            if len(list(oldGUCParas.keys())) == 0:
+                self.context.logger.debug("There is no GUC parameters on CMS instance, "
+                                          "so don't need to close them.")
+                self.save_cm_server_guc(oldGUCParas, cmsGucFileSet)
+                return
+
+            for para in list(oldGUCParas.keys()):
+                if para in list(closedGUCparas.keys()):
+                    closeGUCparas[para] = closedGUCparas[para]
+
+            self.save_cm_server_guc(oldGUCParas, cmsGucFile)
+            self.set_cm_server_guc(closeGUCparas)
+
+            cmd = "mv '%s' '%s'" % (cmsGucFile, cmsGucFileSet)
+            hostList = copy.deepcopy(self.context.clusterNodes)
+            self.context.execCommandInSpecialNode(cmd, hostList)
+
+            # make sure all cm_server child process has been killed. Example: gs_check
+            gaussHome = ClusterDir.getInstallDir(self.context.user)
+            cmServerFile = "%s/bin/cm_server" % gaussHome
+            cmNodes = []
+            # Get all the nodes that contain the CMSERVER instance
+            for dbNode in self.context.clusterInfo.dbNodes:
+                if len(dbNode.cmservers) > 0:
+                    cmNodes.append(dbNode)
+            # only kill the child process, not including cm_server
+            pstree = "%s -c" % os.path.realpath(
+                os.path.dirname(os.path.realpath(__file__)) + "/../../py_pstree.py")
+            if self.context.isSingle:
+                cmd = "pidList=`ps aux | grep \"%s\" | grep -v 'grep' | awk '{print $2}' | " \
+                      "xargs `; " % cmServerFile
+                cmd += "for pid in $pidList; do %s $pid | xargs -r -n 100 kill -9; done" % pstree
+                (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
+            else:
+                cmd = "pidList=\`ps aux | grep \"%s\" | grep -v 'grep' | awk '{print \$2}' | " \
+                      "xargs \`; " % cmServerFile
+                cmd += "for pid in \$pidList; do %s \$pid | xargs -r -n 100 kill -9; done" % pstree
+                (status, output) = self.context.sshTool.getSshStatusOutput(
+                                    cmd, [cmNode.name for cmNode in cmNodes])
+            self.context.logger.debug("Command for killing all cm_server child process: %s." % cmd)
+            self.context.logger.debug("The result of kill cm_server child process commands. "
+                                      "Status:%s, Output:%s." % (status, output))
+            self.waitClusterNormalDegrade(waitTimeOut=60)
+
+            self.context.logger.debug("Successfully closed the CMServer parameters.", "constant")
+        except Exception as er:
+            if not self.context.forceRollback:
+                raise Exception(str(er))
+            self.context.logger.debug("WARNING: Failed to close the CMServer parameters.")
+
+    def restore_cm_server_guc(self, backUpFile, isCommit=False, hostList=None):
+        """
+        function: restore cm_server parameters
+        input : NA
+        output: NA
+        """
+        if DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo) == 0:
+            self.context.logger.debug("Origin cluster not exist CM component, no need to restore guc parameter.")
+            return
+        if hostList is None:
+            hostList = []
+        old_guc_paras = dict()
+        filename = ""
+        self.context.logger.debug("Start to restore the CMServer parameters in file.")
+        if self.context.standbyCluster:
+            self.context.logger.debug("No need to restore the CMServer guc in standby cluster.")
+            return
+        try:
+            cms_guc_file = os.path.join(EnvUtil.getTmpDirFromEnv(), backUpFile)
+            cms_guc_file_set = cms_guc_file + ".done"
+            if not os.path.isfile(cms_guc_file_set) and not os.path.isfile(cms_guc_file):
+                self.context.logger.debug("The CMServer parameters file [%s] and [%s] does not "
+                                          "exists, so don't need to restore them." %
+                                          (cms_guc_file_set, cms_guc_file))
+            else:
+                if os.path.isfile(cms_guc_file_set):
+                    filename = cms_guc_file_set
+                else:
+                    filename = cms_guc_file
+                with open(filename) as fp_json:
+                    old_guc_paras = json.load(fp_json)
+                self.context.logger.debug("Get CMServer parameters from [{0}]:"
+                                          "{1}".format(filename, old_guc_paras))
+
+            if isCommit:
+                self.context.logger.debug("Set CMServer parameters for upgrade commit.")
+                for cmsPara in list(const.CMSERVER_GUC_DEFAULT.keys()):
+                    if cmsPara not in list(old_guc_paras.keys()):
+                        old_guc_paras[cmsPara] = const.CMSERVER_GUC_DEFAULT[cmsPara]
+
+            if len(list(old_guc_paras.keys())) != 0:
+                self.set_cm_server_guc(old_guc_paras)
+            else:
+                self.context.logger.debug("There is no GUC parameters in file %s, "
+                                          "so don't need to restore them.But still need clean file." % filename)
+
+            cmd = g_file.SHELL_CMD_DICT["deleteFile"] % (cms_guc_file_set, cms_guc_file_set)
+            cmd += " && {0}".format(g_file.SHELL_CMD_DICT["deleteFile"] % (cms_guc_file, cms_guc_file))
+            
+            if len(hostList) == 0:
+                hosts = copy.deepcopy(self.context.clusterNodes)
+                self.context.execCommandInSpecialNode(cmd, hosts)
+            else:
+                self.context.execCommandInSpecialNode(cmd, copy.deepcopy(hostList))
+            self.context.logger.debug("Successfully restored the CMServer parameters.")
+        except Exception as er:
+            if not self.context.forceRollback:
+                raise Exception(str(er) + "\nFailed to restore CMServer parameters. " + 
+                                "You may restore manually with file.")
+            self.context.logger.debug("WARNING: Failed to restore the CMServer parameters.")
+        if os.path.isfile(os.path.join(self.context.upgradeBackupPath, const.GREY_UPGRADE_STEP_FILE)) and \
+                     self.context.action not in [const.ACTION_AUTO_ROLLBACK, const.ACTION_COMMIT_UPGRADE]:
+            return
+        # open enable_ssl parameter
+        self.set_enable_ssl("on")
+
+    def clean_cms_param_file(self):
+        """
+        Clean enable_ssl_on and cluster_cmsconf.json.done in PGHOST
+        """
+        enable_ssl_on_file = os.path.join(EnvUtil.getTmpDirFromEnv(), "enable_ssl_on")
+        enable_ssl_off_file = os.path.join(EnvUtil.getTmpDirFromEnv(), "enable_ssl_off")
+        cms_param_json_file = os.path.join(EnvUtil.getTmpDirFromEnv(), "cluster_cmsconf.json.done")
+        cmd = g_file.SHELL_CMD_DICT["deleteFile"] % (enable_ssl_on_file, enable_ssl_on_file)
+        cmd += " && {0}".format(g_file.SHELL_CMD_DICT["deleteFile"] % (enable_ssl_off_file, enable_ssl_off_file))
+        cmd += " && {0}".format(g_file.SHELL_CMD_DICT["deleteFile"] % (cms_param_json_file, cms_param_json_file))
+
+        self.context.logger.debug("Clean cms param file CMD is: {0}".format(cmd))
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.context.sshTool,
+                                        self.context.isSingle,
+                                        self.context.mpprcFile)
+        self.context.logger.debug("Clean cms param file success.")
 
     def createCommitFlagFile(self):
         """
@@ -887,6 +1265,8 @@ class UpgradeImpl:
         Input : gucStr the guc key:value string
         output : NA
         """
+        if "dual-standby" in self.context.clusterType:
+            return
         self.context.logger.debug("Start to check GUC value %s." % gucStr)
         try:
             # send cmd to that node and exec
@@ -909,6 +1289,28 @@ class UpgradeImpl:
             self.context.logger.debug("Successfully checked guc value.")
         except Exception as e:
             raise Exception(str(e))
+
+    def backup_disaster_user_file(self):
+        """backup_disaster_user_file"""
+        bin_path = os.path.join(EnvUtil.getEnv("GAUSSHOME"), "bin")
+        cipher_file = os.path.join(bin_path, "hadr.key.cipher")
+        if os.path.isfile(cipher_file):
+            FileUtil.cpFile(cipher_file, "%s/" % self.context.tmpDir)
+        rand_file = os.path.join(bin_path, "hadr.key.rand")
+        if os.path.isfile(rand_file):
+            FileUtil.cpFile(rand_file, "%s/" % self.context.tmpDir)
+        self.context.logger.debug("Back up rand and cipher file to temp dir.")
+
+    def restore_origin_disaster_user_file(self):
+        """restore_origin_disaster_user_file"""
+        bin_path = os.path.join(self.context.newClusterAppPath, "bin")
+        cipher_file = os.path.join(self.context.tmpDir, "hadr.key.cipher")
+        if os.path.isfile(cipher_file):
+            self.context.sshTool.scpFiles(cipher_file, bin_path)
+        rand_file = os.path.join(self.context.tmpDir, "hadr.key.rand")
+        if os.path.isfile(rand_file):
+            self.context.sshTool.scpFiles(rand_file, bin_path)
+        self.context.logger.debug("Restore rand and cipher file to gausshome.")
 
     def floatMoreThan(self, numOne, numTwo):
         """
@@ -950,6 +1352,113 @@ class UpgradeImpl:
         """
         self.setGUCValue("vacuum_defer_cleanup_age", "100000", "reload")
 
+    def is_config_cm_params(self):
+        """
+        Check conditions for ssl_enable
+        """
+        self.context.logger.log("Start check CMS parameter.")
+        new_version = int(float(self.context.newClusterNumber) * 1000)
+        old_version = int(float(self.context.oldClusterNumber) * 1000)
+        check_version = 92574
+        self.context.logger.debug("New version: [{0}]. Old version: [{1}]. "
+                                  "Check version: [{2}]".format(new_version, 
+                                                                old_version, 
+                                                                check_version))
+
+        if DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo) == 0:
+            self.context.logger.debug("Not exist CM component. No need to check CMS parameter.")
+            return False
+
+        if new_version >= check_version > old_version:
+            self.context.logger.debug(
+                "Old cluster cm_server not supported ssl_enable parameter. New version supported.")
+            return True
+
+        self.context.logger.log("Old cluster version number less than 92574.")
+        return False
+
+    def get_current_enable_ssl_value(self):
+        """
+        Get the value of enable_ssl from remote node
+        """
+        all_cm_server_inst = [inst for node in self.context.clusterInfo.dbNodes for inst in node.cmservers]
+        first_cms_inst = all_cm_server_inst[0]
+        server_conf_file = os.path.join(first_cms_inst.datadir, "cm_server.conf")
+        remote_cmd = "grep -E '^enable_ssl = ' {0}".format(server_conf_file)
+        ssh_cmd = "pssh -s -H {0} \"{1}\"".format(first_cms_inst.hostname, remote_cmd)
+        status, output = subprocess.getstatusoutput(ssh_cmd)
+        if status != 0 or "=" not in output:
+            self.context.logger.warn("Get enable_ssl failed. Output:: [{0}]".format(output))
+            return False
+        self.context.logger.debug("Get the value of enable_ssl is [{0}] "
+                                  "from node [{1}].".format(output.split("=")[1].strip(), first_cms_inst.hostname))
+        return output.split("=")[1].strip()
+
+    def generate_enable_ssl_flag_file(self):
+        """
+        Generate enable_ssl flag file for upgrade commit
+        Please ensure that there are CMS nodes in the cluster.
+        """
+        enable_ssl_value = self.get_current_enable_ssl_value()
+        if not enable_ssl_value:
+            self.context.logger.debug("No exist enable_ssl value.")
+            return
+
+        flag_file_name = "enable_ssl_on" if enable_ssl_value == "on" else "enable_ssl_off"
+        flag_file_path = os.path.join(EnvUtil.getTmpDirFromEnv(), flag_file_name)
+        generate_cmd = "touch {0} && chmod 400 {0}".format(flag_file_path)
+        self.context.sshTool.executeCommand(generate_cmd, hostList=self.context.clusterInfo.getClusterNodeNames())
+        self.context.logger.debug("Generate enable_ssl flag file [{0}] successfully.".format(flag_file_path))
+
+    def set_enable_ssl(self, value):
+        """
+        Check CM parameter ssl_enable
+        """
+        self.context.logger.debug("Turn {0} enable_ssl parameter.".format(value))
+        if not self.is_config_cm_params():
+            return
+
+        if value == "off":
+            self.context.logger.debug("Backup file before disabling the parameter.")
+            self.generate_enable_ssl_flag_file()
+        else:
+            self.context.logger.debug("Get enable_ssl flag file.")
+            ssl_off_flag = os.path.join(EnvUtil.getTmpDirFromEnv(), "enable_ssl_off")
+            ssl_on_flag = os.path.join(EnvUtil.getTmpDirFromEnv(), "enable_ssl_on")
+            if os.path.isfile(ssl_off_flag):
+                self.context.logger.debug("Old cluster turn off enable_ssl.")
+                rm_flag_cmd = "rm -f {0}".format(ssl_off_flag)
+                self.context.sshTool.executeCommand(rm_flag_cmd,
+                                                    hostList=self.context.clusterInfo.getClusterNodeNames())
+                return
+            if os.path.isfile(ssl_on_flag):
+                self.context.logger.debug("Old cluster turn on enable_ssl [{0}].".format(ssl_on_flag))
+                rm_flag_cmd = "rm -f {0}".format(ssl_on_flag)
+                self.context.sshTool.executeCommand(rm_flag_cmd,
+                                                    hostList=self.context.clusterInfo.getClusterNodeNames())
+            else:
+                self.context.logger.debug("Old cluster not set enable_ssl parameter.")
+                return
+
+        cm_nodes = [node for node in self.context.clusterInfo.dbNodes if node.cmservers]
+        cm_node_names = [node.name for node in cm_nodes]
+        if not cm_nodes:
+            raise Exception(ErrorCode.GAUSS_512["GAUSS_51212"] % "CMS")
+        cm_server_dir = cm_nodes[0].cmservers[0].datadir
+        cm_agent_dir = os.path.join(cm_nodes[0].cmDataDir, "cm_agent")
+        cms_conf_file = os.path.join(cm_server_dir, "cm_server.conf")
+        cma_conf_file = os.path.join(cm_agent_dir, "cm_agent.conf")
+        origin_value = "off" if value == "on" else "on"
+
+        cmd = "sed -i 's/enable_ssl = {0}/enable_ssl = {1}/g' {2}".format(origin_value, value, cma_conf_file)
+        self.context.sshTool.executeCommand(cmd, hostList=cm_node_names)
+
+        cmd = "sed -i 's/enable_ssl = {0}/enable_ssl = {1}/g' {2}".format(origin_value, value, cms_conf_file)
+        self.context.sshTool.executeCommand(cmd, hostList=self.context.clusterInfo.getClusterNodeNames())
+
+        self.reload_cmserver()
+        self.context.logger.debug("Turn {0} enable_ssl parameter.".format(value))
+
 
     def doGreyBinaryUpgrade(self):
         """
@@ -968,8 +1477,10 @@ class UpgradeImpl:
             self.distributeXml()
             # 2. check if the app path is ready and sha256 is right and others
             self.checkUpgrade()
-            # 4. check the cluster pressure
-            self.HASyncReplayCheck()
+            if self.context.action == const.ACTION_LARGE_UPGRADE and \
+                    "dual-standby" not in self.context.clusterType:
+                # 4. check the cluster pressure
+                self.HASyncReplayCheck()
             # 5. before do grey binary upgrade, we must make sure the
             # cluster is Normal and the database could be
             # connected, if not, exit.
@@ -983,6 +1494,12 @@ class UpgradeImpl:
             # check if it satisfy upgrade again, if it is the second loop to
             # upgrade, it can go go upgrade again branch
             upgradeAgain = self.canUpgradeAgain()
+            if not upgradeAgain:
+                self.recordDualClusterStage(self.oldCommitId,
+                                            DualClusterStage.STEP_UPGRADE_UNFINISHED)
+                self.context.logger.log("NOTICE: The directory %s will be deleted after "
+                                        "commit-upgrade, please make sure there is no personal "
+                                        "data." % self.context.oldClusterAppPath)
         except Exception as e:
             # before this step, the upgrade process do nothing to the cluster,
             # this time has no remaining
@@ -998,6 +1515,8 @@ class UpgradeImpl:
                 if not self.doGreyBinaryRollback():
                     self.exitWithRetCode(const.ACTION_AUTO_ROLLBACK, False)
                 self.removeOmRollbackProgressFile()
+                self.recordDualClusterStage(self.oldCommitId,
+                                            DualClusterStage.STEP_UPGRADE_UNFINISHED)
                 self.context.logger.log(
                     "The directory %s will be deleted after commit-upgrade, "
                     "please make sure there is no personal data." %
@@ -1021,8 +1540,14 @@ class UpgradeImpl:
                 # we can not recognize if it really cannot
                 # find the column, or just because the old version. So we
                 # will update the catalog in the old version
-                if self.context.action == const.ACTION_LARGE_UPGRADE:
+                if self.context.action == const.ACTION_LARGE_UPGRADE and \
+                        "dual-standby" not in self.context.clusterType:
                     self.updateCatalog()
+                elif self.context.action == const.ACTION_LARGE_UPGRADE and \
+                     "dual-standby" in self.context.clusterType:
+                    self.setUpgradeFromParam(self.context.oldClusterNumber)
+                    self.reloadCmAgent()
+                    self.reload_cmserver()
                 self.recordNodeStep(GreyUpgradeStep.STEP_SWITCH_NEW_BIN)
                 self.CopyCerts()
                 self.upgradeAgain()
@@ -1061,8 +1586,15 @@ class UpgradeImpl:
                 # 11. switch the cluster version to new version
                 self.getOneDNInst(checkNormal=True)
                 self.switchBin(const.NEW)
+                self.restore_origin_disaster_user_file()
                 # create CA for CM
-                self.create_ca_for_cm()
+                if len(self.context.nodeNames) == len(self.context.clusterNodes):
+                    self.create_ca_for_cm()
+                    # turn off enable_ssl for upgrade
+                    self.set_enable_ssl("off")
+                else:
+                    self.createCmCaForRollingUpgrade()
+
                 self.setNewVersionGuc()
                 self.recordNodeStep(GreyUpgradeStep.STEP_UPGRADE_PROCESS)
             if currentStep < GreyUpgradeStep.STEP_UPDATE_POST_CATALOG:
@@ -1093,14 +1625,16 @@ class UpgradeImpl:
                     self.waitClusterForNormal()
                     # backup global relmap file before doing upgrade-post
                     self.backupGlobalRelmapFile()
-                    self.prepareSql("rollback-post")
-                    self.execRollbackUpgradedCatalog(scriptType="rollback-post")
-                    self.prepareSql("upgrade-post")
-                    self.execRollbackUpgradedCatalog(scriptType="upgrade-post")
-                    self.getLsnInfo()
+                    if "dual-standby" not in self.context.clusterType:
+                        self.prepareSql("rollback-post")
+                        self.execRollbackUpgradedCatalog(scriptType="rollback-post")
+                        self.prepareSql("upgrade-post")
+                        self.execRollbackUpgradedCatalog(scriptType="upgrade-post")
+                        self.getLsnInfo()
                 hosts = copy.deepcopy(self.context.clusterNodes)
                 self.recordNodeStep(
                     GreyUpgradeStep.STEP_PRE_COMMIT, nodes=hosts)
+                self.recordDualClusterStage(self.newCommitId, DualClusterStage.STEP_UPGRADE_FINISH)
                 self.printPrecommitBanner()
         except Exception as e:
             hintInfo = "Nodes are new version. " \
@@ -1108,7 +1642,13 @@ class UpgradeImpl:
             self.context.logger.log(hintInfo + str(e))
             self.context.logger.debug(traceback.format_exc())
             self.exitWithRetCode(self.context.action, False, hintInfo + str(e))
-        self.context.logger.log("Successfully upgrade nodes.")
+
+        greyNodeNames = self.getUpgradedNodeNames(GreyUpgradeStep.STEP_UPDATE_POST_CATALOG)   
+        if len(greyNodeNames) < len(self.context.clusterNodes):
+            self.context.logger.log("The nodes % have been successfully upgraded."
+                                    "Then can upgrade the remaining nodes." % self.context.nodeNames)
+        else:                                    
+            self.context.logger.log("Successfully upgrade all nodes.")
         self.exitWithRetCode(self.context.action, True)
 
     def getOneNodeStep(self, nodeName):
@@ -1247,6 +1787,9 @@ class UpgradeImpl:
         try:
             self.context.logger.log("Create checkpoint before switching.")
             start_time = timeit.default_timer()
+            if self.context.forceRollback or self.context.standbyCluster:
+                self.context.logger.debug("No need to do checkpoint.")
+                return
             # create checkpoint
             sql = "CHECKPOINT;"
             for i in range(10):
@@ -1306,8 +1849,45 @@ class UpgradeImpl:
         self.context.logger.debug("Old cluster exclude CMS instance. So no need to switch UDF.")
         return False
 
+    def waif_for_om_monitor_start(self, is_rollback):
+        if not EnvUtil.is_dss_mode(self.context.user):
+            self.context.logger.debug(
+                "In non-dss-enabled, no need to wait for om_monitor to start.")
+        self.context.logger.log("Start to wait for om_monitor.")
+        is_rolling = False
+        start_time = timeit.default_timer()
+        cmd = "%s -t %s -U %s -V %d --old_cluster_app_path=%s " \
+              "--new_cluster_app_path=%s -X '%s' -l %s" % \
+              (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+               const.ACTION_WAIT_OM_MONITOR,
+               self.context.user,
+               int(float(self.context.oldClusterNumber) * 1000),
+               self.context.oldClusterAppPath,
+               self.context.newClusterAppPath,
+               self.context.xmlFile,
+               self.context.localLog)
+
+        if is_rollback:
+            cmd += " --rollback"
+        if self.context.forceRollback:
+            cmd += " --force"
+        if len(self.context.nodeNames) != len(self.context.clusterNodes):
+            is_rolling = True
+        if self.need_rolling(is_rollback) or is_rolling:
+            cmd += " --rolling"
+        self.context.logger.debug("Command for waiting for om_monitor: %s." % cmd)
+        hostList = copy.deepcopy(self.context.nodeNames)
+        self.context.sshTool.executeCommand(cmd, hostList=hostList)
+        elapsed = timeit.default_timer() - start_time
+        self.context.logger.debug("Time to wait for om_monitor: %s." %
+                                  elapsed)
+
     def switchDn(self, isRollback):
+
+        self.waif_for_om_monitor_start(is_rollback=isRollback)
+
         self.context.logger.log("Switching DN processes.")
+        is_rolling = False
         start_time = timeit.default_timer()
         # under upgrade, kill the process from old cluster app path,
         # rollback: kill from new cluster app path
@@ -1326,10 +1906,24 @@ class UpgradeImpl:
             cmd += " --rollback"
         if self.context.forceRollback:
             cmd += " --force"
-        if self.need_rolling(isRollback):
+        if len(self.context.nodeNames) != len(self.context.clusterNodes):
+            is_rolling = True
+        if self.need_rolling(isRollback) or is_rolling:
+            self.context.logger.log("Switch DN processes for rolling upgrade.")
             cmd += " --rolling"
+        if EnvUtil.is_dss_mode(
+                getpass.getuser()) and DefaultValue.isgreyUpgradeNodeSpecify(
+                    self.context.user,
+                    DefaultValue.GREY_UPGRADE_STEP_UPGRADE_PROCESS, None,
+                    self.context.logger):
+            self.context.logger.debug(
+                "In dss_mode, have cm configuration, upgrade all nodes together."
+            )
+            cmd += " --upgrade_dss_config={}".format(
+                DssConfig.get_value_b64_handler('dss_upgrade_all', 'on'))
+
         self.context.logger.debug(
-            "Command for switching DN processes: %s" % cmd)
+            "Command for switching DN processes: %s." % cmd)
         hostList = copy.deepcopy(self.context.nodeNames)
         self.context.sshTool.executeCommand(cmd, hostList=hostList)
         start_cluster_time = timeit.default_timer()
@@ -1441,8 +2035,37 @@ class UpgradeImpl:
         # when number and node names is empty
         self.context.logger.debug("Choose the nodes to be upgraded.")
         self.setClusterDetailInfo()
-        self.context.nodeNames = self.context.clusterNodes
-        self.context.logger.log("Upgrade all nodes.")
+        
+        # check nodename following paramter -h whether have been upgraded 
+        if len(self.context.nodeNames) != 0:
+            self.context.logger.log(
+                "Upgrade nodes %s." % self.context.nodeNames)
+            greyNodeNames = self.getUpgradedNodeNames()
+            checkH_nodes = \
+                [val for val in greyNodeNames if val in self.context.nodeNames]
+            if len(checkH_nodes) > 0:
+                raise Exception("The nodes %s have been upgrade" %
+                            checkH_nodes)
+        # confirm in checkParameter
+        elif self.context.upgrade_remain:
+            greyNodeNames = self.getUpgradedNodeNames()
+            otherNodeNames = [
+                i for i in self.context.clusterNodes if i not in greyNodeNames]
+            self.context.nodeNames = otherNodeNames
+            self.context.logger.debug(
+                "Upgrade remain nodes %s." % self.context.nodeNames)
+        # when number and node names is empty 
+        else:
+            nodeTotalNum = len(self.context.clusterNodes)
+            if len(self.context.clusterNodes) == 1:
+                self.context.nodeNames.append(
+                    self.context.clusterInfo.dbNodes[0].name)
+                self.context.logger.log(
+                    "Upgrade one node '%s'." % self.context.nodeNames[0])
+            # SinglePrimaryMultiStandbyCluster
+            else:
+                self.context.nodeNames = self.context.clusterNodes
+                self.context.logger.log("Upgrade all nodes.")
 
     def getUpgradedNodeNames(self, step=GreyUpgradeStep.STEP_INIT_STATUS):
         """
@@ -1671,6 +2294,10 @@ class UpgradeImpl:
         if not self.doInplaceBinaryRollback():
             self.exitWithRetCode(const.ACTION_AUTO_ROLLBACK, False)
         try:
+            if self.context.action == const.ACTION_LARGE_UPGRADE and \
+                    "dual-standby" not in self.context.clusterType:
+                # check the cluster pressure
+                self.HASyncReplayCheck()
             self.checkUpgrade()
 
             # 3. before do binary upgrade, we must make sure the cluster is
@@ -1692,6 +2319,8 @@ class UpgradeImpl:
                 self.context.sshTool.executeCommand(cmd)
                 self.context.logger.log("Successfully uninstall Kerberos.")
                 self.start_strategy(is_final=False)
+            # Disable CM parameter in normal scenarios
+            self.close_cm_server_gucs_before_install()
             if self.unSetClusterReadOnlyMode() != 0:
                 raise Exception("NOTICE: "
                                 + ErrorCode.GAUSS_529["GAUSS_52907"])
@@ -1770,6 +2399,7 @@ class UpgradeImpl:
             #    gds files
             #    cn cert files
             #    At the same time, sync newly added guc for instances
+            #    Install CM instance
             self.restoreClusterConfig()
             self.syncNewGUC()
             # unset cluster readonly
@@ -1777,6 +2407,8 @@ class UpgradeImpl:
             if self.unSetClusterReadOnlyMode() != 0:
                 raise Exception("NOTICE: "
                                 + ErrorCode.GAUSS_529["GAUSS_52907"])
+            # Disable the CM parameter in the upgrade scenario from no CM component to with CM component.
+            self.close_cm_server_gucs_after_install()
             # flush new app dynamic configuration
             dynamicConfigFile = "%s/bin/cluster_dynamic_config" % \
                                 self.context.newClusterAppPath
@@ -1985,6 +2617,14 @@ class UpgradeImpl:
         self.context.logger.log("Cancel the upgrade status succeeded.", "constant")
         self.context.logger.log("Start to clean temp files for upgrade.", "addStep")
         time.sleep(10)
+
+        # restore the CM parameter
+        try:
+            self.restore_cm_server_guc(const.CLUSTER_CMSCONF_FILE, True)
+        except Exception as er:
+            self.context.logger.debug("Failed to restore CM parameter. " + str(er))
+            cleanUpSuccess = False
+
         # 3. clean backup catalog physical files if doing inplace upgrade
         if self.cleanBackupedCatalogPhysicalFiles() != 0:
             self.context.logger.debug(
@@ -2246,11 +2886,10 @@ class UpgradeImpl:
         output: NA
         """
         self.context.logger.debug("Preparing upgrade sql folder.")
-        if self.context.action == const.ACTION_INPLACE_UPGRADE:
-            hostName = NetUtil.GetHostIpOrName()
-            hosts = [hostName]
-        else:
-            hosts = self.context.clusterNodes
+        if self.context.standbyCluster:
+            self.context.logger.debug("no need prepare upgrade sql folder under force upgrade")
+            return
+        hosts = self.context.clusterNodes
         cmd = "%s -t %s -U %s --upgrade_bak_path=%s -X %s -l %s" % \
               (OMCommand.getLocalScript("Local_Upgrade_Utility"),
                const.ACTION_UPGRADE_SQL_FOLDER,
@@ -2281,6 +2920,10 @@ class UpgradeImpl:
         self.context.logger.debug("Start to wait and check if all the standby"
                                   " instances have replayed all xlogs, host: %s" % \
                                   host.hostname)
+        if self.context.standbyCluster or self.context.forceRollback:
+            self.context.logger.debug("no need to do HA sync replay check "
+                                      "under force upgrade/rollback and standby cluster mode")
+            return
         self.doReplay(catchupFailedOk, host)
         self.context.logger.debug("Successfully performed the replay check "
                                   "of the standby instance.")
@@ -2468,6 +3111,7 @@ class UpgradeImpl:
             cmd = ClusterCommand.getQueryStatusCmd("", outFile=tmpFile)
             SharedFuncs.runShellCmd(cmd, self.context.user,
                                     self.context.userProfile)
+            self.context.logger.debug(f"The generator cmd is {cmd}.")
             if not os.path.exists(tmpFile):
                 raise Exception("Can not genetate dynamic info file")
             self.context.distributeFileToSpecialNode(tmpFile,
@@ -2562,8 +3206,10 @@ class UpgradeImpl:
                 self.context.logger.debug("Not post upgrade.")
                 self.setUpgradeFromParam(self.context.oldClusterNumber)
                 if self.context.action == const.ACTION_INPLACE_UPGRADE:
-                    self.setUpgradeMode(1, "set")
+                    # Must set guc after start cluster by setUpgradeMode, because checking guc
+                    # needs to connect database to execute sql statement.
                     self.start_strategy(is_final=False)
+                    self.setUpgradeMode(1, "reload")
                     self.touchInitFile()
                 else:
                     # the guc parameter upgrade_from need to restart cmagent to take effect
@@ -2726,10 +3372,11 @@ class UpgradeImpl:
         """
         self.context.logger.debug("Get database list in cluster.")
         sql = "select datname from pg_database;"
+        mode = True if "dual-standby" in self.context.clusterType else False
         (status, output) = ClusterCommand.remoteSQLCommand(
             sql, self.context.user,
             self.dnInst.hostname, self.dnInst.port, False,
-            DefaultValue.DEFAULT_DB_NAME, IsInplaceUpgrade=True)
+            DefaultValue.DEFAULT_DB_NAME, IsInplaceUpgrade=True, maintenance_mode=mode)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
                             " Error: \n%s" % str(output))
@@ -2749,12 +3396,13 @@ class UpgradeImpl:
         make checkpoint
         :return:
         """
+        mode = True if "dual-standby" in self.context.clusterType else False
         sql = 'CHECKPOINT;'
         for eachdb in database_list:
             (status, output) = ClusterCommand.remoteSQLCommand(
                 sql, self.context.user,
                 self.dnInst.hostname, self.dnInst.port, False,
-                eachdb, IsInplaceUpgrade=True)
+                eachdb, IsInplaceUpgrade=True, maintenance_mode=mode)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
                                 " Error: \n%s" % str(output))
@@ -2770,7 +3418,42 @@ class UpgradeImpl:
         """
         self.context.logger.debug("Start to {0} catalog.".format(scriptType))
         try:
-            dnNodeName = self.dnInst.hostname
+            old_cluster_config_file = \
+            os.path.realpath(os.path.join(self.context.oldClusterAppPath,
+                                          "bin", "cluster_static_config"))
+            new_cluster_config_file = \
+            os.path.realpath(os.path.join(self.context.newClusterAppPath,
+                                          "bin", "cluster_static_config"))
+
+            # Cm have no maintain during switching process in grey upgrade due to ensure RTO time.
+            # So there exists occasion that primary and stadby is likely to change during switching
+            # process in grey upgrade.
+            # There are conditions to need to handle when cluster has cm.
+            # (1) Cluster mode possibly change after switching process in grey quto-upgrade, So primary
+            # has to be aquired in real time from cm_ctl query before executing rollback-post script.
+            # (2) when executing upgrade-post script, primary has been aquired in executing rollback-post.
+            # (3) Cluster mode possibly change after switching process in grey auto-rollback, So primary
+            # has to be aquired in real time from cm_ctl query before executing rollback script.
+            if self.get_cms_num(new_cluster_config_file) > 0 and (scriptType == "rollback-post" or \
+               scriptType == "upgrade-post"):
+                if (scriptType == "rollback-post"):
+                    self.getPrimaryDN(checkNormal=True)
+                    dnNodeName = self.primaryDn.hostname
+                else:
+                    dnNodeName = self.primaryDn.hostname
+                self.context.logger.debug("Primary dn {0} from cm_ctl query".format(
+                                           dnNodeName))
+            elif self.operate_action == const.ACTION_AUTO_ROLLBACK and \
+                 self.get_cms_num(old_cluster_config_file) > 0 and scriptType == "rollback":
+                self.getPrimaryDN(checkNormal=True)
+                dnNodeName = self.primaryDn.hostname
+                self.context.logger.debug("Primary dn {0} from cm_ctl query".format(
+                                          dnNodeName))
+            else:
+                dnNodeName = self.dnInst.hostname
+                self.context.logger.debug("Primary dn {0} from config file".format(
+                                          dnNodeName))
+                                          
             if dnNodeName == "":
                 raise Exception(ErrorCode.GAUSS_526["GAUSS_52602"])
             self.context.logger.debug("dn nodes is {0}".format(dnNodeName))
@@ -2936,12 +3619,24 @@ class UpgradeImpl:
             fileNameList.sort(reverse=True)
         else:
             fileNameList.sort()
+        """
+        we move the 506 at last one,because it change the pg_proc index, 
+        and rebuild index,it will hold the level 1 lock, and it make upgrade
+        mode slow and sometimes will not send the Invalid message, it cause 
+        some function can't be found, so move it to last ont to avoid it.
+        """
         if 'rollback_catalog_maindb_92_506.sql' in fileNameList:
             fileNameList.remove('rollback_catalog_maindb_92_506.sql')
             fileNameList.append('rollback_catalog_maindb_92_506.sql')
         if 'rollback_catalog_otherdb_92_506.sql' in fileNameList:
             fileNameList.remove('rollback_catalog_otherdb_92_506.sql')
             fileNameList.append('rollback_catalog_otherdb_92_506.sql')
+        if 'rollback-post_catalog_maindb_92_506.sql' in fileNameList:
+            fileNameList.remove('rollback-post_catalog_maindb_92_506.sql')
+            fileNameList.append('rollback-post_catalog_maindb_92_506.sql')
+        if 'rollback-post_catalog_otherdb_92_506.sql' in fileNameList:
+            fileNameList.remove('rollback-post_catalog_otherdb_92_506.sql')
+            fileNameList.append('rollback-post_catalog_otherdb_92_506.sql') 
         fileName = "{0}_catalog_{1}_tmp.sql".format(mode, dbType)
         self.context.logger.debug("The real file list for %s: %s" % (
             dbType, fileNameList))
@@ -2954,12 +3649,24 @@ class UpgradeImpl:
         header = ["START TRANSACTION;"]
         fileNameList = self.getFileNameList("check_upgrade")
         fileNameList.sort()
+        """
+        we move the 506 at last one,because it change the pg_proc index, 
+        and rebuild index,it will hold the level 1 lock, and it make upgrade
+        mode slow and sometimes will not send the Invalid message, it cause 
+        some function can't be found, so move it to last ont to avoid it.
+        """
         if 'rollback_catalog_maindb_92_506.sql' in fileNameList:
             fileNameList.remove('rollback_catalog_maindb_92_506.sql')
             fileNameList.append('rollback_catalog_maindb_92_506.sql')
         if 'rollback_catalog_otherdb_92_506.sql' in fileNameList:
             fileNameList.remove('rollback_catalog_otherdb_92_506.sql')
             fileNameList.append('rollback_catalog_otherdb_92_506.sql')
+        if 'rollback-post_catalog_maindb_92_506.sql' in fileNameList:
+            fileNameList.remove('rollback-post_catalog_maindb_92_506.sql')
+            fileNameList.append('rollback-post_catalog_maindb_92_506.sql')
+        if 'rollback-post_catalog_otherdb_92_506.sql' in fileNameList:
+            fileNameList.remove('rollback-post_catalog_otherdb_92_506.sql')
+            fileNameList.append('rollback-post_catalog_otherdb_92_506.sql')
         self.context.logger.debug("The real file list for checking upgrade: "
                                   "%s" % fileNameList)
         self.togetherFile(header, "check_upgrade", fileNameList,
@@ -3134,7 +3841,7 @@ class UpgradeImpl:
                 raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
                                 " Error: \n%s" % str(output))
         sql = """START TRANSACTION;SET IsInplaceUpgrade = on;
-        drop index pg_proc_proname_args_nsp_index;SET LOCAL 
+        drop index if exists pg_proc_proname_args_nsp_index;SET LOCAL 
         inplace_upgrade_next_system_object_oids=IUO_CATALOG,false,
         true,0,0,0,2691;create UNIQUE INDEX pg_proc_proname_args_nsp_index 
         ON pg_proc USING btree (proname, proargtypes, pronamespace);SET 
@@ -3307,6 +4014,7 @@ class UpgradeImpl:
         input : NA
         output: NA
         """
+        self.checkDualClusterCommit()
         try:
             (status, output) = self.doHealthCheck(const.OPTION_POSTCHECK)
             if status != 0:
@@ -3323,22 +4031,29 @@ class UpgradeImpl:
             # for the reenter commit, the schema may have been deleted
             if self.existTable(const.RECORD_NODE_STEP):
                 self.recordNodeStep(GreyUpgradeStep.STEP_BEGIN_COMMIT)
+            self.recordDualClusterStage(self.newCommitId, DualClusterStage.STEP_UPGRADE_COMMIT)
+
             self.setActionFile()
             if self.context.action == const.ACTION_LARGE_UPGRADE:
                 if DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo) > 0:
                     self.setUpgradeFromParam(const.UPGRADE_UNSET_NUM)
                     self.reloadCmAgent()
                     self.reload_cmserver(is_final=True)
-                self.setUpgradeMode(0)
+                if "dual-standby" not in self.context.clusterType:
+                    self.setUpgradeMode(0)
             time.sleep(10)
+            # turn on enable_ssl for CM
+            self.set_enable_ssl("on")
             if self.dropPMKSchema() != 0:
                 raise Exception(ErrorCode.GAUSS_529["GAUSS_52917"])
 
             self.clearOtherToolPackage()
             self.cleanInstallPath(const.OLD)
-            self.dropSupportSchema()
-            self.cleanBinaryUpgradeBakFiles()
+            if "dual-standby" not in self.context.clusterType:
+                self.dropSupportSchema()
             self.cleanConfBakOld()
+            self.recordDualClusterStage(self.newCommitId, DualClusterStage.STEP_UPGRADE_END)
+            self.cleanBinaryUpgradeBakFiles()
             # remove tmp global relmap file
             self.cleanTmpGlobalRelampFile()
             self.context.logger.log("Commit upgrade succeeded.")
@@ -3355,6 +4070,9 @@ class UpgradeImpl:
         """
         try:
             self.context.logger.debug("Start to drop schema PMK.")
+            if self.context.standbyCluster:
+                self.context.logger.debug("no need to delete schema PMK in standby cluster mode.")
+                return 0
             # execute drop commands by the CN instance
             sql = "DROP SCHEMA IF EXISTS pmk CASCADE; "
             retry_times = 0
@@ -3384,6 +4102,72 @@ class UpgradeImpl:
                 "IF EXISTS pmk CASCADE' manually.")
             self.context.logger.debug(str(e))
             return 1
+
+    def getCMServerGUC(self, defaultGUCparas, cmNodesIn=None):
+        """
+        function : get cm_servers parameters
+                   return an empty dict if no expected parameters found
+        input : NA
+        output: oldGUCparas
+        """
+        self.context.logger.debug("Start obtained the CMServer parameter list.")
+        if cmNodesIn is None:
+            cmNodesIn = []
+        oldGUCparas = {}
+        if len(list(defaultGUCparas.keys())) == 0:
+            return oldGUCparas
+
+        cmNodes = []
+        try:
+            # get ALL CMS node information
+            if cmNodesIn:
+                cmNodes = cmNodesIn
+            else:
+                for dbNode in self.context.clusterInfo.dbNodes:
+                    if len(dbNode.cmservers) > 0:
+                        cmNodes.append(dbNode)
+
+            for cmpara in list(defaultGUCparas.keys()):
+                for cmNode in cmNodes:
+                    matchExpression = "\<'%s'\>" % str(cmpara).strip()
+                    cmServerConfigFile = os.path.join(cmNode.cmservers[0].datadir, "cm_server.conf")
+                    cmd = "%s -E '%s' %s" % (
+                        CmdUtil.getGrepCmd(), matchExpression, cmServerConfigFile)
+                    if cmNode.name.strip() == NetUtil.GetHostIpOrName():
+                        executeCmd = cmd
+                    else:
+                        sshCmd = "%s " % CmdUtil.getSshCmd(cmNode.name)
+                        executeCmd = "%s \"%s\"" % (sshCmd, cmd)
+                    self.context.logger.debug(
+                        "Command for getting CMServer parameters: %s." % executeCmd)
+                    (status, output) = CmdUtil.retryGetstatusoutput(executeCmd, 5, 5)
+                    if status != 0 and status != const.ERR_GREP_NO_RESULT:
+                        raise Exception(
+                            ErrorCode.GAUSS_514["GAUSS_51400"] % executeCmd + "\nError: " + output)
+
+                    for line in output.split('\n'):
+                        confInfo = line.strip()
+                        if confInfo.startswith('#') or confInfo == "":
+                            continue
+                        elif confInfo.startswith(cmpara):
+                            configValue = confInfo.split('#')[0].split('=')[1].strip().lower()
+                            self.context.logger.debug(
+                                "configValue in cmnode %s is %s:" % (cmNode.name, configValue))
+                            if cmpara in oldGUCparas and oldGUCparas[cmpara] != configValue and \
+                                    not self.context.forceRollback:
+                                raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] %
+                                                "Parameter '%s', it is different in cm_servers" %
+                                                cmpara)
+                            oldGUCparas[cmpara] = configValue
+                            break
+            self.context.logger.debug("Successfully obtained the CMServer parameter list. "
+                                      "The list context is %s." % oldGUCparas)
+        except Exception as er:
+            if not self.context.forceRollback:
+                raise Exception(str(er))
+            self.context.logger.debug("WARNING: Failed to get the CMServer parameters.")
+
+        return oldGUCparas
 
     def cleanConfBakOld(self):
         """
@@ -3420,7 +4204,10 @@ class UpgradeImpl:
         try:
             self.distributeXml()
             if action == const.ACTION_AUTO_ROLLBACK:
+                self.checkDualClusterRollback()
                 self.clearOtherToolPackage(action)
+                self.recordDualClusterStage(self.oldCommitId,
+                                            DualClusterStage.STEP_UPGRADE_UNFINISHED)
             try:
                 self.getOneDNInst(True)
             except Exception as e:
@@ -3447,12 +4234,14 @@ class UpgradeImpl:
             # consider if need to sync them, not important
             # under force upgrade, only read step from file
             maxStep = self.getNodeStep()
+            self.checkDualClusterRollback()
             # if -2, it means there is no need to exec rollback
             # if under upgrade continue mode, it will do upgrade not rollback,
             #  it can enter the upgrade process
             # when the binary_upgrade bak dir has some files
             if maxStep == const.BINARY_UPGRADE_NO_NEED_ROLLBACK:
                 self.cleanBinaryUpgradeBakFiles(True)
+                self.recordDualClusterStage(self.oldCommitId, DualClusterStage.STEP_UPGRADE_END)
                 self.context.logger.log("No need to rollback.")
                 return True
 
@@ -3470,6 +4259,7 @@ class UpgradeImpl:
                 self.recordNodeStep(
                     GreyUpgradeStep.STEP_UPDATE_POST_CATALOG, nodes)
                 maxStep = self.getNodeStep()
+            self.checkDualClusterRollback()
             if maxStep == GreyUpgradeStep.STEP_UPDATE_POST_CATALOG:
                 self.context.logger.debug(
                     "Record the step %d to mark it has leaved pre-commit"
@@ -3478,7 +4268,8 @@ class UpgradeImpl:
                     if self.context.action == const.ACTION_LARGE_UPGRADE\
                             and \
                             self.isNodeSpecifyStep(
-                                GreyUpgradeStep.STEP_UPDATE_POST_CATALOG):
+                                GreyUpgradeStep.STEP_UPDATE_POST_CATALOG)\
+                            and "dual-standby" not in self.context.clusterType:
                         self.prepareUpgradeSqlFolder()
                         self.prepareSql("rollback-post")
                         self.setUpgradeMode(2)
@@ -3510,7 +4301,8 @@ class UpgradeImpl:
                 self.recordNodeStep(GreyUpgradeStep.STEP_UPDATE_CATALOG)
             if maxStep >= GreyUpgradeStep.STEP_UPDATE_CATALOG and\
                     self.context.action == const.ACTION_LARGE_UPGRADE:
-                self.rollbackCatalog()
+                if "dual-standby" not in self.context.clusterType:
+                    self.rollbackCatalog()
                 self.recordNodeStep(GreyUpgradeStep.STEP_INIT_STATUS)
 
             if maxStep >= GreyUpgradeStep.STEP_INIT_STATUS:
@@ -3518,8 +4310,10 @@ class UpgradeImpl:
                 #  dir will create in every node
                 self.cleanInstallPath(const.NEW)
                 self.getOneDNInst()
-                self.dropSupportSchema()
+                if "dual-standby" not in self.context.clusterType:
+                    self.dropSupportSchema()
                 self.initOmRollbackProgressFile()
+                self.recordDualClusterStage(self.oldCommitId, DualClusterStage.STEP_UPGRADE_END)
                 self.cleanBinaryUpgradeBakFiles(True)
                 self.cleanTmpGlobalRelampFile()
         except Exception as e:
@@ -3592,28 +4386,6 @@ class UpgradeImpl:
         So we only use step file
         """
         self.checkActionInFile()
-
-    def execSqlCommandInPrimaryDN(self, sql, retryTime=3):
-        self.context.logger.debug("Start to exec sql {0}.".format(sql))
-        count = 0
-        status, output = 1, ""
-        while count < retryTime:
-
-            self.context.logger.debug(
-                "Exec sql in dn node {0}".format(self.dnInst.hostname))
-            (status, output) = ClusterCommand.remoteSQLCommand(
-                sql, self.context.user,
-                self.dnInst.hostname, self.dnInst.port, False,
-                DefaultValue.DEFAULT_DB_NAME, IsInplaceUpgrade=True)
-            self.context.logger.debug(
-                "Exec sql result is, status:{0}, output is {1}".format(
-                    status, output))
-            if status != 0 or SqlResult.findErrorInSql(output):
-                count += 1
-                continue
-            else:
-                break
-        return status, output
 
     def checkActionInFile(self):
         """
@@ -3835,6 +4607,11 @@ class UpgradeImpl:
                     const.BINARY_UPGRADE_STEP_INIT_STATUS)
 
             if step >= const.BINARY_UPGRADE_STEP_INIT_STATUS:
+                # restore the CM parameters
+                if DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) != 0:
+                    self.restore_cm_server_guc(const.CLUSTER_CMSCONF_FILE)
+                else:
+                    self.clean_cms_param_file()
                 if self.unSetClusterReadOnlyMode() != 0:
                     raise Exception("NOTICE: " +
                                     ErrorCode.GAUSS_529["GAUSS_52907"])
@@ -3856,11 +4633,12 @@ class UpgradeImpl:
         check a table exist
         :return:
         """
+        mode = True if "dual-standby" in self.context.clusterType else False
         sql = "select count(*) from pg_class where relname = '%s';" % name
         (status, output) = ClusterCommand.remoteSQLCommand(
             sql, self.context.user,
             self.dnInst.hostname, self.dnInst.port, False,
-            eachdb, IsInplaceUpgrade=True)
+            eachdb, IsInplaceUpgrade=True, maintenance_mode=mode)
         if status != 0 or SqlResult.findErrorInSql(output):
             raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
                             " Error: \n%s" % str(output))
@@ -4005,6 +4783,9 @@ class UpgradeImpl:
         output: NA
         """
         try:
+            if EnvUtil.is_dss_mode(self.context.user):
+                # there is any dss_clear process
+                self.stop_strategy(is_final=False)
             self.start_strategy(is_final=False)
             self.setUpgradeFromParam(const.UPGRADE_UNSET_NUM)
             self.setUpgradeMode(0)
@@ -4804,7 +5585,7 @@ class UpgradeImpl:
             self.context.logger.log(
                 "Failed to check upgrade environment.", "constant")
             raise Exception(str(e))
-
+        self.checkDualClusterUpgrade()
         self.context.logger.log(
             "Successfully checked upgrade environment.", "constant")
 
@@ -4885,11 +5666,17 @@ class UpgradeImpl:
                 "File %s does not exists. No need to check." %
                 const.GREY_UPGRADE_STEP_FILE)
             return
-        grey_node_names = self.getUpgradedNodeNames()
-        if grey_node_names:
+        
+        # check cluster nodes wheather all have been upgraded
+        grey_node_names = self.getUpgradedNodeNames(GreyUpgradeStep.STEP_UPGRADE_PROCESS)
+        if len(grey_node_names) == len(self.context.clusterNodes):
             self.context.logger.log(
                 "All nodes have been upgrade, no need to upgrade again.")
             self.exitWithRetCode(self.action, True)
+        else:
+            self.context.logger.log(
+                "%s node have been upgrade, can upgrade the remaining nodes." 
+                % grey_node_names)
 
     def checkOptionH(self):
         self.checkNodeNames()
@@ -4986,11 +5773,25 @@ class UpgradeImpl:
         if not os.path.isfile(stepFile):
             raise Exception(ErrorCode.GAUSS_529["GAUSS_52920"] +
                             "Need to upgrade some nodes first.")
+        
+        # check cluster nodes wheather all have been upgraded
+        # get upgraded nodes list
         greyNodeNames = self.getUpgradedNodeNames()
         # the nodes that have upgraded that should reached to precommit
+        # if nodes < STEP_UPDATE_POST_CATALOG, indicate that this node not
+        # upgrade completely, need to rollback fistly and upgrade again
         if not self.isNodeSpecifyStep(GreyUpgradeStep.STEP_UPDATE_POST_CATALOG,
                                       greyNodeNames):
-            raise Exception(ErrorCode.GAUSS_529["GAUSS_52912"])
+            self.context.logger.log(
+                "%s node have been upgrade, can upgrade the remaining nodes."
+                 % greyNodeNames)
+            raise Exception(ErrorCode.GAUSS_529["GAUSS-52944"])
+        elif len(greyNodeNames) == len(self.context.clusterNodes):
+            self.context.logger.log(
+                "All nodes have been upgrade, no need to upgrade again "
+                "by --continue.")
+            self.exitWithRetCode(self.action, True)
+
         if len(greyNodeNames) == len(self.context.clusterInfo.dbNodes):
             self.printPrecommitBanner()
             self.context.logger.debug(
@@ -5224,6 +6025,26 @@ class UpgradeImpl:
                                                                 "bin"))
         agent_component.create_cm_ca(self.context.sshTool)
         self.context.logger.debug("Create CA for CM successfully.")
+    
+    def createCmCaForRollingUpgrade(self):
+        """
+        Create CM CA file
+        """
+        if self.get_upgrade_cm_strategy() != 1:
+            self.context.logger.debug("No need to create CA for CM.")
+            return
+		
+        hostList = copy.deepcopy(self.context.nodeNames)
+		
+        cmd = "%s -t %s -U %s --new_cluster_app_path=%s -l %s" % \
+              (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+               const.ACTION_CREATE_CM_CA_FOR_ROLLING_UPGRADE,
+               self.context.user,
+               self.context.newClusterAppPath,
+               self.context.localLog)
+        self.context.logger.debug("Command for create ca for cm in rolling upgrade: %s" % cmd)
+        self.context.sshTool.executeCommand(cmd, hostList=hostList)
+        self.context.logger.debug("Successfully create cm ca for rolling upgrade.")
 
     def reloadCmAgent(self, is_final=False):
         """
@@ -5570,6 +6391,9 @@ class UpgradeImpl:
         try:
             # clean backup files
             self.cleanBackupFiles()
+            # clean gs_secure_files folder
+            if self.context.rollback or self.action == "commit-upgrade":
+                self.clean_gs_secure_files()
         except Exception as e:
             raise Exception(str(e))
         if (isRollBack):
@@ -5608,11 +6432,14 @@ class UpgradeImpl:
             if self.checkConnection() != 0:
                 output += "\n    Database could not be connected."
         elif checkPosition == const.OPTION_POSTCHECK:
+            if len(self.context.nodeNames) != 0:
+                checknodes = self.context.nodeNames
+            else:
+                checknodes = self.context.clusterInfo.getClusterNodeNames()
             if self.checkClusterStatus(checkPosition) != 0:
                 output += "\n    Cluster status is Abnormal."
             if not self.checkVersion(
-                    self.context.newClusterVersion,
-                    self.context.clusterInfo.getClusterNodeNames()):
+                    self.context.newClusterVersion, checknodes):
                 output += "\n    The gaussdb version is inconsistent."
             if self.checkConnection() != 0:
                 output += "\n    Database could not be connected."
@@ -5790,6 +6617,7 @@ class UpgradeImpl:
                 1  failed
         """
         self.context.logger.debug("Start to check database connection.")
+        mode = True if "dual-standby" in self.context.clusterType else False
         for dbNode in self.context.clusterInfo.dbNodes:
             if len(dbNode.datanodes) == 0 or dbNode.name:
                 continue
@@ -5800,7 +6628,7 @@ class UpgradeImpl:
                     ClusterCommand.remoteSQLCommand(
                         sql, self.context.user, dnInst.hostname, dnInst.port,
                         False, DefaultValue.DEFAULT_DB_NAME,
-                        IsInplaceUpgrade=True)
+                        IsInplaceUpgrade=True, maintenance_mode=mode)
                 if status != 0 or not output.isdigit():
                     self.context.logger.debug(
                         "Failed to execute SQL on [%s]: %s. Error: \n%s" %
@@ -6224,3 +7052,502 @@ class UpgradeImpl:
                                 packFilePath)
         except Exception as e:
             raise Exception(str(e))
+
+    def getPrimaryDN(self, checkNormal):
+        """
+        find primary dn in centralized cluster, which we can execute SQL commands
+        """
+        try:
+            self.context.logger.debug("start to get primary dn. \n"
+                                      "checkNormal is {0}.".format(checkNormal))
+            if self.context.standbyCluster or self.context.forceRollback:
+                checkNormal = False
+            primaryDn = None
+            if not checkNormal:
+                clusterNodes = self.context.oldClusterInfo.dbNodes
+                for dbNode in clusterNodes:
+                    if len(dbNode.datanodes) == 0:
+                        continue
+                    primaryDn = dbNode.datanodes[0]
+                    break
+                self.primaryDn = primaryDn
+            else:
+                primaryList, _ = DefaultValue.getPrimaryNode(self.context.userProfile, self.context.logger)
+                if primaryList:
+                    primaryDn = primaryList[0]
+                if not primaryDn:
+                    raise Exception(ErrorCode.GAUSS_526["GAUSS_52635"])
+                for dbNode in self.context.clusterInfo.dbNodes:
+                    for dn in dbNode.datanodes:
+                        if dn.hostname == primaryDn:
+                            self.primaryDn = dn
+            self.context.logger.debug("Successfully get primary DN from "
+                                      "{0}.".format(self.primaryDn.hostname))
+        except Exception as er:
+            self.context.logger.debug("Failed to get Primary dn. Error: %s" % str(er))
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51601"] % "primary dn")
+
+    def getPrimaryNode(self, instanceType):
+        """
+
+        :param instanceType:
+        :return:
+        """
+        try:
+            self.waitClusterNormalDegrade(waitTimeOut=120)
+            self.context.logger.debug("Start to get primary node.")
+            postSplit = ""
+            primaryFlag = "Primary"
+            count = 0
+            cmd, status, output = "", 0, ""
+            while count < 60:
+                cmd = "source {0} && cm_ctl query -Cv".format(self.context.userProfile)
+                (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
+                # no need to retry under force upgrade
+                if status == 0:
+                    break
+                time.sleep(2)
+                count += 1
+            if status != 0:
+                raise Exception(
+                    ErrorCode.GAUSS_514["GAUSS_51400"] % "%s. Error:\n%s" % (cmd, output))
+            self.context.logger.debug("the result of query is {0}, "
+                                      "instanceType is {1}.".format(output, instanceType))
+            targetString = output.split(instanceType)[1]
+            if instanceType == "Datanode":
+                dnPrimary = [x for x in re.split(r"[|\n]", targetString) if primaryFlag in x
+                             or "Main" in x]
+                primaryList = []
+                for dn in dnPrimary:
+                    primaryList.append(list(filter(None, dn.split(" ")))[1])
+                return primaryList
+            if instanceType == "ETCD":
+                postSplit = "Cluster"
+                primaryFlag = "StateLeader"
+            elif instanceType == "CMServer":
+                postSplit = "ETCD"
+            elif instanceType == "GTM":
+                postSplit = "Datanode"
+            elif instanceType == "Coordinator":
+                return ""
+            if postSplit not in targetString:
+                return ""
+            primaryInfo = [x for x in re.split(r"[|\n]", targetString.split(postSplit)[0]) if
+                           primaryFlag in x]
+            if primaryInfo == "" or primaryInfo == []:
+                return ""
+            primary = list(filter(None, primaryInfo[0].split(" ")))[1]
+            self.context.logger.debug("get node {0}".format(primary))
+            return primary
+        except Exception as er:
+            self.context.logger.debug("Failed to get primary node." + str(er))
+            raise Exception(str(er))
+
+    def isGucContainDesignatedVal(self, gucName, result):
+        """
+        The guc value contains the designated string.
+        :return:
+        """
+        sql = "show {0};".format(gucName)
+        self.getPrimaryDN(True)
+        mode = "primary"
+        is_disaster = DefaultValue.cm_exist_and_is_disaster_cluster(self.context.clusterInfo,
+                                                                    self.context.logger)
+        if is_disaster:
+            mode = "standby"
+        (_, output) = self.execSqlCommandInPrimaryDN(sql, mode=mode)
+        if result in output:
+            return True
+        else:
+            return False
+
+    def execSqlCommandInPrimaryDN(self, sql, retryTime=3, execHost=None, mode="primary"):
+        """
+        execute sql on primary dn
+        :return:
+        """
+        self.context.logger.debug("Start to exec sql {0}.".format(sql))
+        count = 0
+        status, output = 1, ""
+        mode = True if "dual-standby" in self.context.clusterType or mode == "standby" else False
+        while count < retryTime:
+            if not execHost:
+                self.getPrimaryDN(checkNormal=True)
+                execHost = self.primaryDn
+            self.context.logger.debug("Exec sql in dn node {0}".format(execHost.hostname))
+            (status, output) = ClusterCommand.remoteSQLCommand(sql, self.context.user,
+                                                               execHost.hostname, execHost.port,
+                                                               False,
+                                                               DefaultValue.DEFAULT_DB_NAME,
+                                                               IsInplaceUpgrade=True,
+                                                               maintenance_mode=mode)
+            self.context.logger.debug("Exec sql result "
+                                      "is, status:{0}, output is {1}"
+                                      "".format(status, output).replace("ERROR", "Log"))
+            if status != 0 or SqlResult.findErrorInSql(output):
+                count += 1
+                continue
+            else:
+                break
+        return status, output
+
+    def initClusterType(self):
+        """
+        If it is a dual cluster, initialize whether the current cluster
+        is the primary cluster or the standby cluster
+
+        :return:
+        """
+        streaming_cabin = os.path.realpath(os.path.join(EnvUtil.getTmpDirFromEnv(), "streaming_cabin"))
+        # The value of replconninfo1 must contain 'iscascade' in the DR cluster.
+        isStrDRCluster = self.isGucContainDesignatedVal("replconninfo1", "iscascade")
+        if isStrDRCluster and os.path.isdir(streaming_cabin):
+            suffix = "-streamDR"
+        else:
+            self.context.logger.debug("Current cluster is not dual cluster.")
+            return
+
+        if self.context.is_inplace_upgrade and self.context.action \
+                not in ["commit-upgrade", "auto-rollback", "chose-strategy"]:
+            raise Exception("Dual cluster does not support in-place upgrade")
+
+        if self.checkGucValIsInValGiven(const.DISASTER_RECOVERY_GUC, ["2"], fromFile=True):
+            self.context.standbyCluster = True
+            self.context.clusterType = "dual-standby" + suffix
+
+        elif self.checkGucValIsInValGiven(const.DISASTER_RECOVERY_GUC, ["0"], fromFile=True):
+            self.context.clusterType = "dual-primary" + suffix
+
+        self.context.logger.log("NOTICE: the clusterType is {0}".format(self.context.clusterType))
+
+        if not self.context.is_inplace_upgrade:
+            self.backup_disaster_user_file()
+
+        if self.context.forceRollback:
+            return
+        self.copyStandbyClusterUpgradeFile()
+
+        upgradeInfoTmp = self.context.getDualUpgradeInfo(self.context.upgradePhaseInfoPath, 0)
+        if upgradeInfoTmp is not None:
+            if "dual-standby" in self.context.clusterType:
+                self.context.dualUpgradeShareInfo.masterVersion = upgradeInfoTmp.masterVersion
+                self.context.dualUpgradeShareInfo.masterUpgradeStatus = \
+                    upgradeInfoTmp.masterUpgradeStatus
+            else:
+                self.context.dualUpgradeShareInfo.standbyVersion = upgradeInfoTmp.standbyVersion
+                self.context.dualUpgradeShareInfo.standbyUpgradeStatus = \
+                    upgradeInfoTmp.standbyUpgradeStatus
+
+        self.context.updateDualUpgradeInfo(self.context.dualUpgradeShareInfo,
+                                           filePath=self.context.upgradePhaseInfoPath,
+                                           startPost=0)
+
+    def checkGucValIsInValGiven(self, gucName, valList, fromFile=False):
+        """
+        Checks whether a given parameter is a given value list in a given instance list.
+        """
+        self.context.logger.debug("checks whether the parameter:{0} is "
+                                  "the value:{1}.".format(gucName, valList))
+        gucStr = "{0}:{1}".format(gucName, ",".join(valList))
+        try:
+            self.checkParam(gucStr, fromFile)
+            self.context.logger.debug("Success to check the parameter:{0} value is "
+                                      "in the value:{1}.".format(gucName, valList))
+            return True
+        except Exception as _:
+            return False
+
+    def copyStandbyClusterUpgradeFile(self):
+        """
+        From the data directory of the standby cluster, copy the upgrade_phase_info file
+        to the designated instance directory of the primary cluster, and distribute it
+        to the upgrade backup directory of all nodes
+        """
+        hardUser, hardUserPwd = self.getDisasterRecoveryUser()
+        if hardUser is None or hardUser == "" or hardUserPwd is None or hardUserPwd == "":
+            raise Exception("Failed to obtain the streaming disaster build user")
+        dnInstance = None
+        for x in range(1, 9):
+            localRemoteInfo = self.getLocalRemoteHostIpAndPort("{0}{1}".format(
+                const.REMOTE_INFO_GUC[self.context.clusterType], x))
+            for dbNode in self.context.clusterInfo.dbNodes:
+                for dnInst in dbNode.datanodes:
+                    self.context.logger.debug("The instance is {0}".format(dnInst.__dict__))
+                    if "-streamDR" in self.context.clusterType:
+                        dataIp = DefaultValue.get_data_ip_info(dnInst, self.context.logger)
+                        if localRemoteInfo.get("localhost") in dataIp and \
+                                localRemoteInfo.get("localport") == str(dnInst.haPort).strip():
+                            dnInstance = copy.deepcopy(dnInst)
+                            break
+            if dnInstance is not None:
+                try:
+                    self.copyAndDistributeUpgradeFile(dnInstance, localRemoteInfo)
+                except Exception as err:
+                    self.context.logger.error("Cope file failed msg:%s." % err)
+                    dnInstance = None
+                    continue
+                break
+        if dnInstance is None:
+            raise Exception("Unable to find a DN to connect to the standby cluster node")
+
+    def checkDualClusterUpgrade(self):
+        """
+         Double cluster check whether it can be upgrade
+
+        :return:
+        """
+        if "dual-standby-streamDR" not in self.context.clusterType or \
+                self.context.action == const.ACTION_SMALL_UPGRADE:
+            return
+        self.context.logger.debug("The status of the dual-cluster standby status is {0}, version "
+                                  "is {1}. The status of the dual-cluster master status is {2}, "
+                                  "version is {3}".format(
+                                  self.context.dualUpgradeShareInfo.standbyUpgradeStatus,
+                                  self.context.dualUpgradeShareInfo.standbyVersion,
+                                  self.context.dualUpgradeShareInfo.masterUpgradeStatus,
+                                  self.context.dualUpgradeShareInfo.masterVersion))
+
+        if self.context.dualUpgradeShareInfo.masterUpgradeStatus < 2 or \
+                self.context.dualUpgradeShareInfo.masterVersion != self.newCommitId:
+            raise Exception("The status of the dual-cluster master is {0}. "
+                            "the standby cluster cannot be upgrade."
+                            .format(self.context.dualUpgradeShareInfo.masterUpgradeStatus))
+
+    def recordDualClusterStage(self, commitVersion, upgradeStage):
+        """
+        Record the upgrade information of the dual cluster
+
+        :param commitVersion:
+        :param upgradeStage:
+        :return:
+        """
+        if "dual-primary" in self.context.clusterType:
+            self.context.dualUpgradeShareInfo.masterVersion = commitVersion
+            self.context.dualUpgradeShareInfo.masterUpgradeStatus = upgradeStage
+        elif "dual-standby" in self.context.clusterType:
+            self.context.dualUpgradeShareInfo.standbyVersion = commitVersion
+            self.context.dualUpgradeShareInfo.standbyUpgradeStatus = upgradeStage
+        else:
+            return
+        self.context.updateDualUpgradeInfo(self.context.dualUpgradeShareInfo,
+                                           filePath=self.context.upgradePhaseInfoPath, startPost=0)
+
+    def checkDualClusterRollback(self):
+        """
+         Double cluster check whether it can be rollback
+
+        :return:
+        """
+        if "dual-standby" in self.context.clusterType or \
+                "dual-" not in self.context.clusterType:
+            return
+        self.context.logger.debug("The status of the dual-cluster standby status is {0}, version "
+                                  "is {1}. The status of the dual-cluster master status is {2}, "
+                                  "version is {3}".format(
+                                  self.context.dualUpgradeShareInfo.standbyUpgradeStatus,
+                                  self.context.dualUpgradeShareInfo.standbyVersion,
+                                  self.context.dualUpgradeShareInfo.masterUpgradeStatus,
+                                  self.context.dualUpgradeShareInfo.masterVersion))
+        if not self.context.rollback or \
+                "dual-primary" in self.context.clusterType or \
+                self.context.action == const.ACTION_SMALL_UPGRADE or self.context.forceRollback:
+            return
+        # master cluster
+        if "dual-primary" in self.context.clusterType:
+            if (self.context.dualUpgradeShareInfo.standbyUpgradeStatus > 2 or
+                    self.context.dualUpgradeShareInfo.standbyUpgradeStatus == 0) and \
+                    self.context.dualUpgradeShareInfo.standbyVersion == self.newCommitId:
+                raise Exception("The status of the dual-cluster standby is {0}. "
+                                "the master cluster cannot be rolled back."
+                                .format(self.context.dualUpgradeShareInfo.standbyUpgradeStatus))
+
+    def checkDualClusterCommit(self):
+        """
+        Double cluster check whether it can be submitted
+
+        :return:
+        """
+        if "dual-" not in self.context.clusterType:
+            return
+        if self.context.action == const.ACTION_SMALL_UPGRADE:
+            return
+        self.context.logger.debug("The status of the dual-cluster standby status is {0}, version "
+                                  "is {1}. The status of the dual-cluster master status is {2}, "
+                                  "version is {3}".format(
+                                  self.context.dualUpgradeShareInfo.standbyUpgradeStatus,
+                                  self.context.dualUpgradeShareInfo.standbyVersion,
+                                  self.context.dualUpgradeShareInfo.masterUpgradeStatus,
+                                  self.context.dualUpgradeShareInfo.masterVersion))
+        # master cluster
+        if "dual-primary" in self.context.clusterType:
+            if self.context.dualUpgradeShareInfo.standbyUpgradeStatus != 0 or \
+                    self.context.dualUpgradeShareInfo.standbyVersion != self.newCommitId:
+                raise Exception("The status of the dual-cluster standby status is {0}, "
+                                "version is {1}. the master cluster cannot be commit."
+                                .format(self.context.dualUpgradeShareInfo.standbyUpgradeStatus,
+                                        self.context.dualUpgradeShareInfo.standbyVersion))
+        if "dual-standby" in self.context.clusterType:
+            if self.context.dualUpgradeShareInfo.masterUpgradeStatus != 2 or \
+                    self.context.dualUpgradeShareInfo.masterVersion != self.newCommitId:
+                raise Exception("The status of the dual-cluster master status is {0}, "
+                                "version is {1}. The standby cluster cannot be commit."
+                                .format(self.context.dualUpgradeShareInfo.masterUpgradeStatus,
+                                        self.context.dualUpgradeShareInfo.masterVersion))
+
+    def copyDirFromRemoteNode(self, remoteHost, remoteDir, targetHost, targetDir):
+        """
+        SSH to the remote node, copy dir from the remote node to the specified node
+
+        :param remoteHost:
+        :param remoteDir:
+        :param targetHost:
+        :param targetDir:
+        :return:
+        """
+        scpcmd = "pssh -s -H {0} 'source {5}; if [ -d '{1}' ];" \
+                 "then  pscp -r -H {2} {3} {4}; fi' ".format(remoteHost, remoteDir, targetHost,
+                                                             remoteDir, targetDir,
+                                                             self.context.userProfile)
+        (status, output) = CmdUtil.retryGetstatusoutput(scpcmd, 2, 5)
+        if status != 0:
+            raise Exception("File copy failed. Output: {0}".format(output))
+
+    def getLocalRemoteHostIpAndPort(self, gucName):
+        """
+        Get the DN instance and the corresponding standby cluster host and port through the
+        cross_cluster_replconninfo parameter
+        :param gucName: cross_cluster_replconninfo parameter name
+        :return: {"localhost":"", "localport":"", "remotehost":"", "remoteport":""}
+        """
+        isLocal = False
+        localRemoteInfo = dict()
+        sql = "show {0};".format(gucName)
+        self.getPrimaryDN(False)
+        (status, output) = self.execSqlCommandInPrimaryDN(sql)
+        if status != 0 or output == "":
+            raise Exception("Failed to get GUC parameter: {0} value. Output: {1}".format(gucName,
+                                                                                         output))
+        localIp = output.split("localhost=")[1].split("localport=")[0].strip()
+        remoteIp = output.split("remotehost=")[1].split("remoteport=")[0].strip()
+
+        self.context.logger.debug("Success get the output {0}".format(output))
+
+        if "-streamDR" in self.context.clusterType:
+            localPort = output.split("localport=")[1].split("localheartbeatport=")[0].strip()
+            remotePort = output.split("remoteport=")[1].split("remoteheartbeatport=")[0].strip()
+
+        for dbNode in self.context.clusterInfo.dbNodes:
+            if isLocal:
+                break
+            for dnInst in dbNode.datanodes:
+                if remoteIp in dnInst.listenIps or remoteIp in dnInst.hostname:
+                    isLocal = True
+                    break
+        self.context.logger.debug("The local flag is  {0}".format(isLocal))
+
+        if isLocal:
+            localRemoteInfo.setdefault("localhost", "no find remote host")
+        else:
+            localRemoteInfo.setdefault("localhost", localIp)
+
+        localRemoteInfo.setdefault("localport", localPort)
+        localRemoteInfo.setdefault("remotehost", remoteIp)
+        localRemoteInfo.setdefault("remoteport", remotePort)
+        return localRemoteInfo
+
+    def copyAndDistributeUpgradeFile(self, dnInstance, localRemoteInfo):
+        """
+        copy upgrade file
+        :return:
+        """
+        hardUser, hardUserPwd = self.getDisasterRecoveryUser()
+        cmd_remote = 'pssh -s -H {0} \'source {8}; gs_ctl build -D {1} -b copy_upgrade_file ' \
+                     '-Z datanode -U {2} -P "{3}" -C "localhost={4} localport={5} remotehost={6} ' \
+                     'remoteport={7}"\''.format(dnInstance.hostname,
+                                                dnInstance.datadir,
+                                                hardUser,
+                                                hardUserPwd,
+                                                localRemoteInfo.get("localhost"),
+                                                localRemoteInfo.get("localport"),
+                                                localRemoteInfo.get("remotehost"),
+                                                localRemoteInfo.get("remoteport"),
+                                                self.context.userProfile)
+
+        cmd_remote = cmd_remote.replace(" -Z datanode", "")
+
+        self.context.logger.debug("Copy upgrade file with cmd: {0}.".
+                                  format(cmd_remote.replace(hardUserPwd, "***")))
+        status, output = DefaultValue.getstatusoutput_hide_pass(cmd_remote)
+        if status == 0:
+            self.context.logger.debug("Successfully copy upgrade file")
+        else:
+            raise Exception("Failed to copy files from the standby cluster. "
+                            "Ensure that the standby cluster version supports this function. "
+                            "Output: {0}".format(output))
+
+        remoteUpgradeInfoPath = os.path.join(dnInstance.datadir, const.UPGRADE_PHASE_INFO)
+        self.copyFileFromRemoteNode(dnInstance.hostname, remoteUpgradeInfoPath,
+                                    NetUtil.GetHostIpOrName(),
+                                    self.context.upgradePhaseInfoPath)
+        if not os.path.exists(self.context.upgradePhaseInfoPath):
+            FileUtil.createFile(self.context.upgradePhaseInfoPath,
+                                mode=DefaultValue.KEY_FILE_MODE)
+            self.context.updateDualUpgradeInfo(self.context.dualUpgradeShareInfo,
+                                               filePath=self.context.upgradePhaseInfoPath,
+                                               startPost=0)
+
+        self.context.sshTool.scpFiles(self.context.upgradePhaseInfoPath,
+                                      self.context.tmpDir,
+                                      hostList=self.context.clusterNodes)
+
+    def getDisasterRecoveryUser(self):
+        """
+        Obtain special users of the streaming disaster recovery cluster for building
+        :return: user name
+        """
+        mode = True if "dual-standby" in self.context.clusterType else False
+        user_str = DefaultValue.obtain_hadr_user_encrypt_str(
+            self.context.clusterInfo, self.context.user, self.context.logger, mode)
+        rand_pwd = DefaultValue.decrypt_hadr_rand_pwd(self.context.logger)
+        params = rand_pwd, user_str, self.context.clusterInfo, self.context.user, \
+                 self.context.logger, mode
+        hardUser, hardUserPwd = DefaultValue.decrypt_hadr_user_info(params)
+        return hardUser, hardUserPwd
+
+    def copyFileFromRemoteNode(self, remoteHost, remoteFile, targetHost, targetFile):
+        """
+        SSH to the remote node, copy files from the remote node to the specified node
+
+        :param remoteHost:
+        :param remoteFile:
+        :param targetHost:
+        :param targetFile:
+        :return:
+        """
+        scpcmd = "pssh -s -H {0} 'source {5}; if [ -f '{1}' ];" \
+                 "then pscp -H {2} {3} {4}; fi' ".format(remoteHost, remoteFile, targetHost,
+                                                          remoteFile, targetFile,
+                                                          self.context.userProfile)
+        (status, output) = CmdUtil.retryGetstatusoutput(scpcmd, 2, 5)
+        if status != 0:
+            raise Exception("File copy failed. Output: {0}".format(output))
+
+    def clean_gs_secure_files(self):
+        """
+        delete gs_secure_files during rollback or commit
+        """
+        try:
+            self.context.logger.debug(
+                "Starting to clean gs_secure_files folder in the dn data catalog.")
+            cmd = "%s -t %s -U %s -l %s" % \
+                  (OMCommand.getLocalScript("Local_Upgrade_Utility"),
+                   const.ACTION_CLEAN_GS_SECURE_FILES,
+                   self.context.user,
+                   self.context.localLog)
+            self.context.logger.debug("clean gs_secure_files folder:{0}".format(cmd))
+            host_list = copy.deepcopy(self.context.clusterNodes)
+            self.context.execCommandInSpecialNode(cmd, host_list)
+        except Exception as er:
+            raise Exception(str(er))
+        self.context.logger.debug(
+            "Successfully to clean gs_secure_files folder in the dn data catalog.")

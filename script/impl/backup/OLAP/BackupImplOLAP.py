@@ -91,15 +91,20 @@ class BackupImplOLAP(BackupImpl):
         output: NA
         """
         self.context.logger.log("Performing remote backup.")
+
+        # check backupdir permission
+        if os.path.exists(self.context.backupDir) and not os.access(
+            self.context.backupDir, os.R_OK | os.W_OK | os.X_OK):
+            raise Exception(ErrorCode.GAUSS_501["GAUSS_50111"] % self.context.backupDir)
+
         localHostName = NetUtil.GetHostIpOrName()
         tmp_backupDir = "%s/backupTemp_%d" % (
             EnvUtil.getTmpDirFromEnv(), os.getpid())
-        cmd = "%s -U %s --nodeName %s -P %s -B %s  -l %s --ingore_miss" % \
+        cmd = "%s -U %s --nodeName %s -P %s -l %s --ingore_miss" % \
               (OMCommand.getLocalScript("Local_Backup"),
                self.context.user,
                localHostName,
                tmp_backupDir,
-               self.context.backupDir,
                self.context.localLog)
 
         if self.context.isParameter:

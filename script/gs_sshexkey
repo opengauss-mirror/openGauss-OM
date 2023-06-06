@@ -37,16 +37,6 @@ import secrets
 import string
 import platform
 import gc
-package_path = os.path.dirname(os.path.realpath(__file__))
-ld_path = package_path + "/gspylib/clib"
-if 'LD_LIBRARY_PATH' not in os.environ:
-    os.environ['LD_LIBRARY_PATH'] = ld_path
-    os.execve(os.path.realpath(__file__), sys.argv, os.environ)
-if not os.environ.get('LD_LIBRARY_PATH').startswith(ld_path):
-    os.environ['LD_LIBRARY_PATH'] = \
-        ld_path + ":" + os.environ['LD_LIBRARY_PATH']
-    os.execve(os.path.realpath(__file__), sys.argv, os.environ)
-
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.threads.parallelTool import parallelTool
@@ -61,10 +51,26 @@ from subprocess import PIPE
 from base_utils.common.fast_popen import FastPopen
 
 DefaultValue.doConfigForParamiko()
+
 try:
     import paramiko
-except ImportError as e:
-    sys.exit(ErrorCode.GAUSS_522["GAUSS_52200"] % str(e))
+except ImportError as ex:
+    try:
+        local_path = os.path.dirname(os.path.realpath(__file__))
+        clib_path = os.path.realpath(os.path.join(local_path, "gspylib/clib/"))
+        ld_path = os.getenv("LD_LIBRARY_PATH")
+        if not ld_path or not ld_path.startswith(clib_path):
+            if not ld_path:
+                os.environ['LD_LIBRARY_PATH'] = clib_path
+            else:
+                os.environ['LD_LIBRARY_PATH'] = clib_path + ":" + ld_path
+        try:
+            os.execl(sys.executable, sys.executable, *sys.argv)
+        except Exception as ex:
+            sys.exit("Failed to set the enviroment variable: %s" % str(ex))
+        import paramiko
+    except ImportError as ex:
+            raise Exception(ErrorCode.GAUSS_522["GAUSS_52200"] % str(ex))
 from gspylib.threads.SshTool import SshTool
 
 HOSTS_MAPPING_FLAG = "#Gauss OM IP Hosts Mapping"
@@ -693,7 +699,7 @@ General options:
             self.updateKnow_hostsFile(result)
             self.addRemoteAuthorization()
             self.determinePublicAuthorityFile()
-            self.synchronizationLicenseFile()
+            self.synchronizationLicenseFile(result)
             self.retry_register_other_ssh_agent()
             self.verifyTrust()
             self.logger.log("Successfully created SSH trust.")
@@ -1041,7 +1047,7 @@ General options:
             for key in tab:
                 f.write(tab[key])
 
-    def sendTrustFile(self, hostname):
+    def send_trust_file(self, hostname):
         '''
         function: Set or update the authentication files on  hostname
         input : hostname
@@ -1060,19 +1066,44 @@ General options:
                     self.known_hosts_fname, hostname, self.known_hosts_fname,
                     self.known_hosts_fname)
         (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50223"] %"the authentication"
-                            + "cmd is %s; Node:%s. Error:\n%s" % (cmd, hostname, output))
+        return status, output, cmd
 
-    def synchronizationLicenseFile(self):
+    def synchronizationLicenseFile(self, result):
         '''
         function: Distribution of documents through concurrent execution ThreadPool.
         input : NA
         output: NA
         '''
         self._log("Distributing SSH trust file to all node.", "addStep")
+        local_ip = ""
+        for ip in result:
+            if result[ip] == self.localHost:
+                local_ip = ip
+                break
         try:
-            parallelTool.parallelExecute(self.sendTrustFile, self.hostList)
+            for hostip in self.hostList:
+                if hostip == local_ip:
+                    continue
+
+                max_try_times = 3
+                status, output, cmd = self.send_trust_file(hostip)
+                
+                while status != 0 and max_try_times > 0:
+                    self.logger.debug(f"send_trust_file failed, coutdown {max_try_times}, retry again.")
+                    self.logger.debug("errorinfo: hostip: %s, status: %d, output: %s, "
+                                      % (hostip, status, output))
+                    self.logger.debug("check os info: %s\n %s" % (
+                        subprocess.getoutput(f"ls -la {self.homeDir} | grep .ssh"),
+                        subprocess.getoutput(f"ls -la {self.sshDir}")
+                    ))
+                    time.sleep(10)
+                    max_try_times -= 1
+                    status, output, cmd = self.send_trust_file(hostip)
+                
+                if status != 0 and max_try_times == 0:
+                    raise Exception(ErrorCode.GAUSS_502["GAUSS_50223"] %"the authentication"
+                            + "cmd is %s; Node:%s. Error:\n %d, %s" % (cmd, hostip, status, output))
+                
             self.logger.log("Distributing trust keys file to all node successfully.")
             # send protect file to remote
             parallelTool.parallelExecute(self.send_protect_file, self.hostList)
@@ -1202,6 +1233,19 @@ General options:
                                                                         abspath(__file__)),
                                                         "gspylib",
                                                         "clib"))
+        encrypt_path = os.path.join(encrypt_dir_path, "encrypt")
+        if (not os.path.exists(encrypt_path)) :
+            root = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..')
+            clib = os.path.join(root, "script/gspylib/clib")
+            bin_files = ['./bin/encrypt']
+            bin_cmd = 'tar -xpf `ls openGauss*.tar.bz2`'
+            cmd = 'cd {} && '.format(root)
+            cmd += '{} {} && '.format(bin_cmd, ''.join(' '.join(bin_files)))
+            cmd += '\mv {} {} && '.format(' '.join(bin_files), clib)
+            cmd += 'cd {} && rm -rf bin'.format(root)
+            status, output = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                raise Exception("Failed to copy encrypt, error:%s." % output)
         cmd = " cd %s && ./encrypt '%s' %s %s" % (encrypt_dir_path, secret_word,
                                                   cipher_path, rand_path)
         if os_system_type.find("x86") != -1:

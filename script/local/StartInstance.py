@@ -18,6 +18,7 @@
 
 import sys
 import getopt
+import getpass
 
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
@@ -26,6 +27,8 @@ from gspylib.common.LocalBaseOM import LocalBaseOM
 from gspylib.common.ParameterParsecheck import Parameter
 from domain_utils.cluster_file.cluster_log import ClusterLog
 from domain_utils.domain_common.cluster_constants import ClusterConstants
+from base_utils.os.env_util import EnvUtil
+from gspylib.component.DSS.dss_checker import DssConfig
 
 
 class Start(LocalBaseOM):
@@ -136,13 +139,35 @@ General options:
         output : NA
         """
         isDataDirCorrect = False
+        is_dss_mode = EnvUtil.is_dss_mode(self.user)
         for dn in self.dnCons:
             if self.dataDir != "" and dn.instInfo.datadir != self.dataDir:
                 continue
-            if self.cluster_number:
-                dn.start(self.time_out, self.security_mode, self.cluster_number)
-            else:
-                dn.start(self.time_out, self.security_mode)
+            try:
+                if is_dss_mode:
+                    DssConfig.wait_for_process_start(self.logger, 'dssserver', 'dssserver -D')
+                    DssConfig.set_cm_manual_flag(dn.instInfo.instanceId,
+                                                 'start', self.logger)
+                if self.cluster_number:
+                    dn.start(self.time_out,
+                             self.security_mode,
+                             self.cluster_number,
+                             is_dss_mode=is_dss_mode)
+                else:
+                    dn.start(self.time_out,
+                             self.security_mode,
+                             is_dss_mode=is_dss_mode)
+            finally:
+                if is_dss_mode:
+                    # recover the parameters of the cma resource file.
+                    cma_paths = DssConfig.get_cm_inst_path(self.dbNodeInfo)
+                    if cma_paths and DssConfig.get_cma_res_value(
+                            cma_paths[0], key='restart_delay') != str(
+                                DssConfig.DMS_DEFAULT_RESTART_DELAY):
+                        DssConfig.reload_cm_resource(
+                            self.logger,
+                            timeout=DssConfig.DMS_DEFAULT_RESTART_DELAY)
+
             isDataDirCorrect = True
 
         if not isDataDirCorrect:

@@ -631,7 +631,7 @@ def isSupportSystemOs():
     output : NA
     """
     osName = LinuxDistro.linux_distribution()[0]
-    if osName in ["redhat", "centos", "euleros", "openEuler"]:
+    if osName in ["redhat", "centos", "euleros", "openEuler", "FusionOS"]:
         return True
     else:
         return False
@@ -809,7 +809,7 @@ def getOSInitFile():
     if (distname == "SuSE" and os.path.isfile(initFileSuse)):
         initFile = initFileSuse
     elif (distname in (
-    "redhat", "centos", "euleros", "openEuler") and os.path.isfile(
+    "redhat", "centos", "euleros", "openEuler", "FusionOS") and os.path.isfile(
             initFileRedhat)):
         initFile = initFileRedhat
     else:

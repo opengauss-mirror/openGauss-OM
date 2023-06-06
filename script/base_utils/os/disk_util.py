@@ -254,3 +254,24 @@ class DiskUtil(object):
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error: \n%s" % output)
         return output.split('\n')
+
+    @staticmethod
+    def get_scsi_dev_id(dev_name):
+        cmd = '/lib/udev/scsi_id -g -u {}'.format(dev_name)
+        sts, out = CmdUtil.getstatusoutput_by_fast_popen(cmd)
+        if sts not in [0]:
+            raise Exception(ErrorCode.GAUSS_504["GAUSS_50422"] %
+                            str(out).strip())
+        return out.strip()
+
+    @staticmethod
+    def active_udev():
+        cmd = 'udevadm control --reload-rules; '
+        cmd += 'udevadm trigger --type=devices --action=change; '
+        cmd += 'udevadm trigger --type=devices --action=add; '
+        cmd += 'udevadm trigger; '
+
+        sts, out = CmdUtil.getstatusoutput_by_fast_popen(cmd)
+        if sts not in [0]:
+            raise Exception(ErrorCode.GAUSS_504["GAUSS_50423"] %
+                            str(out).strip())

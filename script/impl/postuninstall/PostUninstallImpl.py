@@ -22,7 +22,7 @@ import grp
 import pwd
 import getpass
 
-from script.base_utils.os.user_util import UserUtil
+from base_utils.os.user_util import UserUtil
 
 sys.path.append(sys.path[0] + "/../")
 from gspylib.threads.parallelTool import parallelTool
@@ -37,6 +37,7 @@ from base_utils.os.file_util import FileUtil
 from domain_utils.cluster_file.profile_file import ProfileFile
 from domain_utils.cluster_file.version_info import VersionInfo
 from base_utils.os.net_util import NetUtil
+from base_utils.os.env_util import EnvUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from os_platform.linux_distro import LinuxDistro
 
@@ -133,6 +134,18 @@ class PostUninstallImpl:
             self.logger.logExit(str(e))
         self.logger.debug("Do clean Environment succeeded.", "constant")
 
+    def setOrCleanGphomeEnv(self, setGphomeenv=True):
+        osProfile = ClusterConstants.ETC_PROFILE
+        if setGphomeenv:
+            GphomePath = ClusterDir.getPreClusterToolPath(self.xmlFile)
+            # set GPHOME
+            FileUtil.writeFile(osProfile, ["export GPHOME=%s" % GphomePath])
+        else:
+            FileUtil.deleteLine(osProfile, "^\\s*export\\s*GPHOME=.*$")
+            FileUtil.deleteLine(osProfile, "^\\s*export\\s*UNPACKPATH=.*$")
+            self.logger.debug(
+                "Deleting crash GPHOME in user environment variables.")
+
     def checkUnPreInstall(self):
         """
         function: check whether do uninstall before unpreinstall
@@ -209,6 +222,15 @@ class PostUninstallImpl:
                                         self.sshTool, self.localMode,
                                         self.mpprcFile)
         self.logger.log("Successfully deleted the temporary directory.")
+
+        path = '/etc/udev/rules.d/zz-dss_{}.rules'.format(self.user)
+        if self.clusterInfo.enable_dss == 'on' or os.path.isfile(path):
+            self.logger.log("Deleting the udev rule file.")
+            cmd = "if [ -f '{0}' ]; then rm -rf '{0}'; fi;".format(path)
+            self.logger.debug("Command for deleting the udev rule file: %s" % cmd)
+            CmdExecutor.execCommandWithMode(cmd, self.sshTool, self.localMode,
+                                            self.mpprcFile)
+            self.logger.log("Successfully deleted the udev rule file.")
 
     def CleanInstanceDir(self):
         """
@@ -428,8 +450,15 @@ class PostUninstallImpl:
 
             # clean local node environment variable
             cmd = "(if [ -s '%s' ]; then " % PROFILE_FILE
-            cmd += "sed -i -e '/^export PATH=\/root\/gauss_om\/%s\/script:" \
-                   "\$PATH$/d' %s; fi)" % (self.user, PROFILE_FILE)
+            cmd += "sed -i -e '/^export PATH=\$PATH:\/root\/gauss_om\/%s\/" \
+                   "script$/d' %s " % (self.user, PROFILE_FILE)
+            cmd += "-e '/^export PATH=\$PATH:\$GPHOME\/script\/gspylib\/pssh\/bin:" \
+                "\$GPHOME\/script$/d' %s " % PROFILE_FILE
+            cmd += "-e '/^export LD_LIBRARY_PATH=\$GPHOME\/script\/gspylib\/clib:" \
+                "\$LD_LIBRARY_PATH$/d' %s " % PROFILE_FILE
+            cmd += "-e '/^export LD_LIBRARY_PATH=\$GPHOME\/lib:" \
+                "\$LD_LIBRARY_PATH$/d' %s " % PROFILE_FILE
+            cmd +="-e '/^export PYTHONPATH=\$GPHOME\/lib$/d' %s; fi) " % PROFILE_FILE
             self.logger.debug(
                 "Command for deleting environment variable: %s" % cmd)
             (status, output) = subprocess.getstatusoutput(cmd)
@@ -800,7 +829,10 @@ class PostUninstallImpl:
             retry_times = 0
             while True:
                 try:
-                    self.sshTool.createTrust(username, Ips, self.mpprcFile)
+                    self.sshTool.createTrust(username,
+                                             Ips,
+                                             self.mpprcFile,
+                                             action='gs_postuninstall')
                     break
                 except Exception as err_msg:
                     if retry_times == 2:
@@ -817,7 +849,7 @@ class PostUninstallImpl:
         except Exception as e:
             raise Exception(str(e))
 
-    def delet_root_mutual_trust(self):
+    def delet_root_mutual_trust(self, local_host, path):
         """
         :return:
         """
@@ -830,7 +862,6 @@ class PostUninstallImpl:
         username = pwd.getpwuid(os.getuid()).pw_name
         # get dir path
         homeDir = os.path.expanduser("~" + username)
-        sshDir = "%s/.ssh/*" % homeDir
         tmp_path = "%s/gaussdb_tmp" % homeDir
 
         # get cmd
@@ -839,17 +870,20 @@ class PostUninstallImpl:
                              "xargs kill -9"
         delete_line_cmd = " && sed -i '/^\\s*export\\s*SSH_AUTH_SOCK=.*$/d' %s" % bashrc_file
         delete_line_cmd += " && sed -i '/^\\s*export\\s*SSH_AGENT_PID=.*$/d' %s" % bashrc_file
-        delete_shell_cmd = " && rm -rf %s && rm -rf %s" % (sshDir, tmp_path)
+        delete_line_cmd += " && sed -i '/#OM$/d' %s" % DefaultValue.SSH_AUTHORIZED_KEYS
+        delete_line_cmd += " && sed -i '/#OM$/d' %s" % DefaultValue.SSH_KNOWN_HOSTS
+        delete_shell_cmd = " && rm -rf %s" % tmp_path
+        delete_shell_cmd += " && rm -rf %s" % DefaultValue.SSH_PRIVATE_KEY
+        delete_shell_cmd += " && rm -rf %s" % DefaultValue.SSH_PUBLIC_KEY
         cmd = "%s" + delete_line_cmd + delete_shell_cmd
 
         # get remote node and local node
         host_list = self.clusterInfo.getClusterNodeNames()
-        local_host = NetUtil.GetHostIpOrName()
         host_list.remove(local_host)
 
         # delete remote root mutual trust
         kill_remote_ssh_agent_cmd = DefaultValue.killInstProcessCmd("ssh-agent", True)
-        self.sshTool.getSshStatusOutput(cmd % kill_remote_ssh_agent_cmd, host_list)
+        self.sshTool.getSshStatusOutput(cmd % kill_remote_ssh_agent_cmd, host_list, gp_path=path)
         # delete local root mutual trust
         CmdExecutor.execCommandLocally(cmd % kill_ssh_agent_cmd)
         self.logger.debug("Delete root mutual trust successfully.")
@@ -859,6 +893,13 @@ class PostUninstallImpl:
             self.logger.debug(
                 "gs_postuninstall execution takes %s steps in total"
                 % ClusterCommand.countTotalSteps("gs_postuninstall"))
+            local_host = NetUtil.GetHostIpOrName()
+            if (self.mpprcFile is not None and self.mpprcFile != ""):
+                os_profile = self.mpprcFile
+            else:
+                os_profile = ClusterConstants.ETC_PROFILE
+            path = EnvUtil.get_env_param(source_file=os_profile,
+                                         env_param="UNPACKPATH")
             self.createTrustForRoot()
             self.cleanGphomeScript()
             self.checkLogFilePath()
@@ -868,7 +909,8 @@ class PostUninstallImpl:
             self.cleanLocalLog()
             self.cleanMpprcFile()
             self.cleanScript()
-            self.delet_root_mutual_trust()
+            self.setOrCleanGphomeEnv(setGphomeenv=False)
+            self.delet_root_mutual_trust(local_host, path)
             self.logger.log("Successfully cleaned environment.")
         except Exception as e:
             self.logger.logExit(str(e))

@@ -47,7 +47,7 @@ from netifaces import interfaces, ifaddresses, AF_INET, AF_INET6
 _supported_dists = (
     'SuSE', 'debian', 'fedora', 'redhat', 'centos', 'euleros', "openEuler",
     'mandrake', 'mandriva', 'rocks', 'slackware', 'yellowdog', 'gentoo',
-    'UnitedLinux', 'turbolinux')
+    'FusionOS', 'UnitedLinux', 'turbolinux')
 _release_filename = re.compile(r'(\w+)[-_](release|version)')
 _lsb_release_version = re.compile(r'(.+)'
                                   ' release '
@@ -61,20 +61,24 @@ SUSE = "suse"
 REDHAT = "redhat"
 CENTOS = "centos"
 EULEROS = "euleros"
+FUSIONOS = "fusionos"
 KYLIN = "kylin"
 OPENEULER = "openeuler"
 ASIANUX = "asianux"
 DEBIAN = "debian"
 UBUNTU = "ubuntu"
-SUPPORT_WHOLE_PLATFORM_LIST = [SUSE, REDHAT, CENTOS, EULEROS,
-                               OPENEULER, KYLIN, ASIANUX, DEBIAN, UBUNTU]
+UNIONTECH = "uniontech"
+SUPPORT_WHOLE_PLATFORM_LIST = [SUSE, REDHAT, CENTOS, EULEROS, FUSIONOS,
+                               OPENEULER, KYLIN, ASIANUX, DEBIAN, UBUNTU, UNIONTECH]
 # RedhatX platform
 SUPPORT_RHEL_SERIES_PLATFORM_LIST = [REDHAT, CENTOS, "kylin", "asianux"]
 SUPPORT_RHEL6X_VERSION_LIST = ["6.4", "6.5", "6.6", "6.7", "6.8", "6.9", "10"]
 SUPPORT_RHEL7X_VERSION_LIST = ["7.0", "7.1", "7.2", "7.3", "7.4", "7.5", "7.6", 
     "7.7", "7.8", "7.9", "10"]
+SUPPORT_RHEL8X_VERSION_LIST = ["8.0", "8.1", "8.2", "8.3", "8.4", "8.5"]
 SUPPORT_RHEL_SERIES_VERSION_LIST = (SUPPORT_RHEL6X_VERSION_LIST +
-                                    SUPPORT_RHEL7X_VERSION_LIST)
+                                    SUPPORT_RHEL7X_VERSION_LIST + 
+                                    SUPPORT_RHEL8X_VERSION_LIST)
 # EulerOS 2.3 -> 2.0 SP3
 SUPPORT_EULEROS_VERSION_LIST = ["2.0"]
 # SuSE platform
@@ -82,7 +86,7 @@ SUSE11 = "11"
 SUSE12 = "12"
 SUPPORT_SUSE_VERSION_LIST = [SUSE11, SUSE12]
 SUPPORT_SUSE11X_VERSION_LIST = ["1", "2", "3", "4"]
-SUPPORT_RHEL12X_VERSION_LIST = ["0", "1", "2", "3"]
+SUPPORT_SUSE12X_VERSION_LIST = ["0", "1", "2", "3", "4", "5"]
 BIT_VERSION = "64bit"
 
 # ---------------command path--------------------
@@ -94,15 +98,18 @@ COLON = ":"
 PAK_CENTOS = "CentOS"
 PAK_EULER = "Euler"
 PAK_OPENEULER = "openEuler"
+PAK_FUSIONOS = "FusionOS"
 PAK_REDHAT = "RedHat"
 PAK_ASIANUX = "Asianux"
 PAK_UBUNTU = "Ubuntu"
+PAK_SUSE = "SUSE"
+PAK_UNIONTECH = "UnionTech"
 
 #######################################################
 _supported_dists = (
     'SuSE', 'debian', 'fedora', 'redhat', 'centos', 'euleros', "openEuler",
     'mandrake', 'mandriva', 'rocks', 'slackware', 'yellowdog', 'gentoo',
-    'UnitedLinux', 'turbolinux', 'kylin', 'asianux', 'ubuntu')
+    'FusionOS', 'UnitedLinux', 'turbolinux', 'kylin', 'asianux', 'ubuntu')
 _release_filename = re.compile(r'(\w+)[-_](release|version)')
 _lsb_release_version = re.compile(r'(.+)'
                                   ' release '
@@ -1500,7 +1507,12 @@ class LinuxPlatform(GenericPlatform):
         elif distname == SUSE and version.split('.')[0] in ("11", "12"):
             fileName = os.path.join(dirName, "./../../../",
                                     "%s-%s-%s-%s.%s" % (
-                                        prefixStr, packageVersion, "SUSE11",
+                                        prefixStr, packageVersion, PAK_CENTOS,
+                                        BIT_VERSION, postfixStr))
+            if not os.path.isfile(fileName):
+                fileName = os.path.join(dirName, "./../../../",
+                                    "%s-%s-%s-%s.%s" % (
+                                        prefixStr, packageVersion, PAK_SUSE,
                                         BIT_VERSION, postfixStr))
         elif distname in EULEROS and (idnum in ["SP2", "SP3", "SP5"]):
             fileName = os.path.join(dirName, "./../../../",
@@ -1529,11 +1541,23 @@ class LinuxPlatform(GenericPlatform):
                                         prefixStr, packageVersion,
                                         PAK_OPENEULER,
                                         BIT_VERSION, postfixStr))
+        elif distname in FUSIONOS:
+            fileName = os.path.join(dirName, "./../../../",
+                                    "%s-%s-%s-%s.%s" % (
+                                        prefixStr, packageVersion,
+                                        PAK_FUSIONOS,
+                                        BIT_VERSION, postfixStr))
         elif distname in DEBIAN and (version == "buster/sid"):
             fileName = os.path.join(dirName, "./../../../",
                                     "%s-%s-%s-%s.%s" % (
                                         prefixStr, packageVersion,
                                         PAK_UBUNTU,
+                                        BIT_VERSION, postfixStr))
+        elif distname in UNIONTECH:
+            fileName = os.path.join(dirName, "./../../../",
+                                    "%s-%s-%s-%s.%s" % (
+                                        prefixStr, packageVersion,
+                                        PAK_UNIONTECH,
                                         BIT_VERSION, postfixStr))
         else:
             raise Exception(ErrorCode.GAUSS_519["GAUSS_51900"] +
@@ -1720,7 +1744,7 @@ class SLESPlatform(LinuxPlatform):
                     ((version == SUSE11 and
                       patchlevel in SUPPORT_SUSE11X_VERSION_LIST) or
                      (version == SUSE12 and
-                      patchlevel in SUPPORT_RHEL12X_VERSION_LIST))):
+                      patchlevel in SUPPORT_SUSE12X_VERSION_LIST))):
                 platformVersion = "%s.%s" % (version, patchlevel)
                 return distName.lower(), platformVersion
             else:
@@ -1774,7 +1798,7 @@ class RHELPlatform(LinuxPlatform):
                 (distName.lower() == CENTOS and version[0:3] ==
                  SUPPORT_EULEROS_VERSION_LIST and
                  os.path.isfile(os.path.join("/etc", "euleros-release"))) or
-                distName.lower() == OPENEULER):
+                (distName.lower() == OPENEULER) or (distName.lower() == FUSIONOS)):
             return True
         else:
             return False
@@ -1903,6 +1927,7 @@ class RHELPlatform(LinuxPlatform):
                   (distName.lower() in SUPPORT_RHEL_SERIES_PLATFORM_LIST and
                    version[0:3] in SUPPORT_RHEL_SERIES_VERSION_LIST)) or
                  (distName.lower() == OPENEULER) or
+                 (distName.lower() == FUSIONOS) or
                  (distName.lower() == DEBIAN and version == "buster/sid")
             )):
                 return distName.lower(), version[0:3]

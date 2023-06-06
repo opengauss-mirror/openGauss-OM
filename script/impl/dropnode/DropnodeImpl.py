@@ -433,6 +433,74 @@ class OperCommon:
             "[gs_dropnode]End to backup parameter config file on %s." % host)
         return '%s/parameter_%s.tar' % (tmpPath, host)
 
+    def check_is_vip_mode(self):
+        """
+        Check whether the current mode is VIP
+        """
+        cmd = "cm_ctl res --list | awk -F \"|\" '{print $2}' | grep -w \"VIP\""
+        self.logger.log("Command for Checking VIP mode: %s" % cmd)
+        stat, out= subprocess.getstatusoutput(cmd)
+        if stat != 0 or not out:
+            return False
+        return True
+
+    def get_float_ip_from_json(self, base_ip, host_ips_for_del):
+        """
+        Get float IP from json file by cmd
+        """
+        cmd = "cm_ctl res --list | grep \"VIP\" | awk -F \"|\" '{print $1}' | " \
+              "xargs -i cm_ctl res --list --res_name={} --list_inst |grep \"base_ip=%s\""\
+              " | awk -F \"|\" '{print $1}' | xargs -i cm_ctl res --list --res_name={}" \
+              " | grep \"VIP\" | awk -F \"|\" '{print $3}'" % base_ip
+        stat, out= subprocess.getstatusoutput(cmd)
+        if stat != 0:
+            GaussLog.exitWithError(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd)
+        if not out:
+            self.logger.log("Failed to get float IP from json. Cmd: %s" % cmd)
+            return ""
+        float_ip = re.findall("float_ip=([\.\d]+)", out.strip())[0]
+
+        cmd = "cm_ctl res --list | grep \"VIP\" | awk -F \"|\" '{print $1}' | " \
+              "xargs -i cm_ctl res --list --res_name={} | grep \"float_ip=%s\" | " \
+              "awk -F \"|\" '{print $1}' | xargs -i cm_ctl res --list --res_name={} " \
+              "--list_inst | grep \"VIP\" | awk -F \"|\" '{print $5}'" % float_ip
+        stat, out= subprocess.getstatusoutput(cmd)
+        if stat != 0 or not out:
+            raise Exception("Failed to get base IP list from json. Cmd: %s" % cmd)
+        for item in out.split('\n'):
+            _ip = re.findall("base_ip=([\.\d]+)", item.strip())[0]
+            if _ip not in host_ips_for_del:
+                return ""
+
+        self.logger.log("Successfully get float IP from json, %s." % float_ip)
+        return float_ip
+
+    def get_float_ip_config(self, host, dn_dir, host_ips_for_del, ssh_tool, env_file):
+        """
+        Get float IP configuration str
+        """
+        if not self.check_is_vip_mode():
+            self.logger.log("The current cluster does not support VIP.")
+            return ""
+
+        float_ips_for_del = []
+        for _ip in host_ips_for_del:
+            float_ip = self.get_float_ip_from_json(_ip, host_ips_for_del)
+            if float_ip and float_ip not in float_ips_for_del:
+                float_ips_for_del.append(float_ip)
+        cmd = "grep '^host.*sha256' %s" % os.path.join(dn_dir, 'pg_hba.conf')
+        stat_map, output = ssh_tool.getSshStatusOutput(cmd, [host], env_file)
+        if stat_map[host] != 'Success':
+            self.logger.debug("[gs_dropnode]Parse pg_hba file failed:" + output)
+            GaussLog.exitWithError(ErrorCode.GAUSS_358["GAUSS_35809"])
+        ret = ""
+        for float_ip in float_ips_for_del:
+            if float_ip in output:
+                s = output.rfind('host', 0, output.find(float_ip))
+                e = output.find('\n', output.find(float_ip), len(output))
+                ret += output[s:e] + '|'
+        return ret
+
     def parseConfigFile(self, host, dirDn, dnId, hostIpListForDel, sshTool,
                         envfile):
         """
@@ -475,6 +543,8 @@ class OperCommon:
                 s = output.rfind('host', 0, output.find(ip))
                 e = output.find('\n', output.find(ip), len(output))
                 resultDict['pghbaStr'] += output[s:e] + '|'
+        resultDict['pghbaStr'] += self.get_float_ip_config(host, dirDn, hostIpListForDel,
+                                                           sshTool, envfile)
         self.logger.log(
             "[gs_dropnode]End to parse parameter config file on %s." % host)
         return resultDict

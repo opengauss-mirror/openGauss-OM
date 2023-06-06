@@ -50,6 +50,7 @@ ACTION_SET_ARM_OPTIMIZATION = "set_arm_optimization"
 
 ACTION_CHECK_DISK_SPACE = "check_disk_space"
 ACTION_FIX_SERVER_PACKAGE_OWNER = "fix_server_package_owner"
+ACTION_DSS_NIT = "dss_init"
 
 #############################################################################
 # Global variables
@@ -160,8 +161,7 @@ class PreinstallImplOLAP(PreinstallImpl):
             # self.context.needFixOwnerPaths will be checked the ownet
             self.context.needFixOwnerPaths.append(ownerPath)
 
-            # if clusterToolPath is not exist, then create it
-
+            # if clusterToolPath does not exist, then create it
             if not os.path.exists(self.context.clusterToolPath):
                 FileUtil.createDirectory(self.context.clusterToolPath)
                 FileUtil.changeMode(DefaultValue.MAX_DIRECTORY_MODE,
@@ -616,5 +616,35 @@ class PreinstallImplOLAP(PreinstallImpl):
                                             self.context.mpprcFile)
 
             self.del_remote_pkgpath()
+        except Exception as e:
+            raise Exception(str(e))
+
+    def dss_init(self):
+        '''
+        DSS initialization
+        '''
+        if not self.context.clusterInfo.enable_dss == 'on':
+            self.context.logger.debug('The mode is non-dss.')
+            return
+        self.context.logger.log("Unreging the dss lun.", "addStep")
+        try:
+            cmd = (
+                "%s -t %s -u %s -g %s -X %s -Q %s -l %s" %
+                (OMCommand.getLocalScript("Local_PreInstall"), ACTION_DSS_NIT,
+                 self.context.user, self.context.group, self.context.xmlFile,
+                 self.context.clusterToolPath, self.context.localLog))
+            # check the env file
+            if self.context.mpprcFile != "":
+                cmd += " -s %s" % self.context.mpprcFile
+            self.context.logger.debug("The cmd of unreging the dss lun is %s" %
+                                      cmd)
+            # exec the cmd
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.localMode,
+                                            self.context.mpprcFile,
+                                            parallelism=False)
+            self.context.logger.log("Successfully unreg the dss lun.")
+
         except Exception as e:
             raise Exception(str(e))

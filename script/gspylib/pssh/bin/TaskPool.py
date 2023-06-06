@@ -277,8 +277,9 @@ class TaskThread(threading.Thread):
                                        ".bashrc")
             ssh_auth_sock = self.get_env_variable("SSH_AUTH_SOCK", bashrc_file)
             ssh_agent_pid = self.get_env_variable("SSH_AGENT_PID", bashrc_file)
-            env = {"SSH_AUTH_SOCK": ssh_auth_sock,
-                   "SSH_AGENT_PID": ssh_agent_pid}
+            env = os.environ
+            env.update({"SSH_AUTH_SOCK": ssh_auth_sock,
+                   "SSH_AGENT_PID": ssh_agent_pid})
             self.proc = FastPopen(self.cmd, shell=False, stdout=subprocess.PIPE,
                                   stderr=subprocess.PIPE, env=env,
                                   close_fds=True)

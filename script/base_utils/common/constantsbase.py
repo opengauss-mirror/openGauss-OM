@@ -59,4 +59,4 @@ class ConstantsBase:
 
     #SQL_EXEC_COMMAND
     SQL_EXEC_COMMAND_WITHOUT_HOST_WITHOUT_USER = "%s -p %s -d %s "
-    SQL_EXEC_COMMAND_WITHOUT_HOST_WITH_USER = "%s -p %s -d %s -U %s -W %s "
+    SQL_EXEC_COMMAND_WITHOUT_HOST_WITH_USER = "%s -p %s -d %s -U %s -W '%s' "

@@ -28,4 +28,4 @@ class CommConstants:
     UPGRADE_SQL_FILE = "upgrade_sql.tar.gz"
     # not support grep upgrade
     FIRST_GREY_UPGRADE_NUM = -1
-    DIST_NAME_TUPLE = ("redhat", "euleros", "centos", "openEuler")
+    DIST_NAME_TUPLE = ("redhat", "euleros", "centos", "openEuler", "FusionOS")

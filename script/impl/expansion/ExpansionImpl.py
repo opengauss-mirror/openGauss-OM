@@ -199,9 +199,12 @@ class ExpansionImpl():
         upgrade_sha_file = os.path.join(pkgdir,
                                              Const.UPGRADE_SQL_SHA)
         om_file = bz2_sha_file.replace(".sha256", "-om.tar.gz")
+        cm_file = []
+        if self.context.check_cm_component():
+            cm_file = [bz2_sha_file.replace(".sha256", "-cm.tar.gz")]
 
         return [om_file, bz2_file, bz2_sha_file, upgrade_sql_file,
-             upgrade_sha_file]
+             upgrade_sha_file] + cm_file
 
     def generateAndSendXmlFile(self):
         """
@@ -368,13 +371,9 @@ class ExpansionImpl():
         existingStandbys = list(set(self.existingHosts) - (set([primaryHostIp])))
         failedInstallHosts = []
         notInstalledCascadeHosts = []
-        for newHost,appName in zip(standbyHosts, \
-            self.getIncreaseAppNames(len(standbyHosts))):
+        for newHost in standbyHosts:
             if not self.expansionSuccess[newHost]:
                 continue
-            log_path = ClusterDir.getUserLogDirWithUser(self.user)
-            log_dir = "%s/pg_log/dn_%d" % (log_path, appName)
-            audit_dir = "%s/pg_audit/dn_%d" % (log_path, appName)
             hostName = self.context.backIpNameMap[newHost]
             sshIp = self.context.clusterInfoDict[hostName]["sshIp"]
             port = self.context.clusterInfoDict[hostName]["port"]
@@ -436,12 +435,8 @@ class ExpansionImpl():
             inst_dir = self.context.clusterInfoDict[hostName]["dataNode"]
             guc_path = os.path.join(self.context.clusterInfoDict["appPath"],
                                 "bin", "gs_guc")
-            para_str = " -c \"application_name='dn_{0}'\" " \
-                "-c \"log_directory='{1}'\" " \
-                " -c \"audit_directory='{2}'\" " \
-                " -c \"listen_addresses='localhost,{3}'\"" \
-                " -c \"port='{4}'\"" \
-                "".format(appName, log_dir, audit_dir, newHost, port)
+            para_str = " -c \"listen_addresses='localhost,{0}'\"" \
+                " -c \"port='{1}'\"".format(newHost, port)
             cmd = "source {0}; {1} set -D {2} {3}".format(self.envFile, 
                                                           guc_path, inst_dir, para_str)
             self.logger.debug(
@@ -462,7 +457,27 @@ class ExpansionImpl():
         self.logger.log("Finish to install database on all nodes.")
         if self._isAllFailed():
             GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35706"] % "install")
-    
+
+    def resetStandbyAppName(self, hostName, sshIp):
+        if not self.newInsIds:
+            return
+        appName = self.newInsIds[0]
+        logPath = ClusterDir.getUserLogDirWithUser(self.user)
+        logDir = "%s/pg_log/dn_%d" % (logPath, appName)
+        auditDir = "%s/pg_audit/dn_%d" % (logPath, appName)
+        instDir = self.context.clusterInfoDict[hostName]["dataNode"]
+        gucPath = os.path.join(self.context.clusterInfoDict["appPath"],
+            "bin", "gs_guc")
+        paraStr = " -c \"application_name='dn_{0}'\" " \
+            "-c \"log_directory='{1}'\" " \
+            " -c \"audit_directory='{2}'\" " \
+            "".format(appName, logDir, auditDir)
+        cmd = "source {0}; {1} set -D {2} {3}".format(
+            self.envFile, gucPath, instDir, paraStr)
+        self.logger.debug("Command for set guc params: %s" % cmd)
+        sshTool = SshTool([sshIp], timeout=300)
+        self.guc_executor(sshTool, cmd, sshIp)
+
     def preInstallOnHosts(self):
         """
         execute preinstall step
@@ -509,6 +524,7 @@ class ExpansionImpl():
            (2) build new instances
         5. generate cluster static file and send to each node.
         """
+        self.refreshClusterInfoState()
         self.setGucConfig()
         self.addTrust()
         if DefaultValue.is_create_grpc(self.logger,
@@ -550,6 +566,32 @@ class ExpansionImpl():
                 self.existingHosts.append(existing_hosts_ip[0])
         self.existingHosts = list(set(self.existingHosts))
 
+    def refreshClusterInfoState(self):
+        """
+        fresh cluster info state
+        """
+        self.logger.debug("Start refresh cluster info state.")
+        # get xml config node info
+        clusterInfoDict = self.context.clusterInfoDict
+        nodeNames = self.context.nodeNameList
+        # get gs_om node info
+        primaryHost = self.getPrimaryHostName()
+        result = self.commonGsCtl.queryOmCluster(primaryHost, self.envFile)
+        instances = re.split('(?:\|)|(?:\n)', result)
+        pattern = re.compile('(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*')
+        host_ip = []
+        for ins in instances:
+            if re.findall('Primary', ins):
+                host_ip = pattern.findall(ins)
+                break
+        # update xml config node info
+        primary_host_ip = "".join(host_ip)
+        for nodename in nodeNames:
+            if clusterInfoDict[nodename]["instanceType"] == MASTER_INSTANCE:
+                clusterInfoDict[nodename]["instanceType"] = STANDBY_INSTANCE
+            if clusterInfoDict[nodename]["backIp"] == primary_host_ip:
+                clusterInfoDict[nodename]["instanceType"] = MASTER_INSTANCE
+        
     def setGucConfig(self):
         """
         set replconninfo on all hosts
@@ -608,6 +650,23 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
         if self._isAllFailed():
             GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35706"] % "set guc")
 
+    def get_add_float_ip_cmd(self, host_ip):
+        """
+        Get cmd for adding float IP to pg_hba.conf
+        """
+        if not self.context.clusterInfo.float_ips:
+            self.logger.debug("The current cluster does not support VIP.")
+            return ""
+
+        cmd = ""
+        name = self.context.backIpNameMap[host_ip]
+        node = self.context.clusterInfo.getDbNodeByName(name)
+        for inst in node.datanodes:
+            for float_ip in inst.float_ips:
+                cmd += " -h 'host    all    all    %s/32    sha256'" % \
+                       self.context.clusterInfo.float_ips[float_ip]
+        return cmd
+
     def addTrust(self):
         """
         add authentication rules about new host ip in existing hosts and
@@ -624,13 +683,13 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             cmd = "source %s;gs_guc set -D %s" % (self.envFile, dataNode)
             if hostExec in self.existingHosts:
                 for hostParam in self.context.newHostList:
-                    cmd += " -h 'host    all    all    %s/32    trust'" % \
-                        hostParam
+                    cmd += " -h 'host    all    all    %s/32    trust'" % hostParam
+                    cmd += self.get_add_float_ip_cmd(hostParam)
             else:
                 for hostParam in allHosts:
                     if hostExec != hostParam:
-                        cmd += " -h 'host    all    all    %s/32    trust'" % \
-                            hostParam
+                        cmd += " -h 'host    all    all    %s/32    trust'" % hostParam
+                        cmd += self.get_add_float_ip_cmd(hostParam)
             self.logger.debug("[%s] trustCmd:%s" % (hostExec, cmd))
             sshTool = SshTool([hostExec])
             sshTool.getSshStatusOutput(cmd, [hostExec], self.envFile)
@@ -777,6 +836,8 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
                 hostRole = ROLE_STANDBY
             self.logger.log("Start to build %s %s." % (hostRole, host))
             self.checkTmpDir(hostName)
+            # reset current standby's application name before started
+            self.resetStandbyAppName(hostName=hostName, sshIp=host)
             # start new host as standby mode
             self.commonGsCtl.stopInstance(hostName, dataNode, self.envFile)
             result, output = self.commonGsCtl.startInstanceWithMode(host,
@@ -858,6 +919,9 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
                 if self.context.newHostCasRoleMap[host] == "off":
                     existingStandbys.append(host)
                 self.logger.log("\rBuild %s %s success." % (hostRole, host))
+                # after current standby build successfully,
+                # the minimum dn id has been used, so pop it from newInsIds
+                self.newInsIds.pop(0)
             else:
                 self.expansionSuccess[host] = False
                 self.logger.log("\rBuild %s %s failed." % (hostRole, host))
@@ -1520,6 +1584,8 @@ remoteservice={remoteservice}'"
         # change to db manager user. the below steps run with db manager user.
         self.changeUser()
 
+        # newInsIds indicates unused dn id list
+        self.newInsIds = self.getIncreaseAppNames(len(self.context.newHostList))
         if not self.context.standbyLocalMode:
             self.logger.log("Start to install database on new nodes.")
             self.installDatabaseOnHosts()

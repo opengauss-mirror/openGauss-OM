@@ -68,7 +68,7 @@ gs_preinstall = ["-?", "--help", "-V", "--version", "-U:", "-G:", "-L",
                  "-l:", "--non-interactive", "--delete-root-trust", "--unused-third-party"]
 gs_install = ["-?", "--help", "-V", "--version", "-X:", "-l:",
               "--gsinit-parameter=", "--dn-guc=", "--cms-guc=",
-              "--time-out=", "--alarm-component="]
+              "--time-out=", "--dorado-config=", "--alarm-component="]
 gs_uninstall = ["-?", "--help", "-V", "--version", "-l:", "-L",
                 "--delete-data"]
 gs_postuninstall = ["-?", "--help", "-V", "--version", "--delete-user",
@@ -126,12 +126,15 @@ gs_upgradectl_chose_strategy = ["-t:", "-?", "--help", "-V", "--version",
                                 "-l:"]
 # auto-upgrade parameter lists
 gs_upgradectl_auto_upgrade = ["-t:", "-?", "--help", "-V", "--version", "-l:",
-                              "-X:", "--grey"]
+                              "-X:", "--grey", "-h:", "--continue"]
 # auto-rollback parameter lists
 gs_upgradectl_auto_rollback = ["-t:", "-?", "--help", "-V", "--version",
                                "-l:", "-X:", "--force"]
 # commit-upgrade parameter lists
 gs_upgradectl_commit = ["-t:", "-?", "--help", "-V", "--version", "-l:", "-X:"]
+
+# upgrade cm component
+gs_upgradectl_upgrade_cm = ["-t:", "-?", "--help", "-V", "--version", "-l", "--upgrade-package="]
 
 ParameterDict = {"preinstall": gs_preinstall,
                  "install": gs_install,
@@ -142,6 +145,7 @@ ParameterDict = {"preinstall": gs_preinstall,
                  "auto_upgrade": gs_upgradectl_auto_upgrade,
                  "chose_strategy": gs_upgradectl_chose_strategy,
                  "commit_upgrade": gs_upgradectl_commit,
+                 "upgrade-cm": gs_upgradectl_upgrade_cm,
                  "auto_rollback": gs_upgradectl_auto_rollback,
                  "start": gs_om_start,
                  "stop": gs_om_stop,
@@ -169,7 +173,7 @@ special_list = ["gs_om", "backup", "upgradectl"]
 action_om = ["start", "stop", "status", "restart", "generateconf", "kerberos",
              "cert", "view", "query", "refreshconf"]
 action_upgradectl = ["chose-strategy", "auto-upgrade", "auto-rollback",
-                     "commit-upgrade"]
+                     "commit-upgrade", "upgrade-cm"]
 
 
 class Parameter():
@@ -298,6 +302,7 @@ class Parameter():
                               "--alarm-type": "warningType",
                               "--alarm-server-addr": "warningserverip",
                               "--time-out": "time_out", "": "",
+                              "--dorado-config": "dorado-config",
                               "--alarm-component": "alarm_component",
                               "--SSD-fault-time": "SSDFaultTime",
                               "--begin-time": "begintime",
@@ -467,6 +472,10 @@ class Parameter():
                 PARAMETER_VALUEDICT['old_values'] = value.strip().split(",")
             elif key == "--new-values":
                 PARAMETER_VALUEDICT['new_values'] = value.strip().split(",")
+            elif key == "--upgrade-package":
+                PARAMETER_VALUEDICT["upgrade-package"] = value.strip()
+            elif key == "--dorado-config":
+                PARAMETER_VALUEDICT["dorado-config"] = value.strip()
             # Only check / symbol for gs_lcct.
             if key in ("--name", "--nodegroup-name"):
                 self.checkLcGroupName(key, value)
@@ -673,6 +682,8 @@ class Parameter():
                 ParameterList = ParameterDict.get("auto_upgrade")
             elif (self.action == "commit-upgrade"):
                 ParameterList = ParameterDict.get("commit_upgrade")
+            elif self.action == "upgrade-cm":
+                ParameterList = ParameterDict.get("upgrade-cm")
             else:
                 GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
                                        % "t")

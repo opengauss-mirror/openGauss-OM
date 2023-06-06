@@ -68,18 +68,10 @@ class CheckEtcHosts(BaseItem):
                 flag = "Error_conflicts"
             else:
                 IPMapping[ip] = host
-            if (len(IPInfo.split()) > 2 and IPInfo.split()[2] == "#Gauss"):
-                commentsMapping.append(IPInfo + " IP Hosts Mapping")
-                flag = "Error_comments"
 
         if (flag == "Normal"):
             self.result.rst = ResultStatus.OK
             self.result.val = "The /etc/hosts is configured correctly."
-        elif (flag == "Error_comments"):
-            self.result.rst = ResultStatus.NG
-            self.result.val = "The /etc/hosts has comments Mapping:\n" \
-                              + "\n".join(
-                commentsMapping)
         else:
             self.result.rst = ResultStatus.NG
             self.result.val = "The /etc/hosts has conflicts Mapping:\n" \

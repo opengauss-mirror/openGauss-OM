@@ -17,9 +17,9 @@ func_remote_execute_cmd()
     expect -c "
     spawn $cmd;
     expect {
-            \"please enter the password:\"
+            \"$expect_content\"
             {send $passwd\n; exp_continue}
-            \"please enter the password again:\"
+            \"$expect_content\"
             {send $passwd\n}  }
         expect eof
         catch wait result;

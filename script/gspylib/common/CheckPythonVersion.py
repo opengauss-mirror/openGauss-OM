@@ -16,30 +16,60 @@
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------
 import sys
+import sysconfig
 import platform
 import re
+import os
+import subprocess
 
 
-def checkPythonVersion():
-    pythonVersion = sys.version_info[0:2]
-    distName = platform.platform()
-    if pythonVersion < (3, 0):
+def check_python_version():
+    python_version = sys.version_info[0:2]
+    dist_name = platform.platform()
+    if python_version < (3, 0):
         raise Exception("[GAUSS-52200] : version of python"
                         " is not correct: %s." %
-                        distName + " should use Python 3.*")
-    if re.search("oe1", distName) is not None:
-        if not pythonVersion == (3, 7):
-            print("Warnging version of python doesnot meet the expection, maybe third-party libs "
-                  "need to be compiled by yourself")
-    else:
-        if not pythonVersion == (3, 6):
-            print("Warnging version of python doesnot meet the expection, maybe third-party libs "
-                  "need to be compiled by yourself")
+                        dist_name + " should use Python 3.*")
     return True
 
+def check_python_compiler_option():
+    config_args = sysconfig.get_config_var("CONFIG_ARGS")
+    if "--enable-shared" not in config_args:
+        raise Exception("[GAUSS-52200] : When compiling python, \
+            carry the -enable-shared parameters")
+    return True
+
+def check_os_and_package_arch():
+    """
+    check os and package arch
+    """
+    clib_path = os.path.realpath(
+                os.path.join(os.path.realpath(__file__), "../../clib"))
+    package_cmd = "cd " + clib_path + "&& file libcrypto.so.1.1 2>/dev/null"
+    (status, output) = subprocess.getstatusoutput(package_cmd)
+    if status != 0:
+        raise Exception("%s command faile." % (package_cmd))
+    package_arch = ""
+    if ("x86-64" in output):
+        package_arch = "x86_64"
+    if ("aarch64" in output):
+        package_arch = "aarch64"
+
+    os_cmd = "uname -p"
+    (status, output) = subprocess.getstatusoutput(os_cmd)
+    if status != 0:
+        raise Exception("%s command failed." % (os_cmd))
+    os_arch = output
+    
+    if (package_arch == os_arch):
+        return
+    raise Exception("System and software package architecture mismatch.\n" +  
+        "Error: os architecture is %s, package architecture is %s" % (os_arch, package_arch))
 
 if __name__ == '__main__':
     try:
-        checkPythonVersion()
+        CHECK_PYTHON = check_python_version()
+        if CHECK_PYTHON:
+            check_python_compiler_option()
     except Exception as e:
         raise Exception(e)

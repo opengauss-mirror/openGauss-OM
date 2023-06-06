@@ -90,7 +90,7 @@ class CheckGUCConsistent(BaseItem):
         global g_gucDist
         LCInstanceGucDist = {}
         lcInstance = {}
-        sqlcmd = "select name,setting from pg_settings;"
+        sqlcmd = "select name,setting from pg_settings where category != 'Customized Options';"
         InstanceGucDist = {}
         output = SharedFuncs.runSqlCmd(sqlcmd, self.user, "", Instance.port,
                                        self.tmpPath, "postgres",

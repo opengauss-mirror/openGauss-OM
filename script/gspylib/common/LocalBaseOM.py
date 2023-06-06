@@ -21,12 +21,18 @@ import os
 sys.path.append(sys.path[0] + "/../../")
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.DbClusterInfo import dbClusterInfo
+from gspylib.common.DbClusterStatus import DbClusterStatus
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.component.CM.CM_OLAP.CM_OLAP import CM_OLAP
+from gspylib.component.DSS.dss_comp import Dss
 from gspylib.component.Kernel.DN_OLAP.DN_OLAP import DN_OLAP
 from domain_utils.cluster_file.version_info import VersionInfo
 from base_utils.os.net_util import NetUtil
 from base_utils.os.user_util import UserUtil
+from base_utils.os.env_util import EnvUtil
+from gspylib.component.DSS.dss_checker import DssConfig
+import impl.upgrade.UpgradeConst as const
+ 
 
 
 class LocalBaseOM(object):
@@ -34,8 +40,17 @@ class LocalBaseOM(object):
     Base class for local command
     """
 
-    def __init__(self, logFile=None, user=None, clusterConf=None,
-                 dwsMode=False, initParas=None, gtmInitParas=None, paxos_mode=False):
+    def __init__(self,
+                 logFile=None,
+                 user=None,
+                 clusterConf=None,
+                 dwsMode=False,
+                 initParas=None,
+                 gtmInitParas=None,
+                 paxos_mode=False,
+                 dss_mode=False,
+                 dss_config="",
+                 dorado_config=""):
         '''
         Constructor
         '''
@@ -61,7 +76,11 @@ class LocalBaseOM(object):
         self.cnCons = []
         self.dnCons = []
         self.gtsCons = []
+        self.dss_cons = []
         self.paxos_mode = paxos_mode
+        self.dss_mode = dss_mode
+        self.dss_config = dss_config
+        self.dorado_config = dorado_config
 
     def initComponent(self, paxos_mode=False):
         """
@@ -71,6 +90,19 @@ class LocalBaseOM(object):
         """
         self.initCmComponent()
         self.initKernelComponent(paxos_mode)
+        self.init_dss_component(self.dss_mode)
+
+
+    def init_dss_component(self, dss_mode=False):
+        if not dss_mode:
+            return
+        for _ in self.dbNodeInfo.datanodes:
+            component = Dss()
+            component.logger = self.logger
+            component.binPath = "%s/bin" % self.clusterInfo.appPath
+            component.clusterType = self.clusterInfo.clusterType
+            component.dss_mode = dss_mode
+            self.dss_cons.append(component)
 
     def initComponentAttributes(self, component):
         """
@@ -81,6 +113,9 @@ class LocalBaseOM(object):
         component.logger = self.logger
         component.binPath = "%s/bin" % self.clusterInfo.appPath
         component.dwsMode = self.dws_mode
+        component.dss_mode = self.dss_mode
+        if self.dss_mode:
+            component.dss_config = self.dss_config
 
     def initCmComponent(self):
         """
@@ -120,6 +155,7 @@ class LocalBaseOM(object):
             component.paxos_mode = paxos_mode
             self.initComponentAttributes(component)
             component.initParas = self.initParas
+            component.dorado_config = self.dorado_config
             self.dnCons.append(component)
 
     def readConfigInfo(self):
@@ -129,13 +165,14 @@ class LocalBaseOM(object):
         output: NA
         """
         try:
+            is_dss_mode = EnvUtil.is_dss_mode(self.user)
             self.clusterInfo = dbClusterInfo()
             hostName = NetUtil.GetHostIpOrName()
             dynamicFileExist = False
             if self.__class__.__name__ == "Start":
                 dynamicFileExist = \
                     self.clusterInfo.dynamicConfigExists(self.user)
-            if dynamicFileExist:
+            if dynamicFileExist and not is_dss_mode:
                 self.clusterInfo.readDynamicConfig(self.user)
                 self.dbNodeInfo = self.clusterInfo.getDbNodeByName(hostName)
             else:

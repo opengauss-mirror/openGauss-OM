@@ -29,7 +29,9 @@ try:
     from gspylib.common.Common import DefaultValue, ClusterCommand
     from gspylib.common.DbClusterStatus import DbClusterStatus
     from gspylib.os.gsfile import g_file
-    from gspylib.component.CM.CM import CM
+    from gspylib.component.CM.CM import CM, CmResAttr, CmResCtrlCmd, DssInstAttr
+    from gspylib.component.CM.CM import VipInstAttr, VipAddInst, VipDelInst
+    from gspylib.component.CM.CM import VipCmResCtrlCmd, VipResAttr
     from gspylib.common.DbClusterInfo import dbClusterInfo
     from base_utils.os.crontab_util import CrontabUtil
     from base_utils.os.env_util import EnvUtil
@@ -39,6 +41,8 @@ try:
     from base_utils.common.fast_popen import FastPopen
     from domain_utils.cluster_file.cluster_dir import ClusterDir
     from domain_utils.cluster_file.cluster_log import ClusterLog
+    from gspylib.component.DSS.dss_comp import DssInst, UdevContext
+    from gspylib.component.DSS.dss_checker import DssConfig
 
 except ImportError as e:
     sys.exit("[GAUSS-52200] : Unable to import module: %s." % str(e))
@@ -62,6 +66,15 @@ class CM_OLAP(CM):
         Constructor
         '''
         super(CM_OLAP, self).__init__()
+        self.cluster_info = None
+
+    def init_globals(self):
+        user = pwd.getpwuid(os.getuid()).pw_name
+        self.cluster_info = dbClusterInfo()
+        if os.path.isfile(
+                self.cluster_info.get_staic_conf_path(user, ignore_err=True)):
+            self.cluster_info.initFromStaticConfig(user)
+
 
     def init_cm_server(self):
         """
@@ -89,6 +102,15 @@ class CM_OLAP(CM):
         log_path = EnvUtil.getEnvironmentParameterValue("GAUSSLOG", user)
         server_para_dict = {"log_dir": os.path.realpath(os.path.join(log_path,
                                                                      "cm", "cm_server"))}
+        if  self.dss_mode:
+            cm_vote_disk = UdevContext.CM_VOTE_NAME % user
+            cm_share_disk = UdevContext.CM_SHARE_NAME % user
+            server_para_dict.update({
+                'share_disk_path': cm_share_disk,
+                'voting_disk_path': cm_vote_disk,
+                'dn_arbitrate_mode': 'share_disk',
+                'ddb_type': '2'
+            })
         self.setGucConfig(server_para_dict)
         self.logger.debug("Initializing cm_server instance successfully.")
 
@@ -118,6 +140,12 @@ class CM_OLAP(CM):
         log_path = EnvUtil.getEnvironmentParameterValue("GAUSSLOG", user)
         agent_para_dict = {"unix_socket_directory": os.path.dirname(self.binPath),
                            "log_dir": os.path.realpath(os.path.join(log_path, "cm", "cm_agent"))}
+        if self.dss_mode:
+            cm_vote_disk = UdevContext.CM_VOTE_NAME % user
+            agent_para_dict.update({
+                'voting_disk_path': cm_vote_disk
+                })
+
         self.setGucConfig(agent_para_dict)
         self.logger.debug("Initializing cm_agent instance successfully.")
 
@@ -141,6 +169,9 @@ class CM_OLAP(CM):
         if self.instInfo.instanceRole == DefaultValue.INSTANCE_ROLE_CMSERVER:
             self.init_cm_server()
         elif self.instInfo.instanceRole == DefaultValue.INSTANCE_ROLE_CMAGENT:
+            if self.dss_mode:
+                self.init_globals()
+                self.init_cm_res_json()
             self.init_cm_agent()
 
     def uninstall(self):
@@ -272,10 +303,7 @@ class CM_OLAP(CM):
         self.logger.log("Starting %s." % start_type)
         self.logger.log("======================================================================")
         # Call cm_ctl to start the
-        if timeout != 0:
-            cmd = CM_OLAP.get_start_cmd(nodeId, timeout=timeout, datadir=datadir, azName=azName)
-        else:
-            cmd = CM_OLAP.get_start_cmd(nodeId, timeout=0, datadir=datadir, azName=azName)
+        cmd = CM_OLAP.get_start_cmd(nodeId, timeout=timeout, datadir=datadir, azName=azName)
         result_set = CmdUtil.retryGetstatusoutput(cmd, retry_time=retry_times)
         # The output prompts when the failure to start
         if result_set[0] != 0:
@@ -671,7 +699,9 @@ class CM_OLAP(CM):
         output : String
         """
         user_profile = EnvUtil.getMpprcFile()
-        cmd = "source %s ; cm_ctl switchover -a -t %d" % (user_profile, timeout)
+        cmd = "source %s ; cm_ctl switchover -a" % user_profile
+        if timeout > 0:
+            cmd += (" -t %d" % timeout)
         # build shell command
         if user and os.getuid() == 0:
             cmd = "su - %s -c 'source %s;%s'" % (user, user_profile, cmd)
@@ -767,17 +797,17 @@ class CM_OLAP(CM):
                 continue
         self.logger.debug("Retry generate CA for CM component failed.")
 
-    def create_cm_ca(self, ssh_tool):
+    def create_cm_ca(self, ssh_tool, ca_org='cm'):
         """
-        Create CA file for CM component
+        Create CA file for CM/dss component
         """
-        self.logger.log("Create CA files for cm beginning.")
+        self.logger.log("Create CA files for {} beginning.".format(ca_org))
         current_user = pwd.getpwuid(os.getuid()).pw_name
         gp_home = EnvUtil.getEnvironmentParameterValue("GPHOME", current_user)
         create_ca_script = os.path.realpath(os.path.join(gp_home, "script", "gspylib",
                                                          "common", "encrypted_openssl.py"))
         expect_sh = os.path.realpath(os.path.join(gp_home, "script", "local", "expect.sh"))
-        target_dir = os.path.realpath(os.path.join(self.binPath, "..", "share", "sslcert", "cm"))
+        target_dir = os.path.realpath(os.path.join(self.binPath, "..", "share", "sslcert", ca_org))
 
         if os.path.isfile(create_ca_script) and os.path.isfile(expect_sh):
             create_cmd = g_file.SHELL_CMD_DICT["createDir"] % (target_dir,
@@ -793,10 +823,156 @@ class CM_OLAP(CM):
                 # number of assurance certificate files.
                 if openssl and len(os.listdir(target_dir)) > CM_OLAP.CM_CERT_FILES_NUM:
                     break
-            openssl.distribute_cert(ssh_tool)
+            if (ssh_tool):
+                openssl.distribute_cert(ssh_tool)
             self.logger.log("Create CA files on directory [{0}]. "
                             "file list: {1}".format(target_dir, os.listdir(target_dir)))
         else:
             self.logger.log("There is not exists [%s]." % create_ca_script)
 
+    def get_init_cm_cmd(self):
+        user = pwd.getpwuid(os.getuid()).pw_name
+        gauss_home = EnvUtil.getEnvironmentParameterValue('GAUSSHOME', user)
+        dss_home = EnvUtil.getEnvironmentParameterValue('DSS_HOME', user)
+        # not use realpath
+        dms_contrl = os.path.join(gauss_home, 'bin/dms_contrl.sh')
+        dss_contrl = os.path.join(gauss_home, 'bin/dss_contrl.sh')
 
+        cmd = [
+            str(CmResCtrlCmd(name='dms_res', attr=CmResAttr(dms_contrl))),
+            str(
+                CmResCtrlCmd(name='dss',
+                             attr=CmResAttr(dss_contrl, res_type='APP')))
+        ]
+
+        for db_inst in self.cluster_info.dbNodes:
+            cmd.append(
+                str(
+                    CmResCtrlCmd(action='edit',
+                                 name='dss',
+                                 attr=DssInstAttr(
+                                     node_id=db_inst.id,
+                                     dss_id=DssInst.get_current_dss_id(
+                                         dss_home, db_inst,
+                                         DssConfig.get_value_b64_handler(
+                                             'dss_nodes_list',
+                                             self.dss_config,
+                                             action='decode')),
+                                     dss_home="{};{}".format(
+                                         dss_home,
+                                         db_inst.datanodes[0].datadir)))))
+        return "source {}; {}".format(EnvUtil.getMpprcFile(), ' ;'.join(cmd))
+
+    def init_cm_res_json(self, rm_cm_json=True):
+        cm_resource = os.path.realpath(
+            os.path.join(self.instInfo.datadir, 'cm_resource.json'))
+        if rm_cm_json and os.path.isfile(cm_resource):
+            os.remove(cm_resource)
+        cmd = self.get_init_cm_cmd()
+        sts, out = subprocess.getstatusoutput(cmd)
+        if sts != 0:
+            raise Exception(
+                'Failed to initialize the CM resource file. Error: {}'.format(
+                    str(out)))
+
+    def get_add_cm_res_cmd(self, cm_res_info):
+        """
+        Get add CM resource information cmd for VIP
+        """
+        cmd_list = []
+        for res_name, _list in cm_res_info.items():
+            check_res = "cm_ctl res --list --res_name=\"%s\"" % res_name
+            stat, out= subprocess.getstatusoutput(check_res)
+            if stat != 0 or not out:
+                cmd_list.append(str(VipCmResCtrlCmd("add_res", res_name,
+                                    attr=VipResAttr(_list[0][0]))))
+            for _tup in _list:
+                check_inst = "cm_ctl res --list --res_name=\"%s\" --list_inst" \
+                             " | grep \"%s\"" % (res_name, _tup[1])
+                stat, out= subprocess.getstatusoutput(check_inst)
+                if stat != 0 or not out:
+                    cmd_list.append(str(VipCmResCtrlCmd("add_inst", res_name,
+                                        inst=VipAddInst(_tup[2], _tup[3]),
+                                        attr=VipInstAttr(_tup[1]))))
+        cmd = "source %s; %s" % (EnvUtil.getMpprcFile(), ' ;'.join(cmd_list))
+        self.logger.log("Add cm resource information cmd: \n%s" % cmd)
+        return cmd
+
+    def _get_cm_res_info(self, base_ip):
+        """
+        Get the CM resource info for reducing
+        """
+        # Get resource name
+        cmd = "cm_ctl res --list | grep \"VIP\" | awk -F \"|\" '{print $1}'" \
+                  " | xargs -i cm_ctl res --list --res_name={} --list_inst" \
+                  " | grep \"base_ip=%s\" | awk -F \"|\" '{print $1}'" % base_ip
+        stat, out= subprocess.getstatusoutput(cmd)
+        if stat != 0:
+            raise Exception("Failed to get res name. Cmd: \n%s" % cmd)
+        if not out:
+            return "", -1, -1
+        res_name = out.strip()
+
+        # Get intance ID
+        cmd = "cm_ctl res --list --res_name=\"%s\" --list_inst | grep " \
+                  "\"base_ip=%s\" | awk -F \"|\" '{print $4}'" % (res_name, base_ip)
+        stat, out= subprocess.getstatusoutput(cmd)
+        if stat != 0 or not out:
+            raise Exception("Failed to get the intance ID. Cmd: \n%s" % cmd)
+        inst_id = int(out.strip())
+
+        # Get the number of instances contained in a resource
+        cmd = "cm_ctl res --list --res_name=\"%s\" --list_inst" \
+                  " | grep \"VIP\" | wc -l" % res_name
+        stat, out= subprocess.getstatusoutput(cmd)
+        if stat != 0 or not out:
+            raise Exception("Failed to get the number of instances. Cmd: %s" % cmd)
+        inst_num = int(out.strip())
+
+        self.logger.log("CM resource info: res_name=%s,inst_id=%d,inst_num=%d   q" \
+                        "" % (res_name, inst_id, inst_num))
+        return res_name, inst_id, inst_num
+
+    def get_reduce_cm_res_cmd(self, base_ips):
+        """
+        Get reduce cm resource information cmd for VIP
+        """
+        cmd_list = []
+        for base_ip in base_ips:
+            res_name, inst_id, inst_num = self._get_cm_res_info(base_ip)
+            if not res_name:
+                self.logger.log("The base IP is not found: %s" % base_ip)
+                continue
+            if  inst_num > 1:
+                cmd_list.append(str(VipCmResCtrlCmd("del_inst", res_name,
+                                    inst=VipDelInst(inst_id))))
+            else:
+                cmd_list.append(str(VipCmResCtrlCmd("del_res", res_name)))
+        cmd = "source %s; %s" % (EnvUtil.getMpprcFile(), ' ;'.join(cmd_list))
+        self.logger.log("Reduce cm resource information cmd: \n%s" % cmd)
+        return cmd
+
+    def config_cm_res_json(self, base_ips, cm_res_info):
+        """
+        Config cm resource file for vip
+        """
+        if not base_ips and not cm_res_info:
+            raise Exception("The parameters cannot be empty at the same time")
+
+        cmd = self.get_reduce_cm_res_cmd(base_ips)
+        stat, out = subprocess.getstatusoutput(cmd)
+        if stat != 0:
+            raise Exception("Failed to reduce the CM resource for VIP." \
+                            " Cmd: \n%s, Error: \n%s" % (cmd, str(out)))
+
+        cmd = self.get_add_cm_res_cmd(cm_res_info)
+        stat, out = subprocess.getstatusoutput(cmd)
+        if stat != 0:
+            raise Exception("Failed to add the CM resource for VIP." \
+                            " Cmd: \n%s, Error: \n%s" % (cmd, str(out)))
+
+        cmd = "cm_ctl res --check"
+        stat, out = subprocess.getstatusoutput(cmd)
+        if stat != 0:
+            raise Exception("Failed to config the CM resource file for VIP." \
+                            " Cmd: \n%s, Error: \n%s" % (cmd, str(out)))

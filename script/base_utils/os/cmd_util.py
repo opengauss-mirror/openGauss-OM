@@ -24,6 +24,8 @@ import subprocess
 import threading
 import time
 from subprocess import PIPE, Popen
+from datetime import datetime
+from datetime import timedelta
 import pwd
 from gspylib.common.ErrorCode import ErrorCode
 from base_utils.common.exceptions import CommandNotFoundException
@@ -576,6 +578,21 @@ class CmdUtil(object):
         return status, output
 
     @staticmethod
+    def retry_util_timeout(cmd, timeout, sleep_time=1):
+        """
+        retry execute cmd with giving timeout.
+        """
+        end_time = datetime.now() + timedelta(seconds=int(timeout))
+        status, output = 1, 1
+        while datetime.now() < end_time:
+            status, output = CmdUtil.getstatusoutput_by_fast_popen(cmd)
+            if status == 0:
+                break
+            else:
+                time.sleep(sleep_time)
+        return status, output
+
+    @staticmethod
     def getstatusoutput_by_fast_popen(cmd):
         """
         get status, output by executing command by fast popen
@@ -629,3 +646,35 @@ class CmdUtil(object):
             else:
                 break
         return status, output
+
+    @staticmethod
+    def interactive_with_popen(cmd, password):
+        """
+        function : Interactive password entry
+        input : cmd, password
+        output: NA
+        """
+        env_source_cmd = CmdUtil.get_env_source_cmd()
+        if isinstance(password, str):
+            password = bytes(password, 'utf-8')
+        try:
+            proc = Popen("%s; %s" % (env_source_cmd, cmd),
+                         shell=True,
+                         stdout=PIPE,
+                         stderr=PIPE,
+                         stdin=PIPE)
+
+            proc.stdin.write(password)
+            proc.stdin.write(bytes("\n", 'utf-8'))
+            proc.stdin.flush()
+        except Exception:
+            output, error = proc.communicate()
+            return proc.returncode, output, error
+        else:
+            # Increase the system response time
+            time.sleep(0.1)
+            proc.stdin.write(password)
+            proc.stdin.write(bytes("\n", 'utf-8'))
+            proc.stdin.flush()
+            output, error = proc.communicate()
+            return proc.returncode, output, error

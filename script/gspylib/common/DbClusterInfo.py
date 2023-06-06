@@ -27,6 +27,9 @@ import sys
 import re
 import pwd
 import copy
+import socket
+import json
+
 
 sys.path.append(os.path.split(os.path.realpath(__file__))[0] + "/../../")
 from gspylib.common.ErrorCode import ErrorCode
@@ -37,6 +40,8 @@ from domain_utils.cluster_file.version_info import VersionInfo
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from base_utils.common.constantsbase import ConstantsBase
 from base_utils.os.env_util import EnvUtil
+from base_utils.security.security_checker import SecurityChecker
+from gspylib.component.DSS.dss_checker import DssSimpleChecker, DssConfig
 
 ###########################
 # instance role 
@@ -66,6 +71,7 @@ BASE_ID_DUMMYDATANODE = 3001
 BASE_ID_COORDINATOR = 5001
 BASE_ID_DATANODE = 6001
 BASE_ID_ETCD = 7001
+BASE_ID_DSS = 8001
 DIRECTORY_PERMISSION = 0o750
 
 # For primary/standby instance When the ID > 7000 ,
@@ -401,8 +407,12 @@ def compareObject(Object_A, Object_B, instName, tempbuffer=None, model=None,
             tempbuffer.append(str(Object_A))
             tempbuffer.append(str(Object_B))
             return False, tempbuffer
+        dss_ignore = [
+            "enable_dss", "dss_config", "dss_home", "cm_vote_disk", "cm_share_disk",
+            "dss_pri_disks", "dss_shared_disks", "dss_vg_info", "dss_vgname", "dss_ssl_enable",
+            "ss_rdma_work_config", "ss_interconnect_type", "float_ips"]
         for i in Object_A_list:
-            if (i.startswith("_") or ignoreCheck(Object_A, i, model)):
+            if i.startswith("_") or ignoreCheck(Object_A, i, model) or i in dss_ignore:
                 continue
             Inst_A = getattr(Object_A, i)
             try:
@@ -556,6 +566,8 @@ class instanceInfo():
         self.listenIps = []
         # ha ip
         self.haIps = []
+        # float ip
+        self.float_ips = []
         # port
         self.port = 0
         # It's pool port for coordinator, and ha port for other instance
@@ -586,6 +598,7 @@ class instanceInfo():
         self.controlPort = 0
         # az name
         self.azName = ""
+        self.azPriority = 0
         self.clusterName = ""
         # peer port etcd
         self.peerPort = 0
@@ -601,6 +614,7 @@ class instanceInfo():
         self.localRole = ""
         self.peerInstanceInfos = []
         self.syncNum = -1
+        self.syncNumFirst = ""
         self.cascadeRole = "off"
         # dcf_data_path
         self.dcf_data_path = ""
@@ -760,9 +774,8 @@ class dbNodeInfo():
         return count
 
     def appendInstance(self, instId, mirrorId, instRole, instanceType,
-                       listenIps=None,
-                       haIps=None, datadir="", ssddir="", level=1,
-                       xlogdir="", syncNum=-1, dcf_data=""):
+                       listenIps=None, haIps=None, datadir="", ssddir="", level=1,
+                       xlogdir="", syncNum=-1, syncNumFirst="", dcf_data="", float_ips=None):
         """
         function : Classify the instance of cmserver/gtm
         input : int,int,String,String
@@ -788,6 +801,10 @@ class dbNodeInfo():
                 dbInst.listenIps = self.backIps[:]
             else:
                 dbInst.listenIps = listenIps[:]
+
+        if float_ips is not None:
+            if len(float_ips) != 0:
+                dbInst.float_ips = float_ips
 
         if (haIps is not None):
             if (len(haIps) == 0):
@@ -822,6 +839,7 @@ class dbNodeInfo():
             dbInst.haPort = dbInst.port + 1
             dbInst.ssdDir = ssddir
             dbInst.syncNum = syncNum
+            dbInst.syncNumFirst = syncNumFirst
             dbInst.dcf_data_path = dcf_data
             self.datanodes.append(dbInst)
         # cm_agent
@@ -920,7 +938,7 @@ class dbClusterInfo():
         self.cmsFloatIp = ""
         self.__newInstanceId = [BASE_ID_CMSERVER, BASE_ID_GTM, BASE_ID_ETCD,
                                 BASE_ID_COORDINATOR, BASE_ID_DATANODE,
-                                BASE_ID_CMAGENT]
+                                BASE_ID_CMAGENT, BASE_ID_DSS]
         self.__newDummyStandbyId = BASE_ID_DUMMYDATANODE
         self.__newMirrorId = 0
         self.clusterRings = []
@@ -934,6 +952,7 @@ class dbClusterInfo():
         self.managerPath = ""
         self.replicaNum = 0
         self.corePath = ""
+        self.float_ips = {}
 
         # add azName
         self.azName = ""
@@ -958,6 +977,23 @@ class dbClusterInfo():
         # add for dcf
         self.enable_dcf = ""
         self.dcf_config = ""
+        # add for dss
+        self.enable_dss = ""
+        self.dss_config = ""
+        self.dss_home = ""
+        self.cm_vote_disk = ""
+        self.cm_share_disk = ""
+        self.dss_pri_disks = {}
+        self.dss_shared_disks = {}
+        self.dss_vg_info = ""
+        self.dss_vgname = ""
+        self.dss_ssl_enable = ""
+        self.ss_rdma_work_config = ""
+        self.ss_interconnect_type = ""
+        self.local_stream_ip_map = []
+        self.remote_stream_ip_map = []
+        self.remote_dn_base_port = 0
+        self.local_dn_base_port = 0
 
     def __str__(self):
         """
@@ -973,6 +1009,37 @@ class dbClusterInfo():
             retStr += "\n%s" % str(dbNode)
 
         return retStr
+
+    def init_dss_config(self, xml_entiy):
+        '''
+        init dss input parameter
+        '''
+
+        # dss
+        _, self.dss_home = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "dss_home", "cluster")
+        _, self.dss_vgname = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "ss_dss_vg_name", "cluster")
+        _, self.dss_vg_info = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "dss_vg_info", "cluster")
+        # cm
+        _, self.cm_vote_disk = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "votingDiskPath", "cluster")
+        _, self.cm_share_disk = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "shareDiskDir", "cluster")
+
+        # dss ssl
+        _, self.dss_ssl_enable = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "dss_ssl_enable", "cluster")
+
+        # rdma
+        _, self.ss_rdma_work_config = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "ss_rdma_work_config", "cluster")
+        _, self.ss_interconnect_type = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "ss_interconnect_type", "cluster")
+
+        DssSimpleChecker.check_dss_some_param(self)
+
 
     def check_conf_cm_state(self):
         """
@@ -1291,14 +1358,14 @@ class dbClusterInfo():
                             roleStatus = "Unknown"
                             dbState = "Unknown"
                     else:
-                        res = re.findall(r'local_role\s*:\s*(\w+)', output)
+                        res = re.findall(r'local_role\s*:\s*(\w+)', output, re.IGNORECASE)
                         roleStatus = res[0]
-                        res = re.findall(r'db_state\s*:\s*(\w+)', output)
+                        res = re.findall(r'db_state\s*:\s*(\w+)', output, re.IGNORECASE)
                         dbState = res[0]
 
                     if (dbState == "Need"):
                         detailInformation = re.findall(
-                            r'detail_information\s*:\s*(\w+)', output)
+                            r'detail_information\s*:\s*(\w+)', output, re.IGNORECASE)
                         dbState = "Need repair(%s)" % detailInformation[0]
                     roleStatusArray.append(roleStatus)
                     dbStateArray.append(dbState)
@@ -1314,7 +1381,7 @@ class dbClusterInfo():
                     maxAzNameLen = maxAzNameLen if maxAzNameLen > azNameLen \
                         else azNameLen
                     dnNodeCount += 1
-                    if roleStatus == "Primary":
+                    if roleStatus in ["Primary", "Main"]:
                         primaryDbNum += 1
                         primaryDbState = dbState
                     else:
@@ -1585,7 +1652,7 @@ class dbClusterInfo():
         except Exception as e:
             raise Exception(ErrorCode.GAUSS_503["GAUSS_50300"] % user)
 
-    def __getStaticConfigFilePath(self, user):
+    def __getStaticConfigFilePath(self, user, ignore_err=False):
         """
         function : get the path of static configuration file. 
         input : String
@@ -1612,11 +1679,16 @@ class dbClusterInfo():
             return staticConfigFile
         elif (os.path.exists(staticConfigBak)):
             return staticConfigBak
-
+        elif ignore_err:
+            return ''
         else:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % \
                             ("static configuration file [%s] of "
                              "designated user [%s]" % (staticConfig, user)))
+
+    def get_staic_conf_path(self, user, ignore_err=False):
+        return self.__getStaticConfigFilePath(user=user, ignore_err=ignore_err)
+
 
     def __getEnvironmentParameterValue(self, environmentParameterName, user):
         """
@@ -1732,6 +1804,12 @@ class dbClusterInfo():
                     info = fp.read(28)
                     (crc, lenth, version, currenttime, nodeNum,
                      localNodeId) = struct.unpack("=IIIqiI", info)
+
+                wait_info = struct.pack("IIqiI",lenth, version,  
+                                                 currenttime, nodeNum, localNodeId)
+                if self.__verify_crc(crc, wait_info) == False:
+                    raise Exception(ErrorCode.GAUSS_512["GAUSS_51258"]
+                                % ("headInfo", staticConfigFile))
                 self.version = version
                 self.installTime = currenttime
                 self.localNodeId = localNodeId
@@ -1802,35 +1880,43 @@ class dbClusterInfo():
             (crc, nodeId, nodeName) = struct.unpack("=II64s", info)
         nodeName = nodeName.decode().strip('\x00')
         dbNode = dbNodeInfo(nodeId, nodeName)
+        wait_info = struct.pack("I64s",nodeId,nodeName.encode("utf-8"))
         info = fp.read(68)
+        wait_info += info
         (azName, azPriority) = struct.unpack("=64sI", info)
         dbNode.azName = azName.decode().strip('\x00')
         dbNode.azPriority = azPriority
 
         # get backIps
-        self.__unPackIps(fp, dbNode.backIps)
+        wait_info += self.__unPackIps(fp, dbNode.backIps)
         # get sshIps
-        self.__unPackIps(fp, dbNode.sshIps)
+        wait_info += self.__unPackIps(fp, dbNode.sshIps)
         if (not isLCCluster):
             # get cm_server information
-            self.__unPackCmsInfo(fp, dbNode)
+            wait_info += self.__unPackCmsInfo(fp, dbNode)
             # get cm_agent information
-            self.__unpackAgentInfo(fp, dbNode)
+            wait_info += self.__unpackAgentInfo(fp, dbNode)
             # get gtm information
-            self.__unpackGtmInfo(fp, dbNode)
+            wait_info += self.__unpackGtmInfo(fp, dbNode)
             info = fp.read(404)
+            wait_info += info
             # get cn information
-            self.__unpackCooInfo(fp, dbNode)
+            wait_info += self.__unpackCooInfo(fp, dbNode)
         # get DB information
-        self.__unpackDataNode(fp, dbNode)
+        wait_info += self.__unpackDataNode(fp, dbNode)
         if (not isLCCluster):
             # get etcd information
-            self.__unpackEtcdInfo(fp, dbNode)
+            wait_info += self.__unpackEtcdInfo(fp, dbNode)
             info = fp.read(8)
+            wait_info += info
         # set DB azName for OLAP
         for inst in dbNode.datanodes:
             inst.azName = dbNode.azName
+            inst.azPriority = dbNode.azPriority
 
+        if self.__verify_crc(crc,wait_info) == False:
+            raise Exception(ErrorCode.GAUSS_512["GAUSS_51258"]
+                                % ("nodeInfo", staticConfigFile))
         return dbNode
 
     def __unpackEtcdInfo(self, fp, dbNode):
@@ -1844,14 +1930,17 @@ class dbClusterInfo():
         etcdInst.hostname = dbNode.name
         etcdInst.instanceType = INSTANCE_TYPE_UNDEFINED
         info = fp.read(1100)
+        wait_info = info
         (etcdNum, etcdInst.instanceId, etcdInst.mirrorId, etcdhostname,
          etcdInst.datadir) = struct.unpack("=IIi64s1024s", info)
         etcdInst.datadir = etcdInst.datadir.decode().strip('\x00')
-        self.__unPackIps(fp, etcdInst.listenIps)
+        wait_info += self.__unPackIps(fp, etcdInst.listenIps)
         info = fp.read(4)
+        wait_info += info
         (etcdInst.port,) = struct.unpack("=I", info)
-        self.__unPackIps(fp, etcdInst.haIps)
+        wait_info += self.__unPackIps(fp, etcdInst.haIps)
         info = fp.read(4)
+        wait_info += info
         (etcdInst.haPort,) = struct.unpack("=I", info)
         if (etcdNum == 1):
             dbNode.etcdNum = 1
@@ -1860,6 +1949,7 @@ class dbClusterInfo():
         else:
             dbNode.etcdNum = 0
             dbNode.etcds = []
+        return wait_info
 
     def __unPackIps(self, fp, ips):
         """
@@ -1868,13 +1958,17 @@ class dbClusterInfo():
         output : NA
         """
         info = fp.read(4)
+        wait_info = info
         (n,) = struct.unpack("=i", info)
         for i in range(int(n)):
             info = fp.read(128)
+            wait_info += info
             (currentIp,) = struct.unpack("=128s", info)
             currentIp = currentIp.decode().strip('\x00')
             ips.append(str(currentIp.strip()))
         info = fp.read(128 * (MAX_IP_NUM - n))
+        wait_info += info
+        return wait_info
 
     def __unPackCmsInfo(self, fp, dbNode):
         """
@@ -1886,16 +1980,19 @@ class dbClusterInfo():
         cmsInst.instanceRole = INSTANCE_ROLE_CMSERVER
         cmsInst.hostname = dbNode.name
         info = fp.read(1164)
+        wait_info = info
         (cmsInst.instanceId, cmsInst.mirrorId, dbNode.cmDataDir, cmsInst.level,
          self.cmsFloatIp) = struct.unpack("=II1024sI128s", info)
         dbNode.cmDataDir = dbNode.cmDataDir.decode().strip('\x00')
         self.cmsFloatIp = self.cmsFloatIp.decode().strip('\x00')
         cmsInst.datadir = "%s/cm_server" % dbNode.cmDataDir
-        self.__unPackIps(fp, cmsInst.listenIps)
+        wait_info += self.__unPackIps(fp, cmsInst.listenIps)
         info = fp.read(4)
+        wait_info += info
         (cmsInst.port,) = struct.unpack("=I", info)
-        self.__unPackIps(fp, cmsInst.haIps)
+        wait_info += self.__unPackIps(fp, cmsInst.haIps)
         info = fp.read(8)
+        wait_info += info
         (cmsInst.haPort, cmsInst.instanceType) = struct.unpack("=II", info)
         if (cmsInst.instanceType == MASTER_INSTANCE):
             dbNode.cmsNum = 1
@@ -1905,12 +2002,14 @@ class dbClusterInfo():
             raise Exception(ErrorCode.GAUSS_512["GAUSS_51204"]
                             % ("CMServer", cmsInst.instanceType))
         info = fp.read(4 + 128 * MAX_IP_NUM + 4)
-
+        wait_info += info
         if (cmsInst.instanceId):
             dbNode.cmservers.append(cmsInst)
             self.cmscount += 1
         else:
             dbNode.cmservers = []
+
+        return wait_info
 
     def __unpackAgentInfo(self, fp, dbNode):
         """
@@ -1925,10 +2024,12 @@ class dbClusterInfo():
         cmaInst.hostname = dbNode.name
         cmaInst.instanceType = INSTANCE_TYPE_UNDEFINED
         info = fp.read(8)
+        wait_info = info
         (cmaInst.instanceId, cmaInst.mirrorId) = struct.unpack("=Ii", info)
-        self.__unPackIps(fp, cmaInst.listenIps)
+        wait_info += self.__unPackIps(fp, cmaInst.listenIps)
         cmaInst.datadir = "%s/cm_agent" % dbNode.cmDataDir
         dbNode.cmagents.append(cmaInst)
+        return wait_info
 
     def __unpackGtmInfo(self, fp, dbNode):
         """      
@@ -1940,11 +2041,13 @@ class dbClusterInfo():
         gtmInst.instanceRole = INSTANCE_ROLE_GTM
         gtmInst.hostname = dbNode.name
         info = fp.read(1036)
+        wait_info = info
         (gtmInst.instanceId, gtmInst.mirrorId, gtmNum,
          gtmInst.datadir) = struct.unpack("=III1024s", info)
         gtmInst.datadir = gtmInst.datadir.decode().strip('\x00')
-        self.__unPackIps(fp, gtmInst.listenIps)
+        wait_info += self.__unPackIps(fp, gtmInst.listenIps)
         info = fp.read(8)
+        wait_info += info
         (gtmInst.port, gtmInst.instanceType) = struct.unpack("=II", info)
         if (gtmInst.instanceType == MASTER_INSTANCE):
             dbNode.gtmNum = 1
@@ -1953,16 +2056,19 @@ class dbClusterInfo():
         else:
             raise Exception(ErrorCode.GAUSS_512["GAUSS_51204"] % (
                 "GTM", gtmInst.instanceType))
-        self.__unPackIps(fp, gtmInst.haIps)
+        wait_info += self.__unPackIps(fp, gtmInst.haIps)
         info = fp.read(4)
+        wait_info += info
         (gtmInst.haPort,) = struct.unpack("=I", info)
         info = fp.read(1024 + 4 + 128 * MAX_IP_NUM + 4)
-
+        wait_info += info
         if (gtmNum == 1):
             dbNode.gtms.append(gtmInst)
             self.gtmcount += 1
         else:
             dbNode.gtms = []
+
+        return wait_info
 
     def __unpackCooInfo(self, fp, dbNode):
         """      
@@ -1975,12 +2081,14 @@ class dbClusterInfo():
         cooInst.hostname = dbNode.name
         cooInst.instanceType = INSTANCE_TYPE_UNDEFINED
         info = fp.read(2060)
+        wait_info = info
         (cooInst.instanceId, cooInst.mirrorId, cooNum, cooInst.datadir,
          cooInst.ssdDir) = struct.unpack("=IiI1024s1024s", info)
         cooInst.datadir = cooInst.datadir.decode().strip('\x00')
         cooInst.ssdDir = cooInst.ssdDir.decode().strip('\x00')
-        self.__unPackIps(fp, cooInst.listenIps)
+        wait_info += self.__unPackIps(fp, cooInst.listenIps)
         info = fp.read(8)
+        wait_info += info
         (cooInst.port, cooInst.haPort) = struct.unpack("=II", info)
         if (cooNum == 1):
             dbNode.cooNum = 1
@@ -1988,6 +2096,7 @@ class dbClusterInfo():
         else:
             dbNode.cooNum = 0
             dbNode.coordinators = []
+        return wait_info
 
     def __unpackDataNode(self, fp, dbNode):
         """  
@@ -1996,6 +2105,7 @@ class dbClusterInfo():
         output : NA
         """
         info = fp.read(4)
+        wait_info = info
         (dataNodeNums,) = struct.unpack("=I", info)
         dbNode.dataNum = 0
 
@@ -2011,12 +2121,14 @@ class dbClusterInfo():
             # then rollback by fp.seek(), and exchange its(xlogdir) value
             # with ssddir.
             info = fp.read(2056)
+            wait_info += info
             (dnInst.instanceId, dnInst.mirrorId, dnInst.datadir,
              dnInst.xlogdir) = struct.unpack("=II1024s1024s", info)
             dnInst.datadir = dnInst.datadir.decode().strip('\x00')
             dnInst.xlogdir = dnInst.xlogdir.decode().strip('\x00')
 
             info = fp.read(1024)
+            wait_info += info
             (dnInst.ssdDir) = struct.unpack("=1024s", info)
             dnInst.ssdDir = dnInst.ssdDir[0].decode().strip('\x00')
             # if notsetXlog,ssdDir should not be null.use by upgrade.
@@ -2025,8 +2137,9 @@ class dbClusterInfo():
                 dnInst.ssdDir = dnInst.xlogdir
                 dnInst.xlogdir = ""
 
-            self.__unPackIps(fp, dnInst.listenIps)
+            wait_info += self.__unPackIps(fp, dnInst.listenIps)
             info = fp.read(8)
+            wait_info += info
             (dnInst.port, dnInst.instanceType) = struct.unpack("=II", info)
             if (dnInst.instanceType == MASTER_INSTANCE):
                 dbNode.dataNum += 1
@@ -2036,8 +2149,9 @@ class dbClusterInfo():
             else:
                 raise Exception(ErrorCode.GAUSS_512["GAUSS_51204"]
                                 % ("DN", dnInst.instanceType))
-            self.__unPackIps(fp, dnInst.haIps)
+            wait_info += self.__unPackIps(fp, dnInst.haIps)
             info = fp.read(4)
+            wait_info += info
             (dnInst.haPort,) = struct.unpack("=I", info)
             if (
                     self.clusterType ==
@@ -2047,34 +2161,42 @@ class dbClusterInfo():
                 for j in range(maxStandbyCount):
                     peerDbInst = peerInstanceInfo()
                     info = fp.read(1024)
+                    wait_info += info
                     (peerDbInst.peerDataPath,) = struct.unpack("=1024s", info)
                     peerDbInst.peerDataPath = \
                         peerDbInst.peerDataPath.decode().strip('\x00')
-                    self.__unPackIps(fp, peerDbInst.peerHAIPs)
+                    wait_info += self.__unPackIps(fp, peerDbInst.peerHAIPs)
                     info = fp.read(8)
+                    wait_info += info
                     (peerDbInst.peerHAPort,
                      peerDbInst.peerRole) = struct.unpack("=II", info)
                     dnInst.peerInstanceInfos.append(peerDbInst)
             else:
                 peerDbInst = peerInstanceInfo()
                 info = fp.read(1024)
+                wait_info += info
                 (peerDbInst.peerDataPath,) = struct.unpack("=1024s", info)
                 peerDbInst.peerDataPath = \
                     peerDbInst.peerDataPath.decode().strip('\x00')
-                self.__unPackIps(fp, peerDbInst.peerHAIPs)
+                wait_info += self.__unPackIps(fp, peerDbInst.peerHAIPs)
                 info = fp.read(8)
+                wait_info += info
                 (peerDbInst.peerHAPort, peerDbInst.peerRole) = \
                     struct.unpack("=II", info)
                 info = fp.read(1024)
+                wait_info += info
                 (peerDbInst.peerData2Path,) = struct.unpack("=1024s", info)
                 peerDbInst.peerData2Path = \
                     peerDbInst.peerDataPath.decode().strip('\x00')
-                self.__unPackIps(fp, peerDbInst.peer2HAIPs)
+                wait_info += self.__unPackIps(fp, peerDbInst.peer2HAIPs)
                 info = fp.read(8)
+                wait_info += info
                 (peerDbInst.peer2HAPort, peerDbInst.peer2Role) = \
                     struct.unpack("=II", info)
                 dnInst.peerInstanceInfos.append(peerDbInst)
             dbNode.datanodes.append(dnInst)
+            return wait_info
+
 
     def initFromStaticConfigWithoutUser(self, staticConfigFile):
         """ 
@@ -2099,6 +2221,11 @@ class dbClusterInfo():
                 info = fp.read(28)
                 (crc, lenth, version, currenttime, nodeNum,
                  localNodeId) = struct.unpack("=IIIqiI", info)
+
+            wait_info = struct.pack("IIqiI",lenth, version, currenttime, nodeNum, localNodeId)
+            if self.__verify_crc(crc, wait_info) == False:
+                raise Exception(ErrorCode.GAUSS_512["GAUSS_51258"]
+                               % ("headInfo", staticConfigFile))
             if (version <= 100):
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51637"]
                                 % ("cluster static config version[%s]"
@@ -2461,13 +2588,18 @@ class dbClusterInfo():
         """
         Check cm_server config
         """
-        if self.cmscount > 0 and len(self.dbNodes) < 2:
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51236"] +
-                            "The cm_server instance can be "
-                            "configured only on three or more nodes.")
-        if 0 < self.cmscount < 2:
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51236"] +
-                            "At least three cm_server instances are required.")
+        if self.enable_dss == 'on':
+            if self.cmscount < 1:
+                raise Exception(ErrorCode.GAUSS_512["GAUSS_51236"] +
+                                'The cm_server instances are required.')
+        else:
+            if self.cmscount > 0 and len(self.dbNodes) < 2:
+                raise Exception(ErrorCode.GAUSS_512["GAUSS_51236"] +
+                                    "The cm_server instance can be "
+                                    "configured only on three or more nodes.")
+            if 0 < self.cmscount < 2:
+                raise Exception(ErrorCode.GAUSS_512["GAUSS_51236"] +
+                                "At least three cm_server instances are required.")
 
     def initFromXml(self, xmlFile):
         """
@@ -2504,6 +2636,7 @@ class dbClusterInfo():
         self.__checkAZForSingleInst()
         IpPort = self.__checkInstancePortandIP()
         self.__check_cms_config()
+        DssConfig.init_dss_config(self)
         return IpPort
 
     def __read_cluster_node_info_for_one(self):
@@ -2537,7 +2670,9 @@ class dbClusterInfo():
             db_inst.haPort = db_inst.port + 1
             db_inst.ssdDir = ""
             db_inst.syncNum = -1
+            db_inst.syncNumFirst = ""
             db_inst.azName = db_node.azName
+            db_inst.azPriority = db_node.azPriority
             self.dbNodes[0].datanodes.append(db_inst)
         self.dbNodes[0].appendInstance(1, MIRROR_ID_AGENT, INSTANCE_ROLE_CMAGENT,
                                        INSTANCE_TYPE_UNDEFINED, [], None, "")
@@ -2901,6 +3036,18 @@ class dbClusterInfo():
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50213"] % \
                             ("%s log path(%s)" % (
                                 VersionInfo.PRODUCT_NAME, self.logPath)))
+
+        _, self.enable_dss = ClusterConfigFile.readOneClusterConfigItem(xmlRootNode,
+                                                            "enable_dss",
+                                                            "cluster")
+        if self.enable_dss.strip() == "on":
+            self.enable_dss = self.enable_dss.strip()
+            self.init_dss_config(xml_entiy=xmlRootNode)
+        elif self.enable_dss.strip() not in ['off', '']:
+            raise Exception(ErrorCode.GAUSS_500["GAUSS_50011"] %
+                                ('enable_dss', self.enable_dss))
+
+
         # Read enable_dcf
         ret_status, self.enable_dcf = ClusterConfigFile.readOneClusterConfigItem(xmlRootNode,
                                                                "enable_dcf",
@@ -2908,6 +3055,10 @@ class dbClusterInfo():
         if self.enable_dcf not in ['', 'on', 'off']:
             raise Exception(ErrorCode.GAUSS_500["GAUSS_50011"] %
                                 ('enable_dcf', self.enable_dcf))
+
+        if self.enable_dcf == 'on' and self.enable_dss == 'on':
+            raise Exception('Only one DSS or DCF can be enabled.')
+
         if self.enable_dcf == 'on':
             (ret_status, ret_value) = ClusterConfigFile.readOneClusterConfigItem(
                 xmlRootNode, "dcf_config", "CLUSTER")
@@ -3024,6 +3175,7 @@ class dbClusterInfo():
         for node in self.dbNodes:
             for inst in node.datanodes:
                 inst.azName = node.azName
+                inst.azPriority = node.azPriority
         self.__setNodePortForSinglePrimaryMultiStandby()
 
     def __getPeerInstance(self, dbInst):
@@ -3306,6 +3458,7 @@ class dbClusterInfo():
         """
         dnListenIps = None
         dnHaIps = None
+        dn_float_ips = None
         mirror_count_data = self.__getDataNodeCount(masterNode)
         if masterNode.dataNum > 0:
             dnListenIps = self.__readInstanceIps(masterNode.name,
@@ -3315,12 +3468,18 @@ class dbClusterInfo():
             dnHaIps = self.__readInstanceIps(masterNode.name, "dataHaIp",
                                              masterNode.dataNum *
                                              mirror_count_data)
-
+            dn_float_ips = self.__readInstanceIps(masterNode.name,
+                                                  "floatIpMap",
+                                                  masterNode.dataNum *
+                                                  mirror_count_data)
+        if dn_float_ips is not None:
+            self.__read_cluster_float_ips(dn_float_ips)
         dnInfoLists = [[] for row in range(masterNode.dataNum)]
         xlogInfoLists = [[] for row in range(masterNode.dataNum)]
         dcf_data_lists = [[] for row in range(masterNode.dataNum)]
         ssdInfoList = [[] for row in range(masterNode.dataNum)]
         syncNumList = [-1 for row in range(masterNode.dataNum)]
+        syncNumFirstList = [[] for row in range(masterNode.dataNum)]
         totalDnInstanceNum = 0
         # Whether the primary and standby have SET XLOG PATH , must be
         # synchronized
@@ -3395,19 +3554,20 @@ class dbClusterInfo():
             if self.enable_dcf == "":
                 i = 0
             ssdInfoList[i].extend(ssddirList)
+            self.parse_stream_cluster_info(masterNode, i)
 
             # dataNode syncNum
             key = "dataNode%d_syncNum" % (i + 1)
             syncNum_temp = self.__readNodeStrValue(masterNode.name, key)
             if syncNum_temp is not None:
-                syncNum = int(syncNum_temp)
-                if syncNum < 0 or syncNum >= totalDnInstanceNum:
-                    raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % \
-                                    ("database node configuration on host [%s]"
-                                     % masterNode.name)
-                                    + " The information of [%s] is wrong."
-                                    % key)
-                syncNumList[i] = syncNum
+               syncNum = int(syncNum_temp)
+               if syncNum < 0 or syncNum >= totalDnInstanceNum:
+                   raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % \
+                                   ("database node configuration on host [%s]"
+                                    % masterNode.name)
+                                   + " The information of [%s] is wrong."
+                                   % key)
+               syncNumList[i] = syncNum
 
         # check ip num
         if dnListenIps is not None and len(dnListenIps[0]) != 0:
@@ -3443,6 +3603,12 @@ class dbClusterInfo():
         instIndex = 0
         for i in range(masterNode.dataNum):
             dnInfoList = dnInfoLists[i]
+            key = "syncNode_%s" % (masterNode.name)
+            if self.__readNodeStrValue(masterNode.name, key) is not None:
+                syncNumFirst_temp = self.__readNodeStrValue(masterNode.name, key)
+                if syncNumFirst_temp is not None:
+                    syncNumFirst = syncNumFirst_temp
+                syncNumFirstList[i] = syncNumFirst
 
             # Because xlog may not be set to prevent the array from crossing
             # the boundary
@@ -3465,6 +3631,7 @@ class dbClusterInfo():
                                               dnHaIps[instIndex],
                                               dnInfoList[0], ssddirList[0],
                                               syncNum=syncNumList[i],
+                                              syncNumFirst=syncNumFirstList[i],
                                               dcf_data=dcf_data_list[0])
                     else:
                         masterNode.appendInstance(instId, groupId,
@@ -3473,7 +3640,8 @@ class dbClusterInfo():
                                                   dnListenIps[instIndex],
                                                   dnHaIps[instIndex],
                                                   dnInfoList[0], ssddirList[0],
-                                                  syncNum=syncNumList[i])
+                                                  syncNum=syncNumList[i],
+                                                  syncNumFirst=syncNumFirstList[i])
                 else:
                     masterNode.appendInstance(instId, groupId,
                                               INSTANCE_ROLE_DATANODE,
@@ -3482,7 +3650,8 @@ class dbClusterInfo():
                                               dnHaIps[instIndex],
                                               dnInfoList[0], ssddirList[0],
                                               xlogdir=xlogInfoList[0],
-                                              syncNum=syncNumList[i])
+                                              syncNum=syncNumList[i],
+                                              syncNumFirst=syncNumFirstList[i])
             else:
                 if xlogInfoListLen == 0:
                     if self.enable_dcf == "on":
@@ -3493,7 +3662,10 @@ class dbClusterInfo():
                                               dnHaIps[instIndex],
                                               dnInfoList[0],
                                               syncNum=syncNumList[i],
-                                              dcf_data=dcf_data_list[0])
+                                              syncNumFirst=syncNumFirstList[i],
+                                              dcf_data=dcf_data_list[0],
+                                              float_ips=dn_float_ips[instIndex] \
+                                              if dn_float_ips else [])
                     else:
                         masterNode.appendInstance(instId, groupId,
                                                   INSTANCE_ROLE_DATANODE,
@@ -3501,7 +3673,10 @@ class dbClusterInfo():
                                                   dnListenIps[instIndex],
                                                   dnHaIps[instIndex],
                                                   dnInfoList[0],
-                                                  syncNum=syncNumList[i])
+                                                  syncNum=syncNumList[i],
+                                                  syncNumFirst=syncNumFirstList[i],
+                                                  float_ips=dn_float_ips[instIndex] \
+                                                  if dn_float_ips else [])
                 else:
                     masterNode.appendInstance(instId, groupId,
                                               INSTANCE_ROLE_DATANODE,
@@ -3510,7 +3685,10 @@ class dbClusterInfo():
                                               dnHaIps[instIndex],
                                               dnInfoList[0],
                                               xlogdir=xlogInfoList[0],
-                                              syncNum=syncNumList[i])
+                                              syncNum=syncNumList[i],
+                                              syncNumFirst=syncNumFirstList[i],
+                                              float_ips=dn_float_ips[instIndex] \
+                                              if dn_float_ips else [])
 
             instIndex += 1
 
@@ -3523,6 +3701,14 @@ class dbClusterInfo():
                                     + " There is no host named %s."
                                     % dnInfoList[nodeLen * 2 + 1])
                 instId = self.__assignNewInstanceId(INSTANCE_ROLE_DATANODE)
+                
+                syncNumFirstList[i] = ""
+                key = "syncNode_%s" % (dbNode.name)
+                if self.__readNodeStrValue(dbNode.name, key) is not None:
+                    syncNumFirst_temp = self.__readNodeStrValue(dbNode.name, key)
+                    if syncNumFirst_temp is not None:
+                        syncNumFirst = syncNumFirst_temp
+                    syncNumFirstList[i] = syncNumFirst
 
                 # ssd doesn't supply ,this branch will not arrive when len(
                 # ssdInfoList[i])  is 0
@@ -3537,6 +3723,7 @@ class dbClusterInfo():
                                               dnInfoList[nodeLen * 2 + 2],
                                               ssddirList[nodeLen * 2 + 1],
                                               syncNum=syncNumList[i],
+                                              syncNumFirst=syncNumFirstList[i],
                                               dcf_data=dcf_data_list[0])
                         else:
                             dbNode.appendInstance(instId, groupId,
@@ -3546,7 +3733,8 @@ class dbClusterInfo():
                                                   dnHaIps[instIndex],
                                                   dnInfoList[nodeLen * 2 + 2],
                                                   ssddirList[nodeLen * 2 + 1],
-                                                  syncNum=syncNumList[i])
+                                                  syncNum=syncNumList[i],
+                                                  syncNumFirst=syncNumFirstList[i])
                     else:
                         if self.enable_dcf == "on":
                             dbNode.appendInstance(instId, groupId,
@@ -3558,6 +3746,7 @@ class dbClusterInfo():
                                               ssddirList[nodeLen * 2 + 1],
                                               xlogdir=xlogInfoList[nodeLen + 1],
                                               syncNum=syncNumList[i],
+                                              syncNumFirst=syncNumFirstList[i],
                                               dcf_data=dcf_data_list[0])
                         else:
                             dbNode.appendInstance(instId, groupId,
@@ -3568,7 +3757,8 @@ class dbClusterInfo():
                                                   dnInfoList[nodeLen * 2 + 2],
                                                   ssddirList[nodeLen * 2 + 1],
                                                   xlogdir=xlogInfoList[nodeLen + 1],
-                                                  syncNum=syncNumList[i])
+                                                  syncNum=syncNumList[i],
+                                                  syncNumFirst=syncNumFirstList[i])
                 else:
                     if xlogInfoListLen == 0:
                         if self.enable_dcf == "on":
@@ -3579,7 +3769,10 @@ class dbClusterInfo():
                                               dnHaIps[instIndex],
                                               dnInfoList[nodeLen * 2 + 2],
                                               syncNum=syncNumList[i],
-                                              dcf_data=dcf_data_list[0])
+                                              syncNumFirst=syncNumFirstList[i],
+                                              dcf_data=dcf_data_list[0],
+                                              float_ips=dn_float_ips[instIndex] \
+                                              if dn_float_ips else [])
                         else:
                             dbNode.appendInstance(instId, groupId,
                                                   INSTANCE_ROLE_DATANODE,
@@ -3587,7 +3780,10 @@ class dbClusterInfo():
                                                   dnListenIps[instIndex],
                                                   dnHaIps[instIndex],
                                                   dnInfoList[nodeLen * 2 + 2],
-                                                  syncNum=syncNumList[i])
+                                                  syncNum=syncNumList[i],
+                                                  syncNumFirst=syncNumFirstList[i],
+                                                  float_ips=dn_float_ips[instIndex] \
+                                                  if dn_float_ips else [])
                     else:
                         if self.enable_dcf == "on":
                             dbNode.appendInstance(instId, groupId,
@@ -3598,7 +3794,10 @@ class dbClusterInfo():
                                               dnInfoList[nodeLen * 2 + 2],
                                               xlogdir=xlogInfoList[nodeLen + 1],
                                               syncNum=syncNumList[i],
-                                              dcf_data=dcf_data_list[0])
+                                              syncNumFirst=syncNumFirstList[i],
+                                              dcf_data=dcf_data_list[0],
+                                              float_ips=dn_float_ips[instIndex] \
+                                              if dn_float_ips else [])
                         else:
                             dbNode.appendInstance(instId, groupId,
                                                   INSTANCE_ROLE_DATANODE,
@@ -3607,7 +3806,10 @@ class dbClusterInfo():
                                                   dnHaIps[instIndex],
                                                   dnInfoList[nodeLen * 2 + 2],
                                                   xlogdir=xlogInfoList[nodeLen + 1],
-                                                  syncNum=syncNumList[i])
+                                                  syncNum=syncNumList[i],
+                                                  syncNumFirst=syncNumFirstList[i],
+                                                  float_ips=dn_float_ips[instIndex] \
+                                                  if dn_float_ips else [])
                 if dbNode.cascadeRole == "on":
                     if self.enable_dcf != "on":
                         for inst in dbNode.datanodes:
@@ -3619,6 +3821,48 @@ class dbClusterInfo():
 
         for inst in masterNode.datanodes:
             inst.azName = masterNode.azName
+
+    def parse_stream_cluster_info(self, masternode, i):
+        """parse_stream_cluster_info"""
+        i = i + 1
+        local_ip_map = self.__readNodeStrValue(masternode.name,
+                                               "localStreamIpmap%s" % i, True)
+        if not local_ip_map:
+            return
+        remote_ip_map = self.__readNodeStrValue(masternode.name,
+                                                "remoteStreamIpmap%s" % i, True)
+        remote_dn_port = self.__readNodeStrValue(masternode.name,
+                                                 "remotedataPortBase", True)
+        local_dn_port = self.__readNodeStrValue(masternode.name,
+                                                "dataPortBase", True, MASTER_BASEPORT_DATA)
+        if not all([local_ip_map, remote_ip_map, remote_dn_port]):
+            raise Exception(
+                ErrorCode.GAUSS_512["GAUSS_51236"] + " check streamInfo config is correct")
+        self.local_stream_ip_map.append(dbClusterInfo.append_map_ip_into_global(local_ip_map))
+        self.remote_stream_ip_map.append(dbClusterInfo.append_map_ip_into_global(remote_ip_map))
+        if not remote_dn_port.isdigit() or not local_dn_port.isdigit():
+            raise Exception(
+                ErrorCode.GAUSS_512["GAUSS_51236"] + " check streamInfo config is correct")
+        self.remote_dn_base_port = int(remote_dn_port)
+        self.local_dn_base_port = int(local_dn_port)
+
+    @staticmethod
+    def append_map_ip_into_global(strem_ip_map):
+        """append_map_ip_into_global"""
+        shard_map = []
+        ip_map_list = [i.strip().strip("),").strip(",(") for i in strem_ip_map.split("(") if i]
+        for ip_map in ip_map_list:
+            peer_ip_map = ip_map.split(",")
+            temp_dict = dict()
+            if len(peer_ip_map) != 2:
+                raise Exception(ErrorCode.GAUSS_512["GAUSS_51236"] +
+                                " check localStreamIpmap is correct")
+            temp_dict["ip"] = peer_ip_map[0].strip()
+            SecurityChecker.check_ip_valid(temp_dict["ip"],  temp_dict["ip"])
+            temp_dict["dataIp"] = peer_ip_map[1].strip()
+            SecurityChecker.check_ip_valid(temp_dict["dataIp"],  temp_dict["dataIp"])
+            shard_map.append(temp_dict)
+        return shard_map
 
     def __readCmaConfig(self, dbNode):
         """ 
@@ -3797,6 +4041,8 @@ class dbClusterInfo():
         elif (retStatus == 2 and "dataNodeXlogPath" in key):
             return defValue
         elif (retStatus == 2 and "syncNum" in key):
+            return None
+        elif (retStatus == 2 and "syncNode" in key):
             return None
         else:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % \
@@ -4689,3 +4935,33 @@ class dbClusterInfo():
         :return:True or False
         """
         return self.cmscount < 1
+
+    def getDbNodeByID(self, inputid):
+        """
+        function : Get node by id.
+        input : nodename
+        output : []
+        """
+        for dbNode in self.dbNodes:
+            if dbNode.id == inputid:
+                return dbNode
+        return None
+
+    def __read_cluster_float_ips(self, dn_float_ips):
+        """
+        Read cluster global info(float IP) to dbClusterInfo
+        """
+        for ips_tmp in dn_float_ips:
+            for res_name in ips_tmp:
+                if res_name not in self.float_ips:
+                    ret_status, ret_value = ClusterConfigFile.readOneClusterConfigItem(
+                                            xmlRootNode, res_name, "CLUSTER")
+                    if ret_status == 0:
+                        self.float_ips[res_name] = ret_value.strip()
+                    else:
+                        raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % \
+                                        "float IP." + " Error: \n%s" % ret_value)
+     
+    @classmethod                   
+    def __verify_crc(self, crc, info):
+        return crc == binascii.crc32(info)

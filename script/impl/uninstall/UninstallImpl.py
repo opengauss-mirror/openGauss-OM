@@ -349,6 +349,32 @@ class UninstallImpl:
                                             mpprc_file=self.mpprcFile)
             self.logger.debug("Successfully deleted rack information file.")
 
+    def clean_dss_home(self):
+        """
+        function: Clean default log
+        input : NA
+        output: NA
+        """
+        self.logger.debug("Deleting dss_home.", "addStep")
+        # check if need delete instance
+        if not self.cleanInstance:
+            self.logger.debug("No need to delete data.", "constant")
+            return
+
+        try:
+            # clean log
+            dss_home = EnvUtil.getEnvironmentParameterValue("DSS_HOME", self.user)
+            cmd = g_file.SHELL_CMD_DICT["cleanDir"] % (
+                dss_home, dss_home, dss_home)
+            # delete log dir
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.sshTool, self.localMode,
+                                            self.mpprcFile)
+        except Exception as e:
+            self.logger.exitWithError(str(e))
+        self.logger.debug("Successfully deleted log.", "constant")
+
+
     def CleanLog(self):
         """
         function: Clean default log
@@ -435,6 +461,7 @@ class UninstallImpl:
             self.logger.closeLog()
             self.CleanStaticConfFile()
             self.CleanRackFile()
+            self.clean_dss_home()
             self.CleanLog()
             self.logger.log("Uninstallation succeeded.")
         except Exception as e:

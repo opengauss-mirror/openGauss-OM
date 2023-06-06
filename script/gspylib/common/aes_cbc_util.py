@@ -84,23 +84,17 @@ class AesCbcUtil(object):
         try:
             backend = default_backend()
         except Exception as imp_clib_err:
-            if str(imp_clib_err).find('SSLv3_method') == -1:
-                # not find SSLv3_method, and it's not ours
-                local_path = os.path.dirname(os.path.realpath(__file__))
-                clib_path = os.path.realpath(os.path.join(local_path, "../clib"))
-                ssl_path = os.path.join(clib_path, 'libssl.so.1.1')
-                crypto_path = os.path.join(clib_path, 'libcrypto.so.1.1')
-                if os.path.isfile(crypto_path):
-                    ctypes.CDLL(crypto_path, mode=ctypes.RTLD_GLOBAL)
-                if os.path.isfile(ssl_path):
-                    ctypes.CDLL(ssl_path, mode=ctypes.RTLD_GLOBAL)
-            else:
-                ssl_path = '/usr/lib64/libssl.so.1.1'
-                crypto_path = '/usr/lib64/libcrypto.so.1.1'
-                if os.path.isfile(crypto_path):
-                    ctypes.CDLL(crypto_path, mode=ctypes.RTLD_GLOBAL)
-                if os.path.isfile(ssl_path):
-                    ctypes.CDLL(ssl_path, mode=ctypes.RTLD_GLOBAL)
+            # from 3.1.0 version. we build openssl with SSLv3_method.
+            # if not find SSLv3_method, then use ours.
+            local_path = os.path.dirname(os.path.realpath(__file__))
+            clib_path = os.path.realpath(os.path.join(local_path, "../clib"))
+            ssl_path = os.path.join(clib_path, 'libssl.so.1.1')
+            crypto_path = os.path.join(clib_path, 'libcrypto.so.1.1')
+            if os.path.isfile(crypto_path):
+                ctypes.CDLL(crypto_path, mode=ctypes.RTLD_GLOBAL)
+            if os.path.isfile(ssl_path):
+                ctypes.CDLL(ssl_path, mode=ctypes.RTLD_GLOBAL)
+
             backend = default_backend()
 
         cipher = Cipher(algorithms.AES(key), modes.CBC(iv_value), backend=backend)

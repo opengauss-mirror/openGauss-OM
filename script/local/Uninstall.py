@@ -37,6 +37,7 @@ from base_utils.os.file_util import FileUtil
 from domain_utils.cluster_file.profile_file import ProfileFile
 from base_utils.os.process_util import ProcessUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
+from gspylib.component.DSS.dss_comp import Dss
 
 
 class Uninstall(LocalBaseOM):
@@ -61,6 +62,7 @@ class Uninstall(LocalBaseOM):
         self.keepData = True
         self.method = ""
         self.action = ""
+        self.del_static_cfg_file = False
 
     ##########################################################################
     # Help context. U:R:oC:v: 
@@ -79,6 +81,7 @@ class Uninstall(LocalBaseOM):
         print("  -U         the database program and cluster owner")
         print("  -R         the database program install path")
         print("  -l         the log path")
+        print("  --delete-static-file     delete static_config_file in uninstall step")
         print("  --help     show this help, then exit")
         print(" ")
 
@@ -94,11 +97,34 @@ class Uninstall(LocalBaseOM):
         try:
             self.logger.debug("OLAP's local uninstall.")
             self.__cleanMonitor()
+            self.unregister()
             self.__cleanInstallProgram()
             self.__changeuserEnv()
             self.logger.closeLog()
         except Exception as e:
             raise Exception(str(e))
+
+    def unregister(self):
+        '''
+        Deregistering a Disk in dss-mode
+        '''
+        gausshome = ClusterDir.getInstallDir(self.user)
+        dsscmd = os.path.realpath(os.path.join(gausshome, 'bin', 'dsscmd'))
+        perctrl = os.path.realpath(os.path.join(gausshome, 'bin', 'perctrl'))
+        if os.path.isfile(dsscmd) and os.path.isfile(perctrl):
+            if not FileUtil.get_caps(perctrl):
+                self.logger.log("The perctrl does not have permissions.")
+                return
+            dss_home = EnvUtil.get_dss_home(self.user)
+            cfg = os.path.join(dss_home, 'cfg', 'dss_inst.ini')
+            if os.path.isfile(cfg):
+                self.logger.log("Start to unregist the lun.")
+                Dss.unreg_disk(dss_home, logger=self.logger)
+                self.logger.log("Successfully unregist the lun.")
+            else:
+                self.logger.log(f"The {cfg} not exist.")
+        else:
+            self.logger.log("Non-dss-mode or not find dsscmd.")
 
     def __changeuserEnv(self):
         """
@@ -166,7 +192,7 @@ class Uninstall(LocalBaseOM):
         """
         try:
             opts, args = getopt.getopt(sys.argv[1:], "t:U:R:l:X:M:T",
-                                       ["help", "delete-data"])
+                                       ["help", "delete-data", "delete-static-file"])
         except getopt.GetoptError as e:
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"]
                                    % str(e))
@@ -193,6 +219,8 @@ class Uninstall(LocalBaseOM):
                 self.method = value
             elif key == "-t":
                 self.action = value
+            elif key == "--delete-static-file":
+                self.del_static_cfg_file = True
             else:
                 GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"]
                                        % key)
@@ -278,6 +306,18 @@ class Uninstall(LocalBaseOM):
 
         self.logger.log("Removing the installation directory.")
         try:
+
+            dss_app = os.path.realpath(
+                os.path.join(
+                    os.path.dirname(self.installPath),
+                    f'dss_app_{os.path.realpath(self.installPath)[-8:]}'))
+            if os.path.isdir(dss_app):
+                for fn in os.listdir(dss_app):
+                    fp = os.path.realpath(os.path.join(dss_app, fn))
+                    if os.path.isfile(fp):
+                        os.remove(fp)
+                        self.logger.debug("Remove path:%s." % fp)
+
             fileList = os.listdir(self.installPath)
             for fileName in fileList:
                 fileName = fileName.replace("/", "").replace("..", "")
@@ -290,8 +330,9 @@ class Uninstall(LocalBaseOM):
                         binFileList = os.listdir(filePath)
                         for binFile in binFileList:
                             fileInBinPath = os.path.join(filePath, binFile)
-                            if os.path.isfile(fileInBinPath) and \
-                                    binFile != "cluster_static_config":
+                            if os.path.isfile(fileInBinPath):
+                                if binFile == "cluster_static_config" and not self.del_static_cfg_file:
+                                    continue
                                 os.remove(fileInBinPath)
                             elif os.path.islink(fileInBinPath):
                                 os.remove(fileInBinPath)

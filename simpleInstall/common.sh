@@ -85,4 +85,48 @@ function fn_precheck()
     return 0
 }
 
+function fn_check_files_exist()
+{
+    files_list=($1)
+    check_path=$2
+
+    for i in $(seq 0 $[${#files_list[*]}-1])
+    do
+        check_file=${files_list[i]}
+        if [ ! -f "$check_path/$check_file" ]
+        then
+            return 1
+        fi
+    done
+    return 0
+}
+
+function fn_print_array()
+{
+    array=($1)
+    for i in $(seq 0 $[${#array[*]}-1])
+    do
+        echo ${array[i]}
+    done
+    return 0
+}
+
+function fn_copy_files()
+{
+    files_list=($1)
+    src_path=$2
+    dst_path=$3
+
+    for i in $(seq 0 $[${#files_list[*]}-1])
+    do
+        target_file=${files_list[i]}
+        cp $src_path/$target_file $dst_path
+        if [ $? -ne 0 ]
+        then
+            return 1
+        fi
+    done
+    return 0
+}
+
 COMMON_SH="common.sh"

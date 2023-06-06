@@ -333,10 +333,9 @@ class CheckNodeEnv(LocalBaseOM):
                 fileList = os.listdir(datadir)
                 # full_upgrade_bak is backup path for datapath and install path
                 # we should skip it
-                if ("full_upgrade_bak" in fileList):
-                    fileList.remove("full_upgrade_bak")
-                if ("pg_location" in fileList):
-                    fileList.remove("pg_location")
+                for intent in ["full_upgrade_bak", "pg_location", "cfg", "log"]:
+                    if intent in fileList:
+                        fileList.remove(intent)
                 if (len(fileList) != 0):
                     self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50202"]
                                         % datadir)

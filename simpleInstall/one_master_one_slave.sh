@@ -282,6 +282,7 @@ function checks()
         warn "some errors occur during system environment setting on host $2"
     fi
 
+    umask 0022
     INSTALL_PATH=$7
     if [ ! -e ${INSTALL_PATH} ]
     then

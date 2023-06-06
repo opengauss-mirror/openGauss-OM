@@ -21,6 +21,7 @@ import subprocess
 import sys
 import re
 import time
+import getpass
 
 sys.path.append(sys.path[0] + "/../../../../")
 from gspylib.common.DbClusterInfo import queryCmd
@@ -32,6 +33,10 @@ from gspylib.common.OMCommand import OMCommand
 from impl.om.OmImpl import OmImpl
 from gspylib.os.gsfile import g_file
 from base_utils.os.net_util import NetUtil
+from base_utils.os.env_util import EnvUtil
+from gspylib.component.DSS.dss_checker import DssConfig
+
+
 
 
 ###########################################
@@ -154,6 +159,15 @@ class OmImplOLAP(OmImpl):
 
         cluster_normal_status = [DbClusterStatus.CLUSTER_STATUS_NORMAL,
                                  DbClusterStatus.CLUSTER_STATUS_DEGRADED]
+
+        if EnvUtil.is_dss_mode(self.context.g_opts.user):
+            cma_paths = DssConfig.get_cm_inst_path(
+                self.clusterInfo.dbNodes[nodeId])
+            if cma_paths and DssConfig.get_cma_res_value(
+                    cma_paths[0], key='restart_delay') != str(
+                        DssConfig.DMS_DEFAULT_RESTART_DELAY):
+                DssConfig.reload_cm_resource(
+                    self.logger, timeout=DssConfig.DMS_DEFAULT_RESTART_DELAY)
         if nodeId == 0 and self.dataDir:
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51655"] % ("cm", "-D"))
         # start cluster
@@ -179,9 +193,17 @@ class OmImplOLAP(OmImpl):
         """
         self.logger.debug("Operating: Starting.")
         # if has cm, will start cluster by cm_ctl command
-        if not self.context.clusterInfo.hasNoCm():
+        if ((not self.context.clusterInfo.hasNoCm())
+            and DefaultValue.isgreyUpgradeNodeSpecify(self.context.user,
+            DefaultValue.GREY_UPGRADE_STEP_UPGRADE_PROCESS, None, self.context.logger)):
+            self.context.logger.debug("Have CM configuration, upgrade all"
+                                      " nodes together.")
             self.doStartClusterByCm()
             return
+        else:
+            self.context.logger.debug("Have CM configuration, rolling upgrade "
+                                     "partial node but not all nodes, so "
+                                     "start cluster with openGauss om.")
         # Specifies the stop node
         # Gets the specified node id
         startType = "node" if self.context.g_opts.nodeName != "" else "cluster"
@@ -361,6 +383,10 @@ class OmImplOLAP(OmImpl):
         if self.context.clusterInfo.isSingleNode():
             self.logger.log(
                 "No need to generate dynamic configuration file for one node.")
+            return
+        if DefaultValue.cm_exist_and_is_disaster_cluster(self.context.clusterInfo, self.logger):
+            self.logger.log(
+                "Streaming disaster cluster do not need to generate dynamic configuration.")
             return
         self.logger.log("Generating dynamic configuration file for all nodes.")
         hostname = NetUtil.GetHostIpOrName()

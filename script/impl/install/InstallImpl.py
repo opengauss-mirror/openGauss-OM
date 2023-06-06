@@ -19,6 +19,8 @@
 #############################################################################
 import os
 import sys
+import re
+import socket
 
 sys.path.append(sys.path[0] + "/../../")
 from gspylib.common.GaussLog import GaussLog
@@ -31,6 +33,7 @@ from gspylib.common.DbClusterInfo import dbNodeInfo, \
 from base_utils.executor.cmd_executor import CmdExecutor
 from domain_utils.cluster_file.cluster_dir import ClusterDir
 from base_utils.os.env_util import EnvUtil
+
 
 #############################################################################
 # Const variables
@@ -89,7 +92,8 @@ class InstallImpl:
             # check timeout time.
             # Notice: time_out is not supported under TP branch
             self.checkTimeout()
-
+            # check syncNode is whether correct
+            self.checkSyncNode()
             # check if have done preinstall for this user on every node
             self.checkGaussenvFlag()
             # check the clueter status
@@ -108,6 +112,64 @@ class InstallImpl:
             self.context.logger.closeLog()
         except Exception as e:
             GaussLog.exitWithError(str(e))
+    
+    def checkSyncNode(self):
+        """
+        function: check syncNode
+        """
+
+        hostname = socket.gethostname()
+        clusterInfo = dbClusterInfo()
+        clusterInfo.initFromXml(self.context.xmlFile)
+        dbNodes = clusterInfo.dbNodes
+
+        dn_instanceId = dict()
+        dn_syncNodeHostname = dict()
+        flag = False
+        for dbinfo in dbNodes:
+            if dbinfo is None:
+                self.context.logger.debug("the number of DN is zero")
+                break
+            datanodes = dbinfo.datanodes
+            if datanodes[0].hostname == hostname:
+                syncNumFirst = datanodes[0].syncNumFirst
+                syncNum = datanodes[0].syncNum
+            for datainfo in datanodes:
+                dn_instanceId[datainfo.hostname] = datainfo.instanceId
+                dn_syncNodeHostname[datanodes[0].hostname] = datanodes[0].syncNumFirst
+                if datanodes[0].syncNumFirst:
+                    flag = True
+            self.context.logger.debug(dn_instanceId)
+        for syncNode in dn_syncNodeHostname.keys():
+            syncNumFirst = dn_syncNodeHostname[syncNode]
+            hostname = syncNode
+            if syncNumFirst and syncNum != -1:
+                raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] % "syncNode_hostname and dataNode1 cannot be exist at the same time")
+            if syncNumFirst and syncNum == -1:
+                syncNumFirstRe = re.sub('[,\s]', '', syncNumFirst)
+                if re.match('(ANY[0-8](.*){1,8})', syncNumFirstRe) or re.match('(FIRST[0-8](.*){1,8})',syncNumFirstRe):
+                    self.context.logger.debug("Successfully. matching is correct")
+                else:
+                    raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] % "syncNode_hostname, the match of syncNode_hostname is wrong.")
+                for sync in dn_instanceId.keys():
+                    if syncNumFirst.count(sync) > 1:
+                        raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] % "syncNode_hostname, the node in syncNode_hostname is must be the unique.")
+                    elif syncNumFirst.count(sync) == 0:
+                        if sync == hostname:
+                            self.context.logger.debug("syncNode_hostname, the syncNode_hostname does not including own hostname.")
+                        else:
+                            self.context.logger.debug("syncNode_hostname is including non-host nodes.")
+                    elif syncNumFirst.count(sync) == 1:
+                        if sync == hostname:
+                            raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] % "syncNode_hostname, the syncNode_hostname is including own hostname.")
+                    elif syncNumFirst.count("ANY") and syncNumFirst.count("FIRST"):
+                        raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] % "syncNode_hostname, it can be only one of 'ANY' or 'FIRST'.")
+                    else:
+                        syncNumFirst = syncNumFirst.replace(sync,'dn_%s' % (dn_instanceId[sync]))
+                self.context.logger.debug("Check syncNode_hostname is correct.")
+                self.context.logger.debug(syncNumFirst)
+            if len(syncNumFirst) == 0 and syncNum == -1 and flag:
+                raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] % "syncNode_hostname is must be exist in every hostnode")
 
     def checkTimeout(self):
         """
@@ -333,6 +395,12 @@ class InstallImpl:
         """
         pass
 
+    def create_ca_for_dss(self):
+        """
+        Create DSS CA file
+        """
+        pass
+
     def doInstall(self):
         """
         function: do install
@@ -363,6 +431,7 @@ class InstallImpl:
             self.context.logger.log("begin to create CA cert files")
             self.context.createServerCa()
             self.create_ca_for_cm()
+            self.create_ca_for_dss()
             if DefaultValue.is_create_grpc(self.context.logger,
                                            self.context.clusterInfo.appPath):
                 self.context.createGrpcCa()
@@ -420,6 +489,18 @@ class InstallImpl:
         input : NA
         output: NA
         """
+        pass
+
+    def reset_lun_device(self, is_dss_mode=False):
+        '''
+        Low-level user disk with dd
+        '''
+        pass
+
+    def create_dss_vg(self, is_dss_mode=False):
+        '''
+        Create a VG on the first node.
+        '''
         pass
 
     # for ap
@@ -565,6 +646,10 @@ class InstallImpl:
                 self.context.sshTool,
                 self.context.isSingle or self.context.localMode,
                 self.context.mpprcFile, [hostname])
+        if DefaultValue.get_cm_server_num_from_static(
+                self.context.clusterInfo) == 0:
+            # no cm
+            OMCommand.wait_for_normal(self.context.logger, self.context.user)
 
         self.context.logger.log("Successfully started cluster.")
 

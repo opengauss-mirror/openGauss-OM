@@ -1489,8 +1489,12 @@ def main():
 
     if ("A" in g_opts.item_detail):
         itemList = CHECK_ITEMNUMLIST
+        if 'A10' in itemList:
+            itemList.remove('A10')
     elif ("B" in g_opts.item_detail):
         itemList = SET_ITEMNUMLIST
+        if 'B4' in itemList:
+            itemList.remove('B4')
     else:
         sortList = sorted(g_opts.item_detail)
         itemList = sortList

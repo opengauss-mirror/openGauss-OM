@@ -57,8 +57,12 @@ class CmdExecutor(object):
                             + " Error: \n%s" % str(output))
 
     @staticmethod
-    def execCommandWithMode(cmd, g_ssh_tool, local_mode=False,
-                            mpprc_file='', host_list=None, logger="", timeout=0):
+    def execCommandWithMode(cmd,
+                            g_ssh_tool,
+                            local_mode=False,
+                            mpprc_file='',
+                            host_list=None,
+                            parallelism=True):
         """
         function: check the mode, if local mode, exec only on local node,
                   else exec on all nodes
@@ -73,11 +77,11 @@ class CmdExecutor(object):
             CmdExecutor.execCommandLocally(cmd)
         else:
             # Non-native mode
-            if logger != "":
-                g_ssh_tool.executeCommand(cmd, ConstantsBase.SUCCESS, host_list, mpprc_file,
-                                          300, False, logger, timeout)
-                return
-            g_ssh_tool.executeCommand(cmd, ConstantsBase.SUCCESS, host_list, mpprc_file)
+            g_ssh_tool.executeCommand(cmd,
+                                      ConstantsBase.SUCCESS,
+                                      host_list,
+                                      mpprc_file,
+                                      parallelism=parallelism)
 
     @staticmethod
     def execCommandWithSubprocess(cmd, ignore_std_error=False):

@@ -16,9 +16,6 @@
 		<!-- parameters for parallel redo -->
 		<PARAM KEY='recovery_max_workers' VALUE='4' />
 		
-		<!--default close global syscache-->
-		<PARAM KEY='enable_global_syscache' VALUE='off' />
-		
 		<!-- parameters for incremental checkpoint -->
 		<PARAM KEY='enable_incremental_checkpoint' VALUE='on' />
 		<PARAM KEY='enable_double_write' VALUE='on' />

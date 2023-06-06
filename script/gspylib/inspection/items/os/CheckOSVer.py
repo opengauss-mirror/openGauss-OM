@@ -19,6 +19,7 @@ from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
 from os_platform.UserPlatform import g_Platform
+from os_platform.common import SUPPORT_RHEL_SERIES_VERSION_LIST
 
 
 class CheckOSVer(BaseItem):
@@ -31,10 +32,7 @@ class CheckOSVer(BaseItem):
         self.result.val = "The current OS is %s %s %s" % (
             distName, version, bits)
         if (distName in ("redhat", "centos")):
-            if (version[0:3] in (
-                    "6.4", "6.5", "6.6", "6.7", "6.8", "6.9", "7.0", "7.1",
-                    "7.2",
-                    "7.3", "7.4", "7.5", "7.6", "7.7", "7.8", "7.9") and
+            if (version[0:3] in SUPPORT_RHEL_SERIES_VERSION_LIST and
                     bits == "64bit"):
                 self.result.rst = ResultStatus.OK
                 self.result.val = "The current OS is %s %s %s." % (
@@ -53,6 +51,9 @@ class CheckOSVer(BaseItem):
         elif distName == "openeuler":
             self.result.rst = ResultStatus.OK
             self.result.val = "The current OS is openEuler %s." % version
+        elif distName == "fusionos":
+            self.result.rst = ResultStatus.OK
+            self.result.val = "The current OS is FusionOS %s." % version
         else:
             self.result.rst = ResultStatus.NG
             self.result.val = "The current OS[%s %s] " \
@@ -72,7 +73,7 @@ class CheckOSVer(BaseItem):
         analysis = ""
         VerGroupDisk = {'RedHat6': [], 'RedHat7': [], 'Euler': [],
                         'SuSE11SP1': [], 'SuSE11SP234': [], 'SuSE12': [],
-                        'openEuler': []}
+                        'openEuler': [], 'FusionOS': []}
         for v in itemResult.getLocalItems():
             analysis += "%s: %s\n" % (v.host, v.val)
             verInfo = v.val.strip().split(' ')[4:]
@@ -86,6 +87,8 @@ class CheckOSVer(BaseItem):
                 VerGroupDisk['Euler'].append(verInfo)
             elif verInfo[0] == "openEuler":
                 VerGroupDisk['openEuler'].append(verInfo)
+            elif verInfo[0] == "FusionOS":
+                VerGroupDisk['FusionOS'].append(verInfo)
             elif verInfo[0] == "SuSE":
                 if verInfo[1] == "11.1":
                     VerGroupDisk['SuSE11SP1'].append(verInfo)

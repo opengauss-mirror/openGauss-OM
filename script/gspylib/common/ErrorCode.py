@@ -101,7 +101,13 @@ class ErrorCode():
         'GAUSS_50018': "[GAUSS-50018] : The parameter value of %s is Null.",
         'GAUSS_50019': "[GAUSS-50019] : The value of %s is error.",
         'GAUSS_50020': "[GAUSS-50020] : The value of %s must be a digit.",
-        'GAUSS_50021': "[GAUSS-50021] : Failed to query %s parameter."
+        'GAUSS_50021': "[GAUSS-50021] : Failed to query %s parameter.",
+        'GAUSS_50022': "[GAUSS-50022] : The parameter '%s' should be %s.",
+        'GAUSS_50023': "[GAUSS-50023] : The parameter '%s' over max length %s.",
+        'GAUSS_50024': "[GAUSS-50024] : The parameter '%s' is invalid.",
+        'GAUSS_50025': "[GAUSS-50025] : There is illegal character '%s' in parameter %s.",
+        'GAUSS_50026': "[GAUSS-50026] : Failed to check %s parameters in the XML file.",
+        'GAUSS_50027': "[GAUSS-50027] : Parameter '%s' format error.",
 
     }
 
@@ -124,7 +130,9 @@ class ErrorCode():
                        "permission of %s.",
         'GAUSS_50109': "[GAUSS-50109] : Only a user with the root permission "
                        "can check SSD information.",
-        'GAUSS_50110': "[GAUSS-50110] : Cannot execute this script on %s."
+        'GAUSS_50110': "[GAUSS-50110] : Cannot execute this script on %s.",
+        'GAUSS_50111': "[GAUSS-50111] : The %s directory has no permission.",
+        'GAUSS_50112': "[GAUSS-50112] : Failed to get the permission of %s.",
     }
 
     ###########################################################################
@@ -181,7 +189,7 @@ class ErrorCode():
                        " outputMap: %s",
         'GAUSS_50238': "[GAUSS-50238] : Check integrality of bin ",
                        "file %s failed."
-        'GAUSS_50239': "[GAUSS-50236] : %s should be set in scene config "
+        'GAUSS_50239': "[GAUSS-50239] : %s should be set in scene config "
                                       "file."
 
     }
@@ -257,8 +265,18 @@ class ErrorCode():
         'GAUSS_50412': "[GAUSS-50412] : Failed to get disk space of database "
                        "node %s.",
         'GAUSS_50413': "[GAUSS-50413] : Failed to analysis"
-                       " the disk information."
-
+                       " the disk information.",
+        'GAUSS_50414': "[GAUSS-50414] : Failed to get the volume information. Error: %s",
+        'GAUSS_50415': "[GAUSS-50415] : Failed to obtain the public volume '%s'.",
+        'GAUSS_50416': "[GAUSS-50416] : Failed to obtain the private volume %s.",
+        'GAUSS_50417': "[GAUSS-50417] : The configuration cannot contain " \
+        "the same volume information.",
+        'GAUSS_50418': "[GAUSS-50418] : Failed to obtain the disk '%s'.",
+        'GAUSS_50419': "[GAUSS-50419] : Failed to obtain the public volume '%s' in '%s'.",
+        'GAUSS_50420': "[GAUSS-50420] : Failed to obtain the volume",
+        'GAUSS_50421': "[GAUSS-50421] : Failed to obtain the disk '%s'",
+        'GAUSS_50422': "[GAUSS-50422] : Failed to obtain the uuid of the '%s'",
+        'GAUSS_50423': "[GAUSS-50423] : Failed to activating udev configurations, error: '%s'",
     }
 
     ###########################################################################
@@ -469,8 +487,14 @@ class ErrorCode():
                        "in the current node.",
         'GAUSS_51250': "[GAUSS-51250] : Error: the '%s' is illegal.\nthe path "
                        "name or file name should be letters, number or -_:.",
-        'GAUSS_51251': "[GAUSS-51251] : The %s cannot be a root user group or a link."
-
+        'GAUSS_51251': "[GAUSS-51251] : The %s cannot be a root user group or a link.",
+        'GAUSS_51252': "[GAUSS-51252] : Failed to start the DSS server. Please check the dss logs.",
+        'GAUSS_51253': "[GAUSS-51253] : Failed to clear the shared memory of the user. Error %s.",
+        'GAUSS_51254': "[GAUSS-51254] : Failed to kill dssserver. Error %s.",
+        'GAUSS_51255': "[GAUSS-51255] : Failed to reencrypt the password with dsscmd",
+        'GAUSS_51256': "[GAUSS-51256] : Failed to get the encrypted text with dsscmd",
+        'GAUSS_51257': "[GAUSS-51257] : There are some errors about dsscmd. ",
+        'GAUSS_51258': "[GAUSS-51258] : Failed to verify the %s crc value in file: %s",
 
     }
 
@@ -506,8 +530,9 @@ class ErrorCode():
         'GAUSS_51403': "[GAUSS-51403]: commond execute failure,"
                        " check %s failed!",
         'GAUSS_51404': "[GAUSS-51404] : Not supported command %s.",
-        'GAUSS_51405': "[GAUSS-51405] : You need to install software:%s\n"
-
+        'GAUSS_51405': "[GAUSS-51405] : You need to install software:%s\n",
+        'GAUSS_51406': "[GAUSS-51406] : The uuid of disk '%s' is the same " \
+            "configuration under directory '%s'."
     }
 
     ###########################################################################
@@ -604,8 +629,10 @@ class ErrorCode():
         'GAUSS_51654': "[GAUSS-51654] : Cannot query instance process"
                        " version from function.",
         'GAUSS_51655': "[GAUSS-51655] : There is %s on the cluster when operating on a cluster"
-                       "the %s parameter is not needed."
-
+                       "the %s parameter is not needed.",
+        'GAUSS_51656': "[GAUSS-51656] : Waiting for udev trigger to end timeout",
+        'GAUSS_51657': "[GAUSS-51657] : Waiting for start %s to end timeout",
+        'GAUSS_51658': "[GAUSS-51658] : The azName is different, and the value of azPriority must be different. "
     }
 
     ###########################################################################
@@ -910,7 +937,8 @@ class ErrorCode():
         'GAUSS_52940': "[GAUSS-52940] : Invalid node type:%s.",
         'GAUSS_52941': "[GAUSS-52941] : Invalid node role:%s.",
         'GAUSS_52942': "[GAUSS-52942] : No such key to check guc value.",
-        'GAUSS_52943': "[GAUSS-52943] : Invalid instance type:%s."
+        'GAUSS_52943': "[GAUSS-52943] : Invalid instance type:%s.",
+        'GAUSS_52944': "[GAUSS-52944] : Not all nodes are upgraded."
 
     }
 

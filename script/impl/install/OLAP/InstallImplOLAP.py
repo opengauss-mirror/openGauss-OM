@@ -200,7 +200,7 @@ class InstallImplOLAP(InstallImpl):
                 self.context.clusterInfo.dss_shared_disks,
                 self.context.clusterInfo.dss_pri_disks,
                 self.context.user).items():
-            au_size = '2048'
+            au_size = '4096'
             if dss_disk.find('shared') == -1:
                 au_size = '65536'
             source_cmd = "source %s; " % self.context.mpprcFile

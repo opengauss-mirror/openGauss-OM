@@ -21,12 +21,25 @@
 
 
 import sys
+import os
 from upgrade_checker.utils.param import Param
 from upgrade_checker.project import ProjectFactory
 
 
+def program_workspace():
+    """
+    If OM exists, use the log path of OM.
+    """
+    gauss_log = os.getenv('GAUSSLOG')
+    om_log = os.path.join(gauss_log, 'om') if gauss_log is not None else None
+    if om_log is not None and os.access(om_log, os.F_OK):
+        return os.path.join(om_log, 'upgrade_checker')
+    
+    return os.path.join(sys.path[0], 'upgrade_checker')
+
+
 if __name__ == "__main__":
-    param = Param(sys.path[0] + '/upgrade_checker', sys.argv)
+    param = Param(program_workspace(), sys.argv)
     if param.is_help():
         print(param.helper)
         exit(0)

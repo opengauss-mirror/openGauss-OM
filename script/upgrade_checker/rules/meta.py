@@ -92,7 +92,8 @@ META = {
         [
             ContentRulesMeta(
                 key='tmplname',
-                key_desc='名称为%s的模板'
+                key_desc='名称为%s的模板',
+                ignore_col='tmplacl'
             )
         ]
     ),
@@ -104,7 +105,8 @@ META = {
             ContentRulesMeta(
                 key='spcname',
                 key_desc='名称为%s的表空间',
-                filters=' oid < 10000 '
+                filters=' oid < 10000 ',
+                ignore_col='spcacl'
             )
         ]
     ),
@@ -149,16 +151,17 @@ META = {
                     " attname"
                     ")",
                 key_desc='模式.关系名(列名)为%s的列',
-                filters=' attrelid < 10000 '
+                filters=' attrelid < 10000 ',
+                ignore_col='attacl'
             ),
             # initdb的。但忽略toast表，因为表名里也带oid，会变，无法校验。
             ContentRulesMeta(
                 complete_sql="select format('%s.%s(%s)', n.nspname, c.relname, a.attname),"
-                             "       md5(format('%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s', "
+                             "       md5(format('%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s', "
                              "                  t.typname, a.attstattarget, a.attlen, a.attnum, a.attndims,"
                              "                  a.attcacheoff, a.atttypmod, a.attbyval, a.attstorage, a.attalign,"
                              "                  a.attnotnull, a.atthasdef,a.attisdropped, a.attislocal, a.attcmprmode,"
-                             "                  a.attinhcount, a.attcollation, a.attacl, a.attoptions, a.attfdwoptions,"
+                             "                  a.attinhcount, a.attcollation, a.attoptions, a.attfdwoptions,"
                              "                  a.attinitdefval, a.attkvtype))"
                              "from pg_attribute a left join pg_class c on a.attrelid = c.oid " 
                              "                    left join pg_namespace n on c.relnamespace = n.oid "
@@ -186,7 +189,7 @@ META = {
                 key="oid",
                 key_desc='oid为%s的函数或存储过程',
                 filters=' oid < 10000 ',
-                ignore_col='proargdefaults'
+                ignore_col='proargdefaults,proacl'
             ),
             ContentRulesMeta(
                 key="format('%s.%s(%s)',"
@@ -226,7 +229,7 @@ META = {
                 key="format('%s.%s',(select nspname from pg_namespace n where n.oid = relnamespace), relname)",
                 key_desc='名为%s的表或索引或视图等',
                 filters=' oid < 10000 ',
-                ignore_col='relfilenode,relpages,reltuples,relallvisible,relfrozenxid,relfrozenxid64,relminmxid',
+                ignore_col='relfilenode,relpages,reltuples,relallvisible,relacl,relfrozenxid,relfrozenxid64,relminmxid',
                 oid_col='oid,reltype,reloftype',
                 accuracy=Accuracy.STRICT
             ),
@@ -239,7 +242,7 @@ META = {
                 oid_col='relnamespace,reltype,reloftype,relowner,reltablespace',
                 accuracy=Accuracy.STRICT
             ),
-            # 表的不需要使用pg_get_tabledef检查，会在第一步的校验系统表结构的时候校验。
+            # 表的会在第一步的校验系统表结构的时候校验pg_get_tabledef。
             # 索引等会在对应的扩展系统表校验，此处仅校验视图即可
             ContentRulesMeta(
                 complete_sql="select format('def:%s.%s', n.nspname, c.relname), "
@@ -297,13 +300,13 @@ META = {
                 key='datname',
                 key_desc='数据库%s',
                 filters=' oid < 10000 ',
-                ignore_col='encoding,datcollate,datctype,datlastsysoid,datfrozenxid,datfrozenxid64,datminmxid'
+                ignore_col='encoding,datcollate,datctype,datlastsysoid,datfrozenxid,datacl,datfrozenxid64,datminmxid'
             ),
             ContentRulesMeta(
                 key='datname',
                 key_desc='数据库%s',
                 filters=' 9999 < oid and oid < 16384 ',
-                ignore_col='oid,encoding,datcollate,datctype,datlastsysoid,datfrozenxid,datfrozenxid64,datminmxid'
+                ignore_col='oid,encoding,datcollate,datctype,datlastsysoid,datfrozenxid,datacl,datfrozenxid64,datminmxid'
             )
         ]
     ),
@@ -315,7 +318,8 @@ META = {
             ContentRulesMeta(
                 key='srvname',
                 key_desc='外表服务器%s',
-                filters=' oid < 10000 '
+                filters=' oid < 10000 ',
+                ignore_col='srvacl'
             ),
             ContentRulesMeta(
                 complete_sql="select srvname, "
@@ -622,13 +626,15 @@ META = {
             ContentRulesMeta(
                 key='lanname',
                 key_desc='oid为%s的语言',
-                filters=' oid < 10000 '
+                filters=' oid < 10000 ',
+                ignore_col='lanacl'
             ),
             ContentRulesMeta(
                 key='lanname',
                 key_desc='名称为%s的语言',
                 filters=' 9999 < oid and oid < 10000 ',
-                oid_col='oid,lanplcallfoid,laninline,lanvalidator',
+                ignore_col='lanacl',
+                oid_col='oid,lanplcallfoid,laninline,lanvalidator'
             )
         ]
     ),
@@ -653,13 +659,13 @@ META = {
                 key='nspname',
                 key_desc='名称为%s的schema',
                 filters=' oid < 10000 ',
-                ignore_col='nsptimeline,in_redistribution,nspblockchain,nspcollation'
+                ignore_col='nsptimeline,nspacl,in_redistribution,nspblockchain,nspcollation'
             ),
             ContentRulesMeta(
                 key='nspname',
                 key_desc='名称为%s的schema',
                 filters=' 9999 < oid and oid < 16384 ',
-                ignore_col='nsptimeline,in_redistribution,nspblockchain,nspcollation',
+                ignore_col='nsptimeline,nspacl,in_redistribution,nspblockchain,nspcollation',
                 oid_col='oid,nspowner'
             )
         ]
@@ -820,6 +826,7 @@ META = {
                 key="lomowner",
                 key_desc='oid为%s的大对象元数据',
                 filters=' oid < 16384 ',
+                ignore_col='lomacl',
                 accuracy=Accuracy.ALLOW_MORE
             )
         ]
@@ -1203,6 +1210,7 @@ META = {
                 key="oid",
                 key_desc='oid为%s的外部数据源对象的信息',
                 filters=' oid < 16384 ',
+                ignore_col='srcacl',
                 accuracy=Accuracy.STRICT
             )
         ]
@@ -1216,6 +1224,7 @@ META = {
                 key="oid",
                 key_desc='oid为%s的文件夹',
                 filters=' oid < 16384 ',
+                ignore_col='srcacl',
                 accuracy=Accuracy.STRICT
             )
         ]
@@ -1325,6 +1334,7 @@ META = {
                 key="oid",
                 key_desc='oid为%s的package',
                 filters=' oid < 16384 ',
+                ignore_col='pkgacl',
                 accuracy=Accuracy.STRICT
             )
         ]
@@ -1383,6 +1393,7 @@ META = {
                 key="oid",
                 key_desc='oid为%s的节点组',
                 filters=' oid < 16384 ',
+                ignore_col='group_acl',
                 accuracy=Accuracy.STRICT
             )
         ]
@@ -1645,6 +1656,7 @@ META = {
                 key="oid",
                 key_desc='oid为%s的加密主密钥',
                 filters=' oid < 16384 ',
+                ignore_col='key_acl',
                 accuracy=Accuracy.STRICT
             )
         ]
@@ -1658,6 +1670,7 @@ META = {
                 key="oid",
                 key_desc='oid为%s的列加密密钥',
                 filters=' oid < 16384 ',
+                ignore_col='key_acl',
                 accuracy=Accuracy.STRICT
             )
         ]

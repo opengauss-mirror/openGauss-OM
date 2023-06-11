@@ -182,7 +182,7 @@ class Param(object):
             return Action.HELP
             
         action = argv[0]
-        if action in ("help", "--help", "-h", "-?"):
+        if action.lower() in ("help", "--help", "-h", "-?"):
             return Action.HELP
         elif action.lower() in ["check", "verify"]:
             return Action.VERIFY
@@ -210,7 +210,7 @@ class Param(object):
     def assign_report_mode(gran):
         if gran.lower() == 'summary':
             return ReportMode.SUMMARY
-        elif gran.lower == 'detail':
+        elif gran.lower() == 'detail':
             return ReportMode.DETAIL
         else:
             raise ParamParseException("错误的模式参数report-mode {0}，仅支持summary、detail。".format(gran))

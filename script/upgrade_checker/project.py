@@ -74,6 +74,9 @@ class Project(object):
         创建工作目录文件夹等。
         :return:
         """
+        if not os.access(self.dir_root, os.F_OK):
+            os.mkdir(self.dir_root, 0o700)
+        
         if not os.access(self.dir_workspace, os.F_OK):
             os.mkdir(self.dir_workspace, 0o700)
 

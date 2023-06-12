@@ -251,6 +251,9 @@ class Dss(BaseComponent):
         om init dss server
         '''
         Dss.start_dss_server(self.logger, self.binPath)
+        if not DssConfig.check_process_available(
+                self.logger, 'dssserver'):
+            raise Exception(ErrorCode.GAUSS_512["GAUSS_51252"])
 
     @staticmethod
     def catch_err(exist_so=True):

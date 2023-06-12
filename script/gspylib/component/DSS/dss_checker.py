@@ -169,6 +169,29 @@ class DssConfig():
             return False
 
     @staticmethod
+    def check_process_available(logger, process, retry=5, interval=1):
+        '''
+        The dssserver process is not available when running.
+        Then check if it is available.
+        '''
+        logger.debug(f'Start to check {process} available.' )
+        if process.find('dssserver') > -1:
+            cmd = 'dsscmd lsvg'
+            for cur in range(retry):
+                sts, out = CmdUtil.exec_by_popen(cmd)
+                if not sts:
+                    # There is '.' in the out.
+                    logger.debug(f'The dssserver is not available. Message: {out}')
+                    if cur >= retry - 1:
+                        return False
+                    else:
+                        time.sleep(interval)
+                else:
+                    logger.debug(f'The dssserver is available. The result of the lsvg: {out}')
+                    break
+        return True
+
+    @staticmethod
     def set_cm_manual_flag(inst_id, flag, logger):
         gauss_home = ClusterDir.get_gauss_home()
         file_ = os.path.realpath(
@@ -200,9 +223,11 @@ class DssConfig():
             check_flag = flag
         logger.log(f"Start to wait for {flag} to be started.")
         while timeout > 0:
-            if not DssConfig.check_process_exist(check_flag=check_flag):
+            if not (DssConfig.check_process_exist(check_flag=check_flag) and
+                    DssConfig.check_process_available(logger, flag, retry=1)):
                 if timeout % 5 == 0:
-                    logger.debug(f'The process {flag} if not running.')
+                    logger.debug(
+                        f'The process {flag} if not running or not available.')
                 timeout -= 1
                 time.sleep(1)
                 continue

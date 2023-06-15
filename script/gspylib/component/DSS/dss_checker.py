@@ -70,10 +70,14 @@ class DssConfig():
         inst.dss_config = str(
             DssConfig((dss_ids, dss_ips, dss_ports), offset=10))
         infos = list(filter(None, re.split(r':|,', inst.dss_vg_info)))
-        if len(infos[::2]) != len(dss_ips) + 1:
+
+        # We support two deployment method：
+        # 1. one dss disk for xlog of each node, and one dss disk for shared data;
+        # 2. one dss disk for xlogs of all nodes, and one dss disk for shared data;
+        if (len(infos[::2]) != len(dss_ips) + 1) and (len(infos[::2]) != 2):
             raise Exception(
                 ErrorCode.GAUSS_500['GAUSS_50026'] % 'dss_vg_info' +
-                ' The number of volumes is one more than the number of dns.' +
+                ' The number of volumes is one more than the number of dns or the number of volumes is 2.' +
                 ' The number of dns is {} and the number of dss volumes is {}'.
                 format(len(dss_ips), len(infos[::2])))
         for dp in dss_ports:

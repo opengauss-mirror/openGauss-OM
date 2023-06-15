@@ -1328,7 +1328,7 @@ Common options:
         # clean user's environmental variable
         self.logger.debug("Deleting user's environmental variable.")
         DefaultValue.cleanUserEnvVariable(userProfile,
-                                          cleanGS_CLUSTER_NAME=False)
+                                          cleanGS_CLUSTER_NAME=False, cleanLD_LIBRARY=False)
         self.logger.debug("Successfully delete user's environmental variable.")
         if self.mpprcFile:
             # import environment variable separation scene to bashrc

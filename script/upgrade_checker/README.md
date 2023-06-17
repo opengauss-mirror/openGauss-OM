@@ -31,7 +31,7 @@ config-params支持的参数选项及其默认值如下
 -d  | --debug
 ```
 
-- port：数据库端口号
+- port：数据库端口号。
 - debug：会打印更多的日志，用于工具问题定位。无参数，默认关闭，指定时开启。
 - report-format：校验报告格式，当前仅支持markdown。
 - report-mode：校验报告详细程度，支持`summary`，`detail`两种模式，默认`summary`模式。此选项仅会影响生成的报告的详细程度，并不影响校验内容的多少，`detail`仅是会把所有的校验规则无论对错都整理输出，报告整理比较耗时，而`summary`则仅整理输出错误的内容。
@@ -89,7 +89,7 @@ upgrade-checker
         |f- user-created-vmap            -用户自己生成的校验地图
         |f- report                       -某次检测的结果报告
     |f-- README.md                      说明书
-|f-- main.py                        入口脚本
+|f-- gs_upgradechk                  入口脚本
 ```
 
 ## 校验原理

@@ -76,28 +76,28 @@ class SshTool():
         self._finalizer = weakref.finalize(self, self.clenSshResultFiles)
         self.__sessions = {}
 
-        currentTime = str(datetime.datetime.now()).replace(" ", "_").replace(
+        current_time = str(datetime.datetime.now()).replace(" ", "_").replace(
             ".", "_")
         randomnum = ''.join(sample('0123456789', 3))
         # can tmp path always access?
         if key == "":
             self.__hostsFile = "/tmp/gauss_hosts_file_%d_%s_%s" % (
-                self.__pid, currentTime, randomnum)
+                self.__pid, current_time, randomnum)
             self.__resultFile = "/tmp/gauss_result_%d_%s_%s.log" % (
-                self.__pid, currentTime, randomnum)
+                self.__pid, current_time, randomnum)
             self.__outputPath = "/tmp/gauss_output_files_%d_%s_%s" % (
-                self.__pid, currentTime, randomnum)
+                self.__pid, current_time, randomnum)
             self.__errorPath = "/tmp/gauss_error_files_%d_%s_%s" % (
-                self.__pid, currentTime, randomnum)
+                self.__pid, current_time, randomnum)
         else:
             self.__hostsFile = "/tmp/gauss_hosts_file_%d_%s_%s_%s" % (
-                self.__pid, key, currentTime, randomnum)
+                self.__pid, key, current_time, randomnum)
             self.__resultFile = "/tmp/gauss_result_%d_%s_%s_%s.log" % (
-                self.__pid, key, currentTime, randomnum)
+                self.__pid, key, current_time, randomnum)
             self.__outputPath = "/tmp/gauss_output_files_%d_%s_%s_%s" % (
-                self.__pid, key, currentTime, randomnum)
+                self.__pid, key, current_time, randomnum)
             self.__errorPath = "/tmp/gauss_error_files_%d_%s_%s_%s" % (
-                self.__pid, key, currentTime, randomnum)
+                self.__pid, key, current_time, randomnum)
 
         self.__resultStatus = {}
         if logFile is None:

@@ -494,7 +494,6 @@ class ErrorCode():
         'GAUSS_51255': "[GAUSS-51255] : Failed to reencrypt the password with dsscmd",
         'GAUSS_51256': "[GAUSS-51256] : Failed to get the encrypted text with dsscmd",
         'GAUSS_51257': "[GAUSS-51257] : There are some errors about dsscmd. ",
-        'GAUSS_51258': "[GAUSS-51258] : Failed to verify the %s crc value in file: %s",
 
     }
 

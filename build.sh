@@ -1,6 +1,7 @@
 #!/bin/bash
 
 declare binarylib_dir='None'
+declare gcc_version='10.3'
 declare module_name="openGauss"
 declare version_number='5.1.0'
 declare version_Kernel='92.298'
@@ -21,6 +22,7 @@ function print_help()
     echo "Usage: $0 [OPTION]
     -h|--help                         show help information
     -3rd|--binarylib_dir              the parent directory of binarylibs
+    -cv|--gcc_version                 the gcc version only accepts 7.3 and 10.3
     "
 }
 
@@ -36,6 +38,10 @@ while [ $# -gt 0 ]; do
                 exit 1
             fi
             binarylib_dir=$2
+            shift 2
+            ;;
+        -cv|--gcc_version)
+            gcc_version=$2
             shift 2
             ;;
          *)
@@ -91,7 +97,6 @@ else
     BINARYLIBS_PATH="${ROOT_DIR}/binarylibs/kernel/dependency/"
     BUILD_TOOLS_PATH="${ROOT_DIR}/binarylibs/buildtools/"
 fi
-
 
 log()
 {
@@ -167,7 +172,7 @@ function clib_copy()
 {
     rm -rf $PKG_TMP_DIR/script/gspylib/clib
     mkdir -p $PKG_TMP_DIR/script/gspylib/clib
-    cp $BUILD_TOOLS_PATH/gcc7.3/gcc/lib64/libstdc++.so.6 $PKG_TMP_DIR/script/gspylib/clib
+    cp $BUILD_TOOLS_PATH/gcc${gcc_version}/gcc/lib64/libstdc++.so.6 $PKG_TMP_DIR/script/gspylib/clib
     cp $BINARYLIBS_PATH/openssl/comm/lib/libssl.so.1.1 $PKG_TMP_DIR/script/gspylib/clib
     cp $BINARYLIBS_PATH/openssl/comm/lib/libcrypto.so.1.1 $PKG_TMP_DIR/script/gspylib/clib
     if [ -f $BINARYLIBS_PATH_INSTALL_TOOLS/libpython3.*m.so.1.0 ]

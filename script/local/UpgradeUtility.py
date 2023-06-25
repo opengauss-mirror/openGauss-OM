@@ -138,9 +138,7 @@ class CmdOptions():
              "postgis--*.*.*.sql": "share/postgresql/extension/",
              "postgis.control": "share/postgresql/extension/",
              "pgsql2shp": "bin/",
-             "shp2pgsql": "bin/",
-             "libgcc_s.so.*": "lib/",
-             "libstdc++.so.*": "lib/"}
+             "shp2pgsql": "bin/"}
         self.fromFile = False
         self.setType = "reload"
         self.isSingleInst = False

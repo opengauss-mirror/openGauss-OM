@@ -683,12 +683,12 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             cmd = "source %s;gs_guc set -D %s" % (self.envFile, dataNode)
             if hostExec in self.existingHosts:
                 for hostParam in self.context.newHostList:
-                    cmd += " -h 'host    all    all    %s/32    trust'" % hostParam
+                    cmd += " -h 'host    all    %s    %s/32    trust'" % (self.user, hostParam)
                     cmd += self.get_add_float_ip_cmd(hostParam)
             else:
                 for hostParam in allHosts:
                     if hostExec != hostParam:
-                        cmd += " -h 'host    all    all    %s/32    trust'" % hostParam
+                        cmd += " -h 'host    all    %s    %s/32    trust'" % (self.user, hostParam)
                         cmd += self.get_add_float_ip_cmd(hostParam)
             self.logger.debug("[%s] trustCmd:%s" % (hostExec, cmd))
             sshTool = SshTool([hostExec])

@@ -73,6 +73,8 @@ class OMCommand():
                 Current_Path + "/../../local/CleanOsUser.py"),
             "Local_Config_Hba": os.path.normpath(
                 Current_Path + "/../../local/ConfigHba.py"),
+            "Local_Config_CM_Res": os.path.normpath(
+                Current_Path + "/../../local/config_cm_resource.py"),
             "Local_Config_Instance": os.path.normpath(
                 Current_Path + "/../../local/ConfigInstance.py"),
             "Local_Init_Instance": os.path.normpath(

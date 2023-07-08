@@ -28,13 +28,18 @@ sys.path.append(sys.path[0] + "/../../../../")
 from base_utils.os.net_util import NetUtil
 from base_utils.os.env_util import EnvUtil
 from base_utils.executor.cmd_executor import CmdExecutor
-
+from gspylib.common.OMCommand import OMCommand
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.Common import DefaultValue
 from gspylib.component.CM.CM_OLAP.CM_OLAP import CM_OLAP
 from gspylib.threads.SshTool import SshTool
 from gspylib.os.gsfile import g_file
 from impl.dropnode.DropnodeImpl import DropnodeImpl
+from base_utils.os.file_util import FileUtil
+
+
+# Action type
+ACTION_DROP_NODE = "drop_node"
 
 
 class DropNodeWithCmImpl(DropnodeImpl):
@@ -82,6 +87,37 @@ class DropNodeWithCmImpl(DropnodeImpl):
         if (len(all_cm_server_nodes) - len(drop_node_with_cm_server)) < 2:
             raise Exception("Too many cm_server nodes are dropped.A maximum of {0} cm_server "
                             "nodes can be dropped.".format(len(all_cm_server_nodes) - 2))
+
+    def backup_cm_res_json(self):
+        """
+        Backup cm resource json on primary node
+        """
+        cm_resource = os.path.realpath(
+                      os.path.join(self.cm_component.instInfo.datadir, "cm_resource.json"))
+        backup_cm_res = os.path.realpath(
+                        os.path.join(self.pghostPath, "cm_resource_bak.json"))
+        if not os.path.isfile(backup_cm_res):
+            FileUtil.cpFile(cm_resource, backup_cm_res)
+
+    def update_cm_res_json(self):
+        """
+        Update cm resource json file.
+        """
+        if not self.commonOper.check_is_vip_mode():
+            self.logger.log("The current cluster does not support VIP.")
+            return
+
+        self.backup_cm_res_json()
+        self.logger.log("Updating cm resource file on exist nodes.")
+        del_hosts = ",".join(self.context.hostMapForDel.keys())
+        cmd = "source %s; " % self.userProfile
+        cmd += "%s -t %s -U %s -H %s -l '%s' " % (
+               OMCommand.getLocalScript("Local_Config_CM_Res"),
+               ACTION_DROP_NODE, self.user, del_hosts, self.context.localLog)
+        self.logger.debug("Command for updating cm resource file: %s" % cmd)
+        CmdExecutor.execCommandWithMode(cmd, self.ssh_tool,
+                                        host_list=self.context.hostMapForExist.keys())
+        self.logger.log("Successfully updated cm resource file.")
 
     def _stop_drop_node(self):
         """
@@ -154,6 +190,27 @@ class DropNodeWithCmImpl(DropnodeImpl):
                 "HINT: Maybe the cluster is continually being started in the background.\n"
                 "You can wait for a while and check whether the cluster starts.")
 
+    def restore_cm_res_json(self):
+        """
+        Restore cm resource json on primary node
+        """
+        cm_resource = os.path.realpath(
+                      os.path.join(self.cm_component.instInfo.datadir, "cm_resource.json"))
+        backup_cm_res = os.path.realpath(
+                        os.path.join(self.pghostPath, "cm_resource_bak.json"))
+        if os.path.isfile(backup_cm_res):
+            FileUtil.cpFile(backup_cm_res, cm_resource)
+
+    def remove_cm_res_backup(self):
+        """
+        Remove cm resource backup on primary node
+        """
+        backup_cm_res = os.path.realpath(
+                        os.path.join(self.pghostPath, "cm_resource_bak.json"))
+        if os.path.isfile(backup_cm_res):
+            os.remove(backup_cm_res)
+            self.logger.log("Successfully remove cm resource backup file")
+
     def run(self):
         """
         start dropnode
@@ -163,11 +220,14 @@ class DropNodeWithCmImpl(DropnodeImpl):
         self.check_drop_cm_node()
         self.change_user()
         self.logger.log("[gs_dropnode]Start to drop nodes of the cluster.")
+        self.restore_cm_res_json()
         self.checkAllStandbyState()
         self.dropNodeOnAllHosts()
         self.operationOnlyOnPrimary()
+        self.update_cm_res_json()
         self._stop_drop_node()
         self._generate_flag_file_on_drop_nodes()
         self.modifyStaticConf()
         self.restart_new_cluster()
+        self.remove_cm_res_backup()
         self.logger.log("[gs_dropnode] Success to drop the target nodes.")

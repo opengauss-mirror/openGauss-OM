@@ -402,8 +402,12 @@ def compareObject(Object_A, Object_B, instName, tempbuffer=None, model=None,
             tempbuffer.append(str(Object_A))
             tempbuffer.append(str(Object_B))
             return False, tempbuffer
+        dss_ignore = [
+            "enable_dss", "dss_config", "dss_home", "cm_vote_disk", "cm_share_disk",
+            "dss_pri_disks", "dss_shared_disks", "dss_vg_info", "dss_vgname", "dss_ssl_enable",
+            "ss_rdma_work_config", "ss_interconnect_type", "float_ips"]
         for i in Object_A_list:
-            if (i.startswith("_") or ignoreCheck(Object_A, i, model)):
+            if (i.startswith("_") or ignoreCheck(Object_A, i, model)) or i in dss_ignore:
                 continue
             Inst_A = getattr(Object_A, i)
             try:
@@ -557,6 +561,8 @@ class instanceInfo():
         self.listenIps = []
         # ha ip
         self.haIps = []
+        # float ip
+        self.float_ips = []
         # port
         self.port = 0
         # It's pool port for coordinator, and ha port for other instance
@@ -761,9 +767,8 @@ class dbNodeInfo():
         return count
 
     def appendInstance(self, instId, mirrorId, instRole, instanceType,
-                       listenIps=None,
-                       haIps=None, datadir="", ssddir="", level=1,
-                       xlogdir="", syncNum=-1, dcf_data=""):
+                       listenIps=None, haIps=None, datadir="", ssddir="", level=1,
+                       xlogdir="", syncNum=-1, syncNumFirst="", dcf_data="", float_ips=None):
         """
         function : Classify the instance of cmserver/gtm
         input : int,int,String,String
@@ -789,6 +794,10 @@ class dbNodeInfo():
                 dbInst.listenIps = self.backIps[:]
             else:
                 dbInst.listenIps = listenIps[:]
+
+        if float_ips is not None:
+            if len(float_ips) != 0:
+                dbInst.float_ips = float_ips
 
         if (haIps is not None):
             if (len(haIps) == 0):
@@ -935,6 +944,7 @@ class dbClusterInfo():
         self.managerPath = ""
         self.replicaNum = 0
         self.corePath = ""
+        self.float_ips = {}
 
         # add azName
         self.azName = ""
@@ -3311,6 +3321,7 @@ class dbClusterInfo():
         """
         dnListenIps = None
         dnHaIps = None
+        dn_float_ips = None
         mirror_count_data = self.__getDataNodeCount(masterNode)
         if masterNode.dataNum > 0:
             dnListenIps = self.__readInstanceIps(masterNode.name,
@@ -3320,7 +3331,12 @@ class dbClusterInfo():
             dnHaIps = self.__readInstanceIps(masterNode.name, "dataHaIp",
                                              masterNode.dataNum *
                                              mirror_count_data)
-
+            dn_float_ips = self.__readInstanceIps(masterNode.name,
+                                                  "floatIpMap",
+                                                  masterNode.dataNum *
+                                                  mirror_count_data)
+        if dn_float_ips is not None:
+            self.__read_cluster_float_ips(dn_float_ips)
         dnInfoLists = [[] for row in range(masterNode.dataNum)]
         xlogInfoLists = [[] for row in range(masterNode.dataNum)]
         dcf_data_lists = [[] for row in range(masterNode.dataNum)]
@@ -3499,7 +3515,9 @@ class dbClusterInfo():
                                               dnHaIps[instIndex],
                                               dnInfoList[0],
                                               syncNum=syncNumList[i],
-                                              dcf_data=dcf_data_list[0])
+                                              dcf_data=dcf_data_list[0],
+                                              float_ips=dn_float_ips[instIndex] \
+                                              if dn_float_ips else [])
                     else:
                         masterNode.appendInstance(instId, groupId,
                                                   INSTANCE_ROLE_DATANODE,
@@ -3507,7 +3525,9 @@ class dbClusterInfo():
                                                   dnListenIps[instIndex],
                                                   dnHaIps[instIndex],
                                                   dnInfoList[0],
-                                                  syncNum=syncNumList[i])
+                                                  syncNum=syncNumList[i],
+                                                  float_ips=dn_float_ips[instIndex] \
+                                                  if dn_float_ips else [])
                 else:
                     masterNode.appendInstance(instId, groupId,
                                               INSTANCE_ROLE_DATANODE,
@@ -3516,7 +3536,9 @@ class dbClusterInfo():
                                               dnHaIps[instIndex],
                                               dnInfoList[0],
                                               xlogdir=xlogInfoList[0],
-                                              syncNum=syncNumList[i])
+                                              syncNum=syncNumList[i],
+                                              float_ips=dn_float_ips[instIndex] \
+                                              if dn_float_ips else [])
 
             instIndex += 1
 
@@ -3585,7 +3607,9 @@ class dbClusterInfo():
                                               dnHaIps[instIndex],
                                               dnInfoList[nodeLen * 2 + 2],
                                               syncNum=syncNumList[i],
-                                              dcf_data=dcf_data_list[0])
+                                              dcf_data=dcf_data_list[0],
+                                              float_ips=dn_float_ips[instIndex] \
+                                              if dn_float_ips else [])
                         else:
                             dbNode.appendInstance(instId, groupId,
                                                   INSTANCE_ROLE_DATANODE,
@@ -3593,7 +3617,9 @@ class dbClusterInfo():
                                                   dnListenIps[instIndex],
                                                   dnHaIps[instIndex],
                                                   dnInfoList[nodeLen * 2 + 2],
-                                                  syncNum=syncNumList[i])
+                                                  syncNum=syncNumList[i],
+                                                  float_ips=dn_float_ips[instIndex] \
+                                                  if dn_float_ips else [])
                     else:
                         if self.enable_dcf == "on":
                             dbNode.appendInstance(instId, groupId,
@@ -3604,7 +3630,9 @@ class dbClusterInfo():
                                               dnInfoList[nodeLen * 2 + 2],
                                               xlogdir=xlogInfoList[nodeLen + 1],
                                               syncNum=syncNumList[i],
-                                              dcf_data=dcf_data_list[0])
+                                              dcf_data=dcf_data_list[0],
+                                              float_ips=dn_float_ips[instIndex] \
+                                              if dn_float_ips else [])
                         else:
                             dbNode.appendInstance(instId, groupId,
                                                   INSTANCE_ROLE_DATANODE,
@@ -3613,7 +3641,9 @@ class dbClusterInfo():
                                                   dnHaIps[instIndex],
                                                   dnInfoList[nodeLen * 2 + 2],
                                                   xlogdir=xlogInfoList[nodeLen + 1],
-                                                  syncNum=syncNumList[i])
+                                                  syncNum=syncNumList[i],
+                                                  float_ips=dn_float_ips[instIndex] \
+                                                  if dn_float_ips else [])
                 if dbNode.cascadeRole == "on":
                     if self.enable_dcf != "on":
                         for inst in dbNode.datanodes:
@@ -4748,3 +4778,18 @@ class dbClusterInfo():
             if dbNode.id == inputid:
                 return dbNode
         return None
+
+    def __read_cluster_float_ips(self, dn_float_ips):
+        """
+        Read cluster global info(float IP) to dbClusterInfo
+        """
+        for ips_tmp in dn_float_ips:
+            for res_name in ips_tmp:
+                if res_name not in self.float_ips:
+                    ret_status, ret_value = ClusterConfigFile.readOneClusterConfigItem(
+                                            xmlRootNode, res_name, "CLUSTER")
+                    if ret_status == 0:
+                        self.float_ips[res_name] = ret_value.strip()
+                    else:
+                        raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % \
+                                        "float IP." + " Error: \n%s" % ret_value)

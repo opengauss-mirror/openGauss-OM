@@ -407,7 +407,7 @@ class DN_OLAP(Kernel):
 
         self.modifyDummpyStandbyConfigItem()
 
-    def setPghbaConfig(self, clusterAllIpList, try_reload=False):
+    def setPghbaConfig(self, clusterAllIpList, try_reload=False, float_ips=None):
         """
         """
         principal = None
@@ -426,39 +426,47 @@ class DN_OLAP(Kernel):
         # build ip string list
         # Every 1000 records merged into one
         i = 0
-        GUCParasStr = ""
+        guc_paras_str = ""
         GUCParasStrList = []
         pg_user = ClusterUser.get_pg_user()
-        for ipAddress in clusterAllIpList:
+        for ip_address in clusterAllIpList:
             i += 1
             # Set the initial user and initial database access permissions
             if principal is None:
-                GUCParasStr += "-h \"host    all    %s    %s/32    %s\" " % \
-                               (pg_user, ipAddress, METHOD_TRUST)
-                GUCParasStr += "-h \"host    all    all    %s/32    %s\" " % (ipAddress, METHOD_SHA)
-
+                if ip_address.startswith("floatIp"):
+                    guc_paras_str += "-h \"host    all    all    %s/32    %s\" " % \
+                                     (float_ips[ip_address], METHOD_SHA)
+                else:
+                    guc_paras_str += "-h \"host    all    %s    %s/32    %s\" " % \
+                                     (pg_user, ip_address, METHOD_TRUST)
+                    guc_paras_str += "-h \"host    all    all    %s/32    %s\" " % \
+                                     (ip_address, METHOD_SHA)
             else:
-                GUCParasStr += "-h \"host    all    %s    %s/32    gss    " \
-                               "include_realm=1    krb_realm=%s\" "\
-                               % (pg_user, ipAddress, principal)
-                GUCParasStr += "-h \"host    all    all    %s/32    %s\" " % (ipAddress, METHOD_SHA)
+                if ip_address.startswith("floatIp"):
+                    guc_paras_str += "-h \"host    all    all    %s/32    %s\" " % \
+                                     (float_ips[ip_address], METHOD_SHA)
+                else:
+                    guc_paras_str += "-h \"host    all    %s    %s/32    gss    include_realm=1 " \
+                                     "   krb_realm=%s\" " % (pg_user, ip_address, principal)
+                    guc_paras_str += "-h \"host    all    all    %s/32    %s\" " % \
+                                     (ip_address, METHOD_SHA)
             if (i % MAX_PARA_NUMBER == 0):
-                GUCParasStrList.append(GUCParasStr)
+                GUCParasStrList.append(guc_paras_str)
                 i = 0
-                GUCParasStr = ""
+                guc_paras_str = ""
         # Used only streaming disaster cluster
         streaming_dn_ips = self.get_streaming_relate_dn_ips(self.instInfo)
         if streaming_dn_ips:
             for dn_ip in streaming_dn_ips:
-                GUCParasStr += "-h \"host    all    %s    %s/32    %s\" " \
+                guc_paras_str += "-h \"host    all    %s    %s/32    %s\" " \
                                % (pg_user, dn_ip, METHOD_TRUST)
-                GUCParasStr += "-h \"host    all    all    %s/32    %s\" " \
+                guc_paras_str += "-h \"host    all    all    %s/32    %s\" " \
                                % (dn_ip, METHOD_SHA)
                 ip_segment = '.'.join(dn_ip.split('.')[:2]) + ".0.0/16"
-                GUCParasStr += "-h \"host    replication    all    %s    sha256\" " % ip_segment
+                guc_paras_str += "-h \"host    replication    all    %s    sha256\" " % ip_segment
 
-        if (GUCParasStr != ""):
-            GUCParasStrList.append(GUCParasStr)
+        if (guc_paras_str != ""):
+            GUCParasStrList.append(guc_paras_str)
 
         for parasStr in GUCParasStrList:
             self.doGUCConfig("set", parasStr, True, try_reload=try_reload)

@@ -34,22 +34,19 @@ class CheckFirewall(BaseItem):
 
     def doCheck(self):
         (status, output) = g_service.manageOSService("firewall", "status")
-        if (output.find(SUSE_FLAG) > 0 or output.find(
-                REDHAT6_FLAG) > 0 or output.find(REDHAT7_FLAG) > 0):
-            firewallStatus = "disabled"
-        else:
-            firewallStatus = "enabled"
-        if (firewallStatus == ""):
-            self.result.rst = ResultStatus.OK
-        elif (firewallStatus != EXPECTED_VALUE):
-            self.result.rst = ResultStatus.NG
-        else:
-            self.result.rst = ResultStatus.OK
-        if (not self.result.raw):
-            self.result.raw = output
-        else:
-            self.result.raw = output
+        firewallStatus = "disabled" if (
+                output.find(SUSE_FLAG) > 0 or
+                output.find(REDHAT6_FLAG) > 0 or
+                output.find(REDHAT7_FLAG) > 0
+        ) else "enabled"
+
+        self.result.raw = output
         self.result.val = firewallStatus
+
+        if firewallStatus == EXPECTED_VALUE:
+            self.result.rst = ResultStatus.OK
+        else:
+            self.result.rst = ResultStatus.NG if firewallStatus else ResultStatus.OK
 
     def doSet(self):
         if g_Platform.isPlatFormEulerOSOrRHEL7X():

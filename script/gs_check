@@ -770,6 +770,11 @@ def parseCheckContext():
     if g_context.isCached():
         return
     g_logger.debug("Start to parse the check items config file")
+
+    localHost = __getLocalNode(g_context.nodes)
+    if len(g_context.nodes)==1  and localHost == g_context.nodes[0]:
+        g_opts.localMode = True
+
     items_all = []
     items_oldNode = []
     items_newNode = []

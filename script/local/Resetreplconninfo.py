@@ -187,6 +187,8 @@ class Resetreplconninfo():
                                 cmd + " Error:\n%s" % output)
             # get remote ip and check iscascade
             replinfo_all = output.split('\n')[-2].strip().split("'")
+            if len(replinfo_all) < 2:
+                continue
             replinfo_value = replinfo_all[1].split()
             for remoteip in remote_ip_dict:
                 if remoteip in replinfo_all[1]:

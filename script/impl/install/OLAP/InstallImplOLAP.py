@@ -421,7 +421,7 @@ class InstallImplOLAP(InstallImpl):
             self.deleteTempFileForUninstall()
             # Rollback install
             cmd = "source %s;" % self.context.mpprcFile
-            cmd += "%s -U %s -R '%s' -l '%s' -T" % (
+            cmd += "%s -U %s -R '%s' -l '%s' -T --delete-static-file" % (
                 OMCommand.getLocalScript("Local_Uninstall"), self.context.user,
                 os.path.realpath(self.context.clusterInfo.appPath),
                 self.context.localLog)

@@ -274,10 +274,7 @@ class CM_OLAP(CM):
         self.logger.log("Starting %s." % start_type)
         self.logger.log("======================================================================")
         # Call cm_ctl to start the
-        if timeout != 0:
-            cmd = CM_OLAP.get_start_cmd(nodeId, timeout=timeout, datadir=datadir, azName=azName)
-        else:
-            cmd = CM_OLAP.get_start_cmd(nodeId, timeout=0, datadir=datadir, azName=azName)
+        cmd = CM_OLAP.get_start_cmd(nodeId, timeout=timeout, datadir=datadir, azName=azName)
         result_set = CmdUtil.retryGetstatusoutput(cmd, retry_time=retry_times)
         # The output prompts when the failure to start
         if result_set[0] != 0:
@@ -673,7 +670,9 @@ class CM_OLAP(CM):
         output : String
         """
         user_profile = EnvUtil.getMpprcFile()
-        cmd = "source %s ; cm_ctl switchover -a -t %d" % (user_profile, timeout)
+        cmd = "source %s ; cm_ctl switchover -a" % user_profile
+        if timeout > 0:
+            cmd += (" -t %d" % timeout)
         # build shell command
         if user and os.getuid() == 0:
             cmd = "su - %s -c 'source %s;%s'" % (user, user_profile, cmd)

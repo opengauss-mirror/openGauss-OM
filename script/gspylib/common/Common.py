@@ -233,6 +233,7 @@ class DefaultValue():
     GREY_UPGRADE_STEP_UPGRADE_PROCESS = 3
 
     CAP_WIO = "CAP_SYS_RAWIO"
+    CAP_ADM = "CAP_SYS_ADMIN"
 
     # env parameter
     MPPRC_FILE_ENV = "MPPDB_ENV_SEPARATE_PATH"

@@ -922,7 +922,7 @@ Common options:
         self.logger.debug("Creating dss disk link.")
         context = list(
             UdevContext((self.user, self.group), self.clusterInfo,
-                        DiskUtil.get_scsi_dev_id))
+                        DiskUtil.get_disk_dev_id, DiskUtil.get_disk_dev_name))
 
         self.logger.debug("Checking dss udev directory.")
         if os.path.isdir(UdevContext.DSS_UDEV_DIR):
@@ -931,7 +931,7 @@ Common options:
 
             for disk in UdevContext.get_all_phy_disk(self.clusterInfo):
                 cmd = "cd %s; grep -iro '%s' | grep -v grep | grep -v '%s'" % (
-                    UdevContext.DSS_UDEV_DIR, DiskUtil.get_scsi_dev_id(disk),
+                    UdevContext.DSS_UDEV_DIR, DiskUtil.get_disk_dev_id(disk),
                     UdevContext.DSS_UDEV_NAME % self.user)
                 sts, out = subprocess.getstatusoutput(cmd)
                 if sts == 1:
@@ -2697,10 +2697,10 @@ Common options:
             FileUtil.changeMode(DefaultValue.BIN_FILE_MODE,
                                 os.path.join(clib_app, file_))
 
-        caps = ['perctrl', 'cm_persist']
-        for file_ in caps:
-            FileUtil.change_caps(DefaultValue.CAP_WIO,
-                                 os.path.join(clib_app, file_))
+        FileUtil.change_caps(DefaultValue.CAP_WIO,
+                             os.path.join(clib_app, 'cm_persist'))
+        FileUtil.change_caps('{},{}'.format(DefaultValue.CAP_ADM, DefaultValue.CAP_WIO),
+                             os.path.join(clib_app, 'perctrl'))
         self.logger.debug("Successfully modified dss cap permissions.")
 
     def fix_dss_dir_permission(self):

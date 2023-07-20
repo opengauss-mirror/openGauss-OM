@@ -376,6 +376,8 @@ class Udev():
 
     def __init__(self, attr='', **kwargs):
         # uuid soft_link_name user, group
+        dev_id = ''
+        dev_name = ''
         if shutil.which('hot_add'):
             self.KERNEL = 'sd*'
         else:
@@ -384,12 +386,19 @@ class Udev():
         self.SUBSYSTEM = 'block'
         self.RESULT, self.SYMLINK, self.OWNER, self.GROUP = '', '', '', '',
         if attr:
-            self.RESULT, self.SYMLINK, self.OWNER, self.GROUP = attr
-        self.PROGRAM = ' '.join([
-            '/lib/udev/scsi_id', '--whitelisted', '--replace-whitespace',
-            '--device=/dev/$name'
-        ])
+            dev_id, dev_name, self.SYMLINK, self.OWNER, self.GROUP = attr
+        self.PROGRAM = ' '.join(['/usr/bin/udevadm', 'info', '-q', 'symlink', '/dev/$name'])
+        self.RESULT = '*{}*'.format(dev_id)
         self.MODE = '0660'
+        if dev_name.startswith('sd'):
+            self.KERNEL = 'sd*'
+        elif dev_name.startswith('nvme'):
+            self.KERNEL = 'nvme*'
+        elif dev_name.startswith('ultrapath'):
+            self.KERNEL = 'ultrapath*'
+        elif dev_name.startswith('dm-'):
+            self.KERNEL = 'dm-*'
+
         for key, val in kwargs.items():
             setattr(self, key, val)
 
@@ -424,9 +433,10 @@ class UdevContext():
     DSS_UDEV_NAME = 'zz-dss_%s.rules'
     DSS_UDEV_DIR = '/etc/udev/rules.d/'
 
-    def __init__(self, identity, db_info, uuid_getter=''):
+    def __init__(self, identity, db_info, uuid_getter='', devname_getter=''):
         self.user, self.group = identity
         self.uuid_getter = uuid_getter
+        self.devname_getter = devname_getter
         self.db_info = db_info
 
     @property
@@ -489,16 +499,16 @@ class UdevContext():
             if isinstance(info, dict) and key == 'dss_pri_disks':
                 for dss_id, phy_disk in enumerate(info.values()):
                     yield str(
-                        Udev((self.uuid_getter(phy_disk), alias % (str(dss_id)),
+                        Udev((self.uuid_getter(phy_disk), self.devname_getter(phy_disk), alias % (str(dss_id)),
                               self.user, self.group)))
             elif isinstance(info, dict):
                 # shared disk
                 for phy_disk in info.values():
                     yield str(
-                        Udev((self.uuid_getter(phy_disk), alias, self.user,
+                        Udev((self.uuid_getter(phy_disk), self.devname_getter(phy_disk), alias, self.user,
                               self.group)))
             elif isinstance(info, str):
                 # the disk used by cm
                 yield str(
                     Udev(
-                        (self.uuid_getter(info), alias, self.user, self.group)))
+                        (self.uuid_getter(info), self.devname_getter(phy_disk), alias, self.user, self.group)))

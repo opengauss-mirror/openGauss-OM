@@ -256,8 +256,49 @@ class DiskUtil(object):
         return output.split('\n')
 
     @staticmethod
-    def get_scsi_dev_id(dev_name):
-        cmd = '/lib/udev/scsi_id -g -u {}'.format(dev_name)
+    def get_disk_dev_id(dev_name):
+        cmd = 'udevadm info -q symlink {}'.format(dev_name)
+        sts, out = CmdUtil.getstatusoutput_by_fast_popen(cmd)
+        if sts not in [0]:
+            raise Exception(ErrorCode.GAUSS_504["GAUSS_50422"] %
+                            str(out).strip())
+
+        if out.find('disk/by-id/scsi-') != -1:
+            strtmp = out[out.index('disk/by-id/scsi-') + len('disk/by-id/scsi-'):]
+            if out.find(' ') != -1:
+                strtmp = strtmp.split()[0]
+            return strtmp.strip()
+
+        if out.find('disk/by-id/ultrapath') != -1:
+            strtmp = out[out.index('disk/by-id/ultrapath') + len('disk/by-id/ultrapath'):]
+            if out.find(' ') != -1:
+                strtmp = strtmp.split()[0]
+            strtmp = strtmp.split('-', 1)[1]
+            return strtmp.strip()
+
+        if out.find('disk/by-id/wwn-') != -1:
+            strtmp = out[out.index('disk/by-id/wwn-') + len('disk/by-id/wwn-'):]
+            if out.find(' ') != -1:
+                strtmp = strtmp.split()[0]
+            return strtmp.strip()
+
+        if out.find('disk/by-id/ata-') != -1:
+            strtmp = out[out.index('disk/by-id/ata-') + len('disk/by-id/ata-'):]
+            if out.find(' ') != -1:
+                strtmp = strtmp.split()[0]
+            return strtmp.strip()
+
+        if out.find('disk/by-id/dm-uuid-') != -1:
+            strtmp = out[out.index('disk/by-id/dm-uuid-') + len('disk/by-id/dm-uuid-'):]
+            if out.find(' ') != -1:
+                strtmp = strtmp.split()[0]
+            return strtmp.strip()
+
+        return out.strip()
+
+    @staticmethod
+    def get_disk_dev_name(dev_name):
+        cmd = 'udevadm info -q name {}'.format(dev_name)
         sts, out = CmdUtil.getstatusoutput_by_fast_popen(cmd)
         if sts not in [0]:
             raise Exception(ErrorCode.GAUSS_504["GAUSS_50422"] %

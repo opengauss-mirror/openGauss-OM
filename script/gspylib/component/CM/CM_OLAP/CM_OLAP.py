@@ -304,7 +304,7 @@ class CM_OLAP(CM):
         self.logger.log("======================================================================")
         # Call cm_ctl to start the
         cmd = CM_OLAP.get_start_cmd(nodeId, timeout=timeout, datadir=datadir, azName=azName)
-        result_set = CmdUtil.retryGetstatusoutput(cmd, retry_time=retry_times)
+        result_set = subprocess.getstatusoutput(cmd)
         # The output prompts when the failure to start
         if result_set[0] != 0:
             self.logger.error(ErrorCode.GAUSS_516["GAUSS_51607"] % start_type +

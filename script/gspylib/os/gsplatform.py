@@ -34,6 +34,7 @@ import subprocess
 import platform
 import socket
 import time
+import select
 
 sys.path.append(sys.path[0] + "/../../")
 from gspylib.common.ErrorCode import ErrorCode
@@ -41,6 +42,10 @@ from gspylib.common.ErrorCode import ErrorCode
 localDirPath = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, localDirPath + "/../../../lib/netifaces/")
 from netifaces import interfaces, ifaddresses, AF_INET, AF_INET6
+
+ISCONFIGURETRUE = "# isConfigure = TRUE"
+ISCONFIGUREFALSE = "# isConfigure = FALSE"
+SESSIONTIMEOUT = 300
 
 # ---------------platforms--------------------
 # global variable for our platform
@@ -76,6 +81,7 @@ SUPPORT_RHEL6X_VERSION_LIST = ["6.4", "6.5", "6.6", "6.7", "6.8", "6.9", "10"]
 SUPPORT_RHEL7X_VERSION_LIST = ["7.0", "7.1", "7.2", "7.3", "7.4", "7.5", "7.6", 
     "7.7", "7.8", "7.9", "10"]
 SUPPORT_RHEL8X_VERSION_LIST = ["8.0", "8.1", "8.2", "8.3", "8.4", "8.5"]
+SUPPORT_RHEL_LEAST_VERSION = ["6.4"]
 SUPPORT_RHEL_SERIES_VERSION_LIST = (SUPPORT_RHEL6X_VERSION_LIST +
                                     SUPPORT_RHEL7X_VERSION_LIST + 
                                     SUPPORT_RHEL8X_VERSION_LIST)
@@ -149,6 +155,144 @@ def _parse_release_file(firstline):
             idNum = l[1]
     return '', version, idNum
 
+def parse_linux_osid(filename):
+    """
+    Tries to determine the name of the Linux OS distribution name.
+
+        The function first looks for a distribution release file in
+        /etc and then reverts to _dist_try_harder() in case no
+        suitable files are found.
+
+        Returns a tuple (distname,version,id) which default to the
+        args given as parameters.
+
+    """
+    valid_info = []
+    lines_to_choose = []
+    with open(filename, 'r') as file:
+        for line in file:
+            line = line.strip()
+            # Ignore comment lines starting with # and empty lines
+            if line and not line.startswith('#'):
+                # Separate the release name, version and bitness with spaces
+                distro, version = line.split()
+                valid_info.append({
+                    'os': distro,
+                    'version': version
+                })
+                lines_to_choose.append(line.strip())
+    if len(lines_to_choose) == 1 or len(lines_to_choose) == 0:
+        return valid_info
+    for i, line in enumerate(lines_to_choose, 1):
+        print(f"{i}. {line}")
+
+    while True:
+        try:
+            choice = int(input("Please enter the serial number of the option:"))
+            if (1 <= choice and choice <= len(lines_to_choose)):
+                chosen_line = lines_to_choose[choice - 1]
+                valid_info = valid_info[choice - 1]
+                with open(filename, 'r+') as file:
+                    lines = file.readlines()
+                    file.seek(0)
+                    file.truncate()
+
+                    for line in lines:
+                        if line.strip().startswith('#') or line.strip() == '':
+                            file.write(line)
+                            continue
+                        elif chosen_line in line:
+                            file.write(line)
+                        else:
+                            file.write('#' + line)
+                write_is_configure_true(filename, ISCONFIGURETRUE)
+                break
+            else:
+                print("Invalid input: Please re-enter")
+        except ValueError:
+            print("Invalid input: Please re-enter")
+    return valid_info
+
+
+def write_is_configure_true(file_path, target_line):
+    # open the file and read all the lines
+    with open(file_path, 'r') as file:
+        lines = file.readlines()
+
+    # Check if any row contains target content
+    has_target_line = any(target_line in line for line in lines)
+
+    # If there is no target row, insert the target row before row 21
+    if not has_target_line:
+        lines.insert(20, target_line + '\n')
+
+    # Write the modified content back to the file
+    with open(file_path, 'w') as file:
+        file.writelines(lines)
+        
+
+def parse_linux_distributions(filename):
+    """
+    Tries to determine the name of the Linux OS distribution name.
+
+        The function first looks for a distribution release file in
+        /etc and then reverts to _dist_try_harder() in case no
+
+        Returns a tuple (distname,version,id) which default to the
+        args given as parameters.
+
+    """
+    is_configure = True
+    valid_info = parse_linux_osid(filename)
+
+    if len(valid_info) == 1:
+        write_is_configure_true(filename, ISCONFIGURETRUE)
+
+    with open(filename, 'r') as file:
+        for line in file:
+            if ISCONFIGURETRUE in line or ISCONFIGUREFALSE in line:
+                is_configure = False
+
+    # Remind the user if new content is added to the file
+    if len(valid_info) == 0 and is_configure:
+        print(f"File '{filename}' has not been configured yet,"
+                                "do you still need to configure it?"
+                                "Enter 'yes' or 'no' to configure "
+                                "the file: ", end='', flush=True)
+        rlist, _, _ = select.select([sys.stdin], [], [], SESSIONTIMEOUT)
+    
+        if rlist:
+            user_input = input().lower()
+        else:
+            user_input = "no"
+
+        while True:
+            if user_input in ('y', 'yes'):
+                write_is_configure_true(filename, ISCONFIGURETRUE)
+                os_name = input("Please enter an operating system name:")
+                version = input("Please enter the version number:")
+                with open(filename, 'a') as file:
+                    file.write(f"\n{os_name} {version}\n")
+                valid_info = parse_linux_osid(filename)
+                break
+            elif user_input in ('n', 'no'):
+                write_is_configure_true(filename, ISCONFIGUREFALSE)
+                break
+            else:
+                write_is_configure_true(filename, ISCONFIGUREFALSE)
+                break
+    return valid_info
+
+
+def select_linux_distribution(valid_info):
+    # If there is no legal information, return None
+    if not valid_info:
+        return None
+
+    # If there is only one line of legal information, return directly
+    if len(valid_info) == 1:
+        return valid_info[0]
+
 
 def linux_distribution(distname='', version='', idNum='',
                        supported_dists=_supported_dists,
@@ -173,11 +317,39 @@ def linux_distribution(distname='', version='', idNum='',
         args given as parameters.
 
     """
+    is_flag_osid = False
     try:
         etc = os.listdir('/etc')
     except os.error:
         # Probably not a Unix system
         return distname, version, idNum
+    
+    # Read system information from configuration file
+    # Call the function and pass in the filename
+    osid_path = os.path.realpath(
+            os.path.join(os.path.realpath(__file__), "../../../osid.in"))
+
+    if os.path.exists(osid_path):
+        file_data = parse_linux_distributions(osid_path)
+        
+        # Output the parsed content
+        selected_data = select_linux_distribution(file_data)
+        
+        if selected_data:
+            is_flag_osid = True
+
+    else:
+        print(f"The file '{osid_path}' does not exist.")
+        
+    if is_flag_osid:
+        if selected_data['os']:
+            distname = selected_data['os']
+        if selected_data['version']:
+            version = selected_data['version']
+        if selected_data['bit']:
+            idNum = selected_data['bit']
+        return distname, version, idNum
+    
     sortEtc = sorted(etc)
     gFile = None
     for file in sortEtc:

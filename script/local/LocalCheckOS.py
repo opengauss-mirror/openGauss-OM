@@ -46,7 +46,8 @@ from domain_utils.domain_common.cluster_constants import ClusterConstants
 from os_platform.linux_distro import LinuxDistro
 from os_platform.common import SUPPORT_RHEL6X_VERSION_LIST, \
     SUPPORT_RHEL7X_VERSION_LIST, SUPPORT_SUSE12X_VERSION_LIST, \
-    SUPPORT_SUSE11X_VERSION_LIST, SUPPORT_RHEL8X_VERSION_LIST
+    SUPPORT_SUSE11X_VERSION_LIST, SUPPORT_RHEL8X_VERSION_LIST, \
+    SUPPORT_RHEL_LEAST_VERSION
 
 sys.path.insert(0, localDirPath + "/../../lib")
 import psutil
@@ -1786,6 +1787,10 @@ def CheckPlatformInfo():
             mixed_type = "%s8" % data.distname
             platform_str = "%s_%s_%s" % (data.distname, data.version,
                                         data.bits)
+        elif int(data.version[0:3]) >= int(SUPPORT_RHEL_LEAST_VERSION[0]):
+            mixed_type = "%s" % data.distname
+            platform_str = "%s_%s_%s" % (data.distname, data.version,
+                                        data.bits)
         else:
             platform_str = "%s_%s_%s" % (data.distname, data.version,
                                         data.bits)
@@ -1798,12 +1803,40 @@ def CheckPlatformInfo():
         mixed_type = "%s" % data.distname
         platform_str = "%s_%s_%s" % (data.distname, data.version, data.bits)
     else:
-        platform_str = "%s_%s_%s" % (data.distname, data.version, data.bits)
-        g_logger.log("False unknown %s" % platform_str)
+        g_logger.log("Warning reason: %s version is not the official version"
+                        "supported by OM, but you can still deploy and install it" % 
+                        platform_str)
+        if ask_to_continue():
+            mixed_type = "%s" % data.distname
+            platform_str = "%s_%s_%s" % (data.distname, data.version, data.bits)
+            g_logger.log("True %s %s" % (mixed_type, platform_str))
+        else:
+            g_logger.log("False unknown %s" % platform_str)
         return
 
     g_logger.log("True %s %s" % (mixed_type, platform_str))
     return
+
+
+#############################################################################
+def ask_to_continue():
+    """
+    function : Check proceed with the installation
+    input  : NA
+    output : NA
+    """
+    while True:
+        response = input("Do you wish to proceed with the installation?"
+                    "(yes/no): ").strip().lower()
+        if response == 'yes':
+            print("Executing the operation.")
+            return True
+        elif response == 'no':
+            print("Operation canceled.")
+            return False
+        else:
+            print("Invalid input. Please enter 'yes' or 'no'.")
+            
 
 
 #############################################################################

@@ -46,6 +46,7 @@ ACTION_CLEAN_TOOL_ENV = 'clean_tool_env'
 ACTION_CHECK_UNPREINSTALL = "check_unpreinstall"
 ACTION_CLEAN_GAUSS_ENV = "clean_gauss_env"
 ACTION_DELETE_GROUP = "delete_group"
+ACTION_DELETE_CGROUP = "delete_cgroup"
 # clean instance paths
 ACTION_CLEAN_INSTANCE_PATHS = "clean_instance_paths"
 # clean $GAUSS_ENV
@@ -477,6 +478,27 @@ class Postuninstall(LocalBaseOM):
 
         self.logger.debug("Cleaned $GAUSS_ENV.")
 
+    def clean_cgroup(self):
+        """
+        function: clean cgroup
+        input : NA
+        output: NA
+        """
+        self.logger.debug("Cleaning user cgroup.")
+        # mkdir gauss_home dir
+        gsom_path = DefaultValue.ROOT_SCRIPTS_PATH
+        root_lib_dir = "%s/%s/lib/" % (gsom_path, self.user)
+        root_bin_dir = "%s/%s/bin/" % (gsom_path, self.user)
+        
+        # delete cgroup
+        cmd = "export LD_LIBRARY_PATH=%s:\$LD_LIBRARY_PATH && %s/gs_cgroup -d -U %s" % (root_lib_dir, root_bin_dir, self.user)
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            self.logger.logExit(
+                "Error: Failed to delete cgroup "
+                "cmd:%s. Error: \n%s" % (cmd, output))
+        self.logger.debug("Successfully cleaned user cgroup.")
+
     def cleanGroup(self):
         """
         function: clean group
@@ -603,6 +625,8 @@ class Postuninstall(LocalBaseOM):
                 self.cleanGaussEnv()
             elif self.action == ACTION_DELETE_GROUP:
                 self.cleanGroup()
+            elif self.action == ACTION_DELETE_CGROUP:
+                self.clean_cgroup()
             elif self.action == ACTION_CLEAN_DEPENDENCY:
                 self.cleanScript()
             elif self.action == ACTION_CLEAN_ENV:

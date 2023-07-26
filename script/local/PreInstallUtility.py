@@ -2586,6 +2586,17 @@ Common options:
         os.makedirs(dest_path)
         FileUtil.changeOwner("root", dest_path)
 
+        # cp cgroup to /root/gauss_om/xxx
+        self.logger.debug("cp cgroup to /root/gauss_om/xxx.")
+        root_lib_dir = os.path.join(dest_path, "lib")
+        root_bin_dir = os.path.join(dest_path, "bin")
+        FileUtil.createDirectory(root_lib_dir, mode=DefaultValue.KEY_DIRECTORY_MODE)
+        FileUtil.createDirectory(root_bin_dir, mode=DefaultValue.KEY_DIRECTORY_MODE)
+        libcgroup_dir = os.path.realpath("%s/libcgroup/lib/libcgroup.so*" % package_path)
+        cgroup_exe_dir = os.path.realpath("%s/libcgroup/bin/gs_cgroup" % package_path)
+        cp_cmd = "cp -rf %s %s; cp -rf %s %s" % (libcgroup_dir, root_lib_dir, cgroup_exe_dir, root_bin_dir)
+        CmdExecutor.execCommandLocally(cp_cmd)
+        
         # cp $GPHOME script lib to /root/gauss_om/xxx
         cmd = ("cp -rf %s/script %s/lib %s/version.cfg %s"
                % (self.clusterToolPath, self.clusterToolPath,

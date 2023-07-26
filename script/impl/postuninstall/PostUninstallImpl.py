@@ -60,7 +60,7 @@ ACTION_CLEAN_GAUSS_ENV = "clean_gauss_env"
 ACTION_DELETE_GROUP = "delete_group"
 ACTION_CLEAN_SYSLOG_CONFIG = 'clean_syslog_config'
 ACTION_CLEAN_DEPENDENCY = "clean_dependency"
-
+ACTION_DELETE_CGROUP = "delete_cgroup"
 
 class PostUninstallImpl:
     """
@@ -118,6 +118,8 @@ class PostUninstallImpl:
         try:
             # check uninstall
             self.checkUnPreInstall()
+            # clean cgroup
+            self.clean_cgroup()
             # clean app/log/data/temp dirs
             self.cleanDirectory()
             # clean other user
@@ -169,6 +171,27 @@ class PostUninstallImpl:
                                         self.sshTool, self.localMode,
                                         self.mpprcFile)
         self.logger.log("Successfully checked unpreinstallation.")
+
+    def clean_cgroup(self):
+        """
+        function: clean cgroup
+        input : NA
+        output: NA
+        """
+        self.logger.log("clean cgroup")
+
+        cmd = "%s -t %s -u %s -l '%s' -X '%s'" % (
+            OMCommand.getLocalScript("Local_UnPreInstall"),
+            ACTION_DELETE_CGROUP,
+            self.user,
+            self.localLog,
+            self.xmlFile)
+        self.logger.debug("Command for clean cgroup: %s" % cmd)
+        # check if do postuninstall in all nodes
+        CmdExecutor.execCommandWithMode(cmd,
+                                        self.sshTool, self.localMode,
+                                        self.mpprcFile)
+        self.logger.log("Successfully clean cgroup.")   
 
     def cleanDirectory(self):
         """

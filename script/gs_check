@@ -780,6 +780,7 @@ def parseCheckContext():
     items_newNode = []
     failedItems = []
     singleSkipList = []
+    rootItems = []
     # generate the items from scene configuration
     if g_opts.scene:
         items_oldNode, failedItems = __parseScene(g_opts.scene)
@@ -800,6 +801,7 @@ def parseCheckContext():
             g_context.rootItems.append(item)
         if g_opts.skipRootItems and item['permission'] == 'root':
             items_all.remove(item)
+            rootItems.append(item['name'])
             continue
         if item['permission'] == 'root':
             g_context.rootItems.append(item)
@@ -818,6 +820,8 @@ def parseCheckContext():
                 raise CheckException("GAUSS-53061",
                     "The --routing is required when cluster dosen't exist")
         g_context.items.append(item)
+    if len(rootItems) != 0:
+        g_logger.info("Warning: These check items [%s] belong to root item" % (",".join(rootItems)))
     if len(singleSkipList) != 0:
         __printOnScreen(
             "The following items are skipped when the type of cluster is"

@@ -1566,10 +1566,60 @@ class LinuxPlatform(GenericPlatform):
 
         fileName = os.path.normpath(fileName)
         if not os.path.exists(fileName):
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % fileName)
+            try:
+                directory_to_search = os.path.join(dirName, "./../../../")
+                matched_files = self.compare_files_in_directory(directory_to_search, fileName)
+                
+                if len(matched_files) == 1:
+                    return matched_files[0]
+                elif len(matched_files) > 1:
+                    print("Multiple matching files found,"
+                                      "please select one:")
+                    
+                    for i, file in enumerate(matched_files, 1):
+                        print(f"{i}. {file}")
+                        
+                    while True:
+                        try:
+                            choice = int(input("Please enter the serial number"
+                                               "of the option:"))
+                            if 1 <= choice <= len(matched_files):
+                                return matched_files[choice - 1]
+                            else:
+                                print("Invalid input: Please re-enter")
+                        except ValueError:
+                            print("Invalid input: Please re-enter")
+                else:
+                    raise Exception("No matching files found in the directory.")
+            except Exception as e:
+                raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % fileName)
+            
         if not os.path.isfile(fileName):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50210"] % fileName)
         return fileName
+
+    def compare_files_in_directory(directory, file_to_compare):
+        """
+        function: The function is to recursively search for files in the 
+                   specified directory and compare them with the given file,
+        input:
+            directory: Directory path to traverse
+            file_to_compare: The file path to compare with files in the directory
+        output:
+            matched_files
+        """
+        matched_files = []
+
+        for root, dirs, files in os.walk(directory):
+            for file in files:
+                file_path = os.path.join(root, file)
+                if os.path.isfile(file_path) and file_to_compare.lower() == file_path.lower():
+                    matched_files.append(file_path)
+
+        if matched_files:
+            return matched_files
+        else:
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % file_to_compare)
 
     def setKeyValueInSshd(self, key, value):
         """

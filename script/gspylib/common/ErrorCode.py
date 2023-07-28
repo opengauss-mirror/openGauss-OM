@@ -1130,6 +1130,45 @@ class ErrorCode():
         'GAUSS_53611': "[GAUSS-53611]: Error information is :\n%s",
         'GAUSS_53612': "[GAUSS-53612]: Can not find any catalog in database %s"
     }
+    
+    ###########################################################################
+    # openssl error
+    ###########################################################################
+    GAUSS_537 = {
+        'GAUSS_53700': "[GAUSS-53700] : Failed to execute the command: %s.\n"
+                       "This is because the OpenSSL random number generator"
+                       "does not work properly. This may be due to a lack of"
+                       "sufficient entropy in the system, or an issue with "
+                       "the configuration of OpenSSL.\n"
+
+                        "The following are commonly used inspection items:\n"
+
+                        "1. Increase system entropy pool: If the system lacks"
+                        "sufficient entropy, the randomness of the entropy pool"
+                        "can be increased by increasing system activity. For "
+                        "example, several terminal windows can be opened and"
+                        "random operations can be performed, such as moving "
+                        "the mouse, keyboard input, etc.\n"
+
+                        "2. Check OpenSSL configuration: Ensure that the OpenSSL"
+                        "configuration is correct. You can check the OpenSSL "
+                        "configuration files and environment variables to ensure"
+                        "that they point to the correct path and file.\n"
+
+                        "3. Update OpenSSL version: If the OpenSSL version is "
+                        "older, there may be some known issues and bugs. Try"
+                        "updating to the latest stable version.\n"
+
+                        "4. Check file permissions: Ensure that the directory"
+                        "and file where the certificate is being generated"
+                        "have sufficient permissions so that OpenSSL can generate"
+                        "the certificate.\n"
+
+                        "5. Use other random number generators: If the above methods"
+                        "do not solve the problem, you can try to use other random"
+                        "number generators instead of the default OpenSSL random "
+                        "number generators.\n"
+    }
 
     ##########################################################################
     # gs_expansion

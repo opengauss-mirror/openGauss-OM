@@ -60,7 +60,7 @@ class RandomValue:
                         ranpwd += output.strip()
                         break
                     if count > 100:
-                        raise Exception(ErrorCode.GAUSS_514["GAUSS_51402"] + cmd_tuple[i])
+                        raise Exception(ErrorCode.GAUSS_537["GAUSS_53700"] + cmd_tuple[i])
             else:
                 ranpwd += out_tuple[i].strip()
         return ranpwd

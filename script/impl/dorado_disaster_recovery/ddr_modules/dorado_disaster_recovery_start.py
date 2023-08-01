@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+#############################################################################
+# Copyright (c) 2020 Huawei Technologies Co.,Ltd.
+#
+# openGauss is licensed under Mulan PSL v2.
+# You can use this software according to the terms
+# and conditions of the Mulan PSL v2.
+# You may obtain a copy of Mulan PSL v2 at:
+#
+#          http://license.coscl.org.cn/MulanPSL2
+#
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS,
+# WITHOUT WARRANTIES OF ANY KIND,
+# EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+# MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+# See the Mulan PSL v2 for more details.
+# ----------------------------------------------------------------------------
+# Description  : dorado_disaster_recovery_start.py is utility for creating
+# relationship between primary cluster and standby cluster.
+
+import os
+
+from base_utils.security.sensitive_mask import SensitiveMask
+from gspylib.common.ErrorCode import ErrorCode
+from gspylib.common.Common import DefaultValue, ClusterCommand
+from impl.dorado_disaster_recovery.ddr_base import DoradoDisasterRecoveryBase
+from impl.dorado_disaster_recovery.ddr_constants import DoradoDisasterRecoveryConstants
+
+
+class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def _first_step_for_ddr_start(self, step):
+        """
+        First step for ddr start
+        """
+        if step >= 2:
+            return
+        self.logger.debug("Start first step of DisasterRecovery start.")
+        self.create_disaster_recovery_dir(self.dorado_file_dir)
+        self.check_action_and_mode()
+        self.init_cluster_status()
+
+    def _second_step_for_ddr_start(self, step):
+        """
+        Second step for ddr start
+        """
+        if step >= 2:
+            return
+        self.logger.debug("Start second step of ddr start.")
+        self.check_cluster_status(status_allowed=['Normal'])
+        self.check_cluster_is_common()
+        cm_exist = DefaultValue.check_is_cm_cluster(self.logger)
+        if not cm_exist:
+            self.logger.logExit(ErrorCode.GAUSS_516["GAUSS_51632"] %
+                                "check cm_ctl is available for current cluster")
+        self.check_is_under_upgrade()
+        self.check_dn_instance_params()
+        self.write_dorado_step("2_check_cluster_step")
+
+    def common_step_for_ddr_start(self):
+        """
+        Common step for ddr start between step 1 and 2
+        """
+        self.logger.debug("Start common config step of ddr start.")
+        self.distribute_cluster_conf()
+        
+
+    def _third_step_for_ddr_start(self, step):
+        """
+        Third step for ddr start
+        """
+        if step >= 3:
+            return
+        self.logger.debug("Start third step of ddr start.")
+
+        self.update_pg_hba()
+        self.config_cross_cluster_repl_info()
+        self.set_application_name()
+        self.set_ha_module_mode()
+        self.write_dorado_step("3_set_datanode_guc_step")
+
+
+    def _fourth_step_for_ddr_start(self, step):
+        """
+        Fourth step for ddr start
+        """
+        if step >= 4:
+            return
+        self.logger.debug("Start fourth step of ddr start.")
+        self.stop_cluster()
+        self.write_dorado_step("4_stop_cluster_step")
+
+    def _fifth_step_for_ddr_start(self, step):
+        """
+        Fifth step for ddr start
+        """
+        if step >= 5:
+            return
+        self.logger.debug("Start fifth step of ddr start.")
+        self.set_cmagent_guc("dorado_cluster_mode", "1", "set", only_mode='primary')
+        self.start_cluster(only_mode="primary")
+        self.write_dorado_step("5_start_primary_cluster_step")
+
+    def _sixth_step_for_ddr_start(self, step):
+        """
+        Sixth step for ddr start
+        """
+        if step >= 6 or self.params.mode == "primary":
+            return
+        self.logger.debug("Start sixth step of ddr start.")
+        self.update_dorado_info("cluster", "restore", only_mode='disaster_standby')
+        try:
+            self.start_dss_instance(only_mode='disaster_standby')
+            self.build_main_standby_datanode(only_mode='disaster_standby')
+        except Exception as error:
+            self.update_dorado_info("cluster", "restore_fail", only_mode='disaster_standby')
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51632"] % "build dns" + "Error:%s" % error)
+        finally:
+            self.stop_dss_instance(only_mode='disaster_standby')
+        self.write_dorado_step("6_build_dn_instance_step")
+        
+
+    def _seventh_step_for_ddr_start(self, step):
+        """
+        Seventh step for ddr start
+        """
+        if step >= 7 or self.params.mode == "primary":
+            return
+        self.logger.debug("Start seventh step of ddr start.")
+        self.set_cmserver_guc("backup_open", "1", "set", only_mode='disaster_standby')
+        self.set_cmagent_guc("agent_backup_open", "1", "set", only_mode='disaster_standby')
+        self.set_cmagent_guc("dorado_cluster_mode", "2", "set", only_mode='disaster_standby')
+        self.set_dss_cluster_run_mode("cluster_standby",only_mode='disaster_standby')
+        self.write_dorado_step("7_set_cm_guc_step")
+        
+
+    def _eighth_step_for_ddr_start(self, step):
+        """
+        Eighth step for ddr start
+        """
+        if step >= 8:
+            return
+        self.logger.debug("Start eighth step of ddr start.")
+        self.check_input(DoradoDisasterRecoveryConstants.START_MSG)
+        self.start_cluster(cm_timeout=DoradoDisasterRecoveryConstants.STANDBY_START_TIMEOUT,
+                           only_mode='disaster_standby')
+        self.update_dorado_info("cluster", "full_backup", only_mode='primary')
+        try:
+            self.wait_main_standby_connection(only_mode='primary')
+        except Exception as error:
+            self.update_dorado_info("cluster", "backup_fail", only_mode='primary')
+            raise Exception(str(error))
+        ret = self.check_cluster_status(status_allowed=['Normal'],
+                                        only_check=True, check_current=True)
+        query_status = "recovery" if ret else "recovery_fail"
+        self.update_dorado_info("cluster", query_status, only_mode='disaster_standby')
+        self.update_dorado_info("cluster", "archive", only_mode='primary')
+        self.write_dorado_step("8_start_cluster_step")
+
+    def _ninth_step_for_ddr_start(self, step):
+        """
+        ninth step for ddr start
+        """
+        if step >= 9:
+            return
+        self.logger.debug("Start ninth step of ddr start.")
+        self.clean_step_file()
+
+    def run(self):
+        self.logger.log("Start create dorado storage disaster relationship.")
+        step = self.query_dorado_step()
+        self._first_step_for_ddr_start(step)
+        self.parse_cluster_status()
+        self._second_step_for_ddr_start(step)
+        self.common_step_for_ddr_start()
+        self._third_step_for_ddr_start(step)
+        self._fourth_step_for_ddr_start(step)
+        self._fifth_step_for_ddr_start(step)
+        self._sixth_step_for_ddr_start(step)
+        self._seventh_step_for_ddr_start(step)
+        self._eighth_step_for_ddr_start(step)
+        self._ninth_step_for_ddr_start(step)
+        self.logger.log("Successfully do dorado disaster recovery start.")
+ 

@@ -1038,11 +1038,19 @@ class PreinstallImpl:
         self.context.logger.debug("Checking OS parameters.")
         try:
             # check the OS parameters
-            cmd = "%s -h %s -i A -l '%s' -X '%s'" % (
-                OMCommand.getLocalScript("Gauss_CheckOS"),
-                namelist,
-                self.context.localLog,
-                self.context.xmlFile)
+            if self.context.skipOSCheck:
+                cmd = "%s -h %s -i A -l '%s' -X '%s --skip-os-check '%s''" % (
+                    OMCommand.getLocalScript("Gauss_CheckOS"),
+                    namelist,
+                    self.context.localLog,
+                    self.context.xmlFile,
+                    self.context.skipOSCheck)
+            else:
+                cmd = "%s -h %s -i A -l '%s' -X '%s'" % (
+                    OMCommand.getLocalScript("Gauss_CheckOS"),
+                    namelist,
+                    self.context.localLog,
+                    self.context.xmlFile)
             (status, output) = subprocess.getstatusoutput(cmd)
             # if cmd failed, then raise
             if status != 0 and output.strip() == "":

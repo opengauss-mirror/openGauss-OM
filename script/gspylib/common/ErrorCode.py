@@ -190,8 +190,9 @@ class ErrorCode():
         'GAUSS_50238': "[GAUSS-50238] : Check integrality of bin ",
                        "file %s failed."
         'GAUSS_50239': "[GAUSS-50239] : %s should be set in scene config "
-                                      "file."
-
+                                      "file.",
+        'GAUSS_50240': "[GAUSS-50240] : %s, it not allowed that directory dss_home_path is a subset"
+                                      "of Directory datanode_path."
     }
 
     ###########################################################################

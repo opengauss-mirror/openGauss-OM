@@ -93,6 +93,8 @@ from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.ParallelBaseOM import ParallelBaseOM
 from gspylib.common.ParameterParsecheck import Parameter
+from gspylib.common.DbClusterInfo import dbNodeInfo, \
+    dbClusterInfo, compareObject
 from impl.preinstall.OLAP.PreinstallImplOLAP import PreinstallImplOLAP
 from gspylib.threads.SshTool import SshTool
 from domain_utils.cluster_file.cluster_config_file import ClusterConfigFile
@@ -544,7 +546,33 @@ General options:
         sys.path.insert(0, lib_path)
         if gsom_path == DefaultValue.ROOT_SCRIPTS_PATH:
             self.is_new_root_path = True
-
+            
+    def checkIfNest(self):
+        """
+        function: check syncNode
+        """
+        clusterInfo = dbClusterInfo()
+        clusterInfo.initFromXml(self.xmlFile)
+        dbNodes = clusterInfo.dbNodes
+        # get the dss_home path
+        dss_home_path = clusterInfo.dss_home
+     
+        for dbinfo in dbNodes:
+            if dbinfo is None:
+                break
+            datanodes = dbinfo.datanodes
+            
+            # check if subdir_path starts with parentdir_path
+            for datainfo in datanodes:
+                parentdir_path = os.path.normpath(datainfo.datadir)
+                subdir_path = os.path.normpath(dss_home_path)
+                if not parentdir_path.endswith(os.path.sep):
+                    parentdir_path += os.path.sep
+                if not subdir_path.endswith(os.path.sep):
+                    subdir_path += os.path.sep
+                    
+                if subdir_path.startswith(parentdir_path):
+                    GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50240"] % dss_home_path)
 
 def clearHistTimeFormat():
     cmd = "sed -i '/HISTTIMEFORMAT=/d' /etc/profile"
@@ -571,6 +599,8 @@ if __name__ == '__main__':
         preinstall.parseCommandLine()
         # check parameters
         preinstall.checkParameter()
+        # check if the path between dss and datanode is nested
+        preinstall.checkIfNest()
         # check expect
         preinstall.check_expect()
         # init global variables

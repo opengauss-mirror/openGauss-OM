@@ -2278,14 +2278,6 @@ def  cleanInstallPath():
     output : NA
     """
     installPath = g_opts.appPath
-    commit_id = installPath[-8:]
-    if commit_id:
-        dss_app = os.path.realpath(
-            os.path.join(os.path.dirname(installPath), f'dss_app_{commit_id}'))
-        cmd = "(if [ -d '%s' ]; then rm -rf '%s'; fi)" % (dss_app, dss_app)
-        g_logger.log("Command for cleaning install path: %s." % cmd)
-        CmdExecutor.execCommandLocally(cmd)
-
     if not os.path.exists(installPath):
         g_logger.debug(ErrorCode.GAUSS_502[
                            "GAUSS_50201"] % installPath + " No need to clean.")
@@ -2314,6 +2306,15 @@ def  cleanInstallPath():
     # and then we will have the permission to clean
     # appPath under commit-upgrade
     # under rollback, we also need to restore the permission
+
+    commit_id = installPath[-8:]
+    if commit_id:
+        dss_app = os.path.realpath(
+            os.path.join(os.path.dirname(installPath), f'dss_app_{commit_id}'))
+        cmd = "(if [ -d '%s' ]; then rm -rf '%s'; fi)" % (dss_app, dss_app)
+        g_logger.debug("Command for cleaning install path: %s." % cmd)
+        CmdExecutor.execCommandLocally(cmd)
+
     pluginPath = "%s/lib/postgresql/pg_plugin" % installPath
     cmd = "(if [ -d '%s' ]; then chmod -R %d '%s'; fi)" % (
         pluginPath, DefaultValue.KEY_DIRECTORY_MODE, pluginPath)
@@ -2330,6 +2331,11 @@ def  cleanInstallPath():
                                                                 appBakPath)
     cmd += " && (if [ ! -d '%s' ]; then mkdir -p '%s'; fi)" % (
         appBakPath, appBakPath)
+    delete_bin = os.path.join(appBakPath, f'gaussdb_{commit_id}/bin')
+    cmd += " && (if [ -L '{0}' ]; then unlink '{0}'; fi)".format(
+        os.path.join(delete_bin, 'perctrl'))
+    cmd += " && (if [ -L '{0}' ]; then unlink '{0}'; fi)".format(
+        os.path.join(delete_bin, 'cm_persist'))
     cmd += " && (if [ -d '%s' ]; then cp -r '%s/' '%s/to_be_delete/'; fi)" % (
         installPath, installPath, tmpDir)
     g_logger.debug(

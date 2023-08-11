@@ -63,7 +63,7 @@ VALUE_CHECK_LIST = ["|", ";", "&", "$", "<", ">", "`", "\\", "'", "\"", "{",
 # append '=' after long options if it required parameter
 # no child branch
 gs_preinstall = ["-?", "--help", "-V", "--version", "-U:", "-G:", "-L",
-                 "--skip-os-set", "-X:",
+                 "--skip-os-set", "-X:", "--skip-os-check",
                  "--env-var=", "--sep-env-file=", "--skip-hostname-set",
                  "-l:", "--non-interactive", "--delete-root-trust", "--unused-third-party"]
 gs_install = ["-?", "--help", "-V", "--version", "-X:", "-l:",
@@ -93,7 +93,7 @@ gs_checkperf = ["-?", "--help", "-V", "--version", "--detail", "-o:",
                 "-i:", "-l:", "-U:"]
 gs_ssh = ["-?", "--help", "-V", "--version", "-c:"]
 gs_checkos = ["-?", "--help", "-V", "--version", "-h:", "-f:", "-o:",
-              "-i:", "--detail",
+              "-i:", "--detail", "--skip-os-check",
               "-l:", "-X:"]
 gs_expansion = ["-?", "--help", "-V", "--version", "-U:", "-G:", "-L", 
             "-X:", "-h:", "--sep-env-file=", "--time-out="]
@@ -338,6 +338,7 @@ class Parameter():
                               "--dbuser": "dbuser",
                               "--nodeId": "nodeId",
                               "--security-mode": "security_mode",
+                              "--skip-os-check": "skipOSCheck",
                               "--cluster-number": "cluster_number"
                               }
         parameterNeedValue_keys = parameterNeedValue.keys()

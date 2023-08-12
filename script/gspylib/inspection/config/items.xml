@@ -20,7 +20,7 @@
                 <zh>检查是否安装并开启ntpq服务，并与ntp时钟源同步。</zh>
             </suggestion>
             <standard>
-                <zh>检查系统NTPD服务，如果服务开启且各节点时间误差在1分钟以内则检查项通过，否则检查项不通过。</zh>
+                <zh>检查系统NTPD服务，如果服务开启且各节点时间误差在60s(资源池化部署环境下：6s)以内则检查项通过，否则检查项不通过。</zh>
             </standard>
             <category>os</category>
             <permission>user</permission>

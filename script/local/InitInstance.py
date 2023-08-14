@@ -63,6 +63,7 @@ class CmdOptions():
         self.dss_mode = False
         self.dss_config = ""
         self.dorado_config = ""
+        self.dorado_cluster_mode = ""
 
 
 def usage():
@@ -80,7 +81,7 @@ def parseCommandLine():
     try:
         opts, args = getopt.getopt(sys.argv[1:], "U:P:G:l:?", [
             "help", "dws_mode", "vc_mode", "paxos_mode", "dss_mode",
-            "dss_config=", "dorado_config="
+            "dss_config=", "dorado_config=", "dorado_cluster_mode="
         ])
     except Exception as e:
         usage()
@@ -115,6 +116,8 @@ def parseCommandLine():
             g_opts.dss_config = value.strip()
         elif key == "--dorado_config":
             g_opts.dorado_config = value.strip()
+        elif key == "--dorado_cluster_mode":
+            g_opts.dorado_cluster_mode = value.strip()
         Parameter.checkParaVaild(key, value)
 
 
@@ -182,7 +185,8 @@ class initDbNode(LocalBaseOM):
                  paxos_mode=False,
                  dss_mode=False,
                  dss_config="",
-                 dorado_config = ""):
+                 dorado_config = "",
+                 dorado_cluster_mode = ""):
         """
         function: init instance
         input : logFile, user, clusterConf, dbInitParams
@@ -275,7 +279,8 @@ if __name__ == '__main__':
                             g_opts.paxos_mode,
                             dss_mode=g_opts.dss_mode,
                             dss_config=g_opts.dss_config,
-                            dorado_config=g_opts.dorado_config)
+                            dorado_config=g_opts.dorado_config,
+                            dorado_cluster_mode=g_opts.dorado_cluster_mode)
         dbInit.initNodeInst(g_opts.vc_mode)
 
     except Exception as e:

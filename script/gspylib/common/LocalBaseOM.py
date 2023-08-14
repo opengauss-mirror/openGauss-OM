@@ -50,7 +50,8 @@ class LocalBaseOM(object):
                  paxos_mode=False,
                  dss_mode=False,
                  dss_config="",
-                 dorado_config=""):
+                 dorado_config="",
+                 dorado_cluster_mode=""):
         '''
         Constructor
         '''
@@ -81,6 +82,7 @@ class LocalBaseOM(object):
         self.dss_mode = dss_mode
         self.dss_config = dss_config
         self.dorado_config = dorado_config
+        self.dorado_cluster_mode = dorado_cluster_mode
 
     def initComponent(self, paxos_mode=False):
         """
@@ -156,6 +158,7 @@ class LocalBaseOM(object):
             self.initComponentAttributes(component)
             component.initParas = self.initParas
             component.dorado_config = self.dorado_config
+            component.dorado_cluster_mode = self.dorado_cluster_mode
             self.dnCons.append(component)
 
     def readConfigInfo(self):

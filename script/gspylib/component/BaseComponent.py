@@ -56,6 +56,7 @@ class BaseComponent(object):
         self.dss_mode = ''
         self.dss_config = ''
         self.dorado_config = ''
+        self.dorado_cluster_mode = ''
 
     def install(self):
         pass

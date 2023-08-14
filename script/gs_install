@@ -219,6 +219,9 @@ General options:
         # parameter --dorado-info
         if (ParaDict.__contains__("dorado-config")):
             self.dorado_config = ParaDict.get("dorado-config")
+        # parameter --dorado-cluster-mode
+        if (ParaDict.__contains__("dorado-cluster-mode")):
+            self.dorado_cluster_mode = ParaDict.get("dorado-cluster-mode")
 
     def checkUser(self):
         """

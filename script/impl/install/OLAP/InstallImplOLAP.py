@@ -290,7 +290,8 @@ class InstallImplOLAP(InstallImpl):
         elif self.context.clusterInfo.enable_dss == 'on':
             dss_config = DssConfig.get_value_b64_handler(
                 'dss_nodes_list', self.context.clusterInfo.dss_config)
-            cmd += f" --dss_mode --dss_config={dss_config} --dorado_config={self.context.dorado_config}"
+            cmd += f" --dss_mode --dss_config={dss_config} --dorado_config={self.context.dorado_config} \
+                      --dorado_cluster_mode={self.context.dorado_cluster_mode}"
         self.context.logger.debug(
             "Command for initializing instances: %s" % cmd)
 

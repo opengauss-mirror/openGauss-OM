@@ -166,6 +166,8 @@ class DN_OLAP(Kernel):
                     cmd += " -g %s" % self.dorado_config
                     tmpDict3 = {}
                     tmpDict3["xlog_lock_file_path"] = "'%s/redolog.lock'" % self.instInfo.datadir
+                if (self.dorado_cluster_mode != ""):
+                    cmd += "--enable-ss-dorado"
             self.logger.debug("Command for initializing database "
                               "node instance: %s" % cmd)
             status, output = CmdUtil.retryGetstatusoutput(

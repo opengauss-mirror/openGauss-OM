@@ -751,7 +751,7 @@ Common options:
         # user exists and input group not exists
         if userstatus == 0 and groupstatus != 0:
             self.logger.logExit(ErrorCode.GAUSS_503["GAUSS_50305"]
-                                + " User:Group[%s:%s]" 
+                                + " User:Group[%s:%s]"
                                 % (self.user, self.group))
 
         # user exists and group exists
@@ -1632,6 +1632,11 @@ Common options:
             datadir = node_info.datanodes[0].datadir
             FileUtil.writeFile(userProfile,
                              ["export PGDATA=%s" % datadir])
+
+            # set PGPORT
+            basePort = node_info.datanodes[0].port
+            FileUtil.writeFile(userProfile, ["export PGPORT=%d" % basePort])
+
             # set PATH
             if userProfile is ClusterConstants.ETC_PROFILE:
                 FileUtil.writeFile(userProfile, [
@@ -1649,6 +1654,8 @@ Common options:
                 "export LD_LIBRARY_PATH=$GPHOME/lib:$LD_LIBRARY_PATH"])
             # set PYTHONPATH
             FileUtil.writeFile(userProfile, ["export PYTHONPATH=$GPHOME/lib"])
+
+
         except Exception as e:
             self.logger.logExit(str(e))
         self.logger.debug("Successfully set tool ENV.")
@@ -2596,7 +2603,7 @@ Common options:
         cgroup_exe_dir = os.path.realpath("%s/libcgroup/bin/gs_cgroup" % package_path)
         cp_cmd = "cp -rf %s %s; cp -rf %s %s" % (libcgroup_dir, root_lib_dir, cgroup_exe_dir, root_bin_dir)
         CmdExecutor.execCommandLocally(cp_cmd)
-        
+
         # cp $GPHOME script lib to /root/gauss_om/xxx
         cmd = ("cp -rf %s/script %s/lib %s/version.cfg %s"
                % (self.clusterToolPath, self.clusterToolPath,

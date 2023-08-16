@@ -1562,6 +1562,8 @@ Common options:
             "Deleting crash GPHOME in user environment variables.")
         # clean PGDATA
         FileUtil.deleteLine(userProfile, "^\\s*export\\s*PGDATA*")
+        # clean PGPORT
+        FileUtil.deleteLine(userProfile, "^\\s*export\\s*PGPORT*")
         # clean LD_LIBRARY_PATH
         FileUtil.deleteLine(userProfile,
                           "^\\s*export\\s*LD_LIBRARY_PATH=\\$GPHOME\\/script"

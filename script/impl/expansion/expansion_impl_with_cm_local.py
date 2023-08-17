@@ -151,6 +151,5 @@ class ExpansionImplWithCmLocal(ExpansionImplWithCm):
         self.expansion_check()
         self._set_expansion_success()
         change_user_executor(self.do_config)
-        self._set_pgxc_node_name()
         change_user_executor(self.do_start)
         self.check_new_node_state(True)

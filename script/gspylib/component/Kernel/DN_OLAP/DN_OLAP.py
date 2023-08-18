@@ -162,12 +162,8 @@ class DN_OLAP(Kernel):
                     " --socketpath=\"{}\"".format(
                     "+{},+{}".format(vgname, pri_vgname), cfg_context, inst_id,
                     "UDS:{}/.dss_unix_d_socket".format(dss_home))
-                if (self.dorado_config != "" and self.instInfo.instanceType == DefaultValue.MASTER_INSTANCE):
-                    cmd += " -g %s" % self.dorado_config
-                    tmpDict3 = {}
-                    tmpDict3["xlog_lock_file_path"] = "'%s/redolog.lock'" % self.instInfo.datadir
                 if (self.dorado_cluster_mode != ""):
-                    cmd += "--enable-ss-dorado"
+                    cmd += " --enable-ss-dorado"
             self.logger.debug("Command for initializing database "
                               "node instance: %s" % cmd)
             status, output = CmdUtil.retryGetstatusoutput(
@@ -178,8 +174,6 @@ class DN_OLAP(Kernel):
         # set ssl to DB nodes.
         dnGucParas = self.getDnGUCDict()
         self.setGucConfig(dnGucParas)
-        if (self.dorado_config != "" and self.instInfo.instanceType == DefaultValue.MASTER_INSTANCE):
-            self.setGucConfig(tmpDict3)
         self.copyAndModCertFiles()
 
     def getInstanceNodeName(self):

@@ -76,6 +76,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         self.xml_cluster_info = dbClusterInfo()
         self.ssh_tool = None
         self.new_nodes = list()
+        self.app_names = list()
         self._init_global()
 
     def _init_global(self):
@@ -297,10 +298,9 @@ class ExpansionImplWithCm(ExpansionImpl):
         self.logger.debug("Start to set other guc parameters.")
 
         # set port|application_name|log_directory|audit_directory on new nodes
-        app_names = self.getIncreaseAppNames(len(self.new_nodes))
         log_path = ClusterDir.getUserLogDirWithUser(self.user)
         new_nodes_para_list = []
-        for node,appname in zip(self.new_nodes, app_names):
+        for node,appname in zip(self.new_nodes, self.app_names):
             if node.datanodes:
                 datains = node.datanodes[0]
                 log_dir = "%s/pg_log/dn_%d" % (log_path, appname)
@@ -552,9 +552,10 @@ class ExpansionImplWithCm(ExpansionImpl):
         self.expansion_check()
         self.do_preinstall()
         self.logger.debug("[preinstall end] new nodes success: %s" % self.expansionSuccess)
+        self.app_names = self.getIncreaseAppNames(len(self.new_nodes))
+        self.logger.debug("get increase application names %s" % self.app_names)
         change_user_executor(self.do_install)
         change_user_executor(self.do_config)
-        self._set_pgxc_node_name()
         change_user_executor(self.do_start)
         self.check_new_node_state(True)
 

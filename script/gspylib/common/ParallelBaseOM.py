@@ -80,7 +80,6 @@ class ParallelBaseOM(object):
         self.cnCons = []
         self.dnCons = []
         self.dss_cons = []
-        self.dorado_config = ""
         self.dorado_cluster_mode = ""
         # localMode is same as isSingle in all OM script, expect for
         # gs_preinstall.

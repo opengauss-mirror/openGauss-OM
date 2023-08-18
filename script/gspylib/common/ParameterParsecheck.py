@@ -68,7 +68,7 @@ gs_preinstall = ["-?", "--help", "-V", "--version", "-U:", "-G:", "-L",
                  "-l:", "--non-interactive", "--delete-root-trust", "--unused-third-party"]
 gs_install = ["-?", "--help", "-V", "--version", "-X:", "-l:",
               "--gsinit-parameter=", "--dn-guc=", "--cms-guc=",
-              "--time-out=", "--dorado-config=", "--dorado-cluster-mode", "--alarm-component="]
+              "--time-out=", "--dorado-cluster-mode=", "--alarm-component="]
 gs_uninstall = ["-?", "--help", "-V", "--version", "-l:", "-L",
                 "--delete-data"]
 gs_postuninstall = ["-?", "--help", "-V", "--version", "--delete-user",
@@ -302,7 +302,6 @@ class Parameter():
                               "--alarm-type": "warningType",
                               "--alarm-server-addr": "warningserverip",
                               "--time-out": "time_out", "": "",
-                              "--dorado-config": "dorado-config",
                               "--dorado-cluster-mode" :"dorado-cluster-mode",
                               "--alarm-component": "alarm_component",
                               "--SSD-fault-time": "SSDFaultTime",
@@ -476,8 +475,6 @@ class Parameter():
                 PARAMETER_VALUEDICT['new_values'] = value.strip().split(",")
             elif key == "--upgrade-package":
                 PARAMETER_VALUEDICT["upgrade-package"] = value.strip()
-            elif key == "--dorado-config":
-                PARAMETER_VALUEDICT["dorado-config"] = value.strip()
             elif key == "--dorado-cluster-mode":
                 PARAMETER_VALUEDICT["dorado-cluster-mode"] = value.strip()
             # Only check / symbol for gs_lcct.

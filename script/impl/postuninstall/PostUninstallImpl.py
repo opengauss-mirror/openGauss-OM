@@ -191,7 +191,7 @@ class PostUninstallImpl:
         CmdExecutor.execCommandWithMode(cmd,
                                         self.sshTool, self.localMode,
                                         self.mpprcFile)
-        self.logger.log("Successfully clean cgroup.")   
+        self.logger.log("Successfully clean cgroup.")
 
     def cleanDirectory(self):
         """
@@ -471,6 +471,11 @@ class PostUninstallImpl:
             self.logger.debug(
                 "Deleting environmental software of local nodes.")
 
+            hostName = NetUtil.GetHostIpOrName()
+            node_info = self.clusterInfo.getDbNodeByName(hostName)
+            datadir = node_info.datanodes[0].datadir
+            datadir_escaped = datadir.replace("/", "\\/")
+            basePort = node_info.datanodes[0].port
             # clean local node environment variable
             cmd = "(if [ -s '%s' ]; then " % PROFILE_FILE
             cmd += "sed -i -e '/^export PATH=\$PATH:\/root\/gauss_om\/%s\/" \
@@ -481,7 +486,10 @@ class PostUninstallImpl:
                 "\$LD_LIBRARY_PATH$/d' %s " % PROFILE_FILE
             cmd += "-e '/^export LD_LIBRARY_PATH=\$GPHOME\/lib:" \
                 "\$LD_LIBRARY_PATH$/d' %s " % PROFILE_FILE
+            cmd += "-e '/^export PGPORT=%d/d' %s " %(basePort,PROFILE_FILE)
+            cmd += "-e '/^export PGDATA=%s/d' %s " %(datadir_escaped,PROFILE_FILE)
             cmd +="-e '/^export PYTHONPATH=\$GPHOME\/lib$/d' %s; fi) " % PROFILE_FILE
+
             self.logger.debug(
                 "Command for deleting environment variable: %s" % cmd)
             (status, output) = subprocess.getstatusoutput(cmd)

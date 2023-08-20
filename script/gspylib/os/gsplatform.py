@@ -318,38 +318,12 @@ def linux_distribution(distname='', version='', idNum='',
 
     """
     is_flag_osid = False
+    is_flag_oscorrect = True
     try:
         etc = os.listdir('/etc')
     except os.error:
         # Probably not a Unix system
-        return distname, version, idNum
-    
-    # Read system information from configuration file
-    # Call the function and pass in the filename
-    osid_path = os.path.realpath(
-            os.path.join(os.path.realpath(__file__), "../../../osid.in"))
-
-    if os.path.exists(osid_path):
-        file_data = parse_linux_distributions(osid_path)
-        
-        # Output the parsed content
-        selected_data = select_linux_distribution(file_data)
-        
-        if selected_data:
-            is_flag_osid = True
-
-    else:
-        print(f"The file '{osid_path}' does not exist.")
-        
-    if is_flag_osid:
-        if selected_data['os']:
-            distname = selected_data['os']
-        if selected_data['version']:
-            version = selected_data['version']
-        if selected_data['bit']:
-            idNum = selected_data['bit']
-        return distname, version, idNum
-    
+        return distname, version, idNum 
     sortEtc = sorted(etc)
     gFile = None
     for file in sortEtc:
@@ -372,12 +346,41 @@ def linux_distribution(distname='', version='', idNum='',
 
     if _distname and full_distribution_name:
         distname = _distname
+        for dist in SUPPORT_WHOLE_PLATFORM_LIST:
+            if dist.lower == _distname.lower:
+                is_flag_oscorrect = True
     if _version:
         version = _version
     if _id:
         idNum = _id
-    return distname, version, idNum
+    if is_flag_oscorrect == True:
+        return distname, version, idNum
+    elif is_flag_oscorrect == False:
+        # Read system information from configuration file
+        # Call the function and pass in the filename
+        osid_path = os.path.realpath(
+                os.path.join(os.path.realpath(__file__), "../../../osid.conf"))
 
+        if os.path.exists(osid_path):
+            file_data = parse_linux_distributions(osid_path)
+            
+            # Output the parsed content
+            selected_data = select_linux_distribution(file_data)
+            
+            if selected_data:
+                is_flag_osid = True
+                
+        else:
+            print(f"The file '{osid_path}' does not exist.")
+           
+        if is_flag_osid:
+            if selected_data['os']:
+                distname = selected_data['os']
+            if selected_data['version']:
+                version = selected_data['version']
+            if selected_data['bit']:
+                idNum = selected_data['bit']
+            return distname, version, idNum
 
 def dist(supported_dists=_supported_dists):
     """ Tries to determine the name of the Linux OS distribution name.

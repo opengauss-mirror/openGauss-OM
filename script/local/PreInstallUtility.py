@@ -1563,6 +1563,8 @@ Common options:
         FileUtil.deleteLine(userProfile, "^\\s*export\\s*PGDATA*")
         # clean PGPORT
         FileUtil.deleteLine(userProfile, "^\\s*export\\s*PGPORT*")
+        # clean PGDATABASE
+        FileUtil.deleteLine(userProfile, "^\\s*export\\s*PGDATABASE*")
         # clean LD_LIBRARY_PATH
         FileUtil.deleteLine(userProfile,
                           "^\\s*export\\s*LD_LIBRARY_PATH=\\$GPHOME\\/script"
@@ -1634,6 +1636,8 @@ Common options:
             datadir = node_info.datanodes[0].datadir
             FileUtil.writeFile(userProfile,
                              ["export PGDATA=%s" % datadir])
+            # set PGDATABASE
+            FileUtil.writeFile(userProfile, ["export PGDATABASE=%s" % "postgres"])
 
             # set PGPORT
             basePort = node_info.datanodes[0].port

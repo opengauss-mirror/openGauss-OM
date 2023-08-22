@@ -24,7 +24,7 @@ import re
 import select
 import sys
 
-from os_platform.common import _supported_dists
+from os_platform.common import _supported_dists,SUPPORT_WHOLE_PLATFORM_LIST
 
 ISCONFIGURETRUE = "# isConfigure = TRUE"
 ISCONFIGUREFALSE = "# isConfigure = FALSE"
@@ -237,40 +237,12 @@ class LinuxDistro(object):
 
         """
         is_flag_osid = False
+        is_flag_oscorrect = True
         try:
             etc_dir = os.listdir('/etc')
         except os.error:
             # Probably not a Unix system
             return distname, version, idNum
-        
-        # Read system information from configuration file
-        # Call the function and pass in the filename
-        osid_path = os.path.realpath(
-                os.path.join(os.path.realpath(__file__), "../../osid.in"))
-    
-        if os.path.exists(osid_path):
-            file_data = LinuxDistro.parse_linux_distributions(osid_path)
-            
-            # Output the parsed content
-            selected_data = LinuxDistro.select_linux_distribution(file_data)
-            
-            if selected_data:
-                is_flag_osid = True
-
-        else:
-            print(f"The file '{osid_path}' does not exist.")
-            
-        if is_flag_osid:
-            if selected_data['os']:
-                distname = selected_data['os']
-            if selected_data['version']:
-                version = selected_data['version']
-            if selected_data['bit']:
-                idNum = selected_data['bit']
-            return distname, version, idNum
-        # else:
-            # g_logger.debug("Start to distributing the check context dump file")
-        
         etc_dir.sort()
         gFile = None
         _release_filename = re.compile(r'(\w+)[-_](release|version)')
@@ -294,8 +266,38 @@ class LinuxDistro(object):
 
         if _distname and full_distribution_name:
             distname = _distname
+            for dist in SUPPORT_WHOLE_PLATFORM_LIST:
+                if dist.lower == _distname.lower:
+                    is_flag_oscorrect = True
         if _version:
             version = _version
         if _id:
             idNum = _id
-        return distname, version, idNum
+        if is_flag_oscorrect == True:
+            return distname, version, idNum
+        elif is_flag_oscorrect == False:
+            # Read system information from configuration file
+            # Call the function and pass in the filename
+            osid_path = os.path.realpath(
+                    os.path.join(os.path.realpath(__file__), "../../osid.conf"))
+        
+            if os.path.exists(osid_path):
+                file_data = LinuxDistro.parse_linux_distributions(osid_path)
+                
+                # Output the parsed content
+                selected_data = LinuxDistro.select_linux_distribution(file_data)
+                
+                if selected_data:
+                    is_flag_osid = True
+
+            else:
+                print(f"The file '{osid_path}' does not exist.")
+                
+            if is_flag_osid:
+                if selected_data['os']:
+                    distname = selected_data['os']
+                if selected_data['version']:
+                    version = selected_data['version']
+                if selected_data['bit']:
+                    idNum = selected_data['bit']
+                return distname, version, idNum

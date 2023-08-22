@@ -54,7 +54,7 @@ class Project(object):
             param.action.name,
             time.strftime('%Y-%m-%d-%H_%M_%S', time.localtime(self.id))
         )
-        self.workspace = "{0}/{1}".format(self.dir_workspace, self.name)
+        self.workspace = "{0}/{1}_{2}".format(self.dir_workspace, self.name, os.getpid())
         self.log = "{0}/run.log".format(self.workspace)
 
     def __str__(self):

@@ -486,6 +486,7 @@ class PostUninstallImpl:
                 "\$LD_LIBRARY_PATH$/d' %s " % PROFILE_FILE
             cmd += "-e '/^export LD_LIBRARY_PATH=\$GPHOME\/lib:" \
                 "\$LD_LIBRARY_PATH$/d' %s " % PROFILE_FILE
+            cmd += "-e '/^export PGDATABASE=postgres/d' %s " % PROFILE_FILE
             cmd += "-e '/^export PGPORT=%d/d' %s " %(basePort,PROFILE_FILE)
             cmd += "-e '/^export PGDATA=%s/d' %s " %(datadir_escaped,PROFILE_FILE)
             cmd +="-e '/^export PYTHONPATH=\$GPHOME\/lib$/d' %s; fi) " % PROFILE_FILE

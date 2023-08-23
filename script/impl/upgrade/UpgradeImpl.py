@@ -1945,7 +1945,7 @@ class UpgradeImpl:
             self.context.oldClusterAppPath, "bin/upgrade_version")
         if os.path.exists(versionFile):
             _, number, _ = VersionInfo.get_version_info(versionFile)
-            cmd = "gs_om -t start --cluster-number='%s'" % (number)
+            cmd = "gs_om -t start --cluster-number='%s' --time-out=600" % (number)
         else:
             cmd = "gs_om -t start"
         (status, output) = subprocess.getstatusoutput(cmd)

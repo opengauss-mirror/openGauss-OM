@@ -787,11 +787,13 @@ class SshTool():
                                               targetDir, self.__resultFile)
             (status, output) = subprocess.getstatusoutput(scpCmd)
 
-            # If sending the file fails, we retry after 3s to avoid the 
-            # failure caused by intermittent network disconnection.
+            # If sending the file fails, we retry  3 * 10s to avoid the 
+            # failure caused by intermittent network disconnection. such as Broken pipe.
             # If the fails is caused by timeout. no need to retry.
-            if status != 0 and output.find("Timed out") < 0:
-                time.sleep(3)
+            max_retry_times = 3
+            while(max_retry_times > 0 and status != 0 and output.find("Timed out") < 0):
+                max_retry_times -= 1
+                time.sleep(10)
                 (status, output) = subprocess.getstatusoutput(scpCmd)
 
             if status != 0:

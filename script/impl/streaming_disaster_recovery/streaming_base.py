@@ -935,6 +935,8 @@ class StreamingBase(object):
             if output.count("=NULL") > 2 or "iscrossregion=true" in output.lower():
                 self.logger.debug("InstanceID:%s, Index:%s" % (dn_inst.instanceId, idx))
                 return idx, orignal_ports
+            if output.count(f"replconninfo{idx}=''") >= 2:
+                continue
             ret = re.search(
                 r"replconninfo%s='localhost=(\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})"
                 r" localport=(\d{4,5}) localheartbeatport=(\d{4,5}) "

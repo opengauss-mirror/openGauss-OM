@@ -1529,6 +1529,9 @@ class UpgradeImpl:
                 # prepared in the preinstall
                 self.installNewBin()
 
+                # copy dolphin upgrade script from old appPath to new one
+                self.cpDolphinUpgradeScript()
+
                 # decompress the catalog upgrade_sql.tar.gz to temp dir,
                 # include upgrade sql file and guc set
                 self.prepareUpgradeSqlFolder()
@@ -6762,6 +6765,23 @@ class UpgradeImpl:
         except Exception as e:
             self.context.logger.debug("Failed to install new binary files.")
             raise Exception(str(e))
+
+    def cpDolphinUpgradeScript(self):
+        """
+        function: copy upgrade script of dolphin from old appPath to new one
+        input: none
+        output: none
+        """
+        self.context.logger.debug("Start to copy dolphin upgrade script.")
+
+        try:
+            cmd = "if ls %s/share/postgresql/extension/ | grep -qE \"dolphin--(.*)--(.*)sql\" ; " \
+                  "then cp -f %s/share/postgresql/extension/dolphin--*--*sql %s/share/postgresql/extension/; fi" % \
+                  (self.context.oldClusterAppPath, self.context.oldClusterAppPath, self.context.newClusterAppPath)
+            CmdExecutor.execCommandLocally(cmd)
+            self.context.logger.debug("Successfully copy dolphin upgrade script.")
+        except Exception as e:
+            raise Exception("Failed to copy dolphin upgrade script.")
 
     def backupHotpatch(self):
         """

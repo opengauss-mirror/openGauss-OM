@@ -103,7 +103,7 @@ class DssInst():
                 with open(vg_cfg, "r") as fp:
                     context = fp.read().strip()
                     pris = re.findall(
-                        '(.*):/dev/.*private_{}'.format(str(dss_id)), context)
+                        '(.*):/dev/.*'.format(str(dss_id)), context)
                     if pris:
                         return pris[0].strip()
                     else:

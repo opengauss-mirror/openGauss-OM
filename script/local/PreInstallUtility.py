@@ -888,13 +888,33 @@ Common options:
         Preparing the VG Configuration File
         '''
 
+        dss_dict = {}
         dss_vg_ini = os.path.realpath(
             os.path.join(dss_home, 'cfg', 'dss_vg_conf.ini'))
-        lun_map = UdevContext.get_all_vgname_disk_pair(
-            self.clusterInfo.dss_shared_disks, self.clusterInfo.dss_pri_disks,
-            self.user)
+        
+        lun_map = self.clusterInfo.dss_vg_info
+        lun_dss_vgname = self.clusterInfo.dss_vgname
+        
+        # dss_vg_info checker
+        infos = list(filter(None, re.split(r':|,', lun_map)))
 
-        context = [':'.join([k, v]) for k, v in lun_map.items()]
+        # The volume name must correspond to the disk.
+        if (lun_map.count(':') != lun_map.count(',') + 1) or (
+                not infos) or (infos and len(infos) % 2 != 0):
+            raise Exception(ErrorCode.GAUSS_504["GAUSS_50414"] %
+                            "The volume name must correspond to the disk.")
+
+        # The shared volume must be in vg_config.
+        if lun_dss_vgname not in infos[::2]:
+            raise Exception(ErrorCode.GAUSS_504["GAUSS_50419"] %
+                            (lun_dss_vgname, lun_map))
+        
+        for i in range(0, len(lun_map), 2):
+            key = lun_map[i]
+            value = lun_map[i + 1]
+            dss_dict[key] = value
+
+        context = [':'.join([k, v]) for k, v in dss_dict.items()]
         FileUtil.write_custom_context(
             dss_vg_ini, context, authority=DefaultValue.KEY_FILE_MODE_IN_OS)
 
@@ -910,7 +930,8 @@ Common options:
         self.prepareGivenPath(dss_cfg, False)
         self.prepareGivenPath(dss_log, False)
         self.prepare_dss_inst_ini(dss_home, dss_id)
-        self.prepare_dss_soft_link()
+        # this function does not need to be detected under multipath
+        # self.prepare_dss_soft_link()
         self.prepare_dss_vg_ini(dss_home)
 
 

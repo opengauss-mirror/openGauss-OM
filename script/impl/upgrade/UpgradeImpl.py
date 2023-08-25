@@ -3723,6 +3723,58 @@ class UpgradeImpl:
                             "Output: %s" % output)
         self.context.logger.debug("Start cluster with gs_om successfully.")
 
+    def cm_start_cluster(self):
+        """
+        Start Cluster with cm
+        """
+        self.context.logger.debug("Starting cluster with cm.")
+        gauss_home = EnvUtil.getEnv("GAUSSHOME")
+        gauss_log = EnvUtil.getEnv("GAUSSLOG")
+        # check whether om_monitor started
+        check_monitor_cmd = "gs_ssh -c 'ps x | grep -v grep | grep om_monitor'"
+        start_monitor_cmd = "gs_ssh -c 'nohup om_monitor -L %s/cm/om_monitor >> " \
+            "/dev/null 2>&1 &'" % gauss_log
+        self.context.logger.debug("check monitor cmd: " + check_monitor_cmd)
+        self.context.logger.debug("start monitor cmd: " + start_monitor_cmd)
+        cluster_start_timeout = 300
+        wait_time = 0
+        while wait_time < cluster_start_timeout:
+            status, output = subprocess.getstatusoutput(check_monitor_cmd)
+            if status == 0 and output.find("FAILURE") == -1:
+                break
+            self.context.logger.debug("check monitor output: " + output)
+            status, output = subprocess.getstatusoutput(start_monitor_cmd)
+            wait_time += 1
+            time.sleep(1)
+        if wait_time >= cluster_start_timeout:
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51607"] % ("cluster in %ds" % cluster_start_timeout) +
+                "\nSome om_monitor is not running, please check.\n"
+                "Hint: please check max number of open files limit.")
+
+        # remove cluster_manual_start file to start cluster
+        cluster_manual_start_file = os.path.join(gauss_home, "bin", "cluster_manual_start")
+        cmd = "source %s ; gs_ssh -c 'rm %s -f'" % (
+            self.context.userProfile, cluster_manual_start_file)
+        self.context.logger.debug("cm start cluster cmd: %s" % cmd)
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51607"] % "cluster" +
+                "cmd: %s\nOutput: %s" % (cmd, output))
+        cmd = "source %s ;gs_om -t query" % self.context.userProfile
+        while wait_time < cluster_start_timeout:
+            status, output = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_516["GAUSS_51607"] % "cluster" +
+                                "Output: %s" % output)
+            if output.find("cluster_state   : Normal") != -1:
+                break
+            time.sleep(1)
+            wait_time += 1
+        if wait_time >= cluster_start_timeout:
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51607"] % ("cluster in %ds" % cluster_start_timeout) +
+                "Current cluster state:\n%s" % output)
+        self.context.logger.debug("Start cluster with cm successfully.")
+
     def get_cms_num(self, cluster_config_file):
         """
         Get cm_server num from static config file
@@ -3796,7 +3848,7 @@ class UpgradeImpl:
             else:
                 self.startCluster()
         else:
-            self.om_start_cluster()
+            self.cm_start_cluster()
 
     def stop_strategy(self, is_final=True):
         """

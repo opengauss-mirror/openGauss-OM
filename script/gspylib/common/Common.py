@@ -2334,7 +2334,7 @@ class DefaultValue():
             return False
 
     @staticmethod
-    def getSpecificNode(userProfile, flagStr, logger=None):
+    def getSpecificNode(userProfile, flagStr, logger=None, with_cm=False):
         """
         :param flagStr: Primary/Standby/Cascade
         :return: correspond nodes
@@ -2345,15 +2345,18 @@ class DefaultValue():
                 cmd = "source {0} && gs_om -t query".format(
                     userProfile)
                 (status, output) = subprocess.getstatusoutput(cmd)
-                if status == 0 and ("cluster_state   : Normal" in output \
-                                    or "cluster_state   : Degraded" in output):
+                if status == 0 and not with_cm:
                     break
-                if count == 2:
-                    start_cmd = "source {0} && gs_om -t start --time-out 30".format(userProfile)
-                    _, output = subprocess.getstatusoutput(start_cmd)
-                    if logger:
-                        logger.debug("Start cluster for get current primary datanode, "
-                                     "the result is : \n{0}".format(output))
+
+                if status == 0 and with_cm:
+                    if ("cluster_state   : Normal" in output or "cluster_state   : Degraded" in output):
+                        break
+                    if count == 2:
+                        start_cmd = "source {0} && gs_om -t start --time-out 30".format(userProfile)
+                        _, output = subprocess.getstatusoutput(start_cmd)
+                        if logger:
+                            logger.debug("Start cluster for get current primary datanode, "
+                                        "the result is : \n{0}".format(output))
                 time.sleep(10)
                 count += 1
             if status != 0:
@@ -2370,12 +2373,12 @@ class DefaultValue():
             raise Exception(str(e))
 
     @staticmethod
-    def getPrimaryNode(userProfile, logger=None):
+    def getPrimaryNode(userProfile, logger=None, with_cm=False):
         """
         :param
         :return: PrimaryNode
         """
-        return DefaultValue.getSpecificNode(userProfile, "Primary", logger)
+        return DefaultValue.getSpecificNode(userProfile, "Primary", logger, with_cm)
 
     @staticmethod
     def getStandbyNode(userProfile, logger=None):

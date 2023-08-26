@@ -127,6 +127,18 @@ class Kernel(BaseComponent):
         if status != 0:
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51610"] %
                             "instance" + " Error: \n%s." % output)
+        if output.find("No such process") > 0:
+            cmd = "ps c -eo pid,euid,cmd | grep gaussdb | grep -v grep | " \
+                  "awk '{if($2 == curuid && $1!=\"-n\") " \
+                  "print \"/proc/\"$1\"/cwd\"}' curuid=`id -u`|" \
+                  " xargs ls -l |awk '{if ($NF==\"%s\") print $(NF-2)}' | " \
+                  "awk -F/ '{print $3 }'" % (self.instInfo.datadir)
+            (status, rightpid) = subprocess.getstatusoutput(cmd)
+            if rightpid and rightpid.find("Permission denied") > -1:
+                self.logger.debug("stop success with query process %s" % output)
+                return
+            if rightpid or status != 0:
+                GaussLog.exitWithError(output)
 
     def isPidFileExist(self):
         pidFile = "%s/postmaster.pid" % self.instInfo.datadir

@@ -104,6 +104,7 @@ class StreamingSwitchoverHandler(StreamingBase):
                 if stream_disaster_step < 3:
                     self.set_cmserver_guc("backup_open", "2", "set")
                     self.set_cmagent_guc("agent_backup_open", "2", "set")
+                    self.set_stream_cluster_run_mode_guc("set")
                     self.write_streaming_step("3_set_backup_open_2_done")
                 if stream_disaster_step < 4:
                     self.update_streaming_info(StreamingConstants.ACTION_SWITCHOVER, "50%")

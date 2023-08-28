@@ -622,7 +622,10 @@ Install options:
         # If the cluster does not specify a time-out period, the default is
         # 300 seconds
         if (self.g_opts.time_out is None):
-            self.g_opts.time_out = DefaultValue.TIMEOUT_CLUSTER_START
+            if self.g_opts.action == ACTION_STATUS or self.g_opts.action == ACTION_QUERY:
+                self.g_opts.time_out = DefaultValue.TIMEOUT_CLUSTER_QUERY
+            else:
+                self.g_opts.time_out = DefaultValue.TIMEOUT_CLUSTER_START
         else:
             # The timeout parameter must be a pure number
             if (not str(self.g_opts.time_out).isdigit()):

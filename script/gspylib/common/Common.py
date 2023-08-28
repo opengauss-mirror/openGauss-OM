@@ -167,6 +167,8 @@ class DefaultValue():
     TIMEOUT_CLUSTER_START = 300
     # stop timeout value
     TIMEOUT_CLUSTER_STOP = 300
+    # query timeout value
+    TIMEOUT_CLUSTER_QUERY = 30
 
     ##
     TIMEOUT_PSSH_COMMON = 80

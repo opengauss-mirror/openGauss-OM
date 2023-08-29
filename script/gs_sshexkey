@@ -369,6 +369,8 @@ General options:
                             self.hosts_paswd_list.append([sshIp, KeyboardPassword])
                             break
                         else:
+                            if i < 2:
+                                GaussLog.printMessage("The password is incorrect, please input again.")
                             continue
                     except Exception as e:
                         raise Exception(ErrorCode.GAUSS_512["GAUSS_51220"] % sshIp +

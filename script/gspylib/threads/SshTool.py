@@ -207,10 +207,7 @@ class SshTool():
                 cmd = "su - %s -c \"%s\" 2>&1" % (user, cmd)
             else:
                 cmd += " 2>&1"
-            if user == "root":
-                status, output = subprocess.getstatusoutput(cmd)
-            else:
-                status = os.system(cmd)
+            status = os.system(cmd)
 
             if status != 0:
                 # we can not print cmd here, because it include user's passwd

@@ -909,9 +909,9 @@ Common options:
             raise Exception(ErrorCode.GAUSS_504["GAUSS_50419"] %
                             (lun_dss_vgname, lun_map))
         
-        for i in range(0, len(lun_map), 2):
-            key = lun_map[i]
-            value = lun_map[i + 1]
+        for i in range(0, len(infos), 2):
+            key = infos[i]
+            value = infos[i + 1]
             dss_dict[key] = value
 
         context = [':'.join([k, v]) for k, v in dss_dict.items()]

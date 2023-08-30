@@ -130,15 +130,13 @@ class DssConfig():
         return -1
 
     @staticmethod
-    def get_value_b64_handler(key, value, action='encode'):
+    def get_value_b64_handler(key='', value='', action='encode', **kwargs):
         '''
         Quick use of base64
         '''
         if action == 'encode':
             b64_ans = base64.urlsafe_b64encode(
-                json.dumps({
-                    key: value
-                }).encode()).decode()
+                json.dumps(kwargs).encode()).decode()
         else:
             if not value.strip():
                 return ''

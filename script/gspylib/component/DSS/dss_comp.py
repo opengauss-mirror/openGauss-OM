@@ -64,48 +64,22 @@ class DssInst():
         else:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % self.cfg_path)
         return items
-    
-    @staticmethod
-    def get_private_vg_num(dss_home):
-        '''
-        Obtaining Private Volumes
-        '''
-
-
-        vg_cfg = os.path.join(dss_home, 'cfg', 'dss_vg_conf.ini')
-        if os.path.isfile(vg_cfg):
-            try:
-                with open(vg_cfg, "r") as fp:
-                    context = fp.read().strip()
-                    pris = re.findall(
-                        '(.*):/dev/.*private_.*', context)
-                    if pris:
-                        return len(pris)
-                    else:
-                        raise Exception(ErrorCode.GAUSS_504["GAUSS_50416"] %
-                                        'in dss_vg_conf.ini')
-            except Exception as eds:
-                raise Exception(ErrorCode.GAUSS_504["GAUSS_50414"] % eds)
-        else:
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % vg_cfg)
 
     @staticmethod
-    def get_private_vgname_by_ini(dss_home, dss_id, xlog_in_one_priv_vg):
+    def get_private_vgname_by_ini(dss_home, dss_id):
         '''
         Obtaining a Private Volume
         '''
-
-        if xlog_in_one_priv_vg:
-            dss_id = 0
         vg_cfg = os.path.join(dss_home, 'cfg', 'dss_vg_conf.ini')
         if os.path.isfile(vg_cfg):
             try:
                 with open(vg_cfg, "r") as fp:
                     context = fp.read().strip()
-                    pris = re.findall(
-                        '(.*):/dev/.*private_{}'.format(str(dss_id)), context)
-                    if pris:
-                        return pris[0].strip()
+                    pris = re.findall('(.+):(.+)', context)
+                    if pris and len(pris) == 2:
+                        return pris[1][0].strip()
+                    elif pris and len(pris) > dss_id + 1:
+                        return pris[dss_id + 1][0].strip()
                     else:
                         raise Exception(ErrorCode.GAUSS_504["GAUSS_50416"] %
                                         'in dss_vg_conf.ini')

@@ -1923,7 +1923,7 @@ class UpgradeImpl:
                 "In dss_mode, have cm configuration, upgrade all nodes together."
             )
             cmd += " --upgrade_dss_config={}".format(
-                DssConfig.get_value_b64_handler('dss_upgrade_all', 'on'))
+                DssConfig.get_value_b64_handler(**{'dss_upgrade_all': 'on'}))
 
         self.context.logger.debug(
             "Command for switching DN processes: %s." % cmd)

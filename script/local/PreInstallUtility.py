@@ -911,7 +911,7 @@ Common options:
         self.prepareGivenPath(dss_cfg, False)
         self.prepareGivenPath(dss_log, False)
         self.prepare_dss_inst_ini(dss_home, dss_id)
-        self.prepare_dss_soft_link()
+        # this function does not need to be detected under multipath
         self.prepare_dss_vg_ini(dss_home)
 
 

@@ -291,7 +291,11 @@ class InstallImplOLAP(InstallImpl):
             cmd += " --paxos_mode"
         elif self.context.clusterInfo.enable_dss == 'on':
             dss_config = DssConfig.get_value_b64_handler(
-                'dss_nodes_list', self.context.clusterInfo.dss_config)
+                **{
+                    'dss_nodes_list': self.context.clusterInfo.dss_config,
+                    'share_disk_path': self.context.clusterInfo.cm_share_disk,
+                    'voting_disk_path': self.context.clusterInfo.cm_vote_disk
+                })
             cmd += f" --dss_mode --dss_config={dss_config}"
         self.context.logger.debug(
             "Command for initializing instances: %s" % cmd)

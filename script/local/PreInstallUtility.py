@@ -887,15 +887,14 @@ Common options:
         '''
         Preparing the VG Configuration File
         '''
+
         dss_vg_ini = os.path.realpath(
             os.path.join(dss_home, 'cfg', 'dss_vg_conf.ini'))
+        lun_map = UdevContext.get_all_vgname_disk_pair(
+            self.clusterInfo.dss_shared_disks, self.clusterInfo.dss_pri_disks,
+            self.user)
 
-        context = [
-            ':'.join([k, v]) for k, v in {
-                **self.clusterInfo.dss_shared_disks,
-                **self.clusterInfo.dss_pri_disks
-            }.items()
-        ]
+        context = [':'.join([k, v]) for k, v in lun_map.items()]
         FileUtil.write_custom_context(
             dss_vg_ini, context, authority=DefaultValue.KEY_FILE_MODE_IN_OS)
 
@@ -911,8 +910,7 @@ Common options:
         self.prepareGivenPath(dss_cfg, False)
         self.prepareGivenPath(dss_log, False)
         self.prepare_dss_inst_ini(dss_home, dss_id)
-        # this function does not need to be detected under multipath
-        # self.prepare_dss_soft_link()
+        self.prepare_dss_soft_link()
         self.prepare_dss_vg_ini(dss_home)
 
 

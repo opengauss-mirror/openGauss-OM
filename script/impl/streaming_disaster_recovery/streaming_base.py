@@ -2101,6 +2101,9 @@ class StreamingBase(object):
             cluster_normal_status = [DefaultValue.CLUSTER_STATUS_NORMAL,
                                      DefaultValue.CLUSTER_STATUS_DEGRADED]
             self.check_cluster_status(cluster_normal_status, check_current=True)
+            if action_flag == StreamingConstants.ACTION_SWITCHOVER:
+                self.set_cluster_read_only_params({"default_transaction_read_only": "off"})
+                self.revise_dn_readonly_status_in_switch_process("end")
             cluster_info = self.query_cluster_info()
             self.parse_cluster_status(current_status=cluster_info)
             if action_flag != StreamingConstants.ACTION_SWITCHOVER:
@@ -2113,9 +2116,58 @@ class StreamingBase(object):
             else:
                 self.update_streaming_info("cluster", "archive")
 
+    def set_cluster_read_only_params(self, params_dict, guc_type="reload"):
+        """
+        set datanode params
+        """
+        if not params_dict:
+            return
+
+        cmd = ""
+        for param_name, value in params_dict.items():
+            cmd += " -c \"%s=%s\"" % (param_name, value)
+        guc_cmd = "source %s; gs_guc %s -Z datanode -N all -I all %s" % (EnvUtil.getMpprcFile(), guc_type, cmd)
+        (status, output) = CmdUtil.retryGetstatusoutput(guc_cmd)
+        self.logger.debug("The params dict %s %s status %s, output %s." % (params_dict, guc_type, status, output))
+
+    def revise_dn_readonly_status_in_switch_process(self, action, guc_type="reload"):
+        """
+        revise dn readonly status in switch process
+        """
+        file_name = os.path.join(EnvUtil.getTmpDirFromEnv(), StreamingConstants.SWITCH_ENABLE_READ_ONLY_FILE)
+        if action == "start":
+            all_cms = [
+                cm_inst for dbonde in self.cluster_info.dbNodes for cm_inst in dbonde.cmservers
+                if cm_inst.hostname in self.normal_cm_ips
+            ]
+            for cm_inst in all_cms:
+                cmd = "source %s; pssh -s -H %s \"grep enable_transaction_read_only " \
+                      "%s/cm_server.conf\"" % (EnvUtil.getMpprcFile(), cm_inst.hostname, cm_inst.datadir)
+                (status, output) = CmdUtil.retryGetstatusoutput(cmd)
+                self.logger.debug("Check enable transaction read only status:%s, output:%s." % (status, output))
+                if status != 0 or output.find("=") < -1:
+                    continue
+                params_dict = {"enable_transaction_read_only": output.split("=")[-1].strip()}
+                with os.fdopen(os.open(file_name, os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+                                       DefaultValue.KEY_FILE_MODE_IN_OS), "w") as fp_w:
+                    json.dump(params_dict, fp_w)
+                self.set_cmserver_guc("enable_transaction_read_only", "off", guc_type)
+                self.logger.debug("The parameter enable_transaction_read_only is disabled.")
+        else:
+            if not os.path.isfile(file_name):
+                self.logger.debug("The enable transaction read only file not exist.")
+                return
+            content = DefaultValue.obtain_file_content(file_name, is_list=False)
+            loads_value = json.loads(content)
+            param_value = loads_value.get("enable_transaction_read_only")
+            value = param_value if param_value else "on"
+            self.set_cmserver_guc("enable_transaction_read_only", value, guc_type)
+            os.remove(file_name)
+            self.logger.debug("The parameter enable_transaction_read_only is enabled.")
+
     def streaming_clean_archive_slot(self):
         """
-        drop lot_type is physical and slot_name not contain (gs_roach_full，gs_roach_inc，
+        drop lot_type is physical and slot_name not contain (gs_roach_full, gs_roach_inc,
         cn_xxx，dn_xxx, dn_xxx_hadr) on all cn node and all primary dn node if the
         slot_name exists when the disaster cluster become primary cluster
         """
@@ -2266,6 +2318,9 @@ class StreamingBase(object):
             self.stream_disaster_set_cmagent_guc("agent_backup_open", "0", "set")
             self.set_stream_cluster_run_mode_guc("set", fail_over=True)
             self.write_streaming_step("3_set_backup_open_for_failover")
+            if action_flag == StreamingConstants.ACTION_SWITCHOVER:
+                self.revise_dn_readonly_status_in_switch_process("start", guc_type="set")
+                self.set_cluster_read_only_params({"default_transaction_read_only": "on"}, guc_type="set")
         # 4.Delete the relevant guc parameters and remove the disaster tolerance relationship
         # based on streaming disaster recovery cluster, No need to delete for switchover.
         if not action_flag:

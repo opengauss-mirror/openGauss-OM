@@ -52,6 +52,7 @@ class StreamingConstants:
     HADR_ESTABLISH_STAT = ".hadr_establish_stat"
 
     STREAM_DISTRIBUTE_ACTION = "distribute_stream_failover"
+    SWITCH_ENABLE_READ_ONLY_FILE = ".switch_readonly_stat_file"
 
     # GUC CHANGE MAP
     GUC_CHANGE_MAP = {"most_available_sync": "on", "synchronous_commit": "on"}

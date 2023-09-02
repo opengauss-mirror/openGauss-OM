@@ -106,6 +106,8 @@ class StreamingSwitchoverHandler(StreamingBase):
                     self.set_cmagent_guc("agent_backup_open", "2", "set")
                     self.set_stream_cluster_run_mode_guc("set")
                     self.write_streaming_step("3_set_backup_open_2_done")
+                    self.revise_dn_readonly_status_in_switch_process("start", guc_type="set")
+                    self.set_cluster_read_only_params({"default_transaction_read_only": "on"}, guc_type="set")
                 if stream_disaster_step < 4:
                     self.update_streaming_info(StreamingConstants.ACTION_SWITCHOVER, "50%")
                     self.remove_cluster_maintance_file_for_switchover()
@@ -115,6 +117,8 @@ class StreamingSwitchoverHandler(StreamingBase):
                 if stream_disaster_step < 5:
                     self.wait_for_normal(timeout=self.params.waitingTimeout,
                                          streaming_switchover="streaming_switchover")
+                    self.set_cluster_read_only_params({"default_transaction_read_only": "off"})
+                    self.revise_dn_readonly_status_in_switch_process("end")
                     self.streaming_clean_replication_slot()
                     self.update_streaming_info("cluster", "recovery")
             except Exception as error:
@@ -127,6 +131,8 @@ class StreamingSwitchoverHandler(StreamingBase):
                 if rollback_step < 4 or (rollback_step >= 4 and
                                          self.streaming_switchover_roll_back_condition()):
                     self.streaming_switchover_roll_back(update_query=True)
+                    self.set_cluster_read_only_params({"default_transaction_read_only": "off"}, guc_type="set")
+                    self.revise_dn_readonly_status_in_switch_process("end", guc_type="set")
                 self.clean_step_file()
                 raise Exception(error)
         self.remove_hadr_switchover_process_file()

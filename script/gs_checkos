@@ -94,6 +94,7 @@ g_OSCheckOpts = {
     'B7': ['Setting items', '[ Set RemoveIPC value ]', 'Normal', 'OK', 'OK'],
     'B8': ['Setting items', '[ Set Session Process ]', 'Normal', 'OK', 'OK']}
 DEFAULT_INTERVAL = 60
+DEFAULT_CONSISTENCY_INTERVAL = 6
 CHECK_ITEMNUMLIST = ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9',
                      'A10', 'A11', 'A12', 'A13', 'A14']
 SET_ITEMNUMLIST = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8']
@@ -990,26 +991,30 @@ def checkTimeConsistency():
                 nodeValue, "Failed to obtain localtime information.")
             else:
                 baseTime = datetime.strptime(keystr, "%Y-%m-%d %H:%M:%S")
-                startTime = baseTime - timedelta(seconds=DEFAULT_INTERVAL)
-                endTime = baseTime + timedelta(seconds=DEFAULT_INTERVAL)
+                if g_clusterInfo.enable_dss == "on":
+                    startTime = baseTime - timedelta(seconds=DEFAULT_CONSISTENCY_INTERVAL)
+                    endTime = baseTime + timedelta(seconds=DEFAULT_CONSISTENCY_INTERVAL)
+                else:
+                    startTime = baseTime - timedelta(seconds=DEFAULT_INTERVAL)
+                    endTime = baseTime + timedelta(seconds=DEFAULT_INTERVAL)
                 for node in list(status.keys()):
                     if (status[node] == DefaultValue.SUCCESS):
                         tmpstr = outputMap[node].strip().split(',')[1].strip()
                         tmpTime = datetime.strptime(tmpstr,
                                                     "%Y-%m-%d %H:%M:%S")
                         if (tmpTime < startTime or tmpTime > endTime):
-                            g_OSCheckOpts['A12'][2] = 'Warning'
+                            g_OSCheckOpts['A12'][2] = 'Abnormal'
                             parRes += "        [%s]\n        " \
                                       "The current system time = (%s)\n"\
                                       % (node, tmpstr)
                             detail_msg += "        [%s]\n        Variable:" \
                                           "'current system time' RealValue:" \
                                           "'%s' ExpectedValue:'%s' " \
-                                          "[Warning]\n"\
+                                          "[Abnormal]\n"\
                                           % (node, tmpstr,
                                              baseTime.strftime("%Y-%m-%d %H:%M:%S"))
 
-        if (g_OSCheckOpts['A12'][2] == 'Warning'):
+        if (g_OSCheckOpts['A12'][2] == 'Warning' or g_OSCheckOpts['A12'][2] == 'Abnormal'):
             g_OSCheckOpts['A12'][3] = "\n%s" % parRes
         else:
             nodeValue = list(status.keys())[0].strip()

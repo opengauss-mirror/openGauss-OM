@@ -652,6 +652,8 @@ class instanceInfo():
             ret += ",controlPort=%s" % self.controlPort
         if self.azName:
             ret += ",azName=%s" % self.azName
+        if hasattr(self, 'azPriority') and self.azPriority > 0:
+            ret += ",azPriority=%s" % self.azPriority
         if self.clusterName:
             ret += ",clusterName=%s" % self.clusterName
         if self.peerPort:

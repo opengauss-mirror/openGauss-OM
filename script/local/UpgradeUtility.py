@@ -1586,8 +1586,12 @@ def install_cm_agent(node_info, gauss_home):
 
 def install_cm_server(node_info, gauss_home):
     """
-    Install CM agent instance
+    Install CM server instance
     """
+    if len(node_info.cmservers) == 0:
+        g_logger.debug("No need to install cm_server becuase the user did not "
+            "configure the cm_server information of the current node.")
+        return
     g_logger.debug("Start install cm_server instance.")
     server_component = CM_OLAP()
     server_component.instInfo = node_info.cmservers[0]

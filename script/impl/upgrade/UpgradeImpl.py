@@ -3843,9 +3843,14 @@ class UpgradeImpl:
         Start cluster
         """
         cm_strategy = self.get_upgrade_cm_strategy()
+        if cm_strategy == -1:
+            raise Exception("cm_strategy = -1. This is usually impossible.\n"
+                "Hint: please check \n"
+                "1. whether the old and new static files exist."
+                "2. whether the upgrade strategy is \"have_cm\" to \"have_no_cm\".")
         if cm_strategy == 0:
             self.startCluster()
-        if cm_strategy == 1:
+        elif cm_strategy == 1:
             if is_final:
                 self.om_start_cluster()
             else:
@@ -3858,9 +3863,14 @@ class UpgradeImpl:
         Start cluster
         """
         cm_strategy = self.get_upgrade_cm_strategy()
+        if cm_strategy == -1:
+            raise Exception("cm_strategy = -1. This is usually impossible.\n"
+                "Hint: please check \n"
+                "1. whether the old and new static files exist."
+                "2. whether the upgrade strategy is \"have_cm\" to \"have_no_cm\".")
         if cm_strategy == 0:
             self.stopCluster()
-        if cm_strategy == 1:
+        elif cm_strategy == 1:
             if is_final:
                 self.om_stop_cluster()
             else:

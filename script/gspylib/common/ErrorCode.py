@@ -998,8 +998,9 @@ class ErrorCode():
         'GAUSS_53031': "[GAUSS-53031] : The cluster is None.",
         'GAUSS_53032': "[GAUSS-53032] : The speed limit must "
                        "be a nonnegative integer.",
-        'GAUSS_53033': "[GAUSS-53033] : Invalid User : %s."
-
+        'GAUSS_53033': "[GAUSS-53033] : Invalid User : %s.",
+        'GAUSS_53034': "[GAUSS-53034] : In the resource pooling environment, do not run "
+                       "gs_install after gs_uninstall. please gs_preinstall first."
     }
 
     ###########################################################################

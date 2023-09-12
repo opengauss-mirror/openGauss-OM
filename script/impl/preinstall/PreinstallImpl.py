@@ -1338,6 +1338,29 @@ class PreinstallImpl:
         output : NA
         """
         pass
+    
+    def check_enabledssinenv(self, source_file):
+        """
+        function: check enabledss in env
+        input  : NA
+        output : NA
+        """
+        if self.context.clusterInfo.enable_dss == 'on':
+            file_lines = []
+            found_enabledss = False
+            is_enabledssset = "export ENABLE_DSS="
+            with open(source_file, "r") as file:
+                for line in file:
+                    if is_enabledssset in line:
+                        found_enabledss = True
+                    else:
+                        file_lines.append(line)
+
+            if found_enabledss:
+                with open(source_file, "w") as file:
+                    file.writelines(file_lines)
+        else:
+            return
 
     def checkRepeat(self):
         """
@@ -1358,6 +1381,7 @@ class PreinstallImpl:
             self.context.logger.debug(
                 "There is no environment file, skip check repeat.")
             return []
+        self.check_enabledssinenv(source_file)
         with open(source_file, 'r') as f:
             env_list = f.readlines()
         new_env_list = []

@@ -357,6 +357,15 @@ class Kerberos():
                     if status != 0:
                         raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"]
                                         % cmd + "Error:\n%s." % output)
+                        
+                    # SET KRB5_CONFIG
+                    cmd = "echo \"export KRB5_CONFIG=%s/krb5.conf\"" \
+                          " >> %s" % (os.path.dirname(g_opts.mpprcFile),
+                                     g_opts.mpprcFile)
+                    (status, output) = subprocess.getstatusoutput(cmd)
+                    if status != 0:
+                        raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
+                                        cmd + "Error:\n%s." % output)
                     g_logger.log("Config environment variable KRB5RCACHETYPE "
                                  "successfully.")
             except Exception as e:

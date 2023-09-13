@@ -49,8 +49,10 @@ from base_utils.os.password_util import PasswordUtil
 from base_utils.os.net_util import NetUtil
 from subprocess import PIPE
 from base_utils.common.fast_popen import FastPopen
+from gspylib.common.copy_python_lib import copy_lib
 
 DefaultValue.doConfigForParamiko()
+copy_lib()
 
 try:
     import paramiko

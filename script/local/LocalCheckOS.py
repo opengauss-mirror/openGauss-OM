@@ -26,6 +26,7 @@ import getopt
 import subprocess
 import platform
 import time
+import re
 from datetime import datetime
 
 localDirPath = os.path.dirname(os.path.realpath(__file__))
@@ -93,6 +94,7 @@ g_logger = None
 g_opts = None
 g_clusterInfo = None
 netWorkBondInfo = None
+g_readlist = None
 
 
 ###########################################################################
@@ -1512,6 +1514,59 @@ def CheckLinuxMounts():
 
 
 #############################################################################
+def IterateClass(obj):
+    """
+    function : Check item in class
+    input  : obj
+    output : list
+    """
+    if not hasattr(obj, '__dict__'):
+        return
+
+    for attr_name in obj.__dict__:
+        attr_value = getattr(obj, attr_name)
+        if isinstance(attr_value, list):
+            for item in attr_value:
+                if hasattr(item, '__dict__'):
+                    IterateClass(item)
+                else:
+                    g_readlist.append(item)
+        elif isinstance(attr_value, dict):
+            for key, value in attr_value.items():
+                if hasattr(value, '__dict__'):
+                    IterateClass(value)
+                else:
+                    g_readlist.append(value)
+        elif hasattr(attr_value, '__dict__'):
+            IterateClass(attr_value)
+        else:
+            g_readlist.append(attr_value)
+
+def IsLinuxPath(input_str):
+    """
+    function : Check whether a character string is a file path
+    input  : String
+    output : Bool
+    """
+    linux_path_pattern = r'^/([A-Za-z0-9_\-]+/)*[A-Za-z0-9_\-]+\/*$'
+    return re.match(linux_path_pattern, input_str) is not None
+
+def GetMountInfo(file_path):
+    """
+    function : Determine the mount disk of the path
+    input  : String
+    output : Bool
+    """
+    try:
+        dev = os.stat(file_path).st_dev
+    except FileNotFoundError:
+        return None
+
+    for partition in psutil.disk_partitions(all=True):
+        if os.stat(partition.mountpoint).st_dev == dev:
+            return partition.device
+    return None
+
 def CheckBlockdev(isSetting=False):
     """
     function : Check Block dev
@@ -1519,19 +1574,34 @@ def CheckBlockdev(isSetting=False):
     output : NA
     """
     expectedReadAhead = "16384"
+    my_mount = []
+    IterateClass(g_clusterInfo)
+
+    for path in g_readlist:
+        mount_info = GetMountInfo(str(path))
+        if mount_info is not None:
+            my_mount.append(mount_info)
+        else:
+            continue
+    unique_elements = list(set(my_mount))
+
     data = collectBlockdev()
     for dev in list(data.ra.keys()):
-        ra = data.ra[dev]
-        if int(ra) < int(expectedReadAhead):
-            if not isSetting:
-                g_logger.log("On device (%s) 'blockdev readahead' RealValue"
-                             " '%s' ExpectedValue '%s'."
-                             % (dev, ra, expectedReadAhead))
-            else:
-                SetBlockdev(expectedReadAhead, dev)
-                g_logger.log("On device (%s) set 'blockdev readahead' from"
-                             " '%s' to '%s'." % (dev, ra, expectedReadAhead))
-
+        for s in unique_elements:
+            if dev not in s:
+                continue
+            ra = data.ra[dev]
+            if int(ra) < int(expectedReadAhead):
+                if not isSetting:
+                    g_logger.log("On device (%s) 'blockdev readahead' RealValue"
+                                " '%s' ExpectedValue '%s'."
+                                % (dev, ra, expectedReadAhead))
+                else:
+                    SetBlockdev(expectedReadAhead, dev)
+                    g_logger.log("On device (%s) set 'blockdev readahead' from"
+                                " '%s' to '%s'." % (dev, ra, expectedReadAhead))
+                
+    
 
 def SetBlockdev(expectedReadAhead, devname):
     """
@@ -1965,6 +2035,8 @@ def initGlobals():
     """
     global g_logger
     global g_clusterInfo
+    global g_readlist
+    g_readlist = []
 
     g_logger = GaussLog(g_opts.logFile, "LocalCheckOS")
 

@@ -89,6 +89,8 @@ class InstallImpl:
         function: run method
         """
         try:
+            # check enable_dss
+            self.check_enable_dss()
             # check timeout time.
             # Notice: time_out is not supported under TP branch
             self.checkTimeout()
@@ -113,6 +115,22 @@ class InstallImpl:
         except Exception as e:
             GaussLog.exitWithError(str(e))
     
+    def check_enable_dss(self):
+        """
+        function: Check enable_dss
+        input : NA
+        output: NA
+        """
+        is_enabledssset = EnvUtil.getEnv("ENABLE_DSS")
+        cluster_info = dbClusterInfo()
+        cluster_info.initFromXml(self.context.xmlFile)
+
+        if is_enabledssset and cluster_info.enable_dss == 'on':
+            raise Exception(ErrorCode.GAUSS_530["GAUSS_53034"])
+        else:
+            self.context.logger.log(
+                "Successfully checked gs_uninstall on every node.")
+
     def checkSyncNode(self):
         """
         function: check syncNode

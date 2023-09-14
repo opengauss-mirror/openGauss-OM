@@ -30,6 +30,9 @@ from domain_utils.cluster_file.cluster_dir import ClusterDir
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.file_util import FileUtil
 from base_utils.os.net_util import NetUtil
+from gspylib.common.DbClusterInfo import dbNodeInfo, \
+    dbClusterInfo, compareObject
+from domain_utils.cluster_file.profile_file import ProfileFile
 
 
 class UninstallImpl:
@@ -440,6 +443,25 @@ class UninstallImpl:
                             "Uninstall a single node instead of the gs_dropnode command.")
             self.localMode = True
 
+    def check_dss(self):
+        """
+        function: make sure the etcd process is clean.
+        input : NA
+        output: NA
+        """
+        enable_dssLine = 'export ENABLE_DSS=ON\n'
+        is_enabledssset = EnvUtil.getEnv("ENABLE_DSS")
+        is_dsshome = EnvUtil.getEnv("DSS_HOME")
+        
+        if self.mpprcFile and os.path.isfile(self.mpprcFile):
+            source_file = self.mpprcFile
+        else:
+            source_file = os.path.join("/etc", "profile")
+            
+        if is_dsshome and not is_enabledssset:
+            with open(source_file, 'a') as file:
+                file.write(enable_dssLine)
+
     def run(self):
         """
         function: Uninstall database cluster
@@ -463,6 +485,7 @@ class UninstallImpl:
             self.CleanRackFile()
             self.clean_dss_home()
             self.CleanLog()
+            self.check_dss()
             self.logger.log("Uninstallation succeeded.")
         except Exception as e:
             self.logger.logExit(str(e))

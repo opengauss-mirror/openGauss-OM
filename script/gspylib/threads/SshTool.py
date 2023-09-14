@@ -41,7 +41,6 @@ from gspylib.common.Constants import Constants
 try:
     import paramiko
 except ImportError as ex:
-    print(ex)
     try:
         local_path = os.path.dirname(os.path.realpath(__file__))
         clib_path = os.path.realpath(os.path.join(local_path, "../../gspylib/clib/"))
@@ -51,10 +50,10 @@ except ImportError as ex:
                 os.environ['LD_LIBRARY_PATH'] = clib_path
             else:
                 os.environ['LD_LIBRARY_PATH'] = clib_path + ":" + ld_path
-        try:
-            os.execl(sys.executable, sys.executable, *sys.argv)
-        except Exception as ex:
-            sys.exit("Failed to set the enviroment variable: %s" % str(ex))
+            try:
+                os.execl(sys.executable, sys.executable, *sys.argv)
+            except Exception as ex:
+                sys.exit("Failed to set the enviroment variable: %s" % str(ex))
         import paramiko
     except ImportError as ex:
             raise Exception(ErrorCode.GAUSS_522["GAUSS_52200"] % str(ex))

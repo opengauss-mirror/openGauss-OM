@@ -2432,6 +2432,7 @@ class UpgradeImpl:
             # update catalog
             # start cluster in normal mode
             if self.isLargeInplaceUpgrade:
+                self.modifyPgProcIndex()
                 self.touchRollbackCatalogFlag()
                 self.updateCatalog()
             self.CopyCerts()

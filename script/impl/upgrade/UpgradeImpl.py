@@ -2336,6 +2336,7 @@ class UpgradeImpl:
             # 4.record the old and new app dir in file
             self.recordDirFile()
             if self.isLargeInplaceUpgrade:
+                self.rebuild_pg_proc_index()
                 self.recordLogicalClusterName()
             # 6. reload vacuum_defer_cleanup_age to new value
             if self.isLargeInplaceUpgrade:
@@ -2432,7 +2433,6 @@ class UpgradeImpl:
             # update catalog
             # start cluster in normal mode
             if self.isLargeInplaceUpgrade:
-                self.modifyPgProcIndex()
                 self.touchRollbackCatalogFlag()
                 self.updateCatalog()
             self.CopyCerts()
@@ -3875,6 +3875,72 @@ class UpgradeImpl:
                 self.stopCluster()
         else:
             self.om_stop_cluster()
+            
+    def rebuild_pg_proc_index(self):
+        self.context.logger.debug("Begin to modify pg_proc index.")
+        self.setUpgradeMode(2)
+        database_list = self.getDatabaseList()
+        sql = """
+DO $$
+DECLARE
+ans boolean;
+BEGIN
+    alter index pg_proc_oid_index rebuild;
+	select case when count(*)=1 then true else false end as ans from (select indexname from pg_indexes where indexname = 'pg_proc_proname_args_nsp_index' limit 1) into ans;
+    if ans = true then
+        alter index pg_proc_proname_args_nsp_index rebuild;
+    end if;
+END$$;"""
+        for eachdb in database_list:
+            self.context.logger.debug(f"rebuild_pg_proc_index at database {eachdb}")
+            (status, output) = ClusterCommand.remoteSQLCommand(
+                sql, self.context.user,
+                self.dnInst.hostname, self.dnInst.port, False,
+                eachdb, IsInplaceUpgrade=True)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
+                                " Error: \n%s" % str(output))
+        self.setUpgradeMode(0)
+        self.context.logger.debug("Success to modify pg_proc index.")
+    
+    def rebuild_sha2_func(self):
+        """
+        sha2 function is added at version 3.1.0 with pg_catalog.sha2(text, int).
+        but at version 5.0.0 changed to pg_catalog.sha2(text, bigint).
+        we need to re create the function with new type while upgrade from
+        multi version such as (3.0.0 - 3.1.0 - 5.1.0)
+        """
+        SHA2_CREATE_VERSION = 92776
+        SHA2_UPDATE_VERSION = 92806
+        old_version = int(float(self.context.oldClusterNumber) * 1000)
+        new_version = int(float(self.context.newClusterNumber) * 1000)
+        if old_version > SHA2_UPDATE_VERSION or \
+            old_version < SHA2_CREATE_VERSION or \
+            new_version < SHA2_UPDATE_VERSION:
+            return
+        
+        self.context.logger.debug("Need to re-create sha2 functoin")
+        sql = """
+BEGIN;
+SET IsInplaceUpgrade = on;
+DROP FUNCTION IF EXISTS pg_catalog.sha2(text, int) CASCADE;
+SET LOCAL inplace_upgrade_next_system_object_oids = IUO_PROC, 560;
+CREATE OR REPLACE FUNCTION pg_catalog.sha2(text, bigint)
+ RETURNS text
+ LANGUAGE internal
+ IMMUTABLE NOT FENCED NOT SHIPPABLE
+AS $function$sha2$function$;
+comment on function PG_CATALOG.sha2(text,bigint) is 'use the sha2 algorithm to hash';
+END;"""
+        database_list = self.getDatabaseList()
+        for eachdb in database_list:
+            (status, output) = ClusterCommand.remoteSQLCommand(
+            sql, self.context.user,
+            self.dnInst.hostname, self.dnInst.port, False,
+            eachdb, IsInplaceUpgrade=True)
+            if status != 0:
+                self.context.logger.debug("re-create sha2 functoin failed. Error: %s" % str(output))
+        self.context.logger.debug("Re-create sha2 functoin success.")
 
     def modifyPgProcIndex(self):
         """
@@ -3884,6 +3950,7 @@ class UpgradeImpl:
         4. start cluster
         :return:
         """
+        self.rebuild_sha2_func()
         self.context.logger.debug("Begin to modify pg_proc index.")
         time.sleep(3)
         database_list = self.getDatabaseList()
@@ -3894,7 +3961,7 @@ class UpgradeImpl:
         true,0,0,0,2690;CREATE UNIQUE INDEX pg_proc_oid_index ON pg_proc 
         USING btree (oid);SET LOCAL 
         inplace_upgrade_next_system_object_oids=IUO_CATALOG,false,
-        true,0,0,0,0;commit;CHECKPOINT;"""
+        true,0,0,0,0;alter index pg_proc_oid_index rebuild;commit;CHECKPOINT;"""
         for eachdb in database_list:
             (status, output) = ClusterCommand.remoteSQLCommand(
                 sql, self.context.user,
@@ -3903,21 +3970,24 @@ class UpgradeImpl:
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
                                 " Error: \n%s" % str(output))
-        sql = """START TRANSACTION;SET IsInplaceUpgrade = on;
-        drop index if exists pg_proc_proname_args_nsp_index;SET LOCAL 
-        inplace_upgrade_next_system_object_oids=IUO_CATALOG,false,
-        true,0,0,0,2691;create UNIQUE INDEX pg_proc_proname_args_nsp_index 
-        ON pg_proc USING btree (proname, proargtypes, pronamespace);SET 
-        LOCAL inplace_upgrade_next_system_object_oids=IUO_CATALOG,false,
-        true,0,0,0,0;commit;CHECKPOINT;"""
-        for eachdb in database_list:
-            (status, output) = ClusterCommand.remoteSQLCommand(
-                sql, self.context.user,
-                self.dnInst.hostname, self.dnInst.port, False,
-                eachdb, IsInplaceUpgrade=True)
-            if status != 0:
-                raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
-                                " Error: \n%s" % str(output))
+                
+        NSP_INDEX_DEL_VERSION = 92848
+        if int(float(self.context.newClusterNumber) * 1000) < NSP_INDEX_DEL_VERSION:
+            sql = """START TRANSACTION;SET IsInplaceUpgrade = on;
+            drop index if exists pg_proc_proname_args_nsp_index;SET LOCAL 
+            inplace_upgrade_next_system_object_oids=IUO_CATALOG,false,
+            true,0,0,0,2691;create UNIQUE INDEX pg_proc_proname_args_nsp_index 
+            ON pg_proc USING btree (proname, proargtypes, pronamespace);SET 
+            LOCAL inplace_upgrade_next_system_object_oids=IUO_CATALOG,false,
+            true,0,0,0,0;commit;CHECKPOINT;"""
+            for eachdb in database_list:
+                (status, output) = ClusterCommand.remoteSQLCommand(
+                    sql, self.context.user,
+                    self.dnInst.hostname, self.dnInst.port, False,
+                    eachdb, IsInplaceUpgrade=True)
+                if status != 0:
+                    raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
+                                    " Error: \n%s" % str(output))
         # stop cluster
         self.stop_strategy()
         # start cluster

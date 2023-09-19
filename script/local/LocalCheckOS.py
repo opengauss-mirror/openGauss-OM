@@ -1392,7 +1392,7 @@ def collectfirewall():
     """
     data = firewall()
     distname = LinuxDistro.linux_distribution()[0]
-    if distname in ("redhat", "centos", "euleros", "openEuler", "FusionOS"):
+    if distname in ("redhat", "centos", "euleros", "openEuler", "FusionOS", "kylin"):
         data.distname = distname.upper()
         if g_Platform.isPlatFormEulerOSOrRHEL7X():
             cmd = "systemctl status firewalld.service"
@@ -1407,7 +1407,7 @@ def collectfirewall():
         data.errormsg = output
         return data
 
-    if distname in ("redhat", "centos", "euleros", "openEuler", "FusionOS"):
+    if distname in ("redhat", "centos", "euleros", "openEuler", "FusionOS", "kylin"):
         if g_Platform.isPlatFormEulerOSOrRHEL7X():
             if (output.strip()).find("Active: "
                                      "active (running)") > 0:

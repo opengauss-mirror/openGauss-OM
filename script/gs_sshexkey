@@ -821,7 +821,7 @@ General options:
             cmd += '&& sed -i "$ s/$/ #OM/" %s ' % self.known_hosts_fname
             cmd += "&& chmod %s %s" % (DefaultValue.KEY_FILE_MODE, self.known_hosts_fname)
             (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
+            if status != 0 or "Name or service not known".lower() in output.lower():
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error:\n%s" % output)
         (status, output) = self.checkAuthentication(self.localHost)
         if not status:

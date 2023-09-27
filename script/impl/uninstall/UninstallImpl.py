@@ -455,8 +455,6 @@ class UninstallImpl:
         
         if self.mpprcFile and os.path.isfile(self.mpprcFile):
             source_file = self.mpprcFile
-        else:
-            source_file = os.path.join("/etc", "profile")
             
         if is_dsshome and not is_enabledssset:
             with open(source_file, 'a') as file:

@@ -1359,8 +1359,6 @@ class PreinstallImpl:
             if found_enabledss:
                 with open(source_file, "w") as file:
                     file.writelines(file_lines)
-        else:
-            return
 
     def checkRepeat(self):
         """

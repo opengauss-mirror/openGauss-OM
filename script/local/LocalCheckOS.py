@@ -1995,8 +1995,11 @@ def CheckMemInfo():
     input  : NA
     output : NA
     """
-    memdata = collectMemInfo()
-    swapdata = collectSwapInfo()
+    try:
+        memdata = collectMemInfo()
+        swapdata = collectSwapInfo()
+    except SystemExit as e:
+        raise Exception(ErrorCode.GAUSS_505["GAUSS_50503"] % e)
     if (swapdata.swapvalue > memdata.memvalue):
         g_logger.log("SwapMemory %s TotalMemory %s" % (swapdata.swapvalue,
                                                        memdata.memvalue))

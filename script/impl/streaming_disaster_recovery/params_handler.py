@@ -335,7 +335,7 @@ class ParamsHandler(object):
             self.__reload_hadr_user_info()
             for param_name, validate in STREAMING_PARAMS_FOR_MODULE[self.params.task].items():
                 check_value = getattr(self.params, param_name)
-                if self.params.task == "stop":
+                if self.params.task == "stop" or self.params.task == "start":
                     if param_name == "xml_path" and not check_value:
                         check_value = getattr(self.params, 'json_path')
                 validate(check_value)

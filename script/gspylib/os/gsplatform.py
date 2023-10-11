@@ -71,7 +71,7 @@ SUPPORT_WHOLE_PLATFORM_LIST = [SUSE, REDHAT, CENTOS, EULEROS,
 # RedhatX platform
 SUPPORT_RHEL_SERIES_PLATFORM_LIST = [REDHAT, CENTOS, "kylin", "asianux"]
 SUPPORT_RHEL6X_VERSION_LIST = ["6.4", "6.5", "6.6", "6.7", "6.8", "6.9", "10"]
-SUPPORT_RHEL7X_VERSION_LIST = ["7.0", "7.1", "7.2", "7.3", "7.4", "7.5", "7.6", 
+SUPPORT_RHEL7X_VERSION_LIST = ["7", "7.0", "7.1", "7.2", "7.3", "7.4", "7.5", "7.6", 
     "7.7", "7.8", "7.9", "10"]
 SUPPORT_RHEL8X_VERSION_LIST = ["8.0", "8.1", "8.2", "8.3", "8.4", "8.5"]
 SUPPORT_RHEL_SERIES_VERSION_LIST = (SUPPORT_RHEL6X_VERSION_LIST +
@@ -1498,6 +1498,11 @@ class LinuxPlatform(GenericPlatform):
             fileName = os.path.join(dirName, "./../../../",
                                     "%s-%s-%s-%s.%s" % (
                                         prefixStr, packageVersion, PAK_ASIANUX,
+                                        BIT_VERSION, postfixStr))
+            if not os.path.exists(os.path.normpath(fileName)):
+                fileName = os.path.join(dirName, "./../../../",
+                                    "%s-%s-%s-%s.%s" % (
+                                        prefixStr, packageVersion, PAK_CENTOS,
                                         BIT_VERSION, postfixStr))
         elif distname == SUSE and version.split('.')[0] in ("11", "12"):
             fileName = os.path.join(dirName, "./../../../",

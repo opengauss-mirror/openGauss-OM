@@ -70,16 +70,16 @@ class DssInst():
         '''
         Obtaining a Private Volume
         '''
-
         vg_cfg = os.path.join(dss_home, 'cfg', 'dss_vg_conf.ini')
         if os.path.isfile(vg_cfg):
             try:
                 with open(vg_cfg, "r") as fp:
                     context = fp.read().strip()
-                    pris = re.findall(
-                        '(.*):/dev/.*private_{}'.format(str(dss_id)), context)
-                    if pris:
-                        return pris[0].strip()
+                    pris = re.findall('(.+):(.+)', context)
+                    if pris and len(pris) == 2:
+                        return pris[1][0].strip()
+                    elif pris and len(pris) > dss_id + 1:
+                        return pris[dss_id + 1][0].strip()
                     else:
                         raise Exception(ErrorCode.GAUSS_504["GAUSS_50416"] %
                                         'in dss_vg_conf.ini')

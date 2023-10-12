@@ -150,6 +150,8 @@ class DN_OLAP(Kernel):
                 dss_nodes_list = DssConfig.get_value_b64_handler(
                     'dss_nodes_list', self.dss_config, action='decode')
                 cfg_context = DssInst.get_dms_url(dss_nodes_list)
+
+                # when use one private vg for xlog, vgname should get from inst_id=0
                 pri_vgname = DssInst.get_private_vgname_by_ini(dss_home, inst_id)
                 cmd += " -n --vgname=\"{}\" --enable-dss --dms_url=\"{}\" -I {}" \
                     " --socketpath=\"{}\"".format(

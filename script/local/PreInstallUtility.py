@@ -887,14 +887,15 @@ Common options:
         '''
         Preparing the VG Configuration File
         '''
-
         dss_vg_ini = os.path.realpath(
             os.path.join(dss_home, 'cfg', 'dss_vg_conf.ini'))
-        lun_map = UdevContext.get_all_vgname_disk_pair(
-            self.clusterInfo.dss_shared_disks, self.clusterInfo.dss_pri_disks,
-            self.user)
 
-        context = [':'.join([k, v]) for k, v in lun_map.items()]
+        context = [
+            ':'.join([k, v]) for k, v in {
+                **self.clusterInfo.dss_shared_disks,
+                **self.clusterInfo.dss_pri_disks
+            }.items()
+        ]
         FileUtil.write_custom_context(
             dss_vg_ini, context, authority=DefaultValue.KEY_FILE_MODE_IN_OS)
 

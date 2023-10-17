@@ -225,6 +225,10 @@ class DN_OLAP(Kernel):
         tmp_dn_dict["local_bind_address"] = "'%s'" % self.instInfo.listenIps[0]
         tmp_dn_dict["port"] = self.instInfo.port
 
+        if self.dss_mode:
+            tmp_dn_dict["comm_sctp_port"] = self.instInfo.port + 100
+            tmp_dn_dict["comm_control_port"] = self.instInfo.port + 200
+
         if configItemType == "ConfigInstance":
             tmp_dn_dict["cstore_buffers"] = "1GB"
             tmp_dn_dict["max_connections"] = "3000"

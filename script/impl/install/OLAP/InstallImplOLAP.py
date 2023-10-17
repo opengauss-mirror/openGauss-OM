@@ -196,13 +196,15 @@ class InstallImplOLAP(InstallImpl):
             return
 
         self.context.logger.log('Start to create the dss vg.')
-        for vgname, dss_disk in UdevContext.get_all_vgname_disk_pair(
-                self.context.clusterInfo.dss_shared_disks,
-                self.context.clusterInfo.dss_pri_disks,
-                self.context.user).items():
+        count = 0
+        for vgname, dss_disk in {
+                **self.context.clusterInfo.dss_shared_disks,
+                **self.context.clusterInfo.dss_pri_disks
+        }.items():
             au_size = '4096'
-            if dss_disk.find('shared') == -1:
+            if count != 0:
                 au_size = '65536'
+            count += 1
             source_cmd = "source %s; " % self.context.mpprcFile
             show_cmd = source_cmd + f'dsscmd showdisk -g {vgname} -s vg_header'
             cv_cmd = source_cmd + f'dsscmd cv -g {vgname} -v {dss_disk} -s {au_size}'
@@ -289,7 +291,11 @@ class InstallImplOLAP(InstallImpl):
             cmd += " --paxos_mode"
         elif self.context.clusterInfo.enable_dss == 'on':
             dss_config = DssConfig.get_value_b64_handler(
-                'dss_nodes_list', self.context.clusterInfo.dss_config)
+                **{
+                    'dss_nodes_list': self.context.clusterInfo.dss_config,
+                    'share_disk_path': self.context.clusterInfo.cm_share_disk,
+                    'voting_disk_path': self.context.clusterInfo.cm_vote_disk
+                })
             cmd += f" --dss_mode --dss_config={dss_config}"
             if self.context.dorado_cluster_mode != "":
                 cmd += f" --dorado_cluster_mode={self.context.dorado_cluster_mode}"

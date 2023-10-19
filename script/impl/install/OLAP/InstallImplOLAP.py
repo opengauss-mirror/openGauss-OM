@@ -196,15 +196,13 @@ class InstallImplOLAP(InstallImpl):
             return
 
         self.context.logger.log('Start to create the dss vg.')
-        count = 0
-        for vgname, dss_disk in {
-                **self.context.clusterInfo.dss_shared_disks,
-                **self.context.clusterInfo.dss_pri_disks
-        }.items():
-            au_size = '4096'
-            if count != 0:
+        for vgname, dss_disk in UdevContext.get_all_vgname_disk_pair(
+                self.context.clusterInfo.dss_shared_disks,
+                self.context.clusterInfo.dss_pri_disks,
+                self.context.user).items():
+            au_size = '2048'
+            if dss_disk.find('shared') == -1:
                 au_size = '65536'
-            count += 1
             source_cmd = "source %s; " % self.context.mpprcFile
             show_cmd = source_cmd + f'dsscmd showdisk -g {vgname} -s vg_header'
             cv_cmd = source_cmd + f'dsscmd cv -g {vgname} -v {dss_disk} -s {au_size}'

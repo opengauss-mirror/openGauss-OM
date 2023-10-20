@@ -102,9 +102,13 @@ class CM_OLAP(CM):
         log_path = EnvUtil.getEnvironmentParameterValue("GAUSSLOG", user)
         server_para_dict = {"log_dir": os.path.realpath(os.path.join(log_path,
                                                                      "cm", "cm_server"))}
-        if  self.dss_mode:
-            cm_vote_disk = UdevContext.CM_VOTE_NAME % user
-            cm_share_disk = UdevContext.CM_SHARE_NAME % user
+        if self.dss_mode:
+            cm_vote_disk = DssConfig.get_value_b64_handler('voting_disk_path',
+                                                           self.dss_config,
+                                                           action='decode')
+            cm_share_disk = DssConfig.get_value_b64_handler('share_disk_path',
+                                                            self.dss_config,
+                                                            action='decode')
             server_para_dict.update({
                 'share_disk_path': cm_share_disk,
                 'voting_disk_path': cm_vote_disk,
@@ -141,7 +145,9 @@ class CM_OLAP(CM):
         agent_para_dict = {"unix_socket_directory": os.path.dirname(self.binPath),
                            "log_dir": os.path.realpath(os.path.join(log_path, "cm", "cm_agent"))}
         if self.dss_mode:
-            cm_vote_disk = UdevContext.CM_VOTE_NAME % user
+            cm_vote_disk = DssConfig.get_value_b64_handler('voting_disk_path',
+                                                           self.dss_config,
+                                                           action='decode')
             agent_para_dict.update({
                 'voting_disk_path': cm_vote_disk
                 })

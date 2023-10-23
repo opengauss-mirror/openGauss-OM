@@ -530,6 +530,7 @@ class UpgradeCmUpgradeUtility(UpgradeCmUtility):
         # config new cm_agent.conf
         backup_agent_para_dict = self.get_para_dict(os.path.join(self.back_dir,
                                                                  "cm_agent.conf"))
+        backup_agent_para_dict["unix_socket_directory"] = EnvUtil.getEnv("PGHOST")
         self.upgrade_conf(os.path.join(agent_inst_dir, "cm_agent.conf"),
                           backup_agent_para_dict)
 

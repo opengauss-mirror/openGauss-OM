@@ -866,19 +866,20 @@ class StreamingBase(object):
         :return:NA
         """
         self.logger.log("Start update pg_hba config.")
-        use_xml_action = True
-        if self.params.xml_path and os.path.isfile(self.params.xml_path):
+        use_xml_action = False
+        
+        if self.params.json_path:
+            self.logger.debug("[update_streaming_pg_hba] use json file.")
+            cmd = "source %s; %s -U %s --try-reload" % (
+                self.mpp_file, OMCommand.getLocalScript(
+                    "Local_Config_Hba"), self.user)
+        elif self.params.xml_path and os.path.isfile(self.params.xml_path):
             self.logger.debug("[update_streaming_pg_hba] use xml file.")
+            use_xml_action = True
             FileUtil.cpFile(self.params.xml_path, self.streaming_xml)
             cmd = "source %s; %s -U %s -X '%s' --try-reload" % (
                 self.mpp_file, OMCommand.getLocalScript(
                     "Local_Config_Hba"), self.user, self.streaming_xml)
-        else:
-            self.logger.debug("[update_streaming_pg_hba] use json file.")
-            use_xml_action = False
-            cmd = "source %s; %s -U %s --try-reload" % (
-                self.mpp_file, OMCommand.getLocalScript(
-                    "Local_Config_Hba"), self.user)
             
         self.logger.debug("Command for changing instance pg_hba.conf file: %s" % cmd)
         self.get_all_connection_node_name("update_streaming_pg_hba")

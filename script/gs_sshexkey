@@ -50,6 +50,7 @@ from base_utils.os.net_util import NetUtil
 from subprocess import PIPE
 from base_utils.common.fast_popen import FastPopen
 from gspylib.common.copy_python_lib import copy_lib
+from base_utils.os.user_util import UserUtil
 
 DefaultValue.doConfigForParamiko()
 copy_lib()
@@ -163,6 +164,8 @@ class GaussCreateTrust():
         # init SshTool
         self.ssh_tool = None
         self.secret_word = ""
+        self.correct_passwd_map = {}
+        self.host_name_list = []
 
     def usage(self):
         """
@@ -325,6 +328,7 @@ General options:
                     err_msg += str(i)
                 else:
                     parallelResult[key] = value
+                    self.correct_passwd_map[key] = self.passwd[0]
         if len(err_msg) > 0:
             raise Exception(ErrorCode.GAUSS_518["GAUSS_51808"] % err_msg)
         return parallelResult
@@ -350,6 +354,7 @@ General options:
                 isPasswdOK = self.verifyPasswd(ssh, pswd)
                 if isPasswdOK:
                     self.hosts_paswd_list.append([sshIp, pswd])
+                    self.correct_passwd_map[sshIp] = pswd
                     break
 
             if boolInvalidIp:
@@ -369,6 +374,7 @@ General options:
                         if isPasswdOK:
                             self.passwd.append(KeyboardPassword)
                             self.hosts_paswd_list.append([sshIp, KeyboardPassword])
+                            self.correct_passwd_map[sshIp] = KeyboardPassword
                             break
                         else:
                             if i < 2:
@@ -518,7 +524,7 @@ General options:
         except Exception as e:
             raise Exception(ErrorCode.GAUSS_511["GAUSS_51107"] + " Error: \n%s" % str(e))
         try:
-            ssh.connect(username=username, password=self.passwd[0])
+            ssh.connect(username=username, password=self.correct_passwd_map[ip])
         except Exception as e:
             ssh.close()
             raise Exception(ErrorCode.GAUSS_503["GAUSS_50317"] + " Error: \n%s" % str(e))
@@ -548,7 +554,7 @@ General options:
         else:
             return True, result
 
-    def writeRemoteHosts(self, result, username, rootPasswd):
+    def writeRemoteHosts(self, result):
         """
         function:
          Write hostname and Ip into /etc/hosts when there's not the same one
@@ -564,80 +570,26 @@ General options:
         """
         self._debug("Write remote hostname and Ip into /etc/hosts.", "addStep")
         global ipHostInfo
-        boolInvalidIp = False
         ipHostInfo = ""
         if os.getuid() == 0:
-            writeResult = []
-            tmpHostIpName = "./tmp_hostsiphostname_%d" % os.getpid()
+            result1 = {}
+            for (key, value) in list(result.items()):
+                ipHostInfo += '%s  %s  %s\n' % (key, value, HOSTS_MAPPING_FLAG)
+                if value not in (self.localHost, "localhost"):
+                    if not value in list(result1.keys()):
+                        result1[key] = value
 
-            if len(rootPasswd) == 1:
-                result1 = {}
-                for (key, value) in list(result.items()):
-                    ipHostInfo += '%s  %s  %s\n' % (key, value, HOSTS_MAPPING_FLAG)
-                    if value not in (self.localHost, "localhost"):
-                        if not value in list(result1.keys()):
-                            result1[value] = key
-
-                sshIps = list(result1.keys())
-                ipHostInfo = ipHostInfo[:-1]
-                if sshIps:
-                    ipRemoteHostname = parallelTool.parallelExecute(self.writeRemoteHostName,
-                                                                    sshIps)
-                    errorMsg = ""
-                    for (key, value) in ipRemoteHostname:
-                        if not key:
-                            errorMsg = errorMsg + '\n' + str(value)
-                    if errorMsg != "":
-                        raise Exception(ErrorCode.GAUSS_512["GAUSS_51221"] + " Error: %s" %
-                                        errorMsg)
-            else:
-                for (key, value) in list(result.items()):
-                    if value == self.localHost or value == "localhost":
-                        continue
-                    for pswd in rootPasswd:
-                        try:
-                            ssh = paramiko.Transport((key, 22))
-                        except Exception as e:
-                            self.logger.debug(str(e))
-                            boolInvalidIp = True
-                            break
-                        try:
-                            ssh.connect(username=username, password=pswd)
-                            break
-                        except Exception as e:
-                            self.logger.debug(str(e))
-                            continue
-                    if boolInvalidIp:
-                        boolInvalidIp = False
-                        continue
-                    cmd = "grep -v '%s' %s > %s && cp %s %s && rm -rf %s" % \
-                          (" #Gauss.* IP Hosts Mapping", '/etc/hosts', tmpHostIpName,
-                           tmpHostIpName, '/etc/hosts', tmpHostIpName)
-                    channel = ssh.open_session()
-                    channel.exec_command(cmd)
-                    ipHosts = channel.recv(9999).decode().strip()
-                    errInfo = channel.recv_stderr(9999).decode().strip()
-                    if errInfo:
-                        writeResult.append(errInfo)
-                    else:                        
-                        if not ipHosts:
-                            ipHostInfo = ""
-                            for (key1, value1) in list(result.items()): 
-                                ipHostInfo += '%s  %s  %s\n' % (key1, value1, HOSTS_MAPPING_FLAG)
-                            ipHostInfo = ipHostInfo[:-1]
-                            cmd = "echo '%s' >> /etc/hosts" % ipHostInfo
-                            channel = ssh.open_session()
-                            channel.exec_command(cmd)
-                            errInfo = channel.recv_stderr(9999).decode().strip()
-                            if errInfo:
-                                writeResult.append(errInfo)
-
-                    if channel:
-                        channel.close()
-
-                if len(writeResult) > 0:
-                    raise Exception(ErrorCode.GAUSS_512["GAUSS_51221"] +
-                                    " Error: \n%s" % writeResult)
+            sshIps = list(result1.keys())
+            ipHostInfo = ipHostInfo[:-1]
+            if sshIps:
+                ipRemoteHostname = parallelTool.parallelExecute(self.writeRemoteHostName, sshIps)
+                errorMsg = ""
+                for (key, value) in ipRemoteHostname:
+                    if not key:
+                        errorMsg = errorMsg + '\n' + str(value)
+                if errorMsg != "":
+                    raise Exception(ErrorCode.GAUSS_512["GAUSS_51221"] + " Error: %s" %
+                                    errorMsg)
         self._debug("Successfully write remote hostname and Ip into /etc/hosts.", "constant")
 
     def initLogger(self):
@@ -668,6 +620,17 @@ General options:
         except Exception as e:
             self.logger.logExit(str(e))
         self._log("Successfully checked network information.", "constant")
+    
+    def check_current_user(self):
+        """
+        function: Check if the current user is root
+        input : NA
+        output: NA
+        """
+        user_info = UserUtil.getUserInfo()
+        if user_info['uid'] != 0:
+            self.skipHostnameSet = True
+        
 
     def run(self):
         """
@@ -675,6 +638,7 @@ General options:
         input : NA
         output: NA
         """
+        self.check_current_user()
         self.parseCommandLine()
         self.checkParameter()
         self.localHost = socket.gethostname()
@@ -694,7 +658,8 @@ General options:
 
         if not self.skipHostnameSet:
             self.writeLocalHosts(result)
-            self.writeRemoteHosts(result, self.user, self.passwd)
+            self.writeRemoteHosts(result)
+            self.write_hostname_to_list(result)
 
         self.logger.log("Creating SSH trust.")
         try:                      
@@ -881,12 +846,7 @@ General options:
                 #ssh Remote Connection other node
                 p = paramiko.SSHClient()
                 p.load_system_host_keys()               
-                ok = self.tryParamikoConnect(hostname, p, self.passwd[0], silence = True)
-                if not ok:
-                    for pswd in self.passwd[1:]:
-                        ok = self.tryParamikoConnect(hostname, p, pswd, silence = True)
-                        if ok:
-                            break
+                ok = self.tryParamikoConnect(hostname, p, self.correct_passwd_map[hostname], silence = True)
                 if not ok:
                     self.incorrectPasswdInfo += "Without this node[%s] of the correct password.\n"\
                                                 % hostname
@@ -1115,15 +1075,24 @@ General options:
             self.logger.logExit(str(e))
         self._log("Successfully distributed SSH trust file to all node.", "constant")
 
-    def verifyTrust(self):
+    def write_hostname_to_list(self, ip_hostname):
+        """
+        function: Add hostname to the list
+        input : NA
+        output: NA
+        """
+        for hostname in ip_hostname.values():
+            self.host_name_list.append(hostname)
+
+    def verify_trust_by_hostname(self):
         """
         function: Verify creating SSH trust is successful
         input : NA
         output: NA
         """
-        self._log("Verifying SSH trust on all hosts.", "addStep")
+        self._log("Verifying SSH trust on all hosts by hostname.", "addStep")
         try:
-            results = parallelTool.parallelExecute(self.checkAuthentication, self.hostList)
+            results = parallelTool.parallelExecute(self.checkAuthentication, self.host_name_list)
             hostnames = ""
             for (key, value) in results:
                 if not key:
@@ -1132,6 +1101,37 @@ General options:
                 raise Exception(ErrorCode.GAUSS_511["GAUSS_51100"] % hostnames.lstrip(','))
         except Exception as e:
             self.logger.logExit(str(e))
+        self._log("Successfully verified SSH trust on all hosts by hostname.", "constant")
+
+    def verify_trust_by_ip(self):
+        """
+        function: Verify creating SSH trust is successful
+        input : NA
+        output: NA
+        """
+        self._log("Verifying SSH trust on all hosts by ip.", "addStep")
+        try:
+            results = parallelTool.parallelExecute(self.checkAuthentication, self.hostList)
+            ips = ""
+            for (key, value) in results:
+                if not key:
+                    ips = ips + ',' + value
+            if ips != "":
+                raise Exception(ErrorCode.GAUSS_511["GAUSS_51100"] % ips.lstrip(','))
+        except Exception as e:
+            self.logger.logExit(str(e))
+        self._log("Successfully verified SSH trust on all hosts by ip.", "constant")
+
+    def verifyTrust(self):
+        """
+        function: Verify creating SSH trust is successful
+        input : NA
+        output: NA
+        """
+        self._log("Verifying SSH trust on all hosts.", "addStep")
+        self.verify_trust_by_ip()
+        if not self.skipHostnameSet:
+            self.verify_trust_by_hostname()
         self._log("Successfully verified SSH trust on all hosts.", "constant")
 
     def getUserPasswd(self):

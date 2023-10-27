@@ -50,6 +50,7 @@ from base_utils.os.net_util import NetUtil
 from subprocess import PIPE
 from base_utils.common.fast_popen import FastPopen
 from gspylib.common.copy_python_lib import copy_lib
+from base_utils.os.user_util import UserUtil
 
 DefaultValue.doConfigForParamiko()
 copy_lib()
@@ -619,6 +620,17 @@ General options:
         except Exception as e:
             self.logger.logExit(str(e))
         self._log("Successfully checked network information.", "constant")
+    
+    def check_current_user(self):
+        """
+        function: Check if the current user is root
+        input : NA
+        output: NA
+        """
+        user_info = UserUtil.getUserInfo()
+        if user_info['uid'] != 0:
+            self.skipHostnameSet = True
+        
 
     def run(self):
         """
@@ -626,6 +638,7 @@ General options:
         input : NA
         output: NA
         """
+        self.check_current_user()
         self.parseCommandLine()
         self.checkParameter()
         self.localHost = socket.gethostname()

@@ -27,7 +27,7 @@ import sys
 import time
 
 sys.path.append(sys.path[0] + '/../..')
-from upgrade_checker.utils.version import FOR_OPENGAUSS
+from upgrade_checker.utils.version import is_support_version
 from upgrade_checker.utils.command import Shell
 from upgrade_checker.utils.exception import ShellExecException
 
@@ -41,7 +41,7 @@ class OGController(object):
         if len(parts) < 4 or parts[0] != 'openGauss' or parts[3] != '64bit.tar.bz2':
             return False, '非openGauss bz2压缩安装包：' + pkg
         
-        if parts[1] not in FOR_OPENGAUSS:
+        if not is_support_version(parts[1]):
             return False, '工具不支持的OG版本：' + parts[1]
         
         return True, ''

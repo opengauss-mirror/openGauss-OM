@@ -27,7 +27,7 @@ import subprocess
 from subprocess import Popen, PIPE
 from upgrade_checker.log import logger
 from upgrade_checker.utils.singleton import singleton
-from upgrade_checker.utils.version import FOR_OPENGAUSS
+from upgrade_checker.utils.version import is_support_version
 from upgrade_checker.utils.command import Shell
 
 
@@ -130,7 +130,7 @@ class OpenGauss(object):
         self.version_info = self.query('select version();').value()
         parts = self.version_info.split(' ')
         self.version = parts[1] if parts[0] == '(openGauss' else parts[3]
-        if self.version not in FOR_OPENGAUSS:
+        if not is_support_version(self.version):
             logger.err('暂不支持 openGauss ' + self.version)
 
         res = self.query('show pgxc_node_name;')

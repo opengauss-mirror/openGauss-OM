@@ -817,6 +817,7 @@ def CheckNetWorkBonding(serviceIP, bondMode=False):
     networkCardNumList = []
     networkCardNumList.append(networkCardNum)
     bondingConfFile = "/proc/net/bonding/%s" % networkCardNum
+    teamConfFile = "/etc/sysconfig/network-scripts/ifcfg-%s" % networkCardNum
     if os.path.exists(NetWorkConfFile):
         cmd = "grep -i 'BONDING_OPTS\|BONDING_MODULE_OPTS' %s" \
               % NetWorkConfFile
@@ -826,6 +827,8 @@ def CheckNetWorkBonding(serviceIP, bondMode=False):
                     and os.path.exists(bondingConfFile)):
                 networkCardNumList = networkCardNumList + \
                                      checkBondMode(bondingConfFile, bondMode)
+            elif os.path.exists(teamConfFile):
+                networkCardNumList = networkCardNumList + checkTeamMode(teamConfFile, bondMode)
             else:
                 g_logger.logExit(ErrorCode.GAUSS_506["GAUSS_50611"] +
                                  "The cmd is " + cmd)
@@ -837,6 +840,8 @@ def CheckNetWorkBonding(serviceIP, bondMode=False):
             if os.path.exists(bondingConfFile):
                 networkCardNumList = networkCardNumList + \
                                      checkBondMode(bondingConfFile, bondMode)
+            elif os.path.exists(teamConfFile):
+                networkCardNumList = networkCardNumList + checkTeamMode(teamConfFile, bondMode)
             else:
                 g_logger.logExit(ErrorCode.GAUSS_506["GAUSS_50611"]
                                  + "Without NetWorkConfFile mode.")
@@ -882,6 +887,43 @@ def checkBondMode(bondingConfFile, isCheck):
             netNameList.append(networkname.strip())
             netWorkBondInfo.nums = netWorkBondInfo.nums + 1
     return netNameList
+
+def checkTeamMode(teamConfFile, isCheck):
+    """
+    function : Check Team mode
+    input  : String, bool
+    output : List
+    """
+    teamModeList = []
+    networkCardNum = NetUtil.getNICNum(serviceIP)
+
+    cmd = "grep -w 'DEVICE' %s | awk  -F ':' '{print $NF}'" \
+          % teamConfFile
+    (status, output) = subprocess.getstatusoutput(cmd)
+    if (status != 0 or output.strip() == ""):
+        g_logger.debug("Failed to obtain network card teaming information."
+                       " Commands for getting: %s." % cmd)
+        g_logger.logExit(ErrorCode.GAUSS_506["GAUSS_50611"]
+                         + " Error: \n%s" % output)
+
+    teamMode = output.strip()
+
+    if isCheck:
+        g_logger.log("Teaming Mode: %s" % teamMode)
+    else:
+        cmd = "teamdctl %s state" % networkCardNum
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if (status != 0):
+            g_logger.debug("Failed to obtain network card teaming "
+                           "information. Commands for getting: %s." % cmd)
+            g_logger.logExit(ErrorCode.GAUSS_506["GAUSS_50611"]
+                             + " Error: \n%s" % output)
+            
+        match = re.search(r"active port: (\w+)", output)
+        if match:
+            active_port = match.group(1)
+            teamModeList.append(active_port)
+    return teamModeList
 
 
 def getNetWorkTXRXValue(networkCardNum, valueType):

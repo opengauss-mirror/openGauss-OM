@@ -27,7 +27,7 @@ import json
 import time
 import os
 from json import JSONDecodeError
-from upgrade_checker.utils.version import UPGRADE_CHECKER_VERSION, FOR_OPENGAUSS
+from upgrade_checker.utils.version import UPGRADE_CHECKER_VERSION, is_support_version
 from upgrade_checker.utils.command import Download
 from upgrade_checker.utils.exception import ShellExecException
 from upgrade_checker.log import logger
@@ -109,7 +109,7 @@ class VerifyMap(object):
         :param directory: 存放vmap的文件夹位置。
         :return:
         """
-        if og.version not in FOR_OPENGAUSS:
+        if not is_support_version(og.version):
             logger.err('暂不支持 openGauss %s 版本的校验' % og.version)
 
         standard_vmap_name = VerifyMap.standard_name(UPGRADE_CHECKER_VERSION, og.version)

@@ -32,7 +32,7 @@
 
 2、将version.py中UPGRADE_CHECKER_VERSION进行修改加一。
 
-3、下载version.py中FOR_OPENGAUSS所列出来的openGauss版本压缩包，进行测试。
+3、下载version.py中VERSION_SUPPORT所列出来的openGauss版本压缩包，进行测试。
 
 4、为测试通过的版本使用`Dev/StandardVmapGen.py`来导出基准校验地图。
 
@@ -47,7 +47,7 @@
 首先我们需要安装运行一个openGauss新版本，并且下载本工具，之后按照如下步骤适配openGauss最新版：
 
 1、使用当前工具，对openGauss新版本进行VMAP导出测试。
-    - 修改version.py中的FOR_OPENGAUSS, 将新的openGauss版本添加到其中。
+    - 判断version.py中的VERSION_SUPPORT是否需要修改。
     - 使用工具导出新版本openGauss的VMAP。可正常导出，或用`Dev/StandardVmapGen.py`
     
 2、修复导出测试过程中的告警、错误并重新测试导出，直到完美导出VMAP。

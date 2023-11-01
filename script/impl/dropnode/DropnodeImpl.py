@@ -74,7 +74,7 @@ class DropnodeImpl():
         if envFile:
             self.envFile = envFile
         else:
-            self.envFile = ClusterConstants.ETC_PROFILE
+            self.envFile = ClusterConstants.HOME_USER_BASHRC % self.user
         gphomepath = EnvUtil.getEnv("GPHOME")
         if gphomepath:
             self.gphomepath = gphomepath

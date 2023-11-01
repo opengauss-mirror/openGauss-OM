@@ -2390,6 +2390,7 @@ class UpgradeImpl:
             self.recordNodeStepInplace(const.ACTION_INPLACE_UPGRADE,
                                        const.BINARY_UPGRADE_STEP_UPGRADE_APP)
             self.installNewBin()
+            self.cpDolphinUpgradeScript()
 
             # 11. restore the cluster config. including this:
             #    cluster_static_config
@@ -6775,10 +6776,13 @@ class UpgradeImpl:
         self.context.logger.debug("Start to copy dolphin upgrade script.")
 
         try:
-            cmd = "if ls %s/share/postgresql/extension/ | grep -qE \"dolphin--(.*)--(.*)sql\" ; " \
+            cmd = "if ls %s/share/postgresql/extension/ | grep -qE 'dolphin--(.*)--(.*)sql' ; " \
                   "then cp -f %s/share/postgresql/extension/dolphin--*--*sql %s/share/postgresql/extension/; fi" % \
                   (self.context.oldClusterAppPath, self.context.oldClusterAppPath, self.context.newClusterAppPath)
-            CmdExecutor.execCommandLocally(cmd)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            self.context.sshTool,
+                                            self.context.isSingle,
+                                            self.context.mpprcFile)
             self.context.logger.debug("Successfully copy dolphin upgrade script.")
         except Exception as e:
             raise Exception("Failed to copy dolphin upgrade script.")

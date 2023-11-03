@@ -1,0 +1,10 @@
+{
+  "desc": "kunpeng 4P tpcc",
+  "scenario": "OLTP-performance",
+  "parallel": 900,
+  "rel_count": 20,
+  "rel_kind": "heap-table, partition-table",
+  "part_count": 10,
+  "index_count": 10,
+  "data_size": 81920
+}

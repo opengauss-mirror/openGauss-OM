@@ -454,13 +454,14 @@ class GaussLog:
         sys.exit(status)
 
     @staticmethod
-    def printMessage(msg):
+    def printMessage(msg, end='\n'):
         """
         function: Print the String message
         input: msg
+        input: end
         output: NA
         """
-        sys.stdout.write("%s\n" % msg)
+        sys.stdout.write("%s%s" % (msg, end))
 
 
 class FormatColor(object):

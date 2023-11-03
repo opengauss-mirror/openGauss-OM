@@ -47,6 +47,20 @@ class CmdUtil(object):
                      "then source $MPPDB_ENV_SEPARATE_PATH; fi"
 
     @staticmethod
+    def execCmd(cmd, noexcept=False):
+        """
+        function: execute cmd
+        input: cmd, noexcept
+        output: output of cmd
+        """
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            if noexcept:
+                return output
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error: \n%s" % str(output))
+        return output
+
+    @staticmethod
     def findCmdInPath(cmd, additional_paths=None, print_error=True):
         """
         function: find cmd in path
@@ -389,6 +403,15 @@ class CmdUtil(object):
                BLANK_SPACE + service_name
 
     @staticmethod
+    def getSysctlCmd():
+        """
+        function: get sysctl cmd
+        input  : NA
+        output : str
+        """
+        return CmdUtil.findCmdInPath('sysctl')
+
+    @staticmethod
     def getUlimitCmd():
         """
         function: get ulimit cmd
@@ -432,6 +455,33 @@ class CmdUtil(object):
         output : str
         """
         return CmdUtil.findCmdInPath('tail')
+
+    @staticmethod
+    def getWhichCmd():
+        """
+        function: get which cmd
+        input  : NA
+        output : str
+        """
+        return CmdUtil.findCmdInPath('which')
+
+    @staticmethod
+    def getLscpuCmd():
+        """
+        function: get lscpu cmd
+        input  : NA
+        output : str
+        """
+        return CmdUtil.findCmdInPath('lscpu')
+
+    @staticmethod
+    def getDmidecodeCmd():
+        """
+        function: get dmidecode cmd
+        input  : NA
+        output : str
+        """
+        return CmdUtil.findCmdInPath('dmidecode')
 
     @staticmethod
     def getSshCmd(address, timeout=None):
@@ -678,3 +728,20 @@ class CmdUtil(object):
             proc.stdin.flush()
             output, error = proc.communicate()
             return proc.returncode, output, error
+
+    @staticmethod
+    def doesBinExist(bin):
+        """
+        function : which bin
+        input : bin name
+        output: bool
+        """
+        cmd = CmdUtil.getWhichCmd() + BLANK_SPACE + bin
+        try:
+            status, output = subprocess.getstatusoutput(cmd)
+            if status == 0:
+                return True
+        except Exception:
+            pass
+
+        return False

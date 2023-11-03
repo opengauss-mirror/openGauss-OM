@@ -1,0 +1,301 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+#############################################################################
+# Copyright (c) 2023 Huawei Technologies Co.,Ltd.
+#
+# openGauss is licensed under Mulan PSL v2.
+# You can use this software according to the terms
+# and conditions of the Mulan PSL v2.
+# You may obtain a copy of Mulan PSL v2 at:
+#
+#          http://license.coscl.org.cn/MulanPSL2
+#
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS,
+# WITHOUT WARRANTIES OF ANY KIND,
+# EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+# MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+# See the Mulan PSL v2 for more details.
+# ----------------------------------------------------------------------------
+# Description  : gs_perfconfg is a utility to optimize system and database configure about openGauss
+#############################################################################
+
+import os
+import sys
+import getopt
+import logging
+from base_utils.common.dialog import DialogUtil
+from impl.perf_config.basic.project import Project, PorjectError, ProjectLogLevel
+from impl.perf_config.basic.anti import AntiLog
+from impl.perf_config.preset.preset import Preset
+from impl.perf_config.perf_probe import PerfProbe
+from impl.perf_config.perf_tuner import PerfTuneTarget, PerfTuner
+
+
+def usage():
+    print("""
+Usage of gs_perfconfig:
+    gs_perfconfig [ACTION [ ACTION-PARAM ] ]
+    
+Action, action-params and functions are as follows:
+    help (No action-params) :
+        Display help document of gs_perfconfig. '--help', '-h', '-?' are also effective.
+            
+    tune [ -t [ all,os,setup,guc,suggest ] ] [ --apply ] [--env envfile] [ -y ]:
+        '-t' include four tuning target modules: 
+            os      : (only root) Including os parameters, software, hardware configurations. 
+            setup   : Including database setup configuration.
+            guc     : Including database GUC configuration.
+            suggest : Give some additional suggestions.
+            'all' indicates all modules, but 'os' depend on the executor.
+        '--apply' indicates that the actual application is adjusted, and the database may need
+            to be restarted multiple times during this period. Otherwise, only one report is generated.
+        '--env' specifies the environment variables file.
+        '-y' Accept the requirements for configuring operating system parameters, GUC parameters, 
+            and restarting the database during adjustment.
+        
+        When the root user is used to execute the process, the process is completely executed from 
+        the beginning and certain information is generated. When the user executes the command, the 
+        system first attempts to load the information left by the root user, and then skips certain
+        processes.
+        
+    preset [ --help | (No params) | preset-name |  ]
+        Print the preset addition guide, all preset list or specify the contents of the preset.
+        
+    recover [ -y ] :
+        Recover the content of the last tuning.
+        '-y' Accept the requirements for configuring operating system parameters, GUC parameters, 
+        and restarting the database during adjustment.
+
+
+The environment variable GS_PERFCONFIG_OPTIONS sets some behavior within the tool.
+    export GS_PERFCONFIG_OPTIONS='param1=value1:param2=value2:param3=value3'
+    
+params and values:
+    always_choose_yes = on/off. Accept the requirements for configuring operating system parameters, GUC parameters, 
+        and restarting the database during adjustment, default is no.
+        
+    lowest_print_log_level = log/notice/warning/error/fatal. The lowest level of print logs, default is notice. 
+        You can also set 'msg', but it will not take effect.
+
+    """)
+    exit(1)
+
+
+class TuneTask(object):
+    def __init__(self, argv):
+        self.accept_risk = False
+        target, apply, env = self._parse_arg(argv)
+        self.tune_target = PerfTuneTarget(target, apply)
+        Project.initEnviron(env, True)
+        Project.initRole()
+        Project.initProjectLog(Project.environ.run_log)
+        Project.prepareReport(Project.environ.report)
+        Project.log(Project.environ.__str__())
+
+        if self.tune_target.apply():
+            AntiLog.initAntiLog(Project.environ.anti_log)
+
+        Project.setTask(self)
+
+    def _parse_arg(self, argv):
+        short_options = 't:y'
+        long_options = ['apply', 'env=']
+        opts, args = getopt.getopt(argv, short_options, long_options)
+        if len(args) > 1:
+            Project.fatal('unknown param ' + args[0])
+        target = 'all'
+        apply = False
+        env = None
+        for opt, arg in opts:
+            if opt == '-t':
+                target = arg
+            elif opt == '--apply':
+                apply = True
+            elif opt == '--env':
+                env = arg
+            elif opt == '-y':
+                self.accept_risk = True
+            else:
+                Project.fatal('unknown param ' + opt)
+        return target, apply, env
+
+    def run(self):
+        if self.tune_target.noTarget():
+            Project.notice('nothing to tune.')
+            return
+        do_apply = self.tune_target.apply()
+        # 1, Operation content and risk tips.
+        self.riskDisclosure()
+
+        # 2, start probe
+        Project.notice('Start probe detect.')
+        infos = PerfProbe()
+        Project.setGlobalPerfProbe(infos)
+        infos.detect()
+
+        # 3, shutdown openGauss if necessary
+        og_live_at_first = Project.isOpenGaussLive()
+        if og_live_at_first and do_apply:
+            Project.stopOpenGauss()
+
+        # 4, tune and apply, and rollback apply when errors.
+        error_occurred = False
+        Project.notice('Prepare tune plan.')
+        tuner = PerfTuner()
+        Project.setGlobalPerfTuner(tuner)
+        tuner.calculate()
+
+        try:
+            Project.notice('execute tune plan({0})...'.format(
+                'report and apply' if do_apply else 'just report'))
+            tuner.explain(do_apply)
+            Project.report.dump()
+            Project.notice('Tune finish.')
+
+        except PorjectError:
+            error_occurred = True
+        except Exception as e:
+            Project.notice('Some errors have occurred.')
+            Project.notice(e.__str__())
+            logging.exception(e)
+            error_occurred = True
+
+        if error_occurred and do_apply:
+            Project.notice('start rollback.')
+            PerfTuner.rollback(None)
+
+        # 5, start og if necessary.
+        if og_live_at_first and do_apply:
+            Project.startOpenGauss()
+
+    def riskDisclosure(self):
+        question = ('Certainly, we will perform some stress tests, make adjustments to the \n'
+                    'configuration of operating system parameters, database parameters, and \n'
+                    'also perform a database restart during the optimization process. \n'
+                    'Are you accepting of the aforementioned circumstances?')
+        Project.log('risk disclosure: ' + question)
+        if Project.environ.gs_perfconfig_options['always_choose_yes']:
+            Project.notice('user always choose yes.')
+        elif self.accept_risk:
+            Project.notice('user choose yes by "-y".')
+        else:
+            ok = DialogUtil.yesOrNot(question)
+            Project.log('user choose: ' + ('y' if ok else 'n'))
+            if not ok:
+                Project.fatal('The user has chosen to cancel the operation.')
+
+
+class PresetTask(object):
+    def __init__(self, argv):
+        Project.set_lowest_print_level(ProjectLogLevel.WARNING)
+        Project.initEnviron(None, False)
+        Project.reset_lowest_print_level()
+
+        self.target_preset = None if (argv is None or len(argv) == 0) else argv[0]
+        if len(argv) > 1:
+            Project.fatal('unknown param {}'.format(argv[1]))
+
+    def run(self):
+        if self.target_preset is None:
+            self._show_all_presets()
+        elif self.target_preset.lower() in ['help', '--help', '-h', '-?']:
+            self._show_preset_usage()
+        else:
+            self._show_one_preset(self.target_preset)
+
+    def _show_all_presets(self):
+        builtins, usersets = Preset.get_all_presets()
+
+        msg = 'Builtin Presets:\n'
+        for preset in builtins:
+            msg += f'    {preset}\n'
+        Project.msg(msg)
+
+        msg = 'User Presets:\n'
+        for preset in usersets:
+            msg += f'    {preset}\n'
+        Project.msg(msg)
+
+    def _show_one_preset(self, name):
+        preset = Preset(name)
+        Project.msg(preset.__str__())
+
+    def _show_preset_usage(self):
+        preset_usage = Preset.usage()
+        Project.msg(preset_usage)
+
+
+class RecoverTask(object):
+    def __init__(self, argv):
+        self.accept_risk = False
+        if len(argv) > 0:
+            if len(argv) == 1 and argv[0] == '-y':
+                self.accept_risk = True
+            else:
+                Project.fatal('invalid param {}'.format(' '.join(argv)))
+
+        Project.initEnviron()
+        Project.initRole()
+        Project.initProjectLog(Project.environ.run_log)
+        Project.prepareReport(Project.environ.report)
+        Project.log(Project.environ.__str__())
+
+        AntiLog.initAntiLog(Project.environ.anti_log, reload=True)
+
+    def run(self):
+        Project.notice('start rollback.')
+        self.riskDisclosure()
+
+        og_is_live_first = Project.isOpenGaussLive()
+        if og_is_live_first:
+            Project.stopOpenGauss()
+
+        PerfTuner.rollback(None)
+        AntiLog.destroyAntiLog()
+
+        if og_is_live_first:
+            Project.startOpenGauss()
+
+        Project.notice('rollback finish.')
+
+    def riskDisclosure(self):
+        question = ('Certainly, we will make adjustments to the configuration of operating \n'
+                    'system parameters, database parameters, and also perform a database \n'
+                    'restart during the recover process.\n'
+                    'Are you accepting of the aforementioned circumstances?')
+        Project.log('risk disclosure: ' + question)
+        if Project.environ.gs_perfconfig_options['always_choose_yes']:
+            ok = True
+            Project.notice('user always choose yes.')
+        elif self.accept_risk:
+            ok = True
+            Project.notice('user choose yes by "-y".')
+        else:
+            ok = DialogUtil.yesOrNot(question)
+            Project.log('user choose: ' + ('y' if ok else 'n'))
+
+        if not ok:
+            Project.fatal('The user has chosen to cancel the recover.')
+
+
+if __name__ == '__main__':
+    task = None
+
+    if len(sys.argv) == 1 or sys.argv[1].lower() in ['help', '--help', '-h', '-?']:
+        usage()
+
+    elif sys.argv[1] == 'tune':
+        task = TuneTask(sys.argv[2:])
+
+    elif sys.argv[1] == 'preset':
+        task = PresetTask(sys.argv[2:])
+
+    elif sys.argv[1] == 'recover':
+        task = RecoverTask(sys.argv[2:])
+
+    else:
+        Project.fatal('Unknown task: ' + sys.argv[1])
+
+    task.run()
+
+

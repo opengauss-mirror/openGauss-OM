@@ -46,7 +46,7 @@ from base_utils.os.net_util import NetUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from domain_utils.cluster_os.cluster_user import ClusterUser
 from domain_utils.cluster_file.cluster_dir import ClusterDir
-from gspylib.component.DSS.dss_comp import Dss
+from gspylib.component.DSS.dss_comp import Dss, DssInst
 
 ###########################
 # instance type. only for CN/DN
@@ -709,6 +709,287 @@ def dss_cert_replacer(logger):
     else:
         logger.debug("Non-dss-mode or not find dsscmd.")
 
+def parallel_dss_conf(inst):
+    """
+    parallel copy dss config files
+    """
+    cmd = "mkdir -p -m %s %s/dssconfigfiles && cp -r $DSS_HOME/cfg/* %s/dssconfigfiles/." % (
+        DefaultValue.KEY_DIRECTORY_MODE, g_resultdir, g_resultdir)
+    (status, output) = subprocess.getstatusoutput(cmd)
+    if status != 0:
+        g_logger.debug(
+            "Failed to collect dss config files. Command: %s.\n Error: %s\n" % (
+                cmd, output))
+        g_jobInfo.failedTask["collect dss config giles"] = replaceInvalidStr(
+            output)
+        raise Exception("")
+
+def dss_conf_copy():
+    """
+    function: collected dss config files
+    input:  NA
+    output: NA
+    """
+    g_logger.debug("Starting collect dss config files.")
+    g_jobInfo.jobName = "Collecting dss_config information."
+    try:
+        # Get all instances of the cluster.
+        instances = [] 
+        for inst in g_localnodeinfo.datanodes:
+            if "dn" in ",".join(g_opts.content).lower():
+                instances.append(inst)
+        # parallel copy dss config files 
+        if instances:
+            pool = ThreadPool(DefaultValue.getCpuSet())
+            pool.map(parallel_dss_conf, instances)
+            pool.close()
+            pool.join()
+            g_jobInfo.successTask.append("collect dss config information")
+            g_logger.log(json.dumps(g_jobInfo.__dict__))
+    except Exception as e:
+        g_logger.debug(str(e))
+        g_logger.log(json.dumps(g_jobInfo.__dict__))
+        raise Exception("")
+
+    g_logger.debug(
+        "Successfully collected dss config files."
+    )
+
+def disk_info_copy():
+    """
+    function: collected disk info on nodes
+    input: NA
+    output: NA
+    """
+    g_logger.debug("Starting collect disk info.")
+    g_jobInfo.jobName = "Collecting disk info."
+    cmds = []
+    # copy dss disk vg info
+    lsvg_cmd = "mkdir -p -m %s %s/dssdiskinfo && dsscmd lsvg > %s/dssdiskinfo/vg_info" % (
+        DefaultValue.DIRECTORY_MODE, g_resultdir, g_resultdir)
+    cmds.append(lsvg_cmd)
+    # copy lun/reg inq info
+    inq_cmd = "mkdir -p -m %s %s/dssdiskinfo/inq && dsscmd inq -t lun > %s/dssdiskinfo/inq/lun &&" \
+        "mkdir -p -m %s %s/dssdiskinfo/inq && dsscmd inq -t reg > %s/dssdiskinfo/inq/reg" % (
+            DefaultValue.DIRECTORY_MODE, g_resultdir, g_resultdir,
+            DefaultValue.DIRECTORY_MODE, g_resultdir, g_resultdir)
+    cmds.append(inq_cmd)
+    # copy disk info using dsscmd showdisk
+    for c in g_opts.content:
+        if c == 'vgname':
+            disk = EnvUtil.getEnv('VGNAME')
+        else:
+            dss_home = EnvUtil.getEnv('DSS_HOME')
+            inst_id = DssInst.get_dss_id_from_key(dss_home)
+            disk = DssInst.get_private_vgname_by_ini(dss_home, inst_id)
+        disk_cmd = "mkdir -p -m %s %s/dssdiskinfo/disk/%s &&" \
+                   "dsscmd showdisk -g %s -s core_ctrl > %s/dssdiskinfo/disk/%s/core_ctrl &&" \
+                   "dsscmd showdisk -g %s -s vg_header > %s/dssdiskinfo/disk/%s/vg_header &&" \
+                   "dsscmd showdisk -g %s -s volume_ctrl > %s/dssdiskinfo/disk/%s/volume_ctrl &&" \
+                   "dsscmd showdisk -g %s -s root_ft_block > %s/dssdiskinfo/disk/%s/root_ft_block" % (
+                   DefaultValue.DIRECTORY_MODE, g_resultdir, disk,
+                   disk, g_resultdir, disk,
+                   disk, g_resultdir, disk,
+                   disk, g_resultdir, disk,
+                   disk, g_resultdir, disk)
+        cmds.append(disk_cmd)
+
+    for cmd in cmds:
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            g_jobInfo.failedTask["collect disk info"] = replaceInvalidStr(
+                output)
+            g_logger.debug(
+                ("Failed to collect disk information. Error:\n%s." % output) +
+                ("The cmd is %s " % cmd))
+
+    g_logger.log(json.dumps(g_jobInfo.__dict__))
+    g_logger.debug("Successfully collected disk files.")
+
+def check_dss_env():
+    """
+    function: check if dss exists
+    input: NA
+    output: NA
+    """
+    dss_home = EnvUtil.getEnv('DSS_HOME')
+    if dss_home:
+        return True 
+    return False 
+
+def find_log():
+    cmd = ""
+    if g_opts.key is not None and g_opts.key != "":
+        cmd = "cd $GAUSSLOG && if [ -d tmp_gs_collector ];" \
+              "then rm -rf tmp_gs_collector; " \
+              "fi && find . -type f -iname '*.log' -print " \
+              " | xargs ls --time-style='+ %Y%m%d%H%M' -ll"
+    else:
+        cmd = "cd $GAUSSLOG && if [ -d tmp_gs_collector ];" \
+              "then rm -rf tmp_gs_collector; " \
+              "fi && (find . -type f -iname '*.log' -print && " \
+              "find . -type f -iname '*.prf' -print) " \
+              "| xargs ls --time-style='+ %Y%m%d%H%M' -ll"
+    if check_dss_env():
+        cmd = "%s && (find $GAUSSLOG/pg_log -type f -iname '*.rlog' -print && " \
+              "find $DSS_HOME/log -type f -iname '*.rlog' -print) " \
+              "| xargs ls --time-style='+ %%Y%%m%%d%%H%%M' -ll" % cmd
+    (status, output) = subprocess.getstatusoutput(cmd)
+    logFiles = output.split("\n")
+    logs = []
+    find_files = 0
+    # If there is a log file filtered by time
+    if len(logFiles[0].split()) != 2:
+        for logFile in logFiles:
+            logFileName = logFile.split()[6]
+            logStartTime = formatTime(logFileName)
+            # If the log file name does not meet the format requirements,skip
+            if not logStartTime.isdigit() or len(logStartTime) != 12:
+                continue
+            logStartTime = int(logStartTime)
+            logEndTime = int(logFile.split()[5])
+            # Filter out the log we need
+            if (logEndTime > int(g_opts.begin) and logStartTime < int(
+                    g_opts.end) and log_check(logFileName)):
+                logs.append(logFileName)
+                find_files = 1
+        if find_files == 1:
+            g_jobInfo.successTask.append("find log files")
+        else:
+            g_jobInfo.failedTask["find log files"] = ErrorCode.GAUSS_535["GAUSS_53504"] % 'log'
+        g_logger.debug("Successfully find log files.")
+    else:
+        g_jobInfo.failedTask["find log files"] = ErrorCode.GAUSS_535[
+            "GAUSS_53505"]
+        g_logger.debug("There is no log files.")
+    return logs
+
+def make_log_dir(log_files, deleteCmd):
+    cmd = "cd $GAUSSLOG && mkdir -p -m %s tmp_gs_collector" % \
+           DefaultValue.DIRECTORY_MODE
+    if check_dss_env():
+        cmd = "%s && cd $GAUSSLOG && mkdir -p -m %s tmp_gs_collector/pg_log/DMS && " \
+              "mkdir -p -m %s tmp_gs_collector/pg_log/DSS && " \
+              "mkdir -p -m %s tmp_gs_collector/DSSLog" % (
+              cmd, DefaultValue.DIRECTORY_MODE, DefaultValue.DIRECTORY_MODE,
+              DefaultValue.DIRECTORY_MODE)
+    (status, output) = subprocess.getstatusoutput(cmd)
+    directorys = []
+    for log in log_files:
+        if 'rlog' not in log:
+            directorys.append(os.path.dirname(log))
+    for directory in directorys:
+        cmd = "cd $GAUSSLOG && mkdir -p -m %s tmp_gs_collector/'%s'" % (
+        DefaultValue.DIRECTORY_MODE, directory)
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            (status1, output1) = subprocess.getstatusoutput(deleteCmd)
+            g_jobInfo.failedTask["mkdir"] = ErrorCode.GAUSS_535["GAUSS_53506"]
+            g_logger.log(json.dumps(g_jobInfo.__dict__))
+            g_logger.debug("Failed to mkdir. Error:\n%s." % output)
+            raise Exception("")
+
+def copy_log(log_files, deleteCmd):
+    for log in log_files:
+        if int(g_opts.speedLimitFlag) == 1:
+            if 'pg_log/DMS' in log:
+                cmd = "cd $GAUSSLOG && rsync --bwlimit=%d '%s' " \
+                      "tmp_gs_collector/pg_log/DMS/." % (g_opts.speedLimitKBs, log)
+            elif 'pg_log/DSS' in log:
+                cmd = "cd $GAUSSLOG && rsync --bwlimit=%d '%s' " \
+                      "tmp_gs_collector/pg_log/DSS/." % (g_opts.speedLimitKBs, log)
+            elif 'rlog' in log:
+                cmd = "cd $GAUSSLOG && rsync --bwlimit=%d '%s' " \
+                      "tmp_gs_collector/DSSLog/." % (g_opts.speedLimitKBs, log)
+            else:
+                cmd = "cd $GAUSSLOG && rsync --bwlimit=%d '%s' " \
+                      "tmp_gs_collector/'%s'" % (g_opts.speedLimitKBs, log, log)
+        else:
+            if 'pg_log/DMS' in log:
+                cmd = "cd $GAUSSLOG && cp %s tmp_gs_collector/pg_log/DMS/." % log
+            elif 'pg_log/DSS' in log:
+                cmd = "cd $GAUSSLOG && cp %s tmp_gs_collector/pg_log/DSS/." % log
+            elif 'rlog' in log:
+                cmd = "cd $GAUSSLOG && cp %s tmp_gs_collector/DSSLog/." % log
+            else:
+                cmd = "cd $GAUSSLOG && cp '%s' tmp_gs_collector/'%s'" % (log, log)
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0 and 'Permission denied' not in output:
+            (status1, output1) = subprocess.getstatusoutput(deleteCmd)
+            g_jobInfo.failedTask["copy log files"] = replaceInvalidStr(output)
+            g_logger.log(json.dumps(g_jobInfo.__dict__))
+            g_logger.debug("Failed to copy logFiles. Error:\n%s." % output)
+            raise Exception("")
+
+    g_jobInfo.successTask.append("copy log files")
+    g_logger.debug("Successful to copy logFiles.")
+
+def find_zip_log():
+    cmd = "cd $GAUSSLOG && find . -type f -iname '*.zip' -print" \
+          " | xargs ls --time-style='+ %Y%m%d%H%M' -ll"
+    (status, output) = subprocess.getstatusoutput(cmd)
+    zipFiles = output.split("\n")
+    # If there is a zip file filtered by time
+    if len(zipFiles[0].split()) != 2:
+        for zipFile in zipFiles:
+            zipFileName = zipFile.split()[6]
+            logStartTime = formatTime(zipFileName)
+            # If the zip file name does not meet the format requirements,skip
+            if not logStartTime.isdigit() or len(logStartTime) != 12:
+                continue
+            logStartTime = int(logStartTime)
+            logEndTime = int(zipFile.split()[5])
+            # Filter out the log we need
+            if (logEndTime > int(g_opts.begin) and logStartTime < int(g_opts.end)):
+                zipdir = os.path.dirname(zipFileName)
+                g_jobInfo.successTask.append("find log zip files: %s" % zipFileName)
+                cmd = "cd $GAUSSLOG && mkdir -p -m %s tmp_gs_collector/%s " \
+                      "&& unzip -o %s -d tmp_gs_collector/%s " % \
+                      (DefaultValue.DIRECTORY_MODE, zipdir,zipFileName, zipdir)
+                (status, output) = subprocess.getstatusoutput(cmd)
+                if status != 0:
+                    g_jobInfo.failedTask[
+                        "find log zip files"] = replaceInvalidStr(output)
+                    g_logger.log(json.dumps(g_jobInfo.__dict__))
+                    g_logger.debug(("Failed to filter zip files. Error:\n%s."
+                                   % output) + ("The cmd is %s " % cmd))
+                    raise Exception("")
+        g_logger.debug("Successfully filter zip files.")
+    else:
+        g_logger.debug("There is no zip files.")
+
+def log_keywords(log_files, keyword_result):
+    if log_files:
+        g_opts.key = g_opts.key.replace('$', '\$')
+        g_opts.key = g_opts.key.replace('\"', '\\\"')
+        cmd = "cd $GAUSSLOG/tmp_gs_collector && "
+        cmd = "%s grep \"%s\" -r * > %s/logfiles/%s" % (
+        cmd, g_opts.key, g_resultdir, keyword_result)
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0 and output != "":
+            cmd = "rm -rf $GAUSSLOG/tmp_gs_collector"
+            (status1, output1) = CmdUtil.retryGetstatusoutput(cmd)
+            g_jobInfo.failedTask[
+                "filter keyword"] = "keywords: %s, Error: %s" % (g_opts.key, output)
+            g_logger.log(json.dumps(g_jobInfo.__dict__))
+            g_logger.debug("Failed to filter keyword. Error:\n%s." % output)
+            raise Exception("")
+        else:
+            cmd = "rm -rf $GAUSSLOG/tmp_gs_collector"
+            (status, output) = CmdUtil.retryGetstatusoutput(cmd)
+            g_logger.debug("Successfully filter keyword.")
+            g_jobInfo.successTask.append("filter keyword: %s" % g_opts.key)
+
+    else:
+        cmd = "touch %s/logfiles/%s && " % (g_resultdir, keyword_result)
+        cmd = "%s rm -rf $GAUSSLOG/tmp_gs_collector" % cmd
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd)
+        if status != 0:
+            g_jobInfo.failedTask["touch keyword file"] = replaceInvalidStr(output)
+            g_logger.log(json.dumps(g_jobInfo.__dict__))
+            g_logger.debug("Failed to touch keyword file. Error:\n%s." % output)
+            raise Exception("")
+        g_logger.debug("Successfully filter keyword.")
 
 def log_copy():
     """
@@ -735,157 +1016,19 @@ def log_copy():
         "Speed limit to copy log files is %d KB/s." % g_opts.speedLimitKBs)
 
     # Filter the log files, if has keyword, do not collect prf file
-    if g_opts.key is not None and g_opts.key != "":
-        cmd = "cd $GAUSSLOG && if [ -d tmp_gs_collector ];" \
-              "then rm -rf tmp_gs_collector; " \
-              "fi && (find . -type f -iname '*.log' -print)" \
-              " | xargs ls --time-style='+ %Y%m%d%H%M' -ll"
-    else:
-        cmd = "cd $GAUSSLOG && if [ -d tmp_gs_collector ];" \
-              "then rm -rf tmp_gs_collector; " \
-              "fi && (find . -type f -iname '*.log' -print && " \
-              "find . -type f -iname '*.prf' -print) " \
-              "| xargs ls --time-style='+ %Y%m%d%H%M' -ll"
-    (status, output) = subprocess.getstatusoutput(cmd)
-    logFiles = output.split("\n")
-    logs = []
-    Directorys = []
-    findFiles = 0
-    # If there is a log file filtered by time
-    if len(logFiles[0].split()) != 2:
-        for logFile in logFiles:
-            logFileName = logFile.split()[6]
-            logStartTime = formatTime(logFileName)
-            # If the log file name does not meet the format requirements,skip
-            if not logStartTime.isdigit() or len(logStartTime) != 12:
-                continue
-            logStartTime = int(logStartTime)
-            logEndTime = int(logFile.split()[5])
-            # Filter out the log we need
-            if (logEndTime > int(g_opts.begin) and logStartTime < int(
-                    g_opts.end) and log_check(logFileName)):
-                logs.append(logFileName)
-                findFiles = 1
-        if findFiles == 1:
-            g_jobInfo.successTask.append("find log files")
-        else:
-            g_jobInfo.failedTask["find log files"] = ErrorCode.GAUSS_535[
-                                                         "GAUSS_53504"] % 'log'
-        g_logger.debug("Successfully find log files.")
-
-    else:
-        g_jobInfo.failedTask["find log files"] = ErrorCode.GAUSS_535[
-            "GAUSS_53505"]
-        g_logger.debug("There is no log files.")
+    logs = find_log()
 
     # Make temporary directory and copy
-    cmd = "cd $GAUSSLOG && mkdir -p -m %s tmp_gs_collector" % \
-          DefaultValue.DIRECTORY_MODE
-    (status, output) = subprocess.getstatusoutput(cmd)
-    for log in logs:
-        Directorys.append(os.path.dirname(log))
-    for directory in Directorys:
-        cmd = "cd $GAUSSLOG && mkdir -p -m %s tmp_gs_collector/'%s'" % (
-        DefaultValue.DIRECTORY_MODE, directory)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            (status1, output1) = subprocess.getstatusoutput(deleteCmd)
-            g_jobInfo.failedTask["mkdir"] = ErrorCode.GAUSS_535["GAUSS_53506"]
-            g_logger.log(json.dumps(g_jobInfo.__dict__))
-            g_logger.debug("Failed to mkdir. Error:\n%s." % output)
-            raise Exception("")
-    for log in logs:
-        if int(g_opts.speedLimitFlag) == 1:
-            cmd = "cd $GAUSSLOG && rsync --bwlimit=%d '%s' " \
-                  "tmp_gs_collector/'%s'" % (
-            g_opts.speedLimitKBs, log, log)
-        else:
-            cmd = "cd $GAUSSLOG && cp '%s' tmp_gs_collector/'%s'" % (log, log)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0 and 'Permission denied' not in output:
-            (status1, output1) = subprocess.getstatusoutput(deleteCmd)
-            g_jobInfo.failedTask["copy log files"] = replaceInvalidStr(output)
-            g_logger.log(json.dumps(g_jobInfo.__dict__))
-            g_logger.debug("Failed to copy logFiles. Error:\n%s." % output)
-            raise Exception("")
+    make_log_dir(logs, deleteCmd)
 
-    g_jobInfo.successTask.append("copy log files")
-    g_logger.debug("Successful to copy logFiles.")
+    copy_log(logs, deleteCmd)
 
     # Filter zip files
-    cmd = "cd $GAUSSLOG && find . -type f -iname '*.zip' -print" \
-          " | xargs ls --time-style='+ %Y%m%d%H%M' -ll"
-    (status, output) = subprocess.getstatusoutput(cmd)
-    zipFiles = output.split("\n")
-    # If there is a zip file filtered by time
-    if len(zipFiles[0].split()) != 2:
-        for zipFile in zipFiles:
-            zipFileName = zipFile.split()[6]
-            logStartTime = formatTime(zipFileName)
-            # If the zip file name does not meet the format requirements,skip
-            if not logStartTime.isdigit() or len(logStartTime) != 12:
-                continue
-            logStartTime = int(logStartTime)
-            logEndTime = int(zipFile.split()[5])
-            # Filter out the log we need
-            if (logEndTime > int(g_opts.begin) and logStartTime < int(
-                    g_opts.end)):
-                zipdir = os.path.dirname(zipFileName)
-                g_jobInfo.successTask.append(
-                    "find log zip files: %s" % zipFileName)
-                cmd = "cd $GAUSSLOG && mkdir -p -m %s tmp_gs_collector/%s " \
-                      "&& unzip -o %s -d tmp_gs_collector/%s " % \
-                      (DefaultValue.DIRECTORY_MODE, zipdir,
-                       zipFileName, zipdir)
-                (status, output) = subprocess.getstatusoutput(cmd)
-                if status != 0:
-                    g_jobInfo.failedTask[
-                        "find log zip files"] = replaceInvalidStr(output)
-                    g_logger.log(json.dumps(g_jobInfo.__dict__))
-                    g_logger.debug(("Failed to filter zip files. Error:\n%s."
-                                   % output) + ("The cmd is %s " % cmd))
-                    raise Exception("")
-        g_logger.debug("Successfully filter zip files.")
-    else:
-        g_logger.debug("There is no zip files.")
+    find_zip_log()
 
     # Filter keywords
     if g_opts.key is not None and g_opts.key != "":
-        if len(logs) != 0:
-            g_opts.key = g_opts.key.replace('$', '\$')
-            g_opts.key = g_opts.key.replace('\"', '\\\"')
-            cmd = "cd $GAUSSLOG/tmp_gs_collector && "
-            cmd = "%s grep \"%s\" -r * > %s/logfiles/%s" % (
-            cmd, g_opts.key, g_resultdir, keyword_result)
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0 and output != "":
-                cmd = "rm -rf $GAUSSLOG/tmp_gs_collector"
-                (status1, output1) = CmdUtil.retryGetstatusoutput(cmd)
-                g_jobInfo.failedTask[
-                    "filter keyword"] = "keywords: %s, Error: %s" % (
-                g_opts.key, output)
-                g_logger.log(json.dumps(g_jobInfo.__dict__))
-                g_logger.debug(
-                    "Failed to filter keyword. Error:\n%s." % output)
-                raise Exception("")
-            else:
-                cmd = "rm -rf $GAUSSLOG/tmp_gs_collector"
-                (status, output) = CmdUtil.retryGetstatusoutput(cmd)
-            g_logger.debug("Successfully filter keyword.")
-            g_jobInfo.successTask.append("filter keyword: %s" % g_opts.key)
-
-        else:
-            cmd = "touch %s/logfiles/%s && " % (g_resultdir, keyword_result)
-            cmd = "%s rm -rf $GAUSSLOG/tmp_gs_collector" % cmd
-            (status, output) = CmdUtil.retryGetstatusoutput(cmd)
-            if status != 0:
-                g_jobInfo.failedTask["touch keyword file"] = replaceInvalidStr(
-                    output)
-                g_logger.log(json.dumps(g_jobInfo.__dict__))
-                g_logger.debug(
-                    "Failed to touch keyword file. Error:\n%s." % output)
-                raise Exception("")
-            g_logger.debug("Successfully filter keyword.")
+        log_keywords(logs, keyword_result)
     else:
         cmd = "cd $GAUSSLOG/tmp_gs_collector && tar -czf ../'%s' . && "\
               % logfiletar
@@ -893,16 +1036,13 @@ def log_copy():
             cmd = "%s rsync --bwlimit=%d $GAUSSLOG/'%s' '%s'/logfiles/ && " % (
             cmd, g_opts.speedLimitKBs, logfiletar, g_resultdir,)
         else:
-            cmd = "%s cp $GAUSSLOG/'%s' '%s'/logfiles/ && " % (
-            cmd, logfiletar, g_resultdir)
+            cmd = "%s cp $GAUSSLOG/'%s' '%s'/logfiles/ && " % (cmd, logfiletar, g_resultdir)
         cmd = " %s rm -rf $GAUSSLOG/tmp_gs_collector " \
-              "&& rm -rf $GAUSSLOG/'%s'" % \
-              (cmd, logfiletar)
+              "&& rm -rf $GAUSSLOG/'%s'" % (cmd, logfiletar)
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             g_jobInfo.failedTask[
-                "copy result file and delete tmp file"] = replaceInvalidStr(
-                output)
+                "copy result file and delete tmp file"] = replaceInvalidStr(output)
             g_logger.log(json.dumps(g_jobInfo.__dict__))
             g_logger.debug("Failed to delete log files. Error:\n%s." % output)
             raise Exception("")
@@ -912,7 +1052,6 @@ def log_copy():
     g_logger.debug("Successfully collected log files.")
     g_logger.log(json.dumps(g_jobInfo.__dict__))
 
-
 def formatTime(filename):
     """
     function: format time
@@ -921,14 +1060,17 @@ def formatTime(filename):
     """
     try:
         timelist = re.findall(r"\d\d\d\d-\d\d-\d\d_\d\d\d\d\d\d", filename)
-        time1 = re.findall("\d+", timelist[0])
+        if not timelist:
+            with open(filename, 'r') as f:
+                lines = f.readlines()
+            timelist = re.findall(r"\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d", lines[0])
+        time1 = re.findall(r"\d+", timelist[0])
         time2 = ""
         for i in time1:
             time2 += i
         return time2[:-2]
     except Exception:
         return "ERROR"
-
 
 def xlog_copy():
     """
@@ -944,12 +1086,12 @@ def xlog_copy():
     g_jobInfo.jobName = "Collecting xlog information"
     Instances = []
     try:
-        for Inst in g_localnodeinfo.datanodes:
+        for inst in g_localnodeinfo.datanodes:
             if "dn" in ",".join(g_opts.content).lower():
-                Instances.append(Inst)
-        for Inst in g_localnodeinfo.coordinators:
+                Instances.append(inst)
+        for inst in g_localnodeinfo.coordinators:
             if "cn" in ",".join(g_opts.content).lower():
-                Instances.append(Inst)
+                Instances.append(inst)
             # parallel copy xlog files
         if Instances:
             pool = ThreadPool(DefaultValue.getCpuSet())
@@ -999,6 +1141,41 @@ def getTargetFile(dir_path, fileList):
             getTargetFile(newDir, fileList)
     return fileList
 
+def get_dss_xlog_dir(pri_vgname):
+    cmd = "dsscmd ls -p +%s" % pri_vgname
+    (status, output) = subprocess.getstatusoutput(cmd)
+    if status != 0:
+        g_logger.debug("Failed to collect xlog directorys.")
+        raise Exception("")
+    xlog_dirs = []
+    out_list = output.split('\n')
+    for out in out_list:
+        dir_name = (out.split())[-1]
+        if 'pg_xlog' in dir_name:
+            xlog_dirs.append(dir_name)
+    
+    return xlog_dirs
+
+def get_dss_xlog_file(xlog_path):
+    """
+    function: get xlog file list when dss enabled
+    input: xlog path
+    output: xlog_lists
+    """
+    cmd = "dsscmd ls -p %s" % xlog_path
+    (status, output) = subprocess.getstatusoutput(cmd)
+
+    out_lines = output.split('\n')
+    xlog_lists = []
+    for line in out_lines:
+        data_line = line.split()
+        if 'archive' not in data_line[-1] and re.search('^[0-9]{4}-[0-9]{2}-[0-9]{2}$', data_line[1]):
+            create_time = data_line[1] + ' ' + data_line[2]
+            create_time = time.strptime(create_time, '%Y-%m-%d %H:%M:%S')
+            create_time = time.strftime('%Y%m%d%H%M', create_time)
+            if int(g_opts.begin) < int(create_time) < int(g_opts.end):
+                xlog_lists.append(xlog_path + '/' + data_line[-1])
+    return xlog_lists
 
 def getXlogCmd(Inst):
     """
@@ -1006,56 +1183,58 @@ def getXlogCmd(Inst):
     input : Inst
     output: xlog file
     """
-    pg_xlog = Inst.datadir + "/pg_xlog"
-    xlogs = getTargetFile(pg_xlog, [])
+    if check_dss_env():
+        dss_home = EnvUtil.getEnv('DSS_HOME')
+        inst_id = DssInst.get_dss_id_from_key(dss_home)
+        pri_vgname = DssInst.get_private_vgname_by_ini(dss_home, inst_id)
+        xlog_dirs = get_dss_xlog_dir(pri_vgname)
+        xlogs = []
+        for xdir in xlog_dirs:
+            pg_xlog = '+' + pri_vgname + '/' + xdir
+            tmp_xlogs = get_dss_xlog_file(pg_xlog)
+            xlogs.extend(tmp_xlogs)
+    else:
+        pg_xlog = Inst.datadir + "/pg_xlog"
+        xlogs = getTargetFile(pg_xlog, [])
     cmd = ""
+    prefix = ""
     if Inst.instanceRole == DefaultValue.INSTANCE_ROLE_COODINATOR:
-        if len(xlogs) == 0:
-            g_jobInfo.failedTask["find cn_%s xlog files" % Inst.instanceId] = \
-            ErrorCode.GAUSS_535["GAUSS_53504"] % 'xlog'
-        else:
-            g_jobInfo.successTask.append(
-                "find cn_%s xlog files" % Inst.instanceId)
-            cmd = "mkdir -p -m %s '%s/xlogfiles/xlogfile_%s/cn_%s'" % \
-                  (
-                  DefaultValue.KEY_DIRECTORY_MODE, g_resultdir, g_current_time,
-                  Inst.instanceId)
-            for xlog in xlogs:
+        prefix = 'cn'
+    elif Inst.instanceRole == DefaultValue.INSTANCE_ROLE_DATANODE:
+        prefix = 'dn'
+    if len(xlogs) == 0:
+        g_jobInfo.failedTask["find %s_%s xlog files" % (prefix, Inst.instanceId)] = \
+        ErrorCode.GAUSS_535["GAUSS_53504"] % 'xlog'
+    else:
+        g_jobInfo.successTask.append(
+            "find %s_%s xlog files" % (prefix, Inst.instanceId))
+        cmd = "mkdir -p -m %s '%s/xlogfiles/xlogfile_%s/%s_%s'" % \
+              (
+              DefaultValue.DIRECTORY_MODE, g_resultdir, g_current_time,
+              prefix, Inst.instanceId)
+        if check_dss_env():
+            for xdir in xlog_dirs:
+                cmd = "%s && mkdir -p -m %s '%s/xlogfiles/xlogfile_%s/%s_%s/%s'" % \
+                      (cmd, DefaultValue.DIRECTORY_MODE, g_resultdir, g_current_time, prefix, Inst.instanceId, xdir)
+        for xlog in xlogs:
+            if check_dss_env():
+                cmd = "%s && dsscmd cp -s %s -d '%s/xlogfiles/xlogfile_%s/%s_%s/%s/%s'" % \
+                    (cmd, xlog, g_resultdir, g_current_time, prefix, Inst.instanceId, (xlog.split('/'))[-2],
+                    (xlog.split('/'))[-1])
+            else:
                 if int(g_opts.speedLimitFlag) == 1:
                     cmd = \
                         "%s && rsync --bwlimit=%d %s" \
-                        " '%s/xlogfiles/xlogfile_%s/cn_%s'" % \
+                        " '%s/xlogfiles/xlogfile_%s/%s_%s'" % \
                           (cmd, g_opts.speedLimitKBs, xlog, g_resultdir,
-                           g_current_time, Inst.instanceId)
+                           g_current_time, prefix, Inst.instanceId)
                 else:
                     cmd = "%s && cp -rf %s " \
-                          "'%s/xlogfiles/xlogfile_%s/cn_%s'" % \
+                          "'%s/xlogfiles/xlogfile_%s/%s_%s'" % \
                           (cmd, xlog, g_resultdir, g_current_time,
-                           Inst.instanceId)
-    elif Inst.instanceRole == DefaultValue.INSTANCE_ROLE_DATANODE:
-        if len(xlogs) == 0:
-            g_jobInfo.failedTask["find dn_%s xlog files" % Inst.instanceId] = \
-            ErrorCode.GAUSS_535["GAUSS_53504"] % 'xlog'
-        else:
-            g_jobInfo.successTask.append(
-                "find dn_%s xlog files" % Inst.instanceId)
-            cmd = "mkdir -p -m %s '%s/xlogfiles/xlogfile_%s/dn_%s'" % \
-                  (
-                  DefaultValue.KEY_DIRECTORY_MODE, g_resultdir, g_current_time,
-                  Inst.instanceId)
-            for xlog in xlogs:
-                if int(g_opts.speedLimitFlag) == 1:
-                    cmd = "%s && rsync --bwlimit=%d %s" \
-                          " '%s/xlogfiles/xlogfile_%s/dn_%s'" % \
-                          (cmd, g_opts.speedLimitKBs, xlog, g_resultdir,
-                           g_current_time, Inst.instanceId)
-                else:
-                    cmd = "%s && cp -rf %s " \
-                          "'%s/xlogfiles/xlogfile_%s/dn_%s'" % \
-                          (cmd, xlog, g_resultdir, g_current_time,
-                           Inst.instanceId)
-    return cmd
+                           prefix, Inst.instanceId)
 
+    return cmd
 
 def parallel_xlog(Inst):
     """
@@ -1401,6 +1580,19 @@ def getBakConfCmd(Inst):
                 ErrorCode.GAUSS_535["GAUSS_53511"] % 'DN'
     return (cmd, pidfile)
 
+def get_dss_bak_conf():
+    vgname = EnvUtil.getEnv("VGNAME")
+    cmd = "dsscmd cp -s +%s/pg_control -d '%s'/configfiles/pg_cotrol && " \
+          "dsscmd cp -s +%s/pg_replslot -d '%s'/configfiles/pg_replslot" % (
+          vgname, g_resultdir, vgname, g_resultdir)
+    (status1, output1) = subprocess.getstatusoutput(cmd)
+    if status1 != 0:
+        g_jobInfo.failedTask[
+            "collect configuration files"] = replaceInvalidStr(output1)
+        g_logger.debug(
+            "Failed to collect configuration files."
+            " Command: %s \n Error: %s.\n" % (
+            cmd, output1))
 
 def parallel_conf_gstack(Inst):
     """
@@ -1434,8 +1626,10 @@ def parallel_conf_gstack(Inst):
                 cmd, output))
             raise Exception("")
         else:
+            if check_dss_env():
+                get_dss_bak_conf()
             g_jobInfo.failedTask[
-                "collect configuration files"] = replaceInvalidStr(output)
+                        "collect configuration files"] = replaceInvalidStr(output)
             g_logger.debug(
                 "Failed to collect configuration files."
                 " Command: %s \n Error: %s.\n" % (
@@ -1452,7 +1646,6 @@ def parseConfig():
     if g_opts.config != "":
         d = json.loads(g_opts.config)
         g_opts.content = list(filter(None, d['Content'].split(",")))
-
 
 def main():
     """
@@ -1487,6 +1680,12 @@ def main():
             g_need_gstack = 1
             conf_gstack("Gstack")
             g_need_gstack = 0
+        # Copy dss config files
+        elif g_opts.action == "dss_conf_copy":
+            dss_conf_copy() 
+        # Copy dss info
+        elif g_opts.action == "disk_info_copy":
+            disk_info_copy()
         # Send all log files we collected to the command node.
         elif g_opts.action == "copy_file":
             sendLogFiles()

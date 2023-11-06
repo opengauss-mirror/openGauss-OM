@@ -411,6 +411,7 @@ class DefaultValue():
         "Gtm": "GTM",
         # Log check config
         "ClusterManager": "cm,om,bin",
+        "DSS": "DSS,DMS",
         # Core Dump check
         "gaussdb": "gaussdb",
         "gs_gtm": "gs_gtm",
@@ -424,6 +425,8 @@ class DefaultValue():
         "cm_server_stack": "cm_server_stack",
         "cm_agent_stack": "cm_agent_stack",
         "gs_ctl_stack": "gs_ctl_stack",
+        "vgname": "vgname",
+        "pri_vgname": "pri_vgname",
         "AioWorker": "AioWorker",
         "AlarmChecker": "AlarmChecker",
         "Archiver": "Archiver",
@@ -476,7 +479,9 @@ class DefaultValue():
     COLLECT_CONF_MAP = {
         "System": "HardWareInfo,RunTimeInfo",
         "Database": "*",
-        "Log": "Coordinator,DataNode,Gtm,ClusterManager,FFDC,AWRReport",
+        "DssConfig": "DataNode",
+        "DssDiskInfo": "vgname,pri_vgname",
+        "Log": "Coordinator,DataNode,Gtm,ClusterManager,FFDC,AWRReport,DSS",
         "XLog": "Coordinator,DataNode",
         "Config": "Coordinator,DataNode,Gtm",
         "Gstack": "Coordinator,DataNode,Gtm",

@@ -83,6 +83,9 @@ class Collect(ParallelBaseOM):
         # config file
         self.configFile = ""
 
+        # enable_dss 
+        self.enable_dss = False 
+
         # Our products may generate 200MB/(1DN per day),
         # So max log size is (8DN * (1master+7standbys) + 1CN) * 200MB = 13GB/node
         # Other logs, such as OM/CM/Audit we ignore them here, which are too small.
@@ -138,6 +141,8 @@ General options:
         "XLog": "DataNode",
         "Config" : "DataNode",
         "Gstack" : "DataNode",
+        "DssConfig": "DataNode",
+        "DssDiskInfo", "vgname, pri_vgname",
         "CoreDump": "gaussdb,GaussMaster,gs_ctl"
         "Trace": "Dump"
         "Plan": "*"    # Any database name or character "*"
@@ -161,6 +166,11 @@ General options:
             return True
         except Exception:
             return False
+
+    def checkIsEnableDss(self):
+        path = EnvUtil.getEnv("DSS_HOME")
+        if path:
+            self.enable_dss = True
 
     def parseCommandLine(self):
         """
@@ -389,6 +399,9 @@ if __name__ == '__main__':
     try:
         # Objectize class
         collectObj = Collect()
+
+        # check if enable dss 
+        collectObj.checkIsEnableDss()
 
         # Initialize self and Parse command line and save to global variable
         collectObj.parseCommandLine()

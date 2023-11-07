@@ -1537,7 +1537,7 @@ class PreinstallImpl:
             # failed to Check software
             raise Exception(str(e))
         # Successfully Check software
-        self.context.logger.log("Successfully check os software.",
+        self.context.logger.log("Successfully check OS software.",
                                 "constant")
 
     def get_package_path(self):

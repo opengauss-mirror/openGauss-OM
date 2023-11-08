@@ -168,10 +168,6 @@ class RHELPlatform(LinuxPlatform):
             if ((bits == BIT_VERSION and
                  ((dist_name.lower() == EULEROS and version[0:3] in
                    SUPPORT_EULEROS_VERSION_LIST) or
-                  (dist_name.lower() == UOS and version[0:3] in
-                   SUPPORT_UOS_VERSION_LIST) or
-                  (dist_name.lower() == UNIONTECH and version[0:3] in
-                   SUPPORT_UOS_VERSION_LIST) or
                   (dist_name.lower() in SUPPORT_RHEL_SERIES_PLATFORM_LIST and
                    version[0:3] in SUPPORT_RHEL_SERIES_VERSION_LIST)) or
                  (dist_name.lower() == OPENEULER) or
@@ -179,6 +175,13 @@ class RHELPlatform(LinuxPlatform):
                  (dist_name.lower() == DEBIAN and version == "buster/sid")
             )):
                 return dist_name.lower(), version[0:3]
+            elif((bits == BIT_VERSION and
+                   ((dist_name.lower() == UOS and version[0:3] in
+                     SUPPORT_UOS_VERSION_LIST) or
+                    (dist_name.lower() == UNIONTECH and version[0:3] in
+                     SUPPORT_UOS_VERSION_LIST))
+            )):
+                return UOS, version[0:3]
             else:
                 if dist_name.lower() == CENTOS and os.path.isfile(
                         os.path.join("/etc", "euleros-release")) and \

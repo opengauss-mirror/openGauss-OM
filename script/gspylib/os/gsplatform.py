@@ -1736,7 +1736,7 @@ class LinuxPlatform(GenericPlatform):
                                         prefixStr, packageVersion,
                                         PAK_KYLIN,
                                         BIT_VERSION, postfixStr))
-        elif distname in UOS or distname in UNIONTECH:
+        elif distname in UOS:
             fileName = os.path.join(dirName, "./../../../",
                                     "%s-%s-%s-%s.%s" % (
                                         prefixStr, packageVersion,

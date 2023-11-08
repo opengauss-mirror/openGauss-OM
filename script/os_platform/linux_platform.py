@@ -23,7 +23,7 @@ import os
 
 from gspylib.common.ErrorCode import ErrorCode
 from os_platform.common import REDHAT, PAK_REDHAT, BIT_VERSION, \
-    CENTOS, UOS, PAK_EULER, PAK_CENTOS, ASIANUX, SUSE, PAK_ASIANUX, \
+    CENTOS, UOS, UNIONTECH, PAK_EULER, PAK_CENTOS, ASIANUX, SUSE, PAK_ASIANUX, \
     EULEROS, OPENEULER, KYLIN, PAK_OPENEULER, SUPPORT_WHOLE_PLATFORM_LIST,\
     BLANK_SPACE, PAK_UBUNTU, DEBIAN, PAK_KYLIN, PAK_UOS, PAK_SUSE, PAK_DEBIAN, \
     FUSIONOS, PAK_FUSIONOS
@@ -213,7 +213,7 @@ class LinuxPlatform(object):
                 self.package_file_path(prefix_str, packageVersion, PAK_CENTOS, postfix_str)
                 ]
         
-        elif distname == OPENEULER or distname == KYLIN or distname == UOS:
+        elif distname == OPENEULER or distname == KYLIN or distname == UOS or distname == UNIONTECH:
             file_name_list = [
                 self.package_file_path(prefix_str, packageVersion, PAK_OPENEULER, postfix_str),
                 self.package_file_path(prefix_str, packageVersion, PAK_KYLIN, postfix_str),

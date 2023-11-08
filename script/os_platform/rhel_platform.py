@@ -26,7 +26,7 @@ from gspylib.common.ErrorCode import ErrorCode
 from os_platform.common import BIT_VERSION, EULEROS, SUPPORT_EULEROS_VERSION_LIST, \
     FUSIONOS, SUPPORT_RHEL_SERIES_PLATFORM_LIST, \
     SUPPORT_RHEL_SERIES_VERSION_LIST, OPENEULER, CENTOS, \
-    UOS, SUPPORT_UOS_VERSION_LIST, \
+    UOS, UNIONTECH, SUPPORT_UOS_VERSION_LIST, \
     SUPPORT_RHEL7X_VERSION_LIST, DEBIAN, BLANK_SPACE
 from os_platform.linux_distro import LinuxDistro
 from os_platform.linux_platform import LinuxPlatform
@@ -169,6 +169,8 @@ class RHELPlatform(LinuxPlatform):
                  ((dist_name.lower() == EULEROS and version[0:3] in
                    SUPPORT_EULEROS_VERSION_LIST) or
                   (dist_name.lower() == UOS and version[0:3] in
+                   SUPPORT_UOS_VERSION_LIST) or
+                  (dist_name.lower() == UNIONTECH and version[0:3] in
                    SUPPORT_UOS_VERSION_LIST) or
                   (dist_name.lower() in SUPPORT_RHEL_SERIES_PLATFORM_LIST and
                    version[0:3] in SUPPORT_RHEL_SERIES_VERSION_LIST)) or

@@ -72,9 +72,10 @@ OPENEULER = "openeuler"
 ASIANUX = "asianux"
 DEBIAN = "debian"
 UBUNTU = "ubuntu"
+UNIONTECH = "uniontech"
 UOS = "uos"
 SUPPORT_WHOLE_PLATFORM_LIST = [SUSE, REDHAT, CENTOS, EULEROS, FUSIONOS,
-                               OPENEULER, KYLIN, ASIANUX, DEBIAN, UBUNTU, UOS]
+                               OPENEULER, KYLIN, ASIANUX, DEBIAN, UBUNTU, UOS, UNIONTECH]
 # RedhatX platform
 SUPPORT_RHEL_SERIES_PLATFORM_LIST = [REDHAT, CENTOS, "kylin", "asianux"]
 SUPPORT_RHEL6X_VERSION_LIST = ["6.4", "6.5", "6.6", "6.7", "6.8", "6.9", "10"]
@@ -114,9 +115,9 @@ PAK_KYLIN = "Kylin"
 PAK_UOS = "uos"
 #######################################################
 _supported_dists = (
-    'SuSE', 'debian', 'fedora', 'redhat', 'centos', 'euleros', "openEuler",
+    'SuSE', 'debian', 'fedora', 'redhat', 'centos', 'euleros', 'openEuler',
     'mandrake', 'mandriva', 'rocks', 'slackware', 'yellowdog', 'gentoo',
-    'FusionOS', 'UnitedLinux', 'turbolinux', 'kylin', 'asianux', 'ubuntu', 'uos')
+    'FusionOS', 'UnitedLinux', 'turbolinux', 'kylin', 'asianux', 'ubuntu', 'uos', 'UnionTech')
 _release_filename = re.compile(r'(\w+)[-_](release|version)')
 _lsb_release_version = re.compile(r'(.+)'
                                   ' release '
@@ -1735,7 +1736,7 @@ class LinuxPlatform(GenericPlatform):
                                         prefixStr, packageVersion,
                                         PAK_KYLIN,
                                         BIT_VERSION, postfixStr))
-        elif distname in UOS:
+        elif distname in UOS or distname in UNIONTECH:
             fileName = os.path.join(dirName, "./../../../",
                                     "%s-%s-%s-%s.%s" % (
                                         prefixStr, packageVersion,

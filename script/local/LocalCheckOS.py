@@ -1908,7 +1908,11 @@ def CheckPlatformInfo():
                                         data.bits)
             g_logger.log("False %s %s" % (data.distname, platform_str))
             return
-    elif (data.distname == "euleros" or data.distname == "openEuler" or data.distname == "FusionOS" or data.distname == "kylin" or data.distname == "uos"):
+    elif (data.distname == "euleros" or data.distname == "openEuler" or data.distname == "FusionOS" or data.distname == "kylin"):
+        mixed_type = "%s" % data.distname
+        platform_str = "%s_%s_%s" % (data.distname, data.version, data.bits)
+    elif (data.distname == "uos" or data.distname == "uniontech"):
+        data.distname = "uos"
         mixed_type = "%s" % data.distname
         platform_str = "%s_%s_%s" % (data.distname, data.version, data.bits)
     elif (data.distname == "debian" or data.version == "buster/sid"):

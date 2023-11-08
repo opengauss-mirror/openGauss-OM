@@ -38,7 +38,9 @@ function get_os_str() {
     elif [ "$os_name"x = "asianux"x ] && [ "$cpu_arc"x = "aarch64"x ]; then
         os_str=asianux7.5_aarch64
     elif [ "$os_name"x = "uos"x ] && [ "$cpu_arc"x = "x86_64"x ]; then
-        os_str=UnionTech_x86_64
+        os_str=uos_x86_64
+    elif [ "$os_name"x = "uos"x ] && [ "$cpu_arc"x = "aarch64"x ]; then
+        os_str=uos_aarch64
     else
         os_str="Failed"
     fi

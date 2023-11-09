@@ -256,7 +256,7 @@ class LinuxDistro(object):
                     gFile = file
                     distname = _distname
                     break
-        if  distname == "UnionTech":
+        if distname == "UnionTech":
             distname = "uos"
         # Read the first line
         if gFile is None:

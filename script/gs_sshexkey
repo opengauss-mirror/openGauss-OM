@@ -920,7 +920,7 @@ General options:
             self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50230"] % "known hosts file" +
                                 " Error:\n%s" % str(e))
         
-        # eliminate duploicates in authorized_keys file
+        # eliminate duplicates in authorized_keys file
         try:
             tab = self.readAuthorizedKeys()
             self.writeAuthorizedKeys(tab)
@@ -1053,7 +1053,7 @@ General options:
                 status, output, cmd = self.send_trust_file(hostip)
                 
                 while status != 0 and max_try_times > 0:
-                    self.logger.debug(f"send_trust_file failed, coutdown {max_try_times}, retry again.")
+                    self.logger.debug(f"send_trust_file failed, countdown {max_try_times}, retry again.")
                     self.logger.debug("errorinfo: hostip: %s, status: %d, output: %s, "
                                       % (hostip, status, output))
                     self.logger.debug("check os info: %s\n %s" % (

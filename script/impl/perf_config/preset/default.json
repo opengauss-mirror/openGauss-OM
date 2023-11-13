@@ -1,0 +1,10 @@
+{
+  "desc": "default preset",
+  "scenario": "OLTP-performance",
+  "parallel": 600,
+  "rel_count": 300,
+  "rel_kind": "heap-table, partition-table",
+  "part_count": 200,
+  "index_count": 600,
+  "data_size": 8192
+}

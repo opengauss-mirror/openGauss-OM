@@ -24,9 +24,22 @@ import subprocess
 import sys
 import psutil
 import math
+from enum import Enum
 sys.path.append(sys.path[0] + "/../../")
 from base_utils.os.cmd_util import CmdUtil
 from gspylib.common.ErrorCode import ErrorCode
+
+
+class FSType(Enum):
+    EXT4 = 0
+    XFS = 1
+    NTFS = 2
+
+
+class DiskType(Enum):
+    MECHANICAL = 0
+    SSD = 1
+    NVME = 2
 
 
 class DiskUtil(object):
@@ -43,6 +56,42 @@ class DiskUtil(object):
         output: list
         """
         return psutil.disk_partitions(all_info)
+
+    @staticmethod
+    def getTotalSize(device):
+        """
+        get device total size. Unit is MB
+        :param device: device path or mount point
+        :return: total size. Unit is MB
+        """
+        cmd = "%s -m | %s \"%s\" | %s '{print $2}'" % (
+            CmdUtil.findCmdInPath('df'), CmdUtil.getGrepCmd(), device, CmdUtil.getAwkCmd()
+        )
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
+                            + " Error: \n%s" % str(output))
+        return int(output)
+
+    @staticmethod
+    def getAvailSize(device):
+        """
+        get device available size. Unit is MB
+        :param device: device path or mount point
+        :return: available size. Unit is MB
+        """
+        cmd = "%s -m | %s \"%s\" | %s '{print $4}'" % (
+            CmdUtil.findCmdInPath('df'),
+            CmdUtil.getGrepCmd(),
+            device,
+            CmdUtil.getAwkCmd()
+        )
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status == 0:
+            return int(output)
+        else:
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
+                            + " Error: \n%s" % str(output))
 
     @staticmethod
     def getUsageSize(directory):

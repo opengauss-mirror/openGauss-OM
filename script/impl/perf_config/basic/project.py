@@ -54,7 +54,6 @@ class ProjectEnv(object):
         # GS_PERFCONFIG_OPTIONS is a environ where we can set some params to control behavior of tool.
         self.gs_perfconfig_options_str = self.read_env('GS_PERFCONFIG_OPTIONS')
         self.gs_perfconfig_options = {
-            'always_choose_yes': False,
             'lowest_print_log_level': ProjectLogLevel.NOTICE
         }
         self._apply_gs_perfconfig_options()
@@ -66,25 +65,25 @@ class ProjectEnv(object):
         self.gauss_data = self.read_env('PGDATA')
         self.gauss_log = self.read_env('GAUSSLOG')
         if self.gauss_home is None or self.gauss_data is None or self.gauss_log is None:
-            Project.fatal('Could not find $GAUSSHOME, $GAUSSLOG or $PGDATA, please check the environment variables.')
+            Project.fatal('Could not find $GAUSSHOME, $GAUSSLOG or $PGDATA.\n'
+                          'Please check the environment variables or specified by --env.')
 
         self.workspace1 = os.path.abspath(os.path.join(os.path.dirname(sys.argv[0]), 'impl', 'perf_config'))
-        self.workspace2 = os.path.abspath(os.path.join(self.gauss_log, 'om', 'perf_config')) if self.gauss_log is not None else None
-        Project.log('workspace1: {}'.format(self.workspace1))
-        Project.log('workspace2: {}'.format(self.workspace2 if self.workspace2 is not None else ' '))
+        self.workspace2 = os.path.abspath(os.path.join(self.gauss_log, 'om', 'perf_config'))
 
         self.preset_dir1 = os.path.join(self.workspace1, 'preset')
-        self.preset_dir2 = os.path.join(self.workspace2, 'preset') if self.workspace2 is not None else None
+        self.preset_dir2 = os.path.join(self.workspace2, 'preset')
 
-        self.run_log = os.path.join(self.workspace2 or self.workspace1, 'run.log')
-        self.anti_log = os.path.join(self.workspace2 or self.workspace1, 'anti.log')
-        self.report = os.path.join(self.workspace2 or self.workspace1, f'report-{self.id}.md')
+        self.run_log = os.path.join(self.workspace2, 'run.log')
+        self.anti_log = os.path.join(self.workspace2, 'anti.log')
+        self.report = os.path.join(self.workspace2, f'report-{self.id}.md')
 
         if do_init:
             self._do_init()
 
+        Project.log('workspace1: {}'.format(self.workspace1))
+        Project.log('workspace2: {}'.format(self.workspace2))
         Project.notice('Environment init done.')
-
 
 
     def get_builtin_script(self, name):
@@ -118,11 +117,11 @@ class ProjectEnv(object):
             if len(kv) != 2:
                 Project.warning('Could not parse option in GS_PERFCONFIG_OPTIONS: ' + option)
                 continue
-            if kv[0] == 'always_choose_yes':
-                self.gs_perfconfig_options[kv[0]] = _get_a_bool(kv[1], kv[0], self.gs_perfconfig_options[kv[0]])
             elif kv[0] == 'lowest_print_log_level':
                 try:
-                    self.gs_perfconfig_options[kv[0]] = get_level_by_str(kv[1])
+                    level = ProjectLogLevel.get_level_by_str(kv[1])
+                    self.gs_perfconfig_options[kv[0]] = level
+                    ProjectLog.set_lowest_print_level(level)
                 except:
                     Project.warning('invalid value of GS_PERFCONFIG_OPTIONS option: lowest_print_log_level')
             else:
@@ -133,10 +132,10 @@ class ProjectEnv(object):
         """
         create the dir.
         """
-        if self.workspace2 is not None and not os.access(self.workspace2, os.F_OK):
+        if not os.access(self.workspace2, os.F_OK):
             os.mkdir(self.workspace2, 0o755)
 
-        if self.preset_dir2 is not None and not os.access(self.preset_dir2, os.F_OK):
+        if not os.access(self.preset_dir2, os.F_OK):
             os.mkdir(self.preset_dir2, 0o755)
 
     def __str__(self):
@@ -164,14 +163,14 @@ class ProjectEnv(object):
         """
         if env is None:
             return
-        cmd = f'source {env} && env'
+        cmd = f'{CmdUtil.SOURCE_CMD} {env} && env'
         output = CmdUtil.execCmd(cmd)
         for line in output.splitlines():
             kv = line.split('=')
             if kv[0] not in ['GAUSSHOME', 'PGDATA', 'GAUSSLOG']:
                 continue
             os.environ[kv[0]] = kv[1]
-            Project.log(f'source env {kv[0]}={kv[1]}')
+            Project.log(f'export env: {kv[0]}={kv[1]}')
 
 
 class ProjectLogLevel(Enum):
@@ -193,6 +192,7 @@ class ProjectLogLevel(Enum):
 class ProjectLog(object):
     # Sometimes, it is preferable not to display certain information on the screen.
     # You can set this value to control what is printed on the screen.
+    # but 'ProjectLogLevel.MSG' is not controlled.
     _lowest_print_level = ProjectLogLevel.NOTICE
 
     @staticmethod
@@ -229,6 +229,7 @@ class ProjectLog(object):
                       '{0} {1}: {2}\n'.format(formatted_time, level_tag, content)
 
         self._FILE.write(log_content)
+
         if level == ProjectLogLevel.LOG:
             ProjectLog.print_msg(log_content, level, end='')
 
@@ -263,6 +264,7 @@ class ProjectLog(object):
 class ProjectReport(object):
     """
     Structure for storing reports and suggestions.
+    The content needs to be assembled in advance according to the markdown style.
     """
     def __init__(self, file):
         self._file = file
@@ -282,13 +284,17 @@ class ProjectReport(object):
             f.write('# Tune Report\n\n')
             f.write('\n'.join(self._records))
             if Project.getTask().tune_target.hasSuggest():
-                f.write('# More Suggestions\n\n')
+                f.write('\n\n# More Suggestions\n\n')
                 f.write('\n\n'.join(self._suggestions))
         Project.role.chown_to_user(self._file)
         Project.notice('Report: ' + self._file)
 
 
 class ProjectRole(object):
+    """
+    Role control. Check who the current user is and who the omm user is.
+    Use gausshome's folder owner to automatically find omm users and optimize the use experience.
+    """
     def __init__(self):
         self.current_role = getpass.getuser()
 
@@ -296,6 +302,7 @@ class ProjectRole(object):
         self.user_name = pwd.getpwuid(stat.st_uid).pw_name
         self.user_uid = stat.st_uid
         self.user_gid = stat.st_gid
+
         if self.current_role != 'root' and self.current_role != self.user_name:
             Project.fatal(f'Illegal access detected. Current role is {self.current_role}, '
                           f'but owner of $GAUSSHOME is {self.user_name}.')
@@ -472,14 +479,14 @@ class Project(object):
         Project.log(output)
 
     @staticmethod
-    def isOpenGaussLive():
+    def isOpenGaussAlive():
         pmid = os.path.join(Project.environ.gauss_data, 'postmaster.pid')
 
         try:
             with open(pmid, 'r') as f:
                 pid = int(f.readlines()[0])
             p = psutil.Process(pid)
-            Project.notice(f'openGauss is running(pid:{pmid} status:{p.status})')
+            Project.notice(f'openGauss is running(pid:{pid} status:{p.status()})')
             return True
         except:
             Project.notice('openGauss is not running.')

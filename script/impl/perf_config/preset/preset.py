@@ -242,7 +242,7 @@ class Preset(object):
     @staticmethod
     def get_preset_dir():
         dir1 = os.path.join(Project.environ.workspace1, 'preset')
-        dir2 = os.path.join(Project.environ.workspace2, 'preset') if Project.environ.workspace2 is not None else None
+        dir2 = os.path.join(Project.environ.workspace2, 'preset')
         return dir1, dir2
 
     @staticmethod
@@ -281,7 +281,7 @@ class Preset(object):
 
         if preset_name in builtins:
             file = os.path.join(dir1, f'{preset_name}.json')
-        elif dir2 is not None and preset_name in usersets:
+        elif preset_name in usersets:
             file = os.path.join(dir2, f'{preset_name}.json')
         else:
             Project.fatal('Could not find preset: ' + preset_name)

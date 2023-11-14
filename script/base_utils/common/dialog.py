@@ -99,7 +99,7 @@ class DialogUtil(object):
         :return: the index of option which user choose, or None
         """
         assert len(options) <= 26
-        question_tag = '{0}[ Single Answer Question '.format('*' if required else '')
+        question_tag = '{0}[ Single Answer Question ]'.format('*' if required else '')
         code_id = [chr(c) for c in range(ord('A'), ord('A') + len(options))]
         question_options = ''
         for i, option in enumerate(options):

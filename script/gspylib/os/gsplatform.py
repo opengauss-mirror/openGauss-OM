@@ -112,7 +112,7 @@ PAK_UBUNTU = "Ubuntu"
 PAK_SUSE = "SUSE"
 PAK_UNIONTECH = "UnionTech"
 PAK_KYLIN = "Kylin"
-PAK_UOS = "uos"
+PAK_UOS = "UOS"
 #######################################################
 _supported_dists = (
     'SuSE', 'debian', 'fedora', 'redhat', 'centos', 'euleros', 'openEuler',

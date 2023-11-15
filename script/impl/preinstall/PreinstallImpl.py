@@ -1573,6 +1573,19 @@ class PreinstallImpl:
                                         self.context.mpprcFile)
         self.context.logger.debug("Successfully to set cron for %s" %self.context.user)
 
+    def do_perf_config(self):
+        """
+        run gs_perfconfig to tune os configure.
+        """
+        if not self.context.enable_perf_config:
+            return
+        self.context.logger.log("gs_preinstall has finished, start gs_perfconfig now.")
+
+        cmd = 'gs_perfconfig tune -t os,suggest --apply -y'
+        if self.context.mpprcFile:
+            cmd += (' --env ' + self.context.mpprcFile)
+        CmdExecutor.execCommandLocally(cmd)
+
     def doPreInstall(self):
         """
         function: the main process of preinstall
@@ -1653,6 +1666,9 @@ class PreinstallImpl:
         self.delete_root_mutual_trust()
 
         self.context.logger.log("Preinstallation succeeded.")
+
+        # gs_perfconfig is not a step in the preinstall, so do it after log succeeded.
+        self.do_perf_config()
 
     def run(self):
         """

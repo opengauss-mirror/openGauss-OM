@@ -105,6 +105,7 @@ class Preinstall(ParallelBaseOM):
         self.enable_dss = ""
         self.dss_vg_info = ""
         self.dss_vgname = ""
+        self.enable_perf_config = False
 
     def usage(self):
         """
@@ -147,6 +148,8 @@ General options:
                                        (The default value is not deleted)
         --unused-third-party           Whether to use om's third-party.
                                        (The default value is used)
+        --enable-perf-config           Use gs_perfconfig to tune os configuration
+                                       after pre installation.
         """
         print(self.usage.__doc__)
 
@@ -204,6 +207,9 @@ General options:
         # parameter --delete-root-trust
         if (ParaDict.__contains__("root_delete_flag")):
             self.root_delete_flag = ParaDict.get("root_delete_flag")
+        # parameter --enable-perf-config
+        if (ParaDict.__contains__("enable_perf_config")):
+            self.enable_perf_config = True
 
 
     def checkUserParameter(self):

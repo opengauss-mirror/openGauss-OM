@@ -68,6 +68,7 @@ class Install(ParallelBaseOM):
         self.cm_server_guc_param = []
         self.action = "gs_install"
         self.initStep = "Init Install"
+        self.enable_perf_config = False
 
     def usage(self):
         """
@@ -92,6 +93,7 @@ General options:
                                          For more information, see \"gs_guc --help\".
   --alarm-component=ALARMCOMPONENT       Path of the alarm component.
   --time-out=SECS                        Maximum waiting time when start cluster.
+  --enable-perf-config                   Use gs_perfconfig to tune database setup and guc after installation.
         """
         print(self.usage.__doc__)
 
@@ -219,6 +221,9 @@ General options:
         # parameter --dorado-cluster-mode
         if (ParaDict.__contains__("dorado-cluster-mode")):
             self.dorado_cluster_mode = ParaDict.get("dorado-cluster-mode")
+        # parameter --enable-perf-config
+        if (ParaDict.__contains__("enable-perf-config")):
+            self.enable_perf_config = True
 
     def checkUser(self):
         """

@@ -65,10 +65,12 @@ VALUE_CHECK_LIST = ["|", ";", "&", "$", "<", ">", "`", "\\", "'", "\"", "{",
 gs_preinstall = ["-?", "--help", "-V", "--version", "-U:", "-G:", "-L",
                  "--skip-os-set", "-X:", "--skip-os-check",
                  "--env-var=", "--sep-env-file=", "--skip-hostname-set",
-                 "-l:", "--non-interactive", "--delete-root-trust", "--unused-third-party"]
+                 "-l:", "--non-interactive", "--delete-root-trust", "--unused-third-party",
+                 "--enable-perf-config"]
 gs_install = ["-?", "--help", "-V", "--version", "-X:", "-l:",
               "--gsinit-parameter=", "--dn-guc=", "--cms-guc=",
-              "--time-out=", "--dorado-cluster-mode=", "--alarm-component="]
+              "--time-out=", "--dorado-cluster-mode=", "--alarm-component=",
+              "--enable-perf-config"]
 gs_uninstall = ["-?", "--help", "-V", "--version", "-l:", "-L",
                 "--delete-data"]
 gs_postuninstall = ["-?", "--help", "-V", "--version", "--delete-user",
@@ -382,7 +384,8 @@ class Parameter():
                            "--non-print": "nonPrinting",
                            "--dynamic": "dynamic",
                            "--delete-root-trust": "root_delete_flag",
-                           "--unused-third-party": "unused_third_party"
+                           "--unused-third-party": "unused_third_party",
+                           "--enable-perf-config": "enable-perf-config"
                            }
         parameterIsBool_keys = parameterIsBool.keys()
 
@@ -477,6 +480,7 @@ class Parameter():
                 PARAMETER_VALUEDICT["upgrade-package"] = value.strip()
             elif key == "--dorado-cluster-mode":
                 PARAMETER_VALUEDICT["dorado-cluster-mode"] = value.strip()
+
             # Only check / symbol for gs_lcct.
             if key in ("--name", "--nodegroup-name"):
                 self.checkLcGroupName(key, value)

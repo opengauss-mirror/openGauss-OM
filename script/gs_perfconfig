@@ -32,12 +32,12 @@ from impl.perf_config.perf_tuner import PerfTuneTarget, PerfTuner
 
 
 def usage():
-    print("""
+    Project.msg("""
 Usage of gs_perfconfig:
     gs_perfconfig [ACTION [ ACTION-PARAM ] ]
     
 Action, action-params and functions are as follows:
-    help (No action-params) :
+    help (No params) :
         Display help document of gs_perfconfig. '--help', '-h', '-?' are also effective.
             
     tune [ -t [ all,os,setup,guc,suggest ] ] [ --apply ] [--env envfile] [ -y ]:
@@ -71,30 +71,34 @@ The environment variable GS_PERFCONFIG_OPTIONS sets some behavior within the too
     export GS_PERFCONFIG_OPTIONS='param1=value1:param2=value2:param3=value3'
     
 params and values:
-    always_choose_yes = on/off. Accept the requirements for configuring operating system parameters, GUC parameters, 
-        and restarting the database during adjustment, default is no.
         
     lowest_print_log_level = log/notice/warning/error/fatal. The lowest level of print logs, default is notice. 
         You can also set 'msg', but it will not take effect.
-
     """)
-    exit(1)
 
 
 class TuneTask(object):
+    """
+    This is the tune task.
+    Responsible for controlling the flow of the entire adjustment task.
+    The operations include environment initialization, performance data detection,
+    adjustment process, and rollback process.
+    """
     def __init__(self, argv):
         self.accept_risk = False
         target, apply, env = self._parse_arg(argv)
         self.tune_target = PerfTuneTarget(target, apply)
+        if self.tune_target.noTarget():
+            return
+
+        # environment initialization
         Project.initEnviron(env, True)
         Project.initRole()
         Project.initProjectLog(Project.environ.run_log)
         Project.prepareReport(Project.environ.report)
         Project.log(Project.environ.__str__())
-
         if self.tune_target.apply():
             AntiLog.initAntiLog(Project.environ.anti_log)
-
         Project.setTask(self)
 
     def _parse_arg(self, argv):
@@ -120,12 +124,15 @@ class TuneTask(object):
         return target, apply, env
 
     def run(self):
+        """
+        Task details. Control the entire tune process.
+        """
         if self.tune_target.noTarget():
             Project.notice('nothing to tune.')
             return
         do_apply = self.tune_target.apply()
         # 1, Operation content and risk tips.
-        self.riskDisclosure()
+        self.risk_disclosure()
 
         # 2, start probe
         Project.notice('Start probe detect.')
@@ -134,8 +141,8 @@ class TuneTask(object):
         infos.detect()
 
         # 3, shutdown openGauss if necessary
-        og_live_at_first = Project.isOpenGaussLive()
-        if og_live_at_first and do_apply:
+        og_alive_at_first = Project.isOpenGaussAlive()
+        if og_alive_at_first and do_apply:
             Project.stopOpenGauss()
 
         # 4, tune and apply, and rollback apply when errors.
@@ -165,19 +172,17 @@ class TuneTask(object):
             PerfTuner.rollback(None)
 
         # 5, start og if necessary.
-        if og_live_at_first and do_apply:
+        if og_alive_at_first and do_apply:
             Project.startOpenGauss()
 
-    def riskDisclosure(self):
+    def risk_disclosure(self):
         question = ('Certainly, we will perform some stress tests, make adjustments to the \n'
                     'configuration of operating system parameters, database parameters, and \n'
                     'also perform a database restart during the optimization process. \n'
                     'Are you accepting of the aforementioned circumstances?')
         Project.log('risk disclosure: ' + question)
-        if Project.environ.gs_perfconfig_options['always_choose_yes']:
-            Project.notice('user always choose yes.')
-        elif self.accept_risk:
-            Project.notice('user choose yes by "-y".')
+        if self.accept_risk:
+            Project.notice(f'user choose yes by "-y" on the question:\n ({question}).')
         else:
             ok = DialogUtil.yesOrNot(question)
             Project.log('user choose: ' + ('y' if ok else 'n'))
@@ -186,6 +191,11 @@ class TuneTask(object):
 
 
 class PresetTask(object):
+    """
+    This is the preset task.
+    Responsible for showing how many presets there are, the details of the presets,
+    and showing how to edit the presets.
+    """
     def __init__(self, argv):
         Project.set_lowest_print_level(ProjectLogLevel.WARNING)
         Project.initEnviron(None, False)
@@ -226,6 +236,11 @@ class PresetTask(object):
 
 
 class RecoverTask(object):
+    """
+    This is a recovery mission
+    Read the anti log, undo the last adjustment, and restore the environment
+    to the way it was before the tune. Only the most recent adjustment can be undone.
+    """
     def __init__(self, argv):
         self.accept_risk = False
         if len(argv) > 0:
@@ -244,32 +259,31 @@ class RecoverTask(object):
 
     def run(self):
         Project.notice('start rollback.')
-        self.riskDisclosure()
+        self.risk_disclosure()
 
-        og_is_live_first = Project.isOpenGaussLive()
-        if og_is_live_first:
+        og_is_alive_first = Project.isOpenGaussAlive()
+        if og_is_alive_first:
             Project.stopOpenGauss()
 
         PerfTuner.rollback(None)
+
+        Project.notice('Destroy anti log.')
         AntiLog.destroyAntiLog()
 
-        if og_is_live_first:
+        if og_is_alive_first:
             Project.startOpenGauss()
 
         Project.notice('rollback finish.')
 
-    def riskDisclosure(self):
+    def risk_disclosure(self):
         question = ('Certainly, we will make adjustments to the configuration of operating \n'
                     'system parameters, database parameters, and also perform a database \n'
                     'restart during the recover process.\n'
                     'Are you accepting of the aforementioned circumstances?')
         Project.log('risk disclosure: ' + question)
-        if Project.environ.gs_perfconfig_options['always_choose_yes']:
+        if self.accept_risk:
             ok = True
-            Project.notice('user always choose yes.')
-        elif self.accept_risk:
-            ok = True
-            Project.notice('user choose yes by "-y".')
+            Project.notice(f'user choose yes by "-y" on the question:\n ({question}).')
         else:
             ok = DialogUtil.yesOrNot(question)
             Project.log('user choose: ' + ('y' if ok else 'n'))
@@ -283,6 +297,7 @@ if __name__ == '__main__':
 
     if len(sys.argv) == 1 or sys.argv[1].lower() in ['help', '--help', '-h', '-?']:
         usage()
+        exit(0)
 
     elif sys.argv[1] == 'tune':
         task = TuneTask(sys.argv[2:])

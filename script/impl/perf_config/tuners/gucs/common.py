@@ -144,8 +144,10 @@ class SysCacheGUC(GUCTuneGroup):
         self.global_syscache_threshold = self.bind('global_syscache_threshold')
 
     def calculate(self):
-        self.enable_global_syscache.turn_off()
-        self.local_syscache_threshold.set('16MB')
+        infos = Project.getGlobalPerfProbe()
+        if infos.business.scenario == BsScenario.TP_PERFORMANCE:
+            self.enable_global_syscache.turn_off()
+            self.local_syscache_threshold.set('16MB')
 
 
 class AlarmGUC(GUCTuneGroup):
@@ -159,7 +161,9 @@ class AlarmGUC(GUCTuneGroup):
         self.table_skewness_warning_rows = self.bind('table_skewness_warning_rows')
 
     def calculate(self):
-        self.enable_alarm.turn_off()
+        infos = Project.getGlobalPerfProbe()
+        if infos.business.scenario == BsScenario.TP_PERFORMANCE:
+            self.enable_alarm.turn_off()
 
 
 class RegionFormatGUC(GUCTuneGroup):

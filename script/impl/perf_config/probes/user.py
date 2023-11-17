@@ -26,12 +26,15 @@ from impl.perf_config.basic.probe import Probe
 
 
 class UserInfo(Probe):
+    """
+    Information about omm
+    """
     def __init__(self):
         self.name = None
         self.uid = None
         self.gid = None
 
     def detect(self):
-        self.name = getpass.getuser()
-        self.uid = os.getuid()
-        self.gid = os.getgid()
+        self.name = Project.role.user_name
+        self.uid = Project.role.user_uid
+        self.gid = Project.role.user_gid

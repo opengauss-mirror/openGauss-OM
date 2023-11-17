@@ -110,6 +110,8 @@ class InstallImpl:
             self.context.logger.log("begin deploy..")
             self.doDeploy()
             self.context.logger.log("end deploy..")
+            # gs_perfconfig is not a step in the gs_install, so do it after log succeeded.
+            self.do_perf_config()
             # close the log file
             self.context.logger.closeLog()
         except Exception as e:
@@ -703,6 +705,22 @@ class InstallImpl:
             self.context.logger.logExit(str(e))
         self.context.logger.debug("Successfully started the cluster.",
                                   "constant")
+
+    def do_perf_config(self):
+        """
+        function: start gs_perfconfig
+        input : NA
+        output: NA
+        """
+        if not self.context.enable_perf_config:
+            return
+        self.context.logger.log("gs_install has finished, start gs_perfconfig now.")
+
+        if False:
+            self.context.logger.logExit('Could not run gs_perfconfig by gs_preinstall in upgrade case.')
+
+        cmd = 'gs_perfconfig tune -t setup,guc,suggest --apply -y'
+        CmdExecutor.execCommandLocally(cmd)
 
     def rollbackInstall(self):
         """

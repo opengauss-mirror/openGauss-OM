@@ -88,7 +88,7 @@ class Preinstall(ParallelBaseOM):
         self.envParams = []
         self.rootUser = ""
         self.rootPasswd = ""
-        self.createUserSshTrust = True
+        self.create_user_ssh_trust = True
         self.clusterToolPath = ""
         self.needFixOwnerPaths = []
         self.preMode = False
@@ -106,6 +106,7 @@ class Preinstall(ParallelBaseOM):
         self.dss_vg_info = ""
         self.dss_vgname = ""
         self.enable_perf_config = False
+        self.skip_cgroup_set = False
 
     def usage(self):
         """
@@ -133,6 +134,8 @@ General options:
         --sep-env-file=ENVFILE       Path of the MPP environment file.
         --skip-hostname-set            Whether to skip hostname setting.
                                        (The default value is set.)
+        --skip-cgroup-set               Whether to skip cgroup setting.
+                                        (The default value is set.)
     -l                                 Path of log file.
     -?, --help                         Show help information for this
                                        utility, and exit the command line mode.
@@ -168,6 +171,8 @@ General options:
             self.usage()
             sys.exit(0)
 
+        # check no root user paramters
+        self.check_no_root_paramter(ParaDict)
         # Resolves command line arguments
         # parameter -U
         if (ParaDict.__contains__("user")):
@@ -195,6 +200,9 @@ General options:
         # parameter --skip-hostname-set
         if (ParaDict.__contains__("skipHostnameSet")):
             self.skipHostnameSet = ParaDict.get("skipHostnameSet")
+        # parameter --skip-cgroup-set
+        if (ParaDict.__contains__("skip_cgroup_set")):
+            self.skip_cgroup_set = ParaDict.get("skip_cgroup_set")
         # parameter --skip-os-set
         if (ParaDict.__contains__("skipOSSet")):
             self.skipOSSet = ParaDict.get("skipOSSet")
@@ -211,6 +219,21 @@ General options:
         if (ParaDict.__contains__("enable_perf_config")):
             self.enable_perf_config = True
 
+    def check_no_root_paramter(self, para_dict):
+        """
+        function: Check no root user paramter
+        input: NA
+        output: NA
+        """
+        if not self.current_user_root:
+            if (para_dict.__contains__("user") and (para_dict.get("user") != self.user)):
+                GaussLog.exitWithError(ErrorCode.GAUSS_503["GAUSS_50324"])
+            if (para_dict.__contains__("group") and (para_dict.get("group") != self.group)):
+                GaussLog.exitWithError(ErrorCode.GAUSS_503["GAUSS_50324"])
+            if not self.skipOSSet:
+                GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50028"] % 'os')
+            if not self.skip_cgroup_set:
+                GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50028"] % 'cgroup')
 
     def checkUserParameter(self):
         """
@@ -249,6 +272,16 @@ General options:
                 GaussLog.exitWithError(ErrorCode.GAUSS_503["GAUSS_50305"]
                                        + "User:Group[%s:%s]"
                                        % (self.user, self.group))
+
+    def check_local_node_info(self):
+        """
+        check local node info
+        """
+        hostName = NetUtil.GetHostIpOrName()
+        g_nodeInfo = self.clusterInfo.getDbNodeByName(hostName)
+        if (g_nodeInfo is None):
+            GaussLog.exitWithError(ErrorCode.GAUSS_516["GAUSS_51620"] % "local" +
+                                " It is not a host name %s." % hostName)
 
     def check_config_content(self, g_nodeInfo):
         UserUtil.check_path_owner(ClusterConfigFile.getOneClusterConfigItem("gaussdbAppPath", self.xmlFile))
@@ -355,44 +388,50 @@ General options:
             GaussLog.exitWithError(ErrorCode.GAUSS_518["GAUSS_51808"] % \
                                    checkoutput + "Please check %s." % envfile)
 
+    def delete_host_ip(self):
+        """
+        function: delete host_ip env
+        input: NA
+        output: NA
+        """
+        if self.current_user_root:
+            cmd = "sed -i '/^export[ ]*HOST_IP=/d' /etc/profile"
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50205"]
+                                    % ClusterConstants.ETC_PROFILE + "The cmd is %s" % cmd)
+
+        if "HOST_IP" in os.environ.keys():
+            os.environ.pop("HOST_IP")
+
     def checkParameter(self):
         """
         function: Check parameter from command line
         input: NA
         output: NA
         """
-        ClusterUser.checkGroupParameter(self.user, self.group)
-        # remove HOST_IP info with /etc/profile and environ
-        cmd = "sed -i '/^export[ ]*HOST_IP=/d' /etc/profile"
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50205"]
-                                % ClusterConstants.ETC_PROFILE + "The cmd is %s" % cmd)
-        if "HOST_IP" in os.environ.keys():
-            os.environ.pop("HOST_IP")
+        if self.current_user_root:
+            # check -G parameter
+            ClusterUser.checkGroupParameter(self.user, self.group)
 
+        # remove HOST_IP info with /etc/profile and environ
+        self.delete_host_ip()
         # check config file
         ClusterConfigFile.checkConfigFile(self.xmlFile)
         # check user info
         self.checkUserParameter()
         # check user group match
         self.checkUserAndGroup()
+        # init cluster info
         self.initClusterInfo()
-        # check config content
-        hostName = NetUtil.GetHostIpOrName()
-        g_nodeInfo = self.clusterInfo.getDbNodeByName(hostName)
-        if (g_nodeInfo is None):
-            GaussLog.exitWithError(ErrorCode.GAUSS_516["GAUSS_51620"] % "local" +
-                                " It is not a host name %s." % hostName)
-
+        # check local node info
+        self.check_local_node_info()
         # check env-val
         self.checkEnvValueParameter()
         # check mpprc file
         self.checkMpprcFile()
-
         # check log file
         self.checkLogFile()
-        
         # skip OS check
         self.checkskipOS()
 
@@ -577,25 +616,43 @@ General options:
                 if subdir_path.startswith(parentdir_path):
                     GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50240"] % dss_home_path)
 
-def clearHistTimeFormat():
-    cmd = "sed -i '/HISTTIMEFORMAT=/d' /etc/profile"
-    (status, output) = subprocess.getstatusoutput(cmd)
-    if status != 0:
-        GaussLog.exitWithError("Clear HISTTIMEFORMAT from /etc/profile "
-                            "failed.\nError: %s\nThe cmd is: %s\n" %
-                            (output,cmd))
+    def clear_hist_time_format(self):
+        if self.current_user_root:
+            cmd = "sed -i '/HISTTIMEFORMAT=/d' /etc/profile"
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                GaussLog.exitWithError("Clear HISTTIMEFORMAT from /etc/profile "
+                                    "failed.\nError: %s\nThe cmd is: %s\n" %
+                                    (output,cmd))
+    def check_current_user(self):
+        user_info = UserUtil.getUserInfo()
+        if user_info.get("uid") == 0:
+            self.current_user_root = True
+        else:
+            self.current_user_root = False
+            self.user = user_info.get("name")
+            self.group = user_info.get("g_name")
+            self.skipOSSet = True
+            self.skip_cgroup_set = True
+
+def remove_mpp_env():
+    mpprc = os.environ.get('MPPDB_ENV_SEPARATE_PATH')
+    if mpprc:
+        os.environ.pop('MPPDB_ENV_SEPARATE_PATH')
 
 if __name__ == '__main__':
     """
     main function
     """
-    # check if user is root
-    if os.getuid() != 0:
-        GaussLog.exitWithError(ErrorCode.GAUSS_501["GAUSS_50104"])
-    clearHistTimeFormat()
     try:
+        # if not remove mpprc env, it will affect preinstall init
+        remove_mpp_env()
         # Objectize class
         preinstall = Preinstall()
+         # check if user is root
+        preinstall.check_current_user()
+        # remove HISTTIMEFORMAT with /etc/profile for root
+        preinstall.clear_hist_time_format()
         # set LD_LIBRARY_PATH
         preinstall.setLibPath()
         # parse cmd lines

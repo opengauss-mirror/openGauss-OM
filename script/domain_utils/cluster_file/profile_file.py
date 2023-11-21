@@ -167,7 +167,7 @@ class ProfileFile:
                 if not status:
                     return False, output
 
-        if user and os.getuid() == 0:
+        if user:
             execute_cmd = "%s '%s' && %s '%s'" % (CmdUtil.SOURCE_CMD,
                                                   ClusterConstants.ETC_PROFILE,
                                                   CmdUtil.SOURCE_CMD,
@@ -208,9 +208,4 @@ class ProfileFile:
         input : username
         output : NA
         """
-        cmd = "su - %s -c \"echo ~\" 2>/dev/null" % username
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status == 0:
-            return output + "/.bashrc"
-        else:
-            return ClusterConstants.HOME_USER_BASHRC % username
+        return ClusterConstants.HOME_USER_BASHRC % username

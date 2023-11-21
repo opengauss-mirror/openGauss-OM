@@ -64,7 +64,7 @@ VALUE_CHECK_LIST = ["|", ";", "&", "$", "<", ">", "`", "\\", "'", "\"", "{",
 # no child branch
 gs_preinstall = ["-?", "--help", "-V", "--version", "-U:", "-G:", "-L",
                  "--skip-os-set", "-X:", "--skip-os-check",
-                 "--env-var=", "--sep-env-file=", "--skip-hostname-set",
+                 "--env-var=", "--sep-env-file=", "--skip-hostname-set", "--skip-cgroup-set",
                  "-l:", "--non-interactive", "--delete-root-trust", "--unused-third-party",
                  "--enable-perf-config"]
 gs_install = ["-?", "--help", "-V", "--version", "-X:", "-l:",
@@ -351,6 +351,7 @@ class Parameter():
                            "--non-interactive": "preMode",
                            "--skip-os-set": "skipOSSet",
                            "--skip-hostname-set": "skipHostnameSet",
+                           "--skip-cgroup-set": "skip_cgroup_set",
                            "--reset": "reset",
                            "--parameter": "isParameter",
                            "--binary": "isBinary",

@@ -171,7 +171,7 @@ class PreinstallImpl:
         try:
             # save the sshIps
             Ips = []
-            # create trust for root
+            # # create trust for root or current user
             # get the user name
             username = pwd.getpwuid(os.getuid()).pw_name
             # get the user sshIps
@@ -192,6 +192,12 @@ class PreinstallImpl:
         create ssh trust for root user
         """
         if self.context.preMode:
+            return
+        if not self.context.current_user_root:
+            # Create user mutual trust, and after execution, no mutual trust will be created
+            self.context.create_user_ssh_trust = True
+            self.createTrustForCommonUser()
+            self.context.create_user_ssh_trust = False
             return
         # Ask to create trust for root
         flag = input("Are you sure you want to create trust for root (yes/no)?")
@@ -235,7 +241,7 @@ class PreinstallImpl:
             return
         if self.context.preMode or not self.context.root_ssh_agent_flag:
             return
-        if not self.context.root_delete_flag:
+        if not self.context.root_delete_flag or not self.context.current_user_root:
             return
         self.context.logger.debug("Start Delete root mutual trust")
 
@@ -342,8 +348,6 @@ class PreinstallImpl:
 
         self.context.logger.log("Distributing package.", "addStep")
         try:
-            PackageInfo.makeCompressedToolPackage(self.context.clusterToolPath)
-
             # get the all node names in xml file
             hosts = self.context.clusterInfo.getClusterNodeNames()
             # remove the local node name
@@ -554,7 +558,8 @@ class PreinstallImpl:
                                    cmd_type="python")
 
             # check enter permission
-            cmd = "su - %s -c 'cd '%s''" % (self.context.user, packageDir)
+            cmd = "cd %s" % packageDir
+            cmd = CmdUtil.get_user_exec_cmd(self.context.current_user_root, self.context.user, cmd)
             (status, output) = subprocess.getstatusoutput(cmd)
             # if cmd failed, then exit
             if status != 0:
@@ -574,7 +579,8 @@ class PreinstallImpl:
                                    retry_time=15, waite_time=1, link=True)
 
                 # check enter permission
-                cmd = "su - %s -c 'cd '%s''" % (self.context.user, user_dir)
+                cmd = "cd %s" % user_dir
+                cmd = CmdUtil.get_user_exec_cmd(self.context.current_user_root, self.context.user, cmd)
                 (status, output) = subprocess.getstatusoutput(cmd)
                 # if cmd failed, then exit
                 if status != 0:
@@ -590,7 +596,8 @@ class PreinstallImpl:
 
             # check enter permission
             log_file_dir = os.path.dirname(self.context.logger.logFile)
-            cmd = "su - %s -c 'cd '%s''" % (self.context.user, log_file_dir)
+            cmd = "cd %s" % log_file_dir
+            cmd = CmdUtil.get_user_exec_cmd(self.context.current_user_root, self.context.user, cmd)
             (status, output) = subprocess.getstatusoutput(cmd)
             # if cmd failed, then exit
             if status != 0:
@@ -703,6 +710,8 @@ class PreinstallImpl:
 
         if createTrustFlag:
             return
+        if not self.context.current_user_root and not self.context.create_user_ssh_trust:
+            return
         self.context.logger.log(
             "Creating SSH trust for [%s] user." % self.context.user)
         try:
@@ -763,11 +772,10 @@ class PreinstallImpl:
         output:NA
         hiden:NA
         """
+        if self.context.localMode or not self.context.current_user_root:
+            return
         # single cluster also need to create user without local mode
         self.context.logger.debug("Creating OS user and create trust for user")
-        if self.context.localMode:
-            return
-
         global createTrustFlag
         try:
             # check the interactive mode
@@ -995,7 +1003,7 @@ class PreinstallImpl:
                 namelist = ",".join(NodeNames)
 
             # check skip-os-set parameter
-            if self.context.skipOSSet:
+            if self.context.skipOSSet or not self.context.current_user_root:
                 # check the OS parameters
                 self.checkOSParameter(namelist)
             else:
@@ -1088,15 +1096,15 @@ class PreinstallImpl:
                 raise Exception(
                     ErrorCode.GAUSS_524["GAUSS_52400"]
                     + "\nPlease get more details by \"%s "
-                      "-i A -h %s --detail\"."
-                    % (gs_checkos_path, namelist))
+                      "-i A -h %s -X %s --detail\"."
+                    % (gs_checkos_path, namelist, self.context.xmlFile))
             if warning_num > 0:
                 self.context.logger.log(
                     "Warning: Installation environment "
                     "contains some warning messages." + \
                     "\nPlease get more details by \"%s "
-                    "-i A -h %s --detail\"."
-                    % (gs_checkos_path, namelist))
+                    "-i A -h %s -X %s --detail\"."
+                    % (gs_checkos_path, namelist, self.context.xmlFile))
 
         except Exception as e:
             raise Exception(str(e))
@@ -1191,6 +1199,14 @@ class PreinstallImpl:
         self.context.logger.log("Successfully set the dynamic link library.",
                                 "constant")
 
+    def setArmOptimization(self):
+        """
+        function: set arm optimization
+        input: NA
+        output: NA
+        """
+        pass
+
     def setCgroup(self):
         """
         function: setting Cgroup
@@ -1271,7 +1287,8 @@ class PreinstallImpl:
                 os.path.join(dirName, "./../../../")) + "/"
 
             # check enter permission
-            cmd = "su - %s -c 'cd '%s''" % (self.context.user, packageDir)
+            cmd = "cd %s" % packageDir
+            cmd = CmdUtil.get_user_exec_cmd(self.context.current_user_root, self.context.user, cmd)
             (status, output) = subprocess.getstatusoutput(cmd)
             # if cmd failed, then exit
             if status != 0:
@@ -1285,7 +1302,8 @@ class PreinstallImpl:
             # so we need check its exists
             if os.path.exists(user_dir):
                 # check enter permission
-                cmd = "su - %s -c 'cd '%s''" % (self.context.user, user_dir)
+                cmd = "cd %s" % user_dir
+                cmd = CmdUtil.get_user_exec_cmd(self.context.current_user_root, self.context.user, cmd)
                 (status, output) = subprocess.getstatusoutput(cmd)
                 # if cmd failed, then exit
                 if status != 0:
@@ -1294,8 +1312,8 @@ class PreinstallImpl:
 
             # check enter permission
             log_file_dir = os.path.dirname(self.context.logger.logFile)
-
-            cmd = "su - %s -c 'cd '%s''" % (self.context.user, log_file_dir)
+            cmd = "cd %s" % log_file_dir
+            cmd = CmdUtil.get_user_exec_cmd(self.context.current_user_root, self.context.user, cmd)
             (status, output) = subprocess.getstatusoutput(cmd)
             # if cmd failed, then exit
             if status != 0:
@@ -1383,7 +1401,8 @@ class PreinstallImpl:
         with open(source_file, 'r') as f:
             env_list = f.readlines()
         new_env_list = []
-        if not self.context.mpprcFile:
+        # mpprcFile not exist
+        if not self.context.mpprcFile and self.context.current_user_root:
             with open(os.path.join("/etc", "profile"), "r") as etc_file:
                 gp_home_env = etc_file.readlines()
             gphome_env_list = [env.replace('\n', '') for env in gp_home_env]
@@ -1553,19 +1572,19 @@ class PreinstallImpl:
         """
         :return:
         """
-        if not self.context.user_ssh_agent_flag:
-            return
         self.context.logger.debug("Start set cron for %s" %self.context.user)
         tmp_path = ClusterConfigFile.readClusterTmpMppdbPath(
             self.context.user, self.context.xmlFile)
         gaussdb_tool_path = ClusterDir.getPreClusterToolPath(self.context.xmlFile)
         cron_file = "%s/gauss_cron_%s" % (tmp_path, self.context.user)
-        set_cron_cmd = "crontab -u %s -l > %s && " % (self.context.user, cron_file)
+        if self.context.current_user_root:
+            set_cron_cmd = "crontab -u %s -l > %s && " % (self.context.user, cron_file)
+        else:
+            set_cron_cmd = "crontab -l > %s && " % cron_file
         set_cron_cmd += "sed -i '/CheckSshAgent.py/d' %s;" % cron_file
         set_cron_cmd += "echo '*/1 * * * * source ~/.bashrc;python3 %s/script/local/CheckSshAgent.py >>/dev/null 2>&1 &' >> %s;" % (gaussdb_tool_path, cron_file)
-
-        set_cron_cmd += "crontab -u %s %s;service cron restart;" % (self.context.user, cron_file)
         set_cron_cmd += "rm -f '%s'" % cron_file
+        set_cron_cmd += "crontab %s " % cron_file
         self.context.logger.debug("Command for setting CRON: %s" % set_cron_cmd)
         CmdExecutor.execCommandWithMode(set_cron_cmd,
                                         self.context.sshTool,
@@ -1649,14 +1668,12 @@ class PreinstallImpl:
         self.setPssh()
         # set cgroup
         self.setCgroup()
-
+        # set arm optimization
         self.setArmOptimization()
         # fix server package mode
         self.fixServerPackageOwner()
-
         # unreg the disk of the dss and about
         self.dss_init()
-
         # set user cron
         self.set_user_crontab()
         # set user env and a flag,

@@ -134,6 +134,15 @@ class PreInstall(LocalBaseOM):
         self.clusterAppPath = ""
         self.white_list = {}
         self.logger = None
+        self.current_user_root = False
+
+    def get_current_user(self):
+        """
+        get current user
+        """
+        user_info = UserUtil.getUserInfo()
+        if user_info['uid'] == 0:
+            self.current_user_root = True
 
     def initGlobals(self):
         """
@@ -305,7 +314,7 @@ Common options:
 
         if self.logFile == "":
             self.logFile = ClusterLog.getOMLogPath(
-                ClusterConstants.LOCAL_LOG_FILE, self.user, "")
+                ClusterConstants.LOCAL_LOG_FILE, self.user, "", self.clusterConfig)
 
     def prepareMpprcFile(self):
         """
@@ -576,7 +585,8 @@ Common options:
         # report permisson error about GPHOME
         FileUtil.checkPathandChangeOwner(originalPath, self.user,
                                              DefaultValue.KEY_DIRECTORY_MODE)
-        cmd = "su - %s -c \"cd '%s'\"" % (username, originalPath)
+        cmd = "cd %s" % originalPath
+        cmd = CmdUtil.get_user_exec_cmd(self.current_user_root, username, cmd)
         status = subprocess.getstatusoutput(cmd)[0]
         if status != 0:
             return False
@@ -585,14 +595,15 @@ Common options:
             return True
 
         testFile = os.path.join(originalPath, "touch.tst")
-        cmd = "su - %s -c 'touch %s && chmod %s %s' >/dev/null 2>&1" % (
-            username, testFile, DefaultValue.KEY_FILE_MODE, testFile)
+        cmd = "touch %s && chmod %s %s >/dev/null 2>&1" % (
+                testFile, DefaultValue.KEY_FILE_MODE, testFile)
+        cmd = CmdUtil.get_user_exec_cmd(self.current_user_root, username, cmd)
         status = subprocess.getstatusoutput(cmd)[0]
         if status != 0:
             return False
 
-        cmd = "su - %s -c 'echo aaa > %s' >/dev/null 2>&1" \
-              % (username, testFile)
+        cmd = "echo test > %s >/dev/null 2>&1" % testFile
+        cmd = CmdUtil.get_user_exec_cmd(self.current_user_root, username, cmd)
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             cmd = "rm -f '%s' >/dev/null 2>&1" % testFile
@@ -612,6 +623,8 @@ Common options:
         input : NA
         output: NA
         """
+        if not self.current_user_root:
+            return
         self.logger.debug("Checking hostname mapping.")
         try:
             self.logger.debug("Change file[/etc/hosts] mode.")
@@ -851,6 +864,7 @@ Common options:
             needCheckEmpty = True
 
         self.initNodeInfo()
+        self.prepare_om_tools_bin_path()
         self.prepareGaussLogPath()
         self.prepareInstallPath(needCheckEmpty)
         self.prepareTmpPath(needCheckEmpty)
@@ -970,6 +984,25 @@ Common options:
             elif flags:
                 break
         self.logger.debug("Successfully created dss disk link.")
+
+    def prepare_om_tools_bin_path(self):
+        """
+        function: Prepare om tools bin path
+        input : NA
+        output: NA
+        """
+        self.logger.debug("Creating om tools bin path.")
+        bin_path = os.path.join(self.clusterToolPath, "bin")
+        # check bin path
+        self.logger.debug("Checking %s directory [%s]." % (VersionInfo.PRODUCT_NAME, bin_path))
+        if not os.path.exists(bin_path):
+            self.makeDirsInRetryMode(bin_path, DefaultValue.MAX_DIRECTORY_MODE)
+        try:
+            FileUtil.checkLink(bin_path)
+            FileUtil.changeMode(DefaultValue.MAX_DIRECTORY_MODE, bin_path, False, "shell")
+            FileUtil.changeOwner(self.user, bin_path, False, "shell", link=True)
+        except Exception as e:
+            raise Exception(str(e))
 
     def prepareGaussLogPath(self):
         """
@@ -1128,8 +1161,8 @@ Common options:
         if not needCheckEmpty:
             return
         upperDir = os.path.dirname(installPath)
-        cmd = "su - %s -c \"if [ -w %s ];then echo 1; else echo 0;fi\"" % (
-                  self.user, upperDir)
+        cmd = "if [ -w %s ];then echo 1; else echo 0;fi" % upperDir
+        cmd = CmdUtil.get_user_exec_cmd(self.current_user_root, self.user, cmd)
         self.logger.debug(
             "Command to check if we have write permission for upper path:"
             " %s" % cmd)
@@ -1168,6 +1201,8 @@ Common options:
         input : NA
         output: NA
         """
+        if not self.current_user_root:
+            return
         self.logger.debug("Preparing user cron service.")
         ##1.set crontab file permission
         crontabFile = "/usr/bin/crontab"
@@ -1226,6 +1261,8 @@ Common options:
         input : NA
         output: NA
         """
+        if not self.current_user_root:
+            return
         self.logger.debug("Preparing user SSHD service.")
         sshd_config_file = "/etc/ssh/sshd_config"
         paramName = "MaxStartups"
@@ -1387,8 +1424,8 @@ Common options:
             FileUtil.changeOwner(self.user, omLogPath, True, "shell",
                                retry_flag=True, retry_time=15, waite_time=1, link=True)
         self.logger.debug("Checking the permission of GPHOME: %s." % user_dir)
-        cmd = g_file.SHELL_CMD_DICT["checkUserPermission"] % (
-            self.user, user_dir)
+        cmd = "cd %s" % user_dir
+        cmd = CmdUtil.get_user_exec_cmd(self.current_user_root, self.user, cmd)
         self.logger.debug("The command of check permission is: %s." % cmd)
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
@@ -1399,8 +1436,8 @@ Common options:
 
         # get the value of GAUSS_ENV
         self.logger.debug("Setting finish flag.")
-        cmd = "su - %s -c 'source %s;echo $GAUSS_ENV' 2>/dev/null" % (
-            self.user, userProfile)
+        cmd = "source %s;echo $GAUSS_ENV 2>/dev/null" % userProfile
+        cmd = CmdUtil.get_user_exec_cmd(self.current_user_root, self.user, cmd)
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514[
@@ -1421,11 +1458,11 @@ Common options:
         output: True/False
         """
         if self.mpprcFile != "":
-            cmd = "su - root -c 'source %s;echo $GAUSS_ENV' 2>/dev/null" \
-                  % self.mpprcFile
+            cmd = "source %s;echo $GAUSS_ENV 2>/dev/null"  % self.mpprcFile
+            cmd = CmdUtil.get_user_exec_cmd(self.current_user_root, self.user, cmd)
         else:
-            cmd = "su - %s -c 'source ~/.bashrc;echo $GAUSS_ENV' 2>/dev/null" \
-                  % self.user
+            cmd = "source ~/.bashrc;echo $GAUSS_ENV 2>/dev/null"
+            cmd = CmdUtil.get_user_exec_cmd(self.current_user_root, self.user, cmd)
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             self.logger.debug(
@@ -1503,16 +1540,16 @@ Common options:
         if self.mpprcFile != "":
             # have check its exists when check parameters,
             # so it should exist here
-            userProfile = self.mpprcFile
+            user_profile = self.mpprcFile
         else:
             # check if os profile exist
-            userProfile = ClusterConstants.ETC_PROFILE
-            if not os.path.exists(userProfile):
+            user_profile = ProfileFile.get_user_bashrc(self.user)
+            if not os.path.exists(user_profile):
                 self.logger.debug(
-                    "Profile does not exist. Please create %s." % userProfile)
-                FileUtil.createFile(userProfile)
-                FileUtil.changeMode(DefaultValue.DIRECTORY_MODE, userProfile)
-        return userProfile
+                    "Profile does not exist. Please create %s." % user_profile)
+                FileUtil.createFile(user_profile)
+                FileUtil.changeMode(DefaultValue.DIRECTORY_MODE, user_profile)
+        return user_profile
 
     def setDBUerProfile(self):
         """
@@ -1556,7 +1593,7 @@ Common options:
 
         # clean GPHOME
         FileUtil.deleteLine(userProfile, "^\\s*export\\s*GPHOME=.*$")
-        # clean GPHOME
+        # clean UNPACKPATH
         FileUtil.deleteLine(userProfile, "^\\s*export\\s*UNPACKPATH=.*$")
         self.logger.debug(
             "Deleting crash GPHOME in user environment variables.")
@@ -1673,6 +1710,8 @@ Common options:
         input : NA
         output: NA
         """
+        if not self.current_user_root:
+            return
         self.logger.debug("Setting Library.")
         config_file_dir = "/etc/ld.so.conf"
         alreadySet = False
@@ -2588,7 +2627,7 @@ Common options:
         """
         package_path = get_package_path()
         om_root_path = os.path.dirname(package_path)
-        if om_root_path == DefaultValue.ROOT_SCRIPTS_PATH:
+        if om_root_path == DefaultValue.ROOT_SCRIPTS_PATH or not self.current_user_root:
             return
 
         self.logger.log("Separate om root scripts.")
@@ -2674,15 +2713,15 @@ Common options:
         toolPath = self.clusterToolPath
         self.logger.log("change '%s' files permission and owner." % toolPath)
         FileUtil.changeOwner(self.user, toolPath, recursive=True, link=True)
-        FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE,
+        FileUtil.changeMode(DefaultValue.MAX_DIRECTORY_MODE,
                           toolPath, recursive=True)
         FileUtil.changeMode(DefaultValue.SPE_FILE_MODE,
                           "%s/script/gs_*" % toolPath)
-        FileUtil.changeMode(DefaultValue.MIN_FILE_MODE, "%s/*.sha256" % toolPath)
-        FileUtil.changeMode(DefaultValue.MIN_FILE_MODE, "%s/*.tar.gz" % toolPath)
-        FileUtil.changeMode(DefaultValue.MIN_FILE_MODE, "%s/*.tar.bz2" %
+        FileUtil.changeMode(DefaultValue.BIN_FILE_MODE, "%s/*.sha256" % toolPath)
+        FileUtil.changeMode(DefaultValue.BIN_FILE_MODE, "%s/*.tar.gz" % toolPath)
+        FileUtil.changeMode(DefaultValue.BIN_FILE_MODE, "%s/*.tar.bz2" %
                           toolPath)
-        FileUtil.changeMode(DefaultValue.MIN_FILE_MODE, "%s/version.cfg" %
+        FileUtil.changeMode(DefaultValue.BIN_FILE_MODE, "%s/version.cfg" %
                           toolPath)
 
     def fixop_package_path(self):
@@ -2695,17 +2734,17 @@ Common options:
         gsom_path = os.path.dirname(package_path)
         if gsom_path != DefaultValue.ROOT_SCRIPTS_PATH:
             self.logger.log("Change file mode in path %s" % package_path)
-            FileUtil.changeOwner("root", package_path, recursive=True, link=True)
+            FileUtil.changeOwner(self.user, package_path, recursive=True, link=True)
             FileUtil.changeMode(DefaultValue.MAX_DIRECTORY_MODE, package_path)
             FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE,
                               "%s/script" % package_path, recursive=True)
-            FileUtil.changeMode(DefaultValue.MIN_FILE_MODE, "%s/*.sha256" %
+            FileUtil.changeMode(DefaultValue.BIN_FILE_MODE, "%s/*.sha256" %
                               package_path)
-            FileUtil.changeMode(DefaultValue.MIN_FILE_MODE, "%s/*.tar.gz" %
+            FileUtil.changeMode(DefaultValue.BIN_FILE_MODE, "%s/*.tar.gz" %
                               package_path)
-            FileUtil.changeMode(DefaultValue.MIN_FILE_MODE, "%s/*.tar.bz2" %
+            FileUtil.changeMode(DefaultValue.BIN_FILE_MODE, "%s/*.tar.bz2" %
                               package_path)
-            FileUtil.changeMode(DefaultValue.MIN_FILE_MODE, "%s/version.cfg" %
+            FileUtil.changeMode(DefaultValue.BIN_FILE_MODE, "%s/version.cfg" %
                               package_path)
 
     def fix_dss_cap_permission(self):
@@ -2941,6 +2980,7 @@ Common options:
         output : NA
         """
         try:
+            self.get_current_user()
             self.parseCommandLine()
             self.checkParameter()
             self.initGlobals()

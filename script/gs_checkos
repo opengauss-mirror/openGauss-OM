@@ -37,6 +37,8 @@ from base_utils.os.file_util import FileUtil
 from base_utils.os.net_util import NetUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from base_utils.common.constantsbase import ConstantsBase
+from base_utils.os.user_util import UserUtil
+from domain_utils.cluster_file.cluster_config_file import ClusterConfigFile
 
 
 #############################################################################
@@ -134,7 +136,6 @@ ACTION_SET_IO_CONFIGURE = "Set_IO_Configure"
 ACTION_SET_IO_REQUEST = "Set_IO_REQUEST"
 ACTION_SET_ASYNCHRONOUS_IO_REQUEST = "Set_Asynchronous_IO_Request"
 
-
 #######################################################
 class CmdOptions():
     """
@@ -157,9 +158,9 @@ class CmdOptions():
         self.localMode = False
         self.skipOSCheck = []
         self.skip_OS_Check = {}
+        self.skip_cgroup_set = False
 
     #########################################################
-
 
 # Init global log
 #########################################################
@@ -331,6 +332,15 @@ def parseCommandLine():
     if (ParaDict.__contains__("skipOSCheck")):
         g_opts.skipOSCheck = ParaDict.get("skipOSCheck")
 
+def get_user_info():
+        """
+        function: get user
+        input: NA
+        output: NA
+        """
+        user_info = UserUtil.getUserInfo()
+        g_opts.user = user_info.get("name")
+        DefaultValue.checkPathVaild(g_opts.user)
 
 def readHostFile(hostfile):
     """
@@ -373,19 +383,38 @@ def checkConfigFile():
             GaussLog.exitWithError(
                 ErrorCode.GAUSS_502["GAUSS_50201"] % g_opts.confFile)
 
+def get_checkos_log_path(log_name, xml):
+    """
+    function: get the checkos log path
+    input: log_name, xml
+    output: fullLogPath
+    """
+    try:
+        gs_checkos_log_path = ""
+        # get the log path
+        configedLogPath = ClusterConfigFile.getOneClusterConfigItem("gaussdbLogPath", xml)
+        DefaultValue.checkPathVaild(configedLogPath)
+        # check gaussdbLogPath is not null
+        if configedLogPath == "":
+            gs_checkos_log_path = "%s/%s/om/%s" % (
+            ClusterConstants.GAUSSDB_DIR, g_opts.user, log_name)
+        else:
+            gs_checkos_log_path = "%s/%s/om/%s" % (
+            os.path.normpath(configedLogPath), g_opts.user, log_name)
+        UserUtil.check_path_owner(gs_checkos_log_path)
+        return gs_checkos_log_path
+    except Exception as e:
+        GaussLog.exitWithError(str(e))
 
 def setLogFile():
     """
     """
     if (g_opts.logFile == ""):
-        cmd = "(if [ ! -d %s ]; then mkdir -p %s -m %s; fi)" % (
-        LOG_DIR, LOG_DIR, DefaultValue.KEY_DIRECTORY_MODE)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if (status != 0):
-            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50208"]
-                                   % "log of gs_checkos" + " Error: \n%s."
-                                   % output + "The cmd is %s" % cmd)
-        g_opts.logFile = os.path.join(LOG_DIR, "gs_checkos.log")
+        g_opts.logFile = get_checkos_log_path(ClusterConstants.GS_CHECKOS_LOG_FILE, g_opts.confFile)
+        if (not os.path.isabs(g_opts.logFile)):
+            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"]
+                                   % g_opts.logFile)
+        UserUtil.check_path_owner(g_opts.logFile)
 
 
 def checkItems():
@@ -409,6 +438,7 @@ def checkParameter():
     """
     Check parameter from command line
     """
+    get_user_info()
     ############################################
     # check hostlist info
     ###########################################
@@ -482,6 +512,8 @@ def doCheckOS(itemNumber):
     elif (itemNumber == 'A8' and g_opts.skip_OS_Check["A8"]):
         checkDiskConfigure()
     elif (itemNumber == 'A9' and g_opts.skip_OS_Check["A9"]):
+        if os.getpid() != 0:
+            return
         checkBlockDevConfigure()
         checkLogicalBlock()
     elif (itemNumber == 'A10' and g_opts.skip_OS_Check["A10"]):
@@ -489,6 +521,8 @@ def doCheckOS(itemNumber):
         checkMaxAsyIOrequests()
         checkIOConfigure()
     elif (itemNumber == 'A11' and g_opts.skip_OS_Check["A11"]):
+        if os.getpid() != 0:
+            return
         checkNetworkConfigure()
     elif (itemNumber == 'A12' and g_opts.skip_OS_Check["A12"]):
         checkTimeConsistency()
@@ -1511,8 +1545,6 @@ def main():
     """
     main function
     """
-    if (os.getuid() != 0):
-        GaussLog.exitWithError(ErrorCode.GAUSS_501["GAUSS_50104"])
 
     global Local_CheckOs
     global Local_Check
@@ -1565,10 +1597,10 @@ def main():
                          % g_opts.outputfile)
 
         for item in itemList:
-            if (g_opts.set == False):
-                doCheckOS(item)
-            else:
+            if (os.getpid() == 0 and g_opts.set):
                 doSetOS(item)
+            else:
+                doCheckOS(item)
             DisplayResultInformation(item, output)
 
         if (fp):

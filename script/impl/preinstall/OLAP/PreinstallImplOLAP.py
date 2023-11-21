@@ -314,7 +314,7 @@ class PreinstallImplOLAP(PreinstallImpl):
         """
         self.context.clusterInfo.corePath = \
             self.context.clusterInfo.readClustercorePath(self.context.xmlFile)
-        if not self.context.clusterInfo.corePath:
+        if not self.context.clusterInfo.corePath or not self.context.current_user_root:
             return
         self.context.logger.log("Setting Core file", "addStep")
         try:
@@ -362,7 +362,8 @@ class PreinstallImplOLAP(PreinstallImpl):
             psshlib_path = os.path.join(
                 os.path.dirname(__file__),
                 "../../../gspylib/pssh/bin/TaskPool.py")
-            dest_path = "/usr/bin/"
+            # 将pssh放到om tools的bin目录下
+            dest_path = os.path.join(self.context.clusterToolPath, "script")
             secbox_path = "/var/chroot/usr/bin/"
             cmd = "cp %s %s %s %s" % (
                 pssh_path, pscp_path, psshlib_path, dest_path)
@@ -399,13 +400,15 @@ class PreinstallImplOLAP(PreinstallImpl):
         self.context.logger.log("Setting host ip env", "addStep")
         try:
             # remove HOST_IP info with /etc/profile and environ
-            cmd = "sed -i '/^export[ ]*HOST_IP=/d' /etc/profile"
-            CmdExecutor.execCommandWithMode(
-                cmd,
-                self.context.sshTool,
-                self.context.localMode or self.context.isSingle)
-            if "HOST_IP" in os.environ.keys():
-                os.environ.pop("HOST_IP")
+            if self.context.current_user_root:
+                # remove HOST_IP info with /etc/profile and environ
+                cmd = "sed -i '/^export[ ]*HOST_IP=/d' /etc/profile"
+                CmdExecutor.execCommandWithMode(
+                    cmd,
+                    self.context.sshTool,
+                    self.context.localMode or self.context.isSingle)
+                if "HOST_IP" in os.environ.keys():
+                    os.environ.pop("HOST_IP")
         except Exception as e:
             raise Exception(str(e))
         self.context.logger.log("Successfully set host ip env.", "constant")
@@ -416,6 +419,8 @@ class PreinstallImplOLAP(PreinstallImpl):
         input: NA
         output: NA
         """
+        if self.context.skip_cgroup_set or not self.context.current_user_root:
+            return
         self.context.logger.log("Setting Cgroup.", "addStep")
         try:
             # set the cgroup
@@ -483,6 +488,8 @@ class PreinstallImplOLAP(PreinstallImpl):
         input: NA
         output: NA
         """
+        if not self.context.current_user_root:
+            return
         # the flag for whether the virtual IP exists
         flag = 0
         # all virtual IPs list

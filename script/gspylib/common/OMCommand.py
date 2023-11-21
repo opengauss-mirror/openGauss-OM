@@ -234,14 +234,15 @@ class OMCommand():
                 retry += 1
                 time.sleep(1)
 
-            hostnameCmd = "pssh -s -H %s 'cat /etc/hostname'" % (nodename)
-            (status, output) = subprocess.getstatusoutput(hostnameCmd)
-            if status == 0 and output.strip() == nodename:
-                pass
-            else:
-                raise Exception(ErrorCode.GAUSS_512["GAUSS_51248"] % nodename
-                                + " Command: \"%s\". Error: \n%s"
-                                % (hostnameCmd, output))
+            if os.getuid() == 0:
+                hostnameCmd = "pssh -s -H %s 'cat /etc/hostname'" % (nodename)
+                (status, output) = subprocess.getstatusoutput(hostnameCmd)
+                if status == 0 and output.strip() == nodename:
+                    pass
+                else:
+                    raise Exception(ErrorCode.GAUSS_512["GAUSS_51248"] % nodename
+                                    + " Command: \"%s\". Error: \n%s"
+                                    % (hostnameCmd, output))
 
         except Exception as e:
             raise Exception(str(e))

@@ -233,7 +233,10 @@ class SshTool():
         output: True/False
         """
         ownerPath = os.path.split(filePath)[0]
-        cmd = "su - %s -c 'cd %s'" % (username, ownerPath)
+        if os.getuid() == 0:
+            cmd = "su - %s -c 'cd %s'" % (username, ownerPath)
+        else:
+            cmd = "cd %s" % ownerPath
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_500["GAUSS_50004"]

@@ -157,6 +157,8 @@ class PackageInfo(object):
         integrity_file_name = PackageInfo.getSHA256FilePath()
         cm_package = "%s-cm.tar.gz" % PackageInfo.getPackageFile(
             "bz2File").replace(".tar.bz2", "")
+        om_package = "%s-om.tar.gz" % PackageInfo.getPackageFile(
+            "bz2File").replace(".tar.bz2", "")
 
         tar_lists = SingleInstDiff.get_package_tar_lists(is_single_inst,
                                                          os.path.normpath(package_path))
@@ -171,8 +173,8 @@ class PackageInfo(object):
             # do not tar *.log files
             cmd += CompressUtil.getCompressFilesCmd(PackageInfo.get_package_back_name(),
                                                     tar_lists)
-            cmd += " %s %s " % (os.path.basename(bz2_file_name),
-                                os.path.basename(integrity_file_name))
+            cmd += " %s %s %s " % (os.path.basename(bz2_file_name),
+                                os.path.basename(integrity_file_name), os.path.basename(om_package))
             # add CM package to bak package
             if os.path.isfile(os.path.realpath(os.path.join(package_path, cm_package))):
                 cmd += "%s " % os.path.basename(cm_package)

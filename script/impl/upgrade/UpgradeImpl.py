@@ -2651,10 +2651,12 @@ class UpgradeImpl:
             # 8. clean up other upgrade tmp files
             # and uninstall inplace upgrade support functions
             self.cleanInstallPath(const.OLD)
-            self.cleanBinaryUpgradeBakFiles()
             if self.isLargeInplaceUpgrade:
                 self.stop_strategy(is_final=False)
                 self.start_strategy(is_final=False)
+            # After starting the cluster, delete the binary_upgrade directory to avoid entering
+            # non-maintenance mode during startup, which could cause a host switch.
+            self.cleanBinaryUpgradeBakFiles()
 
             # install Kerberos
             self.install_kerberos()

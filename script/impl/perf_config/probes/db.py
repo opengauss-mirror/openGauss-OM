@@ -37,25 +37,16 @@ class DBInfo(Probe):
         super(DBInfo, self).__init__()
         self.ip = None
         self.port = None
-        self.omm = None
-        self.omm_uid = None
-        self.omm_gid = None
+        self.omm = Project.role.user_name
+        self.omm_uid = Project.role.user_uid
+        self.omm_gid = Project.role.user_gid
         self.gauss_home = Project.environ.gauss_home
         self.gauss_data = Project.environ.gauss_data
+        self.gauss_log = Project.environ.gauss_log
         self.postgresql_conf = os.path.join(self.gauss_data, 'postgresql.conf')
 
     def detect(self):
-        self.gauss_home = Project.environ.gauss_home
-        self.gauss_data = Project.environ.gauss_data
-
-        self._detect_omm()
         self._detect_ip_port()
-
-    def _detect_omm(self):
-        stat = os.stat(self.gauss_home)
-        self.omm_uid = stat.st_uid
-        self.omm_gid = stat.st_gid
-        self.omm = pwd.getpwuid(stat.st_uid).pw_name
 
     def _detect_ip_port(self):
         listen_addresses = self._read_guc_in_postgresql_conf('listen_addresses')

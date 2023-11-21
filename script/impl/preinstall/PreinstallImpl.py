@@ -1584,7 +1584,7 @@ class PreinstallImpl:
         cmd = 'gs_perfconfig tune -t os,suggest --apply -y'
         if self.context.mpprcFile:
             cmd += (' --env ' + self.context.mpprcFile)
-        CmdExecutor.execCommandLocally(cmd)
+        os.system(cmd)
 
     def doPreInstall(self):
         """

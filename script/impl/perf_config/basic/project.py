@@ -293,12 +293,12 @@ class ProjectReport(object):
 class ProjectRole(object):
     """
     Role control. Check who the current user is and who the omm user is.
-    Use gausshome's folder owner to automatically find omm users and optimize the use experience.
+    Use gausslog's folder owner to automatically find omm users and optimize the use experience.
     """
     def __init__(self):
         self.current_role = getpass.getuser()
 
-        stat = os.stat(Project.environ.gauss_home)
+        stat = os.stat(Project.environ.gauss_log)
         self.user_name = pwd.getpwuid(stat.st_uid).pw_name
         self.user_uid = stat.st_uid
         self.user_gid = stat.st_gid

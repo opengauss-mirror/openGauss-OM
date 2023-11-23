@@ -18,11 +18,12 @@
 # ----------------------------------------------------------------------------
 # Description  : Resetreplconninfo.py is a utility to reset local replconninfo.
 #############################################################################
-
+import os
 import getopt
 import sys
 import subprocess
 import re
+import datetime
 
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
@@ -30,6 +31,7 @@ from gspylib.common.ErrorCode import ErrorCode
 from base_utils.os.net_util import NetUtil
 from base_utils.os.env_util import EnvUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
+from domain_utils.cluster_file.cluster_log import ClusterLog
 
 ########################################################################
 # Global variables define
@@ -47,6 +49,7 @@ class CmdOptions():
         """
         self.action = ""
         self.clusterUser = ""
+        self.log_file = ""
 
 
 def usage():
@@ -71,7 +74,7 @@ def parseCommandLine():
     function: parse command line
     """
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "U:t:h", ["help"])
+        opts, args = getopt.getopt(sys.argv[1:], "U:t:h:l", ["help"])
     except Exception as e:
         usage()
         GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"] % str(e))
@@ -92,6 +95,8 @@ def parseCommandLine():
             g_opts.action = value
         elif key == "-U":
             g_opts.clusterUser = value
+        elif key == "-l":
+            g_opts.log_file = value
 
 
 def checkParameter():
@@ -104,8 +109,21 @@ def checkParameter():
         GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % 't' + ".")
     if g_opts.action != "reset":
         GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % 't')
+    if (g_opts.log_file == ""):
+        g_opts.log_file = ClusterLog.getOMLogPath(
+                ClusterConstants.LOCAL_LOG_FILE, g_opts.clusterUser, "")
 
-
+def init_globals():
+    """
+    function: Init global log
+    input : NA
+    output: NA
+    """
+    # state global variable
+    global g_logger
+    # Init the log file
+    g_logger = GaussLog(g_opts.log_file, "resetreplconninfo")
+    
 class Resetreplconninfo():
     """
     class: Resetreplconninfo
@@ -130,6 +148,7 @@ class Resetreplconninfo():
         """
         cmd = "source %s;gs_om -t status --detail" % self.userProfile
         (status, output) = subprocess.getstatusoutput(cmd)
+        g_logger.debug("gs_om -t status output: %s" % output)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"]
                             % cmd + " Error: \n%s" % output)
@@ -171,6 +190,8 @@ class Resetreplconninfo():
 
         localhost = NetUtil.GetHostIpOrName()
         remote_ip_dict = {}
+        g_logger.debug("status_list is: %s" % status_list)
+        g_logger.debug("repl_list is: %s" % repl_list)
         for info_all in status_list:
             info = info_all.split()
             if info[nodename_split_idx] == localhost:
@@ -182,6 +203,7 @@ class Resetreplconninfo():
             cmd = head_cmd + 'gs_guc check -N %s -D %s -c "%s"' % \
                   (localhost, local_dndir, repl)
             status, output = subprocess.getstatusoutput(cmd)
+            g_logger.debug("cmd is %s output: %s" % (cmd, output))
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
                                 cmd + " Error:\n%s" % output)
@@ -190,6 +212,9 @@ class Resetreplconninfo():
             if len(replinfo_all) < 2:
                 continue
             replinfo_value = replinfo_all[1].split()
+            g_logger.debug("replinfo_all is %s" % replinfo_all)
+            g_logger.debug("remote_ip_dict is: %s" % remote_ip_dict)
+            g_logger.debug("repl is: %s" % repl)
             for remoteip in remote_ip_dict:
                 if remoteip in replinfo_all[1]:
                     if remote_ip_dict[remoteip] == "Cascade" and \
@@ -202,9 +227,13 @@ class Resetreplconninfo():
                         break
                     replinfo_all = \
                         replinfo_all[0] + "'" + " ".join(replinfo_value) + "'"
+                    g_logger.debug("replinfo_value is: %s" % replinfo_value)
+                    g_logger.debug("remoteip is: %s" % remoteip)
                     cmd = head_cmd + 'gs_guc reload -N %s -D %s -c "%s"' % \
                           (localhost, local_dndir, replinfo_all)
+                    g_logger.debug("replinfo_all is: %s" % replinfo_all)
                     status, output = subprocess.getstatusoutput(cmd)
+                    g_logger.debug("cmd is %s output: %s" % (cmd, output))
                     if status != 0:
                         raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
                                         cmd + " Error:\n%s" % output)
@@ -216,6 +245,7 @@ if __name__ == '__main__':
         # parse and check input parameters
         parseCommandLine()
         checkParameter()
+        init_globals()
 
         # reset replconninfos
         reseter = Resetreplconninfo()

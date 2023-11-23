@@ -150,7 +150,20 @@ class Kernel(BaseComponent):
         cmd = "%s/gs_ctl build -D %s -M standby -b %s -r %d " % (
             self.binPath, self.instInfo.datadir, buidMode, standByBuildTimeout)
         (status, output) = subprocess.getstatusoutput(cmd)
+        self.logger.debug("cmd is %s; output: %s" % (cmd, output))
         if (status != 0):
+            hostname_cmd = "cat /etc/hosts | grep -i '#Gauss OM IP Hosts Mapping' | awk '{print $2}' | grep -v 'localhost'"
+            (status, result) = subprocess.getstatusoutput(hostname_cmd)
+            self.logger.debug("cmd is %s; output: %s" % (hostname_cmd, result))
+            if status != 0:
+                raise Exception("cat /etc/hosts failed! cmd: %s; Error: %s " % (hostname_cmd, result))
+            host_list = result.splitlines()
+            for host in host_list:
+                ping_cmd = f"ping {host} -c 5"
+                (status, result) = subprocess.getstatusoutput(ping_cmd)
+                self.logger.debug("cmd is %s; output: %s" % (ping_cmd, result))
+                if status != 0:
+                    raise Exception(f"ping {host} failed! {output}")
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
                             " Error: \n%s " % output)
 

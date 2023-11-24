@@ -334,7 +334,7 @@ class PreinstallImplOLAP(PreinstallImpl):
                 self.context.clusterInfo.corePath,
                 self.context.clusterInfo.corePath,
                 DefaultValue.DIRECTORY_MODE)
-            cmd += " && chown %s:%s %s -R -h" % (
+            cmd += " && chown %s:%s %s -h" % (
                 self.context.user, self.context.group,
                 ownerPath)
             CmdExecutor.execCommandWithMode(

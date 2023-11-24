@@ -720,7 +720,7 @@ class InstallImpl:
             self.context.logger.logExit('Could not run gs_perfconfig by gs_preinstall in upgrade case.')
 
         cmd = 'gs_perfconfig tune -t setup,guc,suggest --apply -y'
-        CmdExecutor.execCommandLocally(cmd)
+        os.system(cmd)
 
     def rollbackInstall(self):
         """

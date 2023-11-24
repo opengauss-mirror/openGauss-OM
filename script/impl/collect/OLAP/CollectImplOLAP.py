@@ -21,7 +21,6 @@ import time
 import base64
 import json
 
-
 sys.path.append(sys.path[0] + "/../../../")
 from gspylib.common.Common import DefaultValue
 from gspylib.common.OMCommand import OMCommand
@@ -520,6 +519,52 @@ class CollectImplOLAP(CollectImpl):
             self.context.logger.log("The cmd is %s " % cmd)
             self.context.logger.log("Failed collected catalog statistics.")
 
+    def dss_conf_copy(self, dss_config):
+        """
+        function: collected dss config files
+        output:  Successfully collected dss config files
+        """
+        self.context.logger.log("Collecting %s files." % dss_config)
+        # Collect dss config files
+        cmd = "source %s; %s -t dss_conf_copy -U %s -l %s -C %s" % (
+            self.context.mpprcFile,
+            OMCommand.getLocalScript("Local_Collect"),
+            self.context.user,
+            self.context.localLog,
+            self.formatJsonString(dss_config))
+
+        self.exec_cmd(cmd, dss_config)
+    
+    def dssserver_check(self):
+        """
+        funtion: check if dssserver exists
+        """
+        isExist = False
+        cmd = "ps ux | grep dssserver | grep -v grep"
+        (status, _) = subprocess.getstatusoutput(cmd)
+        if status == 0:
+            isExist = True
+        return isExist
+
+    def disk_info_copy(self, disk_info):
+        """
+        function: collected disk info
+        output: Successfully collected disk info
+        """
+        self.context.logger.log("Collecting disk info.")
+        if self.dssserver_check():
+            # Collect disk info
+            cmd = "source %s; %s -t disk_info_copy -U %s -l %s -C %s" % (
+                self.context.mpprcFile,
+                OMCommand.getLocalScript("Local_Collect"),
+                self.context.user,
+                self.context.localLog,
+                self.formatJsonString(disk_info))
+        
+            self.exec_cmd(cmd, disk_info)
+        else:
+            self.context.logger.log("Cannot collected disk info, dssserver not exists.")
+    
     def logCopy(self, log, l):
         """
         function: collected log files
@@ -603,10 +648,10 @@ class CollectImplOLAP(CollectImpl):
             self.context.sshTool.getSshStatusOutput(
                 cmd,
                 self.context.nodeName)
-            outputMap = self.context.sshTool.parseSshOutput(
+            output_map = self.context.sshTool.parseSshOutput(
                 self.context.nodeName)
             # Gets the execution result
-            flag = self.resultCheck(outputMap)
+            flag = self.resultCheck(output_map)
         if (flag == 0):
             self.context.logger.log(
                 "Successfully collected %s files." % s["TypeName"])
@@ -645,6 +690,25 @@ class CollectImplOLAP(CollectImpl):
         else:
             self.context.logger.log("The cmd is %s " % cmd)
             self.context.logger.log("Failed collected plan simulator.")
+
+    def exec_cmd(self, cmd, info):
+        if (self.context.isSingle or self.context.localMode):
+            output = subprocess.getstatusoutput(cmd)[1]
+            flag = self.resultCheck(output)
+        else:
+            self.context.sshTool.getSshStatusOutput(
+                cmd,
+                self.context.nodeName)
+            outputMap = self.context.sshTool.parseSshOutput(
+                self.context.nodeName)
+            # Gets the execution result
+            flag = self.resultCheck(outputMap)
+        if (flag == 0):
+            self.context.logger.log(
+                "Successfully collected %s files." % info["TypeName"])
+        else:
+            self.context.logger.log("The cmd is %s " % cmd)
+            self.context.logger.log("Failed collected %s files." % info["TypeName"])
 
     def copyFile(self):
         """
@@ -752,6 +816,47 @@ class CollectImplOLAP(CollectImpl):
         count = int(sysInfo['Count'].replace(" ", ""))
         return interval, count
 
+    def context_collect(self, info):
+        func_dict = {
+            'System': self.systemCheck,
+            'Database': self.databaseCheck,
+            'DssConfig': self.dss_conf_copy,
+            'DssDiskInfo': self.disk_info_copy,
+            'Log': self.logCopy,
+            'XLog': self.logCopy,
+            'CoreDump': self.logCopy,
+            'Config': self.confGstack,
+            'Gstack': self.confGstack,
+            'Plan': self.planSimulator
+        }
+        double_params = ("Log", "XLog", "CoreDump", "Config", "Gstack")
+        info_list = self.context.config[info]
+        for inf in info_list:
+            if inf.__contains__('Count'):
+                (interval, count) = self.getCycle(inf)
+                print("do %s check " % info + str(interval) + ":" + str(count))
+                if count > 1:
+                    self.context.logger.log(
+                        ErrorCode.GAUSS_512["GAUSS_51246"] % info)
+                    count = 1
+                while count:
+                    count -= 1
+                    if info in double_params and info in func_dict:
+                        func_dict[info](info, inf)
+                    elif info in func_dict:
+                        func_dict[info](inf)
+                    else:
+                        self.context.logger.log("do not support collect %s" % info)
+                    if count > 0 and interval > 0:
+                        time.sleep(interval)
+            else:
+                if info in double_params and info in func_dict:
+                    func_dict[info](info, inf)
+                elif info in func_dict:
+                    func_dict[info](inf)
+                else:
+                    self.context.logger.log("do not support collect %s" % info)
+
     def doCollector(self):
         """
         function: collect information
@@ -774,131 +879,47 @@ class CollectImplOLAP(CollectImpl):
 
         # collect OS information
         if self.context.config.__contains__('System'):
-            sysList = self.context.config['System']
-            for sysInfo in sysList:
-                if sysInfo.__contains__('Count'):
-                    (interval, count) = self.getCycle(sysInfo)
-                    print("do system check interval %s : count %s" % (
-                        str(interval), str(count)))
-                    while count:
-                        count -= 1
-                        self.systemCheck(sysInfo)
-                        if count > 0 and interval > 0:
-                            time.sleep(interval)
-                else:
-                    self.systemCheck(sysInfo)
+            self.context_collect('System')
 
         # collect catalog statistics
         if self.context.config.__contains__('Database'):
-            dataList = self.context.config['Database']
-            for data in dataList:
-                if data.__contains__('Count'):
-                    (interval, count) = self.getCycle(data)
-                    print("do database check interval %s : count %s" % (
-                        str(interval), str(count)))
-                    while count:
-                        count -= 1
-                        self.databaseCheck(data)
-                        if count > 0 and interval > 0:
-                            time.sleep(interval)
-                else:
-                    self.databaseCheck(data)
+            self.context_collect('Database')
+
+        # collect dss config files
+        if self.context.config.__contains__('DssConfig'):
+            if self.context.enable_dss:
+                self.context_collect('DssConfig')
+            else:
+                self.context.logger.log(
+                    "do not enable dss, cannot collect dss config files")
+        
+        # Collect dss disk info
+        if self.context.config.__contains__('DssDiskInfo'):
+            if self.context.enable_dss:
+                self.context_collect('DssDiskInfo')
+            else:
+                self.context.logger.log(
+                    "do not enable dss, cannot collect dss disk info")
 
         # Collect log files
         if self.context.config.__contains__('Log'):
-            logList = self.context.config['Log']
-            for l in logList:
-                if l.__contains__('Count'):
-                    (interval, count) = self.getCycle(l)
-                    print("do log check interval %s : count %s" % (
-                        str(interval), str(count)))
-                    if count > 1:
-                        self.context.logger.log(
-                            ErrorCode.GAUSS_512["GAUSS_51246"] % "Log")
-                        count = 1
-                    while count:
-                        count -= 1
-                        self.logCopy("Log", l)
-                        if count > 0 and interval > 0:
-                            time.sleep(interval)
-                else:
-                    self.logCopy("Log", l)
+            self.context_collect('Log')
 
         # Collect xlog files
         if self.context.config.__contains__('XLog'):
-            xloglist = self.context.config['XLog']
-            for l in xloglist:
-                if l.__contains__('Count'):
-                    (interval, count) = self.getCycle(l)
-                    print("do XLog check " + str(interval) + ":" + str(count))
-                    if count > 1:
-                        self.context.logger.log(
-                            ErrorCode.GAUSS_512["GAUSS_51246"] % "XLog")
-                        count = 1
-                    while count:
-                        count -= 1
-                        self.logCopy("XLog", l)
-                        if count > 0 and interval > 0:
-                            time.sleep(interval)
-                else:
-                    self.logCopy("XLog", l)
+            self.context_collect('XLog')
 
         # CoreDump files
         if self.context.config.__contains__('CoreDump'):
-            corelist = self.context.config['CoreDump']
-            for l in corelist:
-                if l.__contains__('Count'):
-                    (interval, count) = self.getCycle(l)
-                    print("do CoreDump check " + str(interval) + ":" + str(
-                        count))
-                    if count > 1:
-                        self.context.logger.log(
-                            ErrorCode.GAUSS_512["GAUSS_51246"] % "CoreDump")
-                        count = 1
-                    while count:
-                        count -= 1
-                        self.logCopy("CoreDump", l)
-                        if count > 0 and interval > 0:
-                            time.sleep(interval)
-                else:
-                    self.logCopy("CoreDump", l)
+            self.context_collect('CoreDump')
 
         # collect configuration files
         if self.context.config.__contains__('Config'):
-            clist = self.context.config['Config']
-            for c in clist:
-                if c.__contains__('Count'):
-                    (interval, count) = self.getCycle(c)
-                    print("do Config check " + str(interval) + ":" + str(
-                        count))
-                    if count > 1:
-                        self.context.logger.log(
-                            ErrorCode.GAUSS_512["GAUSS_51246"] % "Config")
-                        count = 1
-                    while count:
-                        count -= 1
-                        self.confGstack("Config", c)
-                        if count > 0 and interval > 0:
-                            time.sleep(interval)
-                else:
-                    self.confGstack("Config", c)
+            self.context_collect('Config')
 
         # process stack information
         if self.context.config.__contains__('Gstack'):
-            stacklist = self.context.config['Gstack']
-            for s in stacklist:
-                if s.__contains__('Count'):
-                    (interval, count) = self.getCycle(s)
-                    print("do Gstack check " + str(interval) + ":" + str(
-                        count))
-
-                    while count:
-                        count -= 1
-                        self.confGstack("Gstack", s)
-                        if count > 0 and interval > 0:
-                            time.sleep(interval)
-                else:
-                    self.confGstack("Gstack", s)
+            self.context_collect('Gstack')
 
         # collect configuration files and process stack information
         if self.context.config.__contains__('Trace'):
@@ -906,19 +927,7 @@ class CollectImplOLAP(CollectImpl):
 
         # collect plan simulator files
         if self.context.config.__contains__('Plan'):
-            dbList = self.context.config['Plan']
-            for s in dbList:
-                if s.__contains__('Count'):
-                    (interval, count) = self.getCycle(s)
-                    print("do Plan check " + str(interval) + ":" + str(count))
-
-                    while count:
-                        count -= 1
-                        self.planSimulator(s)
-                        if count > 0 and interval > 0:
-                            time.sleep(interval)
-                else:
-                    self.planSimulator(s)
+            self.context_collect('Plan')
 
         # Collect result files
         self.copyFile()

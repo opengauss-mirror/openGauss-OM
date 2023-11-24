@@ -590,7 +590,8 @@ META = {
                     " (select relname from pg_class c where c.oid=indexrelid)"
                     ")",
                 key_desc='表名-索引名为%s的索引',
-                filters=' 9999 < indexrelid and  indexrelid < 16384 ',
+                filters=" 9999 < indexrelid and  indexrelid < 16384 and "
+                        "(select relkind from pg_class c where c.oid=indrelid) != 't'",
                 ignore_col='indcollation,indclass',
                 oid_col='indexrelid,indrelid'
             ),

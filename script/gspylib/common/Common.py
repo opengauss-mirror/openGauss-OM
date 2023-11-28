@@ -395,7 +395,8 @@ class DefaultValue():
         "Content",
         "TypeName",
         "Interval",
-        "Count"
+        "Count",
+        "FileNumber"
     ]
     COLLECT_CONF_CONTENT_MAP = {
         # System check config

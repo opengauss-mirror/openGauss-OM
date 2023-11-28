@@ -128,7 +128,7 @@ General options:
   {
     "Collect":
     [
-        {"TypeName": "name", "Content": "value", "Interval": "seconds", "Count": "counts"} # interval is in Second
+        {"TypeName": "name", "Content": "value", "Interval": "seconds", "Count": "counts", "FileNumber": "number"} # interval is in Second
     ]
   }
 
@@ -296,7 +296,7 @@ General options:
                                 d_c = DefaultValue.COLLECT_CONF_MAP[v]
                             elif k == "Content":
                                 u_c = v
-                            elif k == "Interval" or k == "Count":
+                            elif k == "Interval" or k == "Count" or k == "FileNumber":
                                 if (not v.replace(" ", "").isdigit()
                                         or int(v.replace(" ", "")) < 0):
                                     GaussLog.exitWithError(

@@ -82,14 +82,14 @@ class EnvUtil(object):
         return EnvUtil.getEnvironmentParameterValue("PGHOST", user)
 
     @staticmethod
-    def getTempDir(dir_name):
+    def getTempDir(dir_name, user = ""):
         """
         function: create temp directory in PGHOST
         input: dir_name
         output:
               pathName
         """
-        tmp_path = EnvUtil.getTmpDirFromEnv()
+        tmp_path = EnvUtil.getTmpDirFromEnv(user)
         return os.path.join(tmp_path, dir_name)
 
     @staticmethod

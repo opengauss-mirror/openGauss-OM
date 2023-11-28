@@ -108,7 +108,7 @@ class ErrorCode():
         'GAUSS_50025': "[GAUSS-50025] : There is illegal character '%s' in parameter %s.",
         'GAUSS_50026': "[GAUSS-50026] : Failed to check %s parameters in the XML file.",
         'GAUSS_50027': "[GAUSS-50027] : Parameter '%s' format error.",
-
+        'GAUSS_50028': "[GAUSS-50028] : Non root users do not support setting %s parameters."
     }
 
     ###########################################################################
@@ -234,7 +234,8 @@ class ErrorCode():
                        "from /etc/ssh/sshd_config.",
         'GAUSS_50322': "[GAUSS-50322] : Failed to encrypt the password for %s",
         'GAUSS_50323': "[GAUSS-50323] : The user %s is not the cluster "
-                       "installation user "
+                       "installation user ",
+        'GAUSS_50324': "[GAUSS-50324] : Non root user, -U -G parameter must be the current user and group."
     }
 
     ###########################################################################

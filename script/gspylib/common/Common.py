@@ -128,6 +128,7 @@ from gspylib.common.Constants import Constants
 from domain_utils.cluster_file.profile_file import ProfileFile
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from gspylib.common.aes_cbc_util import AesCbcUtil
+from base_utils.os.user_util import UserUtil
 
 noPassIPs = []
 g_lock = thread.allocate_lock()
@@ -861,7 +862,7 @@ class DefaultValue():
         dirName = os.path.dirname(os.path.realpath(__file__))
 
         # Get the startup file of suse or redhat os
-        if (os.path.isdir(systemDir)):
+        if (os.path.isdir(systemDir) and os.getpid() == 0):
             # Judge if cgroup para 'Delegate=yes' is written in systemFile
             cgroup_gate = False
             cgroup_gate_para = "Delegate=yes"
@@ -2285,10 +2286,12 @@ class DefaultValue():
         input : module
         output: NAself
         """
-        if os.getuid() == 0:
+        user_info = UserUtil.getUserInfo()
+        if user_info['uid'] == 0:
             return
+        user_name = user_info.get('name')
         # Get the temporary directory from PGHOST
-        tmpDir = EnvUtil.getTmpDirFromEnv()
+        tmpDir = EnvUtil.getTmpDirFromEnv(user_name)
         if not tmpDir:
             raise Exception(ErrorCode.GAUSS_518["GAUSS_51802"] % "PGHOST")
         # check if tmp dir exists

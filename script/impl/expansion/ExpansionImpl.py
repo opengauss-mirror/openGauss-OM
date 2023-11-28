@@ -46,6 +46,7 @@ from gspylib.os.gsfile import g_file
 
 from domain_utils.cluster_file.cluster_dir import ClusterDir
 from base_utils.os.env_util import EnvUtil
+from base_utils.os.cmd_util import CmdUtil
 
 #boot/build mode
 MODE_PRIMARY = "primary"
@@ -147,7 +148,7 @@ class ExpansionImpl():
             self.logger.log("Failed to rollback wal_keep_segments, please manually "
                 "set it to original value %s." % self.walKeepSegments)
         else:
-            self.reloadPrimaryConf(self.user)
+            self.reloadPrimaryConf()
 
     def final(self):
         """
@@ -546,7 +547,7 @@ class ExpansionImpl():
         else:
             command = "source /etc/profile;source %s;"\
                 "gs_om -t status --detail" % self.envFile
-        if isRootUser:
+        if isRootUser and self.context.current_user_root:
             command = "su - %s -c '%s'" % (self.user, command)
         self.logger.debug(command)
         sshTool = SshTool([primaryHost])
@@ -752,12 +753,8 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
         """
         primaryHost = self.getPrimaryHostName()
         dataNode = self.context.clusterInfoDict[primaryHost]["dataNode"]
-        command = ""
-        if user:
-            command = "su - %s -c 'source %s;gs_ctl reload -D %s'" % \
-                (user, self.envFile, dataNode)
-        else:
-            command = "gs_ctl reload -D %s " % dataNode
+        command = "source %s; gs_ctl reload -D %s " % (self.envFile, dataNode)
+        command = CmdUtil.get_user_exec_cmd(self.context.current_user_root, user, command)
         sshTool = SshTool([primaryHost])
         self.logger.debug(command)
         resultMap, outputCollect = sshTool.getSshStatusOutput(command,
@@ -1342,13 +1339,8 @@ remoteservice={remoteservice}'"
         """
         self.logger.debug("Checking the consistence of datanodes.")
         primaryName = self.getPrimaryHostName()
-        cmd = ""
-        if EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH"):
-            cmd = "su - %s -c 'source %s;gs_om -t status --detail'" % \
-                (self.user, self.envFile)
-        else:
-            cmd = "su - %s -c 'source /etc/profile;source %s;"\
-                "gs_om -t status --detail'" % (self.user, self.envFile)
+        cmd = "source %s;gs_om -t status --detail" % (self.envFile)
+        cmd = CmdUtil.get_user_exec_cmd(self.context.current_user_root, self.user, cmd)
         sshTool = SshTool([primaryName])
         resultMap, outputCollect = sshTool.getSshStatusOutput(cmd,
             [primaryName], self.envFile)
@@ -1392,14 +1384,10 @@ remoteservice={remoteservice}'"
             if hostName == primary:
                 continue
             dataNode = clusterInfoDict[hostName]["dataNode"]
-            if EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH"):
-                cmd = "su - %s -c 'source %s;" \
-                      "gs_guc check -D %s -c \"available_zone\"'" % \
-                      (self.user, self.envFile, dataNode)
-            else:
-                cmd = "su - %s -c 'source /etc/profile;source %s;" \
-                      "gs_guc check -D %s -c \"available_zone\"'" % \
-                      (self.user, self.envFile, dataNode)
+            cmd = "source /etc/profile;source %s;" \
+                      "gs_guc check -D %s -c \"available_zone\"" % \
+                      (self.envFile, dataNode)
+            cmd = CmdUtil.get_user_exec_cmd(self.context.current_user_root, self.user, cmd)
             sshTool = SshTool([hostIp])
             resultMap, output = sshTool.getSshStatusOutput(cmd,
                 [hostIp], self.envFile)
@@ -1423,13 +1411,8 @@ remoteservice={remoteservice}'"
         self.logger.debug("Start to check cluster status.")
 
         curHostName = socket.gethostname()
-        command = ""
-        if EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH"):
-            command = "su - %s -c 'source %s;gs_om -t status --detail'" % \
-                (self.user, self.envFile)
-        else:
-            command = "su - %s -c 'source /etc/profile;source %s;"\
-                "gs_om -t status --detail'" % (self.user, self.envFile)
+        command = "source %s; gs_om -t status --detail" % (self.envFile)
+        command = CmdUtil.get_user_exec_cmd(self.context.current_user_root, self.user, command)
         sshTool = SshTool([curHostName])
         resultMap, outputCollect = sshTool.getSshStatusOutput(command,
             [curHostName], self.envFile)
@@ -1501,11 +1484,14 @@ remoteservice={remoteservice}'"
         if (fstat[stat.ST_UID] == uid and (mode & stat.S_IRUSR > 0)) or \
            (fstat[stat.ST_GID] == gid and (mode & stat.S_IRGRP > 0)):
             pass
-        else:
+        elif self.context.current_user_root:
             self.logger.debug(ErrorCode.GAUSS_501["GAUSS_50100"]
                  % (xmlFile, self.user))
             os.chown(xmlFile, uid, gid)
             os.chmod(xmlFile, stat.S_IRUSR)
+        else:
+            GaussLog.exitWithError(ErrorCode.GAUSS_501["GAUSS_50100"]
+                 % (xmlFile, self.user))
 
     def checkUserAndGroupExists(self):
         """
@@ -1632,11 +1618,12 @@ remoteservice={remoteservice}'"
                 self.logger.debug("[%s] rollbackPg_hbaCmd:%s" % (host,
                     rollbackPg_hbaCmd))
                 sshTool.getSshStatusOutput(rollbackPg_hbaCmd, [host])
-                reloadGUCCommand = "su - %s -c 'source %s; gs_ctl reload " \
-                    "-D %s'" % (self.user, self.envFile, dataNode)
-                self.logger.debug(reloadGUCCommand)
+                reload_guc_command = "'source %s; gs_ctl reload " \
+                        "-D %s'" % (self.envFile, dataNode)
+                reload_guc_command = CmdUtil.get_user_exec_cmd(self.context.current_user_root, self.user, reload_guc_command)
+                self.logger.debug(reload_guc_command)
                 resultMap, outputCollect = sshTool.getSshStatusOutput(
-                    reloadGUCCommand, [host], self.envFile)
+                    reload_guc_command, [host], self.envFile)
                 self.logger.debug(resultMap)
                 self.logger.debug(outputCollect)
                 self.cleanSshToolFile(sshTool)
@@ -1762,7 +1749,7 @@ class GsCtlCommon:
         """
         value = ""
         command = ""
-        if user:
+        if os.getuid() == 0 and user:
             command = "su - %s -c 'source %s; gs_guc check -D %s -c \"%s\"'" % \
                 (user, env, datanode, para)
         else:

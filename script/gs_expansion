@@ -47,6 +47,8 @@ from impl.expansion.expansion_impl_with_cm_local import ExpansionImplWithCmLocal
 from domain_utils.cluster_file.cluster_config_file import ClusterConfigFile
 from domain_utils.cluster_file.cluster_log import ClusterLog
 from base_utils.os.env_util import EnvUtil
+from base_utils.os.user_util import UserUtil
+from base_utils.os.cmd_util import CmdUtil
 
 ENV_LIST = ["MPPDB_ENV_SEPARATE_PATH", "GPHOME", "PATH",
             "LD_LIBRARY_PATH", "PYTHONPATH", "GAUSS_WARNING_TYPE",
@@ -113,6 +115,15 @@ General options:
         """
         print(self.usage.__doc__)
 
+    def check_current_user(self):
+        user_info = UserUtil.getUserInfo()
+        if user_info['uid'] == 0:
+            self.current_user_root = True
+        else:
+            self.current_user_root = False
+            self.user = user_info['name']
+            self.group = user_info['g_name']
+
     def parseCommandLine(self):
         """
         parse parameter from command line
@@ -124,6 +135,8 @@ General options:
         if (ParaDict.__contains__("helpFlag")):
             self.usage()
             sys.exit(0)
+        # check no root parameter
+        self.check_no_root_parameter(ParaDict)
         # Resolves command line arguments
         # parameter -U
         if (ParaDict.__contains__("user")):
@@ -149,6 +162,18 @@ General options:
         if (ParaDict.__contains__("time_out")):
             self.time_out = ParaDict.get("time_out")
 
+    def check_no_root_parameter(self, para_dict):
+        """
+        function: Check no root user paramter
+        input: NA
+        output: NA
+        """
+        if not self.current_user_root:
+            if (para_dict.__contains__("user") and (para_dict.get("user") != self.user)):
+                GaussLog.exitWithError(ErrorCode.GAUSS_503["GAUSS_50324"])
+            if (para_dict.__contains__("group") and (para_dict.get("group") != self.group)):
+                GaussLog.exitWithError(ErrorCode.GAUSS_503["GAUSS_50324"])
+
     def checkParameters(self):
         """
         function: Check parameter from command line
@@ -157,10 +182,11 @@ General options:
         """
         
         # check user | group | xmlfile | node
-        if len(self.user) == 0:
-            GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35701"] % "-U")
-        if len(self.group) == 0:
-            GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35701"] % "-G")
+        if self.current_user_root:
+            if len(self.user) == 0:
+                GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35701"] % "-U")
+            if len(self.group) == 0:
+                GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35701"] % "-G")
         if len(self.xmlFile) == 0:
             GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35701"] % "-X")
         if len(self.newHostList) == 0:
@@ -287,13 +313,6 @@ General options:
             self.backIpNameMap[backip] = \
                 self.clusterInfo.getNodeNameByBackIp(backip)
 
-    def checkExecutingUser(self):
-        """
-        check whether current user executing this command is root
-        """
-        if os.getuid() != 0:
-            GaussLog.exitWithError(ErrorCode.GAUSS_501["GAUSS_50104"])
-
     def checkExecutingHost(self):
         """
         check whether current host is primary host
@@ -322,17 +341,12 @@ General options:
         rootSSHExceptionHosts = []
         individualSSHExceptionHosts = []
         for host in hostList:
-            # check root's trust
-            checkRootTrustCmd = "%s -s -H %s 'pwd'" % (psshPath, host)
-            (status, output) = subprocess.getstatusoutput(checkRootTrustCmd)
-            if status != 0:
-                rootSSHExceptionHosts.append(host)
             # check individual user's trust
-            checkUserTrustCmd = "su - %s -c '%s -s -H %s pwd'" % (
-                self.user, psshPath, host)
-            (status, output) = subprocess.getstatusoutput(checkUserTrustCmd)
+            check_trust_cmd = "%s -s -H %s pwd" % (psshPath, host)
+            check_trust_cmd = CmdUtil.get_user_exec_cmd(self.current_user_root, self.user, check_trust_cmd)
+            (status, output) = subprocess.getstatusoutput(check_trust_cmd)
             if status != 0:
-                individualSSHExceptionHosts.append(host)
+                    individualSSHExceptionHosts.append(host)
         # output ssh exception info if ssh connect failed
         if rootSSHExceptionHosts or individualSSHExceptionHosts:
             sshExceptionInfo = ""
@@ -353,6 +367,12 @@ General options:
         check whether info in XML is consistent with environment variable
         """
         self.logger.debug("Checking environment variable.")
+        if not self.envFile:
+            self.envFile = "/home/%s/.bashrc" % self.user
+        cmd = "source %s" % self.envFile
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Expansion("not found envfile.")
         if not EnvUtil.getEnv("GPHOME"):
             GaussLog.exitWithError(ErrorCode.GAUSS_518["GAUSS_51802"] % (
                 "\"GPHOME\", please import environment variable"))
@@ -408,7 +428,7 @@ General options:
         expand_cluster_info.compare_cluster_info(static_cluster_info,
                                                  xml_cluster_info)
 
-    def expand_run(self):
+    def expand_run(self, expansion):
         """
         This is expansion frame start
         """
@@ -579,7 +599,7 @@ if __name__ == "__main__":
     """
     """
     expansion = Expansion()
-    expansion.checkExecutingUser()
+    expansion.check_current_user()
     expansion.parseCommandLine()
     expansion.checkParameters()
     expansion.initLogs()
@@ -588,4 +608,4 @@ if __name__ == "__main__":
     expansion.checkXmlIncludeNewHost()
     expansion.checkExecutingHost()
     expansion.checkTrust()
-    expansion.expand_run()
+    expansion.expand_run(expansion)

@@ -359,7 +359,10 @@ class ExpansionImplWithCm(ExpansionImpl):
               "\\\"%s='%s'\\\"" % (self.envFile, guc_path,
                                    "pgxc_node_name",
                                    self._get_pgxc_node_name_for_single_inst())
-        su_cmd = """su - {0} -c "{1}" """.format(self.user, cmd)
+        if self.context.current_root_user:
+            su_cmd = """su - {0} -c "{1}" """.format(self.user, cmd)
+        else:
+            su_cmd = cmd
         self.logger.debug("Set guc parameter command: {0}".format(su_cmd))
         status, output = subprocess.getstatusoutput(su_cmd)
         if status == 0:

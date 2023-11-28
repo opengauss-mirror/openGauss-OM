@@ -745,3 +745,15 @@ class CmdUtil(object):
             pass
 
         return False
+    
+    @staticmethod
+    def get_user_exec_cmd(is_root, user, cmd):
+        """
+        function : user exec cmd
+        input : is_root user cmd
+        output: result_cmd
+        """
+        result_cmd = cmd
+        if is_root:
+            result_cmd = "su - %s -c '%s' " % (user, result_cmd)
+        return result_cmd

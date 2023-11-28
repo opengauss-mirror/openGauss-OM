@@ -18,6 +18,7 @@ import os
 import socket
 import sys
 import getpass
+import pwd
 from subprocess import PIPE
 
 sys.path.append(sys.path[0] + "/../../")
@@ -67,7 +68,7 @@ class ParallelBaseOM(object):
         self.mpprcFile = ""
         # Temporary catalog for install
         self.operateStepDir = EnvUtil.getTempDir(
-            "%s_step" % self.__class__.__name__.lower())
+            "%s_step" % self.__class__.__name__.lower(), pwd.getpwuid(os.getuid()).pw_name)
         # Temporary files for install step
         self.operateStepFile = "%s/%s_step.dat" % (
             self.operateStepDir, self.__class__.__name__.lower())
@@ -113,6 +114,8 @@ class ParallelBaseOM(object):
 
         # Adapt to 200 and 300
         self.productVersion = None
+        # current user root
+        self.current_user_root = True
 
     def initComponent(self):
         """

@@ -51,6 +51,7 @@ ACTION_VIEW = "view"
 ACTION_QUERY = "query"
 ACTION_KERBEROS = "kerberos"
 ACTION_REFRESHCONF = "refreshconf"
+ACTION_KILLMONITOR = "killmonitor"
 
 # postgis
 ACTION_DEL_POSTGIs = "rmlib"
@@ -148,6 +149,7 @@ Usage:
     gs_om -t view [-o OUTPUT]
     gs_om -t query [-o OUTPUT] [--time-out=SECS]
     gs_om -t refreshconf
+    gs_om -t killmonitor
 
 General options:
   -t                              Type of the OM command.
@@ -548,6 +550,8 @@ Install options:
             self.checkTimeOutParam()
         elif (self.g_opts.action == ACTION_REFRESHCONF):
             pass
+        elif (self.g_opts.action == ACTION_KILLMONITOR):
+            pass
         else:
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % "t")
 
@@ -793,7 +797,8 @@ def main():
                                           ACTION_KERBEROS,
                                           ACTION_VIEW,
                                           ACTION_QUERY,
-                                          ACTION_REFRESHCONF
+                                          ACTION_REFRESHCONF,
+                                          ACTION_KILLMONITOR
                                           ]):
             raise Exception(ErrorCode.GAUSS_531['GAUSS_53104']
                             % ("gs_om -t " + manager.g_opts.action))
@@ -825,6 +830,8 @@ def main():
             impl.doQuery()
         elif (manager.g_opts.action == ACTION_REFRESHCONF):
             impl.doRefreshConf()
+        elif (manager.g_opts.action == ACTION_KILLMONITOR):
+            impl.kill_om_monitor()
 
         manager.logger.closeLog()
     except Exception as e:

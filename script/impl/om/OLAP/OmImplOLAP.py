@@ -35,7 +35,8 @@ from gspylib.os.gsfile import g_file
 from base_utils.os.net_util import NetUtil
 from base_utils.os.env_util import EnvUtil
 from gspylib.component.DSS.dss_checker import DssConfig
-
+from gspylib.common.Common import DefaultValue, ClusterCommand
+from base_utils.os.cmd_util import CmdUtil
 
 
 
@@ -83,6 +84,12 @@ class OmImplOLAP(OmImpl):
                     + " Error: \n%s" % output)
 
         self.logger.log("Successfully stopped the cluster.")
+
+    def kill_om_monitor(self):
+        kill_cmd = DefaultValue.killInstProcessCmd("om_monitor", False)
+        status, _ = CmdUtil.retryGetstatusoutput(kill_cmd)
+        if status == 0:
+            self.logger.debug("Kill om_monitor force: %s" % kill_cmd)
 
     # AP
     def startCluster(self):

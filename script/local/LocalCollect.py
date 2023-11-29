@@ -30,6 +30,7 @@ import base64
 import json
 import datetime
 import getpass
+import heapq
 
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.DbClusterInfo import dbClusterInfo
@@ -769,12 +770,14 @@ def disk_info_copy():
         DefaultValue.DIRECTORY_MODE, g_resultdir, g_resultdir)
     cmds.append(lsvg_cmd)
     # copy lun/reg inq info
-    inq_cmd = "mkdir -p -m %s %s/dssdiskinfo/inq && dsscmd inq -t lun > %s/dssdiskinfo/inq/lun &&" \
-        "mkdir -p -m %s %s/dssdiskinfo/inq && dsscmd inq -t reg > %s/dssdiskinfo/inq/reg" % (
-            DefaultValue.DIRECTORY_MODE, g_resultdir, g_resultdir,
+    lun_cmd = "mkdir -p -m %s %s/dssdiskinfo/inq && dsscmd inq -t lun > %s/dssdiskinfo/inq/lun" % (
             DefaultValue.DIRECTORY_MODE, g_resultdir, g_resultdir)
-    cmds.append(inq_cmd)
+    cmds.append(lun_cmd)
+    reg_cmd = "mkdir -p -m %s %s/dssdiskinfo/inq && dsscmd inq -t reg > %s/dssdiskinfo/inq/reg" % (
+              DefaultValue.DIRECTORY_MODE, g_resultdir, g_resultdir)
+    cmds.append(reg_cmd)
     # copy disk info using dsscmd showdisk
+    collect_disk = ('core_ctrl', 'vg_header', 'volume_ctrl', 'root_ft_block')
     for c in g_opts.content:
         if c == 'vgname':
             disk = EnvUtil.getEnv('VGNAME')
@@ -782,17 +785,13 @@ def disk_info_copy():
             dss_home = EnvUtil.getEnv('DSS_HOME')
             inst_id = DssInst.get_dss_id_from_key(dss_home)
             disk = DssInst.get_private_vgname_by_ini(dss_home, inst_id)
-        disk_cmd = "mkdir -p -m %s %s/dssdiskinfo/disk/%s &&" \
-                   "dsscmd showdisk -g %s -s core_ctrl > %s/dssdiskinfo/disk/%s/core_ctrl &&" \
-                   "dsscmd showdisk -g %s -s vg_header > %s/dssdiskinfo/disk/%s/vg_header &&" \
-                   "dsscmd showdisk -g %s -s volume_ctrl > %s/dssdiskinfo/disk/%s/volume_ctrl &&" \
-                   "dsscmd showdisk -g %s -s root_ft_block > %s/dssdiskinfo/disk/%s/root_ft_block" % (
-                   DefaultValue.DIRECTORY_MODE, g_resultdir, disk,
-                   disk, g_resultdir, disk,
-                   disk, g_resultdir, disk,
-                   disk, g_resultdir, disk,
-                   disk, g_resultdir, disk)
+        disk_cmd = "mkdir -p -m %s %s/dssdiskinfo/disk/%s" % (
+                   DefaultValue.DIRECTORY_MODE, g_resultdir, disk)
         cmds.append(disk_cmd)
+        for col_disk in collect_disk:
+            cmd = "dsscmd showdisk -g %s -s core_ctrl > %s/dssdiskinfo/disk/%s/%s" % (
+                   disk, g_resultdir, disk, col_disk)
+            cmds.append(cmd)
 
     for cmd in cmds:
         (status, output) = subprocess.getstatusoutput(cmd)
@@ -1164,17 +1163,19 @@ def get_dss_xlog_file(xlog_path):
     """
     cmd = "dsscmd ls -p %s" % xlog_path
     (status, output) = subprocess.getstatusoutput(cmd)
-
+    if status != 0:
+        g_logger.debug("Failed to collect disk xlog files")
+        raise Exception("Failed to collect disk xlog files")
     out_lines = output.split('\n')
     xlog_lists = []
     for line in out_lines:
         data_line = line.split()
-        if 'archive' not in data_line[-1] and re.search('^[0-9]{4}-[0-9]{2}-[0-9]{2}$', data_line[1]):
-            create_time = data_line[1] + ' ' + data_line[2]
-            create_time = time.strptime(create_time, '%Y-%m-%d %H:%M:%S')
-            create_time = time.strftime('%Y%m%d%H%M', create_time)
-            if int(g_opts.begin) < int(create_time) < int(g_opts.end):
-                xlog_lists.append(xlog_path + '/' + data_line[-1])
+        if 'archive' not in data_line[-1] and 'name' not in data_line[-1] and 'info' not in data_line[-1]:
+            heapq.heappush(xlog_lists, xlog_path + '/' + data_line[-1])
+    pop_num = len(xlog_lists) - g_opts.file_number
+    while pop_num > 0:
+        heapq.heappop(xlog_lists)
+        pop_num -= 1
     return xlog_lists
 
 def getXlogCmd(Inst):
@@ -1646,6 +1647,7 @@ def parseConfig():
     if g_opts.config != "":
         d = json.loads(g_opts.config)
         g_opts.content = list(filter(None, d['Content'].split(",")))
+        g_opts.file_number = int(d['FileNumber'])
 
 def main():
     """

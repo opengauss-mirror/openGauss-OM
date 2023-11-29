@@ -248,6 +248,10 @@ class DropnodeImpl():
             self.context.clusterInfo.dbNodes.remove(dnLoop)
         for dbNode in self.context.clusterInfo.dbNodes:
             if dbNode.name == self.localhostname:
+                # dropnode only allow executed on primary node
+                # instanceType should change to master while the cluster had switchover
+                if len(dbNode.datanodes) > 0:
+                    dbNode.datanodes[0].instanceType = MASTER_INSTANCE
                 self.context.clusterInfo.saveToStaticConfig(staticConfigPath,
                                                             dbNode.id)
                 continue

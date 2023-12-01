@@ -1583,7 +1583,7 @@ def getBakConfCmd(Inst):
 
 def get_dss_bak_conf():
     vgname = EnvUtil.getEnv("VGNAME")
-    cmd = "dsscmd cp -s +%s/pg_control -d '%s'/configfiles/pg_cotrol && " \
+    cmd = "dsscmd cp -s +%s/pg_control -d '%s'/configfiles/pg_control && " \
           "dsscmd cp -s +%s/pg_replslot -d '%s'/configfiles/pg_replslot" % (
           vgname, g_resultdir, vgname, g_resultdir)
     (status1, output1) = subprocess.getstatusoutput(cmd)

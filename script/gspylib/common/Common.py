@@ -863,7 +863,7 @@ class DefaultValue():
         dirName = os.path.dirname(os.path.realpath(__file__))
 
         # Get the startup file of suse or redhat os
-        if (os.path.isdir(systemDir) and os.getpid() == 0):
+        if (os.path.isdir(systemDir) and os.getuid() == 0):
             # Judge if cgroup para 'Delegate=yes' is written in systemFile
             cgroup_gate = False
             cgroup_gate_para = "Delegate=yes"

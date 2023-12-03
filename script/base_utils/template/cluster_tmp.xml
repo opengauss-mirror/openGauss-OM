@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ROOT>
+    <CLUSTER>
+        <PARAM name="clusterName" value="Cluster_template"/>
+        <PARAM name="nodeNames" value="node1_hostname,node2_hostname,node3_hostname"/>
+        <PARAM name="gaussdbAppPath" value="/opt/openGauss/install/app"/>
+        <PARAM name="gaussdbLogPath" value="/opt/openGauss/install/log/omm"/>
+        <PARAM name="tmpMppdbPath" value="/opt/openGauss/install/tmp"/>
+        <PARAM name="gaussdbToolPath" value="/opt/openGauss/install/om"/>
+        <PARAM name="corePath" value="/opt/openGauss/install/corefile"/>
+        <PARAM name="backIp1s" value="192.168.0.1,192.168.0.2,192.168.0.3"/>
+        <PARAM name="enable_dss" value="on"/>
+        <PARAM name="dss_home" value="/opt/openGauss/install/data/dss"/>
+        <PARAM name="ss_dss_vg_name" value="data"/>
+        <PARAM name="dss_vg_info" value="data:/dev/sdb,p0:/dev/sdc,p1:/dev/sdd"/>
+        <PARAM name="votingDiskPath" value="/dev/sde"/>
+        <PARAM name="shareDiskDir" value="/dev/sdf"/>
+        <PARAM name="dss_ssl_enable" value="on"/>
+    </CLUSTER>
+
+    <DEVICELIST>
+        <DEVICE sn="node1_hostname">
+            <PARAM name="name" value="node1_hostname"/>
+            <PARAM name="azName" value="AZ1"/>
+            <PARAM name="azPriority" value="1"/>
+            <PARAM name="backIp1" value="192.168.0.1"/>
+            <PARAM name="sshIp1" value="192.168.0.1"/>
+            <PARAM name="cmsNum" value="1"/>
+            <PARAM name="cmServerPortBase" value="15000"/>
+            <PARAM name="cmServerListenIp1" value="192.168.0.1,192.168.0.2,192.168.0.3"/>
+            <PARAM name="cmServerHaIp1" value="192.168.0.1,192.168.0.2,192.168.0.3"/>
+            <PARAM name="cmServerlevel" value="1"/>
+            <PARAM name="cmServerRelation" value="node1_hostname,node2_hostname,node3_hostname"/>
+            <PARAM name="cmDir" value="/opt/openGauss/install/data/cmserver"/>
+            <PARAM name="dataNum" value="1"/>
+            <PARAM name="dataPortBase" value="15400"/>
+            <PARAM name="dataNode1" value="/opt/openGauss/install/data/dn,node2_hostname,/opt/openGauss/install/data/dn,node3_hostname,/opt/openGauss/install/data/dn"/>
+            <PARAM name="dataNode1_syncNum" value="0"/>
+        </DEVICE>
+
+        <DEVICE sn="node2_hostname">
+            <PARAM name="name" value="node2_hostname"/>
+            <PARAM name="azName" value="AZ1"/>
+            <PARAM name="azPriority" value="1"/>
+            <PARAM name="backIp1" value="192.168.0.2"/>
+            <PARAM name="sshIp1" value="192.168.0.2"/>
+            <PARAM name="cmServerPortStandby" value="15000"/>
+            <PARAM name="cmDir" value="/opt/openGauss/install/data/cmserver"/>
+        </DEVICE>
+
+        <DEVICE sn="node3_hostname">
+            <PARAM name="name" value="node3_hostname"/>
+            <PARAM name="azName" value="AZ1"/>
+            <PARAM name="azPriority" value="1"/>
+            <PARAM name="backIp1" value="192.168.0.3"/>
+            <PARAM name="sshIp1" value="192.168.0.3"/>
+            <PARAM name="cmServerPortStandby" value="15000"/>
+            <PARAM name="cmDir" value="/opt/openGauss/install/data/cmserver"/>
+        </DEVICE>
+
+        <DEVICE sn="node4_hostname">
+            <PARAM name="name" value="node4_hostname"/>
+            <PARAM name="azName" value="AZ1"/>
+            <PARAM name="azPriority" value="1"/>
+            <PARAM name="backIp1" value="192.168.0.3"/>
+            <PARAM name="sshIp1" value="192.168.0.3"/>
+            <PARAM name="cmServerPortStandby" value="15000"/>
+            <PARAM name="cmDir" value="/opt/openGauss/install/data/cmserver"/>
+        </DEVICE>
+
+        <DEVICE sn="node5_hostname">
+            <PARAM name="name" value="node5_hostname"/>
+            <PARAM name="azName" value="AZ1"/>
+            <PARAM name="azPriority" value="1"/>
+            <PARAM name="backIp1" value="192.168.0.3"/>
+            <PARAM name="sshIp1" value="192.168.0.3"/>
+            <PARAM name="cmServerPortStandby" value="15000"/>
+            <PARAM name="cmDir" value="/opt/openGauss/install/data/cmserver"/>
+        </DEVICE>
+
+        <DEVICE sn="node6_hostname">
+            <PARAM name="name" value="node6_hostname"/>
+            <PARAM name="azName" value="AZ1"/>
+            <PARAM name="azPriority" value="1"/>
+            <PARAM name="backIp1" value="192.168.0.3"/>
+            <PARAM name="sshIp1" value="192.168.0.3"/>
+            <PARAM name="cmServerPortStandby" value="15000"/>
+            <PARAM name="cmDir" value="/opt/openGauss/install/data/cmserver"/>
+        </DEVICE>
+
+        <DEVICE sn="node7_hostname">
+            <PARAM name="name" value="node7_hostname"/>
+            <PARAM name="azName" value="AZ1"/>
+            <PARAM name="azPriority" value="1"/>
+            <PARAM name="backIp1" value="192.168.0.3"/>
+            <PARAM name="sshIp1" value="192.168.0.3"/>
+            <PARAM name="cmServerPortStandby" value="15000"/>
+            <PARAM name="cmDir" value="/opt/openGauss/install/data/cmserver"/>
+        </DEVICE>
+
+        <DEVICE sn="node8_hostname">
+            <PARAM name="name" value="node8_hostname"/>
+            <PARAM name="azName" value="AZ1"/>
+            <PARAM name="azPriority" value="1"/>
+            <PARAM name="backIp1" value="192.168.0.8"/>
+            <PARAM name="sshIp1" value="192.168.0.8"/>
+            <PARAM name="cmServerPortStandby" value="15000"/>
+            <PARAM name="cmDir" value="/opt/openGauss/install/data/cmserver"/>
+        </DEVICE>
+
+        <DEVICE sn="node9_hostname">
+            <PARAM name="name" value="node9_hostname"/>
+            <PARAM name="azName" value="AZ1"/>
+            <PARAM name="azPriority" value="1"/>
+            <PARAM name="backIp1" value="192.168.0.9"/>
+            <PARAM name="sshIp1" value="192.168.0.9"/>
+            <PARAM name="cmServerPortStandby" value="15000"/>
+            <PARAM name="cmDir" value="/opt/openGauss/install/data/cmserver"/>
+        </DEVICE>
+    </DEVICELIST>
+</ROOT>

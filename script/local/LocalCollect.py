@@ -27,6 +27,7 @@ import getopt
 import time
 import re
 import base64
+import collections
 import json
 import datetime
 import getpass
@@ -464,7 +465,7 @@ def basic_info_check():
                 % (
                 perDir, dataFileName))
             cmds.append(
-                "ls -lrt %s/%s >> %s 2>&1" % (pg_log, perDir, dataFileName))
+                "ls -lrt %s/%s >> %s 2>&1" % (root, perDir, dataFileName))
 
     # Executes each query command and redirects the results to the specified
     # file
@@ -494,8 +495,12 @@ def system_check():
     cmds.append("hostname >> %s 2>&1" % dataFileName)
     cmds.append("echo '************************************' >> %s 2>&1" %
                 dataFileName)
+    appendCommand(cmds, "cat /proc/cpuinfo", dataFileName)
+    appendCommand(cmds, "cat /proc/meminfo", dataFileName)
+    appendCommand(cmds, "df -h", dataFileName)
     appendCommand(cmds, "ps ux", dataFileName)
     appendCommand(cmds, "iostat -xm 2 3", dataFileName)
+    appendCommand(cmds, "cat /proc/net/dev", dataFileName)
     appendCommand(cmds, "free -m", dataFileName)
     # Executes each query command and redirects the results to the specified
     # file
@@ -831,7 +836,7 @@ def find_log():
               "| xargs ls --time-style='+ %Y%m%d%H%M' -ll"
     if check_dss_env():
         cmd = "%s && (find $GAUSSLOG/pg_log -type f -iname '*.rlog' -print && " \
-              "find $DSS_HOME/log -type f -iname '*.rlog' -print) " \
+              "find $DSS_HOME/log -type f -iname '*log' -print) " \
               "| xargs ls --time-style='+ %%Y%%m%%d%%H%%M' -ll" % cmd
     (status, output) = subprocess.getstatusoutput(cmd)
     logFiles = output.split("\n")
@@ -872,10 +877,15 @@ def make_log_dir(log_files, deleteCmd):
               "mkdir -p -m %s tmp_gs_collector/DSSLog" % (
               cmd, DefaultValue.DIRECTORY_MODE, DefaultValue.DIRECTORY_MODE,
               DefaultValue.DIRECTORY_MODE)
+        cmd = "%s && mkdir -p -m %s tmp_gs_collector/DSSLog/run &&" \
+              "mkdir -p -m %s tmp_gs_collector/DSSLog/debug && mkdir -p -m %s tmp_gs_collector/DSSLog/oper &&" \
+              "mkdir -p -m %s tmp_gs_collector/DSSLog/blackbox" % (
+              cmd, DefaultValue.DIRECTORY_MODE, DefaultValue.DIRECTORY_MODE,
+              DefaultValue.DIRECTORY_MODE, DefaultValue.DIRECTORY_MODE)
     (status, output) = subprocess.getstatusoutput(cmd)
     directorys = []
     for log in log_files:
-        if 'rlog' not in log:
+        if '.log' in log or '.prf' in log:
             directorys.append(os.path.dirname(log))
     for directory in directorys:
         cmd = "cd $GAUSSLOG && mkdir -p -m %s tmp_gs_collector/'%s'" % (
@@ -889,6 +899,11 @@ def make_log_dir(log_files, deleteCmd):
             raise Exception("")
 
 def copy_log(log_files, deleteCmd):
+    dss_home = EnvUtil.getEnv("DSS_HOME")
+    dss_str = [('rlog', 'run'), ('dlog', 'debug'), ('olog', 'oper'), ('blog', 'blackbox')]
+    dss_log = collections.defaultdict(str)
+    for k, v in dss_str:
+        dss_log[k] = v
     for log in log_files:
         if int(g_opts.speedLimitFlag) == 1:
             if 'pg_log/DMS' in log:
@@ -897,9 +912,11 @@ def copy_log(log_files, deleteCmd):
             elif 'pg_log/DSS' in log:
                 cmd = "cd $GAUSSLOG && rsync --bwlimit=%d '%s' " \
                       "tmp_gs_collector/pg_log/DSS/." % (g_opts.speedLimitKBs, log)
-            elif 'rlog' in log:
+            elif dss_home in log:
+                log_str = log.split('.')[-1]
                 cmd = "cd $GAUSSLOG && rsync --bwlimit=%d '%s' " \
-                      "tmp_gs_collector/DSSLog/." % (g_opts.speedLimitKBs, log)
+                      "tmp_gs_collector/DSSLog/%s/." % (g_opts.speedLimitKBs, log, dss_log[log_str])
+
             else:
                 cmd = "cd $GAUSSLOG && rsync --bwlimit=%d '%s' " \
                       "tmp_gs_collector/'%s'" % (g_opts.speedLimitKBs, log, log)
@@ -908,8 +925,9 @@ def copy_log(log_files, deleteCmd):
                 cmd = "cd $GAUSSLOG && cp %s tmp_gs_collector/pg_log/DMS/." % log
             elif 'pg_log/DSS' in log:
                 cmd = "cd $GAUSSLOG && cp %s tmp_gs_collector/pg_log/DSS/." % log
-            elif 'rlog' in log:
-                cmd = "cd $GAUSSLOG && cp %s tmp_gs_collector/DSSLog/." % log
+            elif dss_home in log:
+                log_str = log.split('.')[-1]
+                cmd = "cd $GAUSSLOG && cp %s tmp_gs_collector/DSSLog/%s/." % (log, dss_log[log_str])
             else:
                 cmd = "cd $GAUSSLOG && cp '%s' tmp_gs_collector/'%s'" % (log, log)
         (status, output) = subprocess.getstatusoutput(cmd)
@@ -1063,6 +1081,8 @@ def formatTime(filename):
             with open(filename, 'r') as f:
                 lines = f.readlines()
             timelist = re.findall(r"\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d", lines[0])
+            if 'blog' in filename:
+                timelist = re.findall(r"\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d", lines[2])
         time1 = re.findall(r"\d+", timelist[0])
         time2 = ""
         for i in time1:
@@ -1252,20 +1272,12 @@ def parallel_xlog(Inst):
                 output)
             raise Exception("")
 
-
-def core_copy():
+def check_core_pattern():
     """
-    function: collected core files
-    input : NA
-    output: NA
+    function: check core pattern
+    input: NA
+    output: core_path
     """
-    g_logger.debug("Starting collect core dump.")
-    if int(g_opts.speedLimitFlag) == 1:
-        g_logger.debug(
-            "Speed limit to collect core dump files is %d KB/s."
-            % g_opts.speedLimitKBs)
-    g_jobInfo.jobName = "Collecting Core information"
-    Instances = []
     cmd = "cat /proc/sys/kernel/core_pattern"
     (status, output) = subprocess.getstatusoutput(cmd)
     if status != 0:
@@ -1275,7 +1287,7 @@ def core_copy():
         g_jobInfo.failedTask["read core pattern"] = ErrorCode.GAUSS_535[
                                                         "GAUSS_53507"] % 'cat'
         g_logger.log(json.dumps(g_jobInfo.__dict__))
-        raise Exception("")
+        raise Exception("Failed to collect core dump files")
     core_config = str(output)
     core_pattern = core_config.split('/')[-1]
     core_path = "/".join(core_config.split("/")[:-1])
@@ -1289,6 +1301,14 @@ def core_copy():
         raise Exception("")
 
     g_jobInfo.successTask.append("check core pattern")
+    return core_path
+
+def check_gaussdb_version():
+    """
+    function: check gaussdb version
+    input: NA
+    output: NA
+    """
     cmd = "mkdir -p -m %s '%s/coreDumpfiles/corefile_%s'" % \
           (DefaultValue.KEY_DIRECTORY_MODE, g_resultdir, g_current_time)
     cmd = "%s && gaussdb --version >>" \
@@ -1304,57 +1324,83 @@ def core_copy():
             output)
     g_jobInfo.successTask.append("check gaussdb version")
 
+def copy_core_files(cores):
+    """
+    function: copy core files
+    input: core files
+    output: isEmpty
+    """
+    isEmpty = 1
+    for core in cores:
+        tempName = str(core.split("/")[-1])
+        if not tempName.startswith("core-"):
+            g_logger.debug(
+                 "WARNING: core file %s is not match core-e-p-t." % (
+                    str(core.split("/")[-1])))
+            continue
+        p = tempName.split("-")[1]
+        if "".join(p).lower() in ",".join(g_opts.content).lower() or p[0] == '%':
+            p_stack = "%s_stack" % p
+            cmdList = []
+            if p_stack in g_opts.content or p[0] == '%':
+                cmd = "gdb -q --batch --ex" \
+                        " \"set height 0\" -ex \"thread apply" \
+                        " all bt full\" %s %s >> " \
+                        "%s/coreDumpfiles/corefile_%s/%s-stack1.txt" % (
+                p, core, g_resultdir, g_current_time, core.split("/")[-1])
+                cmd += " && gdb -q --batch --ex \"set height 0\"" \
+                        " -ex \"thread apply all bt\" %s %s >> " \
+                        "%s/coreDumpfiles/corefile_%s/%s-stack2.txt" % (
+                p, core, g_resultdir, g_current_time, core.split("/")[-1])
+                cmdList.append(cmd)
+
+            if p in g_opts.content:
+                if int(g_opts.speedLimitFlag) == 1:
+                    cmd = \
+                        "rsync --bwlimit=%d %s" \
+                        " '%s/coreDumpfiles/corefile_%s'" % (
+                        g_opts.speedLimitKBs, core, g_resultdir,
+                        g_current_time)
+                else:
+                    cmd = "cp -rf %s '%s/coreDumpfiles/corefile_%s'" % (
+                          core, g_resultdir, g_current_time)
+                    cmdList.append(cmd)
+            for c in cmdList:
+                (status, output) = subprocess.getstatusoutput(c)
+                if status != 0:
+                    g_logger.debug(
+                        "Failed to copy core dump files. Command:"
+                        " %s.\n Error:\n%s" % (
+                        c, output))
+                    g_jobInfo.failedTask[
+                        "copy core file"] = replaceInvalidStr(output)
+                else:
+                    isEmpty = 0
+    return isEmpty
+
+def core_copy():
+    """
+    function: collected core files
+    input : NA
+    output: NA
+    """
+    g_logger.debug("Starting collect core dump.")
+    if int(g_opts.speedLimitFlag) == 1:
+        g_logger.debug(
+            "Speed limit to collect core dump files is %d KB/s."
+            % g_opts.speedLimitKBs)
+    g_jobInfo.jobName = "Collecting Core information"
+    Instances = []
+    core_path = check_core_pattern()
+
+    check_gaussdb_version()
+
     cores = getTargetFile(core_path, [])
     if len(cores) > 0:
         g_jobInfo.successTask.append("find core files")
-        isEmpty = 1
-        for core in cores:
-            tempName = str(core.split("/")[-1])
-            if not tempName.startswith("core-"):
-                g_logger.debug(
-                    "WARNING: core file %s is not match core-e-p-t." % (
-                        str(core.split("/")[-1])))
-                continue
-            p = tempName.split("-")[1]
-            if "".join(p).lower() in ",".join(g_opts.content).lower():
-                p_stack = "%s_stack" % p
-                cmdList = []
-                if p_stack in g_opts.content:
-                    cmd = "gdb -q --batch --ex" \
-                          " \"set height 0\" -ex \"thread apply" \
-                          " all bt full\" %s %s >> " \
-                          "%s/coreDumpfiles/corefile_%s/%s-stack1.txt" % (
-                    p, core, g_resultdir, g_current_time, core.split("/")[-1])
-                    cmd += " && gdb -q --batch --ex \"set height 0\"" \
-                           " -ex \"thread apply all bt\" %s %s >> " \
-                           "%s/coreDumpfiles/corefile_%s/%s-stack2.txt" % (
-                    p, core, g_resultdir, g_current_time, core.split("/")[-1])
-                    cmdList.append(cmd)
+        is_empty = copy_core_files(cores)
 
-                if p in g_opts.content:
-                    if int(g_opts.speedLimitFlag) == 1:
-                        cmd = \
-                            "rsync --bwlimit=%d %s" \
-                            " '%s/coreDumpfiles/corefile_%s'" % (
-                        g_opts.speedLimitKBs, core, g_resultdir,
-                        g_current_time)
-                    else:
-                        cmd = "cp -rf %s '%s/coreDumpfiles/corefile_%s'" % (
-                        core, g_resultdir, g_current_time)
-                    cmdList.append(cmd)
-                for c in cmdList:
-                    (status, output) = subprocess.getstatusoutput(c)
-                    if status != 0:
-                        g_logger.debug(
-                            "Failed to copy core dump files. Command:"
-                            " %s.\n Error:\n%s" % (
-                            c, output))
-                        g_jobInfo.failedTask[
-                            "copy core file"] = replaceInvalidStr(output)
-                    else:
-                        isEmpty = 0
-
-        if isEmpty == 0:
+        if is_empty == 0:
             cmd = "cd %s/coreDumpfiles && tar -czf corefile_%s.tar.gz" \
                   "  corefile_%s && rm -rf corefile_%s" % \
                   (g_resultdir, g_current_time, g_current_time, g_current_time)

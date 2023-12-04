@@ -2439,13 +2439,18 @@ class UpgradeImpl:
             # flush new app dynamic configuration
             dynamicConfigFile = "%s/bin/cluster_dynamic_config" % \
                                 self.context.newClusterAppPath
-            if os.path.exists(dynamicConfigFile) \
+            # If the target to upgrade has CM, there is no need to update the dynamic file,
+            # because the dynamic configuration files of OM and CM are inconsistent,
+            # and problems may occur after OM updates the dynamic file.
+            if self.get_upgrade_cm_strategy() == 0 \
+                    and os.path.exists(dynamicConfigFile) \
                     and self.isLargeInplaceUpgrade:
                 self.refresh_dynamic_config_file()
                 self.context.logger.debug(
                     "Successfully refresh dynamic config file")
             self.stop_strategy(is_final=False)
-            if os.path.exists(dynamicConfigFile) \
+            if self.get_upgrade_cm_strategy() == 0 \
+                    and os.path.exists(dynamicConfigFile) \
                     and self.isLargeInplaceUpgrade:
                 self.restore_dynamic_config_file()
             self.progressReport()               

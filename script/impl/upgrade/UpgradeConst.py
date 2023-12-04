@@ -123,6 +123,9 @@ UPGRADE_TMP_BACKUP_DIR = "ready_backup_cm"
 UPGRADE_BACKUP_TAR_NAME = "upgrade_cm_backup.tar.gz"
 UPGRADE_BINARY_LIST_FILE_NAME = "upgrade_binary_list"
 
+INPLACE_UPGRADE_TOTAL_STEPS = 14
+GREY_UPGRADE_TOTAL_STEPS = 11
+GREY_UPGRADE_AGAIN_TOTAL_STEPS = 8
 # dual cluster stage
 class DualClusterStage:
     """

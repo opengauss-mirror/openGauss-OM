@@ -89,6 +89,8 @@ class UpgradeImpl:
         self.action = upgrade.action
         self.primaryDn = None
         self.operate_action = ""
+        self.progress_count = 0
+        self.total_steps = 0
 
     def exitWithRetCode(self, action, succeed=True, msg=""):
         """
@@ -1471,12 +1473,18 @@ class UpgradeImpl:
         input : NA
         output: NA
         """
-        upgradeAgain = False
+        # check if it satisfy upgrade again, if it is the second loop to
+            # upgrade, it can go go upgrade again branch
+        upgradeAgain = self.canUpgradeAgain()
+        # Used for progress report
+        self.total_steps = const.GREY_UPGRADE_AGAIN_TOTAL_STEPS if upgradeAgain else const.GREY_UPGRADE_TOTAL_STEPS
         try:
             # 1. distribute xml configure file to every nodes.
             self.distributeXml()
+            self.progressReport()
             # 2. check if the app path is ready and sha256 is right and others
             self.checkUpgrade()
+            self.progressReport()         
             if self.context.action == const.ACTION_LARGE_UPGRADE and \
                     "dual-standby" not in self.context.clusterType:
                 # 4. check the cluster pressure
@@ -1488,18 +1496,17 @@ class UpgradeImpl:
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51601"] %
                                 "cluster" + "Detail: " + output)
+            self.progressReport()                           
             # 6.chose the node name list that satisfy the condition as
             # upgrade nodes
             self.chooseUpgradeNodes()
-            # check if it satisfy upgrade again, if it is the second loop to
-            # upgrade, it can go go upgrade again branch
-            upgradeAgain = self.canUpgradeAgain()
             if not upgradeAgain:
                 self.recordDualClusterStage(self.oldCommitId,
                                             DualClusterStage.STEP_UPGRADE_UNFINISHED)
                 self.context.logger.log("NOTICE: The directory %s will be deleted after "
                                         "commit-upgrade, please make sure there is no personal "
                                         "data." % self.context.oldClusterAppPath)
+            self.progressReport()
         except Exception as e:
             # before this step, the upgrade process do nothing to the cluster,
             # this time has no remaining
@@ -1524,10 +1531,12 @@ class UpgradeImpl:
                 # 7. prepare upgrade function for sync and table
                 # RECORD_NODE_STEP, init the step of all nodes as 0
                 self.prepareGreyUpgrade()
+                self.progressReport()
 
                 # 8. install the new bin in the appPath which has been
                 # prepared in the preinstall
                 self.installNewBin()
+                self.progressReport()
 
                 # copy dolphin upgrade script from old appPath to new one
                 self.cpDolphinUpgradeScript()
@@ -1553,6 +1562,7 @@ class UpgradeImpl:
                     self.reload_cmserver()
                 self.recordNodeStep(GreyUpgradeStep.STEP_SWITCH_NEW_BIN)
                 self.CopyCerts()
+                self.progressReport()
                 self.upgradeAgain()
             except Exception as e:
                 errmsg = ErrorCode.GAUSS_529["GAUSS_52934"] + \
@@ -1600,11 +1610,13 @@ class UpgradeImpl:
 
                 self.setNewVersionGuc()
                 self.recordNodeStep(GreyUpgradeStep.STEP_UPGRADE_PROCESS)
+            self.progressReport()
             if currentStep < GreyUpgradeStep.STEP_UPDATE_POST_CATALOG:
                 # 12. kill the old existing process, will judge whether
                 # each process is the required version
                 self.switchExistsProcess()
                 self.recordNodeStep(GreyUpgradeStep.STEP_UPDATE_POST_CATALOG)
+            self.progressReport()
 
         except Exception as e:
             self.context.logger.log("Failed to upgrade, can use --grey to "
@@ -1622,6 +1634,7 @@ class UpgradeImpl:
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51601"] %
                                 "cluster" + output)
+            self.progressReport()
             if self.isNodeSpecifyStep(GreyUpgradeStep.STEP_UPDATE_POST_CATALOG):
                 # 14. exec post upgrade script
                 if self.context.action == const.ACTION_LARGE_UPGRADE:
@@ -1639,6 +1652,7 @@ class UpgradeImpl:
                     GreyUpgradeStep.STEP_PRE_COMMIT, nodes=hosts)
                 self.recordDualClusterStage(self.newCommitId, DualClusterStage.STEP_UPGRADE_FINISH)
                 self.printPrecommitBanner()
+            self.progressReport()
         except Exception as e:
             hintInfo = "Nodes are new version. " \
                        "Please check the cluster status. ERROR: \n"
@@ -2291,11 +2305,14 @@ class UpgradeImpl:
         input : NA
         output: NA
         """
+        self.total_steps = const.INPLACE_UPGRADE_TOTAL_STEPS
         # 1. distribute new package to every nodes.
         self.distributeXml()
+        self.progressReport()
         # 2. check whether we should do rollback or not.
         if not self.doInplaceBinaryRollback():
             self.exitWithRetCode(const.ACTION_AUTO_ROLLBACK, False)
+        self.progressReport()
         try:
             if self.context.action == const.ACTION_LARGE_UPGRADE and \
                     "dual-standby" not in self.context.clusterType:
@@ -2336,11 +2353,13 @@ class UpgradeImpl:
                                      ErrorCode.GAUSS_516["GAUSS_51601"]
                                      % "cluster" + output)
             self.getOneDNInst()
+            self.progressReport()
             # 4.record the old and new app dir in file
             self.recordDirFile()
             if self.isLargeInplaceUpgrade:
                 self.rebuild_pg_proc_index()
                 self.recordLogicalClusterName()
+            self.progressReport()
             # 6. reload vacuum_defer_cleanup_age to new value
             if self.isLargeInplaceUpgrade:
                 if self.__upgrade_across_64bit_xid:
@@ -2352,6 +2371,7 @@ class UpgradeImpl:
             # after checkUpgrade, the bak path is ready, we can use it now
             # create inplace upgrade flag file if is doing inplace upgrade
             self.createInplaceUpgradeFlagFile()
+            self.progressReport()            
             # 7. backup current application and configuration.
             # The function only be used by binary upgrade.
             #    to ensure the transaction atomicity,
@@ -2363,6 +2383,7 @@ class UpgradeImpl:
                 self.prepareUpgradeSqlFolder()
                 self.HASyncReplayCheck()
                 self.backupOldClusterDBAndRelInfo()
+            self.progressReport()                
             # 8. stop old cluster
             self.recordNodeStepInplace(const.ACTION_INPLACE_UPGRADE,
                                        const.BINARY_UPGRADE_STEP_STOP_NODE)
@@ -2371,6 +2392,7 @@ class UpgradeImpl:
             self.stop_strategy(is_final=False)
             self.context.logger.debug("Successfully stop all"
                                       " instances on the node.", "constant")
+            self.progressReport()                                      
             # 9. back cluster config. including this:
             #    cluster_static_config
             #    cluster_dynamic_config
@@ -2385,14 +2407,14 @@ class UpgradeImpl:
                 const.ACTION_INPLACE_UPGRADE,
                 const.BINARY_UPGRADE_STEP_BACKUP_VERSION)
             self.backupClusterConfig()
-
+            self.progressReport()
             # 10. Upgrade application on node
             #     install new bin file
             self.recordNodeStepInplace(const.ACTION_INPLACE_UPGRADE,
                                        const.BINARY_UPGRADE_STEP_UPGRADE_APP)
             self.installNewBin()
             self.cpDolphinUpgradeScript()
-
+            self.progressReport()
             # 11. restore the cluster config. including this:
             #    cluster_static_config
             #    cluster_dynamic_config
@@ -2426,8 +2448,10 @@ class UpgradeImpl:
             if os.path.exists(dynamicConfigFile) \
                     and self.isLargeInplaceUpgrade:
                 self.restore_dynamic_config_file()
+            self.progressReport()               
             # 12. modify GUC parameter unix_socket_directory
             self.modifySocketDir()
+            self.progressReport()            
             # 13. start new cluster
             self.recordNodeStepInplace(const.ACTION_INPLACE_UPGRADE,
                                        const.BINARY_UPGRADE_STEP_START_NODE)
@@ -2460,16 +2484,19 @@ class UpgradeImpl:
                                       "instances on the node.", "constant")
             if self.setClusterReadOnlyMode() != 0:
                 raise Exception(ErrorCode.GAUSS_529["GAUSS_52908"])
+            self.progressReport()               
             # 14. check the cluster status
             (status, output) = self.doHealthCheck(const.OPTION_POSTCHECK)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51601"]
                                 % "cluster" + output)
+            self.progressReport()
 
             # 15. record precommit step status
             self.recordNodeStepInplace(const.ACTION_INPLACE_UPGRADE,
                                        const.BINARY_UPGRADE_STEP_PRE_COMMIT)
             self.printPrecommitBanner()
+            self.progressReport()
         except Exception as e:
             self.context.logger.error(str(e))
             self.context.logger.log("Binary upgrade failed. Rollback"
@@ -6812,6 +6839,13 @@ END;"""
         self.context.logger.debug("Successfully created the file to "
                                   "record old and new app directory.")
 
+    def progressReport(self):
+        """
+        function: Provide progress updates during the upgrade process.
+        """
+        self.progress_count += 1
+        self.context.logger.log("Progress report: ({}%)".format(round((self.progress_count * 100) / self.total_steps)))
+        
     def copyBakVersion(self):
         """
         under commit, if we have cleaned old install path, then node disabled,

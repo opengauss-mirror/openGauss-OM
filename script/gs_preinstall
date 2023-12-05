@@ -71,6 +71,7 @@ from base_utils.os.net_util import NetUtil
 from base_utils.os.file_util import FileUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from base_utils.os.user_util import UserUtil
+from base_utils.template.xml_template import GenerateTemplate
 
 
 #############################################################################
@@ -130,6 +131,7 @@ General options:
         --skip-hostname-set            Whether to skip hostname setting.
                                        (The default value is set.)
         --skip-cgroup-set               Whether to skip cgroup setting.
+        --one-stop-install             Interactive one stop installation
                                         (The default value is set.)
     -l                                 Path of log file.
     -?, --help                         Show help information for this
@@ -166,6 +168,12 @@ General options:
             self.usage()
             sys.exit(0)
 
+        # check whether one-stop install  one-stop-install
+        if (ParaDict.__contains__("one_stop_install")):
+            xml_template = GenerateTemplate()
+            xml_template.run()
+            self.xmlFile = xml_template.target_xml
+
         # check no root user paramters
         self.check_no_root_paramter(ParaDict)
         # Resolves command line arguments
@@ -177,7 +185,7 @@ General options:
         if (ParaDict.__contains__("group")):
             self.group = ParaDict.get("group")
         # parameter -X
-        if (ParaDict.__contains__("confFile")):
+        if (ParaDict.__contains__("confFile") and not ParaDict.__contains__("one_stop_install")):
             self.xmlFile = ParaDict.get("confFile")
         # parameter -L
         if (ParaDict.__contains__("localMode")):

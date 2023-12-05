@@ -64,8 +64,9 @@ VALUE_CHECK_LIST = ["|", ";", "&", "$", "<", ">", "`", "\\", "'", "\"", "{",
 # no child branch
 gs_preinstall = ["-?", "--help", "-V", "--version", "-U:", "-G:", "-L",
                  "--skip-os-set", "-X:",
-                 "--env-var=", "--sep-env-file=", "--skip-hostname-set",
-                 "-l:", "--non-interactive", "--delete-root-trust", "--unused-third-party"]
+                 "--env-var=", "--sep-env-file=", "--skip-hostname-set", "--skip-cgroup-set",
+                 "-l:", "--non-interactive", "--delete-root-trust", "--unused-third-party",
+                 "--enable-perf-config", "--one-stop-install"]
 gs_install = ["-?", "--help", "-V", "--version", "-X:", "-l:",
               "--gsinit-parameter=", "--dn-guc=", "--cms-guc=",
               "--time-out=", "--dorado-cluster-mode=", "--alarm-component=",
@@ -345,6 +346,7 @@ class Parameter():
 
         parameterIsBool = {"-L": "localMode",
                            "--set": "set",
+                           "--one-stop-install": "one_stop_install",
                            "--skip-root-items": "skipRootItems",
                            "--non-interactive": "preMode",
                            "--skip-os-set": "skipOSSet",

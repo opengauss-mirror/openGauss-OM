@@ -74,6 +74,7 @@ class Dropnode(ParallelBaseOM):
         self.backIpNameMap = {}
         self.failureHosts = []
         self.flagOnlyPrimary = False
+        self.enable_dss = False
         envFile = EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH")
         if envFile:
             self.envFile = envFile
@@ -83,6 +84,10 @@ class Dropnode(ParallelBaseOM):
             cmd = "echo ~%s" % self.user
             (status, output) = subprocess.getstatusoutput(cmd)
             self.userProfile = os.path.join(output, ".bashrc")
+
+        dssHome = EnvUtil.getEnv("DSS_HOME")
+        if dssHome:
+            self.enable_dss = True
 
     def usage(self):
         """
@@ -126,6 +131,11 @@ General options:
         # parameter -h
         if (ParaDict.__contains__("nodename")):
             self.hostIpListForDel = ParaDict.get("nodename")
+        
+        # temporarily disable gs_dropnode -h function when enable dss
+        if (self.enable_dss and len(self.hostIpListForDel) != 0) :
+            GaussLog.exitWithError("\"gs_dropnode -h\" is not supported when dss enabled.")
+        
 
     def checkParameters(self):
         """

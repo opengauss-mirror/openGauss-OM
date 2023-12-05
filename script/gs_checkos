@@ -156,8 +156,6 @@ class CmdOptions():
         self.item_detail = []
         self.confFile = ""
         self.localMode = False
-        self.skipOSCheck = []
-        self.skip_OS_Check = {}
         self.skip_cgroup_set = False
 
     #########################################################
@@ -191,7 +189,7 @@ gs_checkos is a utility to check and set cluster OS information.
 Usage:
   gs_checkos -? | --help
   gs_checkos -V | --version
-  gs_checkos -i ITEM [-f HOSTFILE] [-h HOSTNAME] [-X XMLFILE] [--detail] [-o OUTPUT] [-l LOGFILE] [--skip-os-check IGNORE]
+  gs_checkos -i ITEM [-f HOSTFILE] [-h HOSTNAME] [-X XMLFILE] [--detail] [-o OUTPUT] [-l LOGFILE]
 
 General options:
   -i                              Item number. To check all items, enter  "-i A". To set all parameters, enter "-i B".
@@ -200,8 +198,6 @@ General options:
   -h                              Name of the host to connect to.
   -X                              Configuration file of the cluster.
      --detail                     Show detailed information.
-  --skip-os-check                 Whether to skip OS parameter checking.
-                                       (The default value is check A1-A14.)
   -o                              Save the result to the specified file.
   -l                              Path of log file.
   -? --help                       Show help information for this utility, and exit the command line mode.
@@ -277,30 +273,6 @@ def parseItemOpts(itemList):
                 g_opts.item_detail.append(value)
         else:
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % 'i')
-            
-            
-def parseSkipOSCheck(skipOSCheckList):
-    """
-    parse items by value
-    """
-    value = []
-    for val in skipOSCheckList:
-        if (len(val.split(',')) > 1):
-            for i in val.split(','):
-                value.append(i)
-        else:
-            value.append(val)
-                   
-    for val in CHECK_ITEMNUMLIST:
-        g_opts.skip_OS_Check[val] = True
-    
-    for val in value:
-        val = val.strip().upper()
-        if (val in CHECK_ITEMNUMLIST):
-            g_opts.skip_OS_Check[val] = False
-        else:
-            GaussLog.exitWithError(
-                ErrorCode.GAUSS_500["GAUSS_50004"] % '--skip-os-check')
 
 
 def parseCommandLine():
@@ -329,8 +301,6 @@ def parseCommandLine():
         g_opts.itemstr = ParaDict.get("itemstr")
     if (ParaDict.__contains__("show_detail")):
         g_opts.detail = ParaDict.get("show_detail")
-    if (ParaDict.__contains__("skipOSCheck")):
-        g_opts.skipOSCheck = ParaDict.get("skipOSCheck")
 
 def get_user_info():
         """
@@ -459,11 +429,6 @@ def checkParameter():
     checkItems()
 
     parseItemOpts(g_opts.itemstr)
-    ##########################################
-    # skipOSCheck
-    ############################################
-    parseSkipOSCheck(g_opts.skipOSCheck)
-    
     if (("B" in g_opts.item_detail)):
         g_opts.set = True
     else:
@@ -495,40 +460,36 @@ def doCheckOS(itemNumber):
     """
     do the checing ation by item
     """
-    if (itemNumber == 'A1'and g_opts.skip_OS_Check["A1"]):
+    if (itemNumber == 'A1'):
         checkOSVersion()
-    elif (itemNumber == 'A2' and g_opts.skip_OS_Check["A2"]):
+    elif (itemNumber == 'A2'):
         checkKernelVersion()
-    elif (itemNumber == 'A3' and g_opts.skip_OS_Check["A3"]):
+    elif (itemNumber == 'A3'):
         checkUnicode()
-    elif (itemNumber == 'A4' and g_opts.skip_OS_Check["A4"]):
+    elif (itemNumber == 'A4'):
         checkTimeZone()
-    elif (itemNumber == 'A5' and g_opts.skip_OS_Check["A5"]):
+    elif (itemNumber == 'A5'):
         checkMemoryUsage()
-    elif (itemNumber == 'A6' and g_opts.skip_OS_Check["A6"]):
+    elif (itemNumber == 'A6'):
         checkSysCtlParameter()
-    elif (itemNumber == 'A7' and g_opts.skip_OS_Check["A7"]):
+    elif (itemNumber == 'A7'):
         checkFileSystemConfigure()
-    elif (itemNumber == 'A8' and g_opts.skip_OS_Check["A8"]):
+    elif (itemNumber == 'A8'):
         checkDiskConfigure()
-    elif (itemNumber == 'A9' and g_opts.skip_OS_Check["A9"]):
-        if os.getpid() != 0:
-            return
+    elif (itemNumber == 'A9'):
         checkBlockDevConfigure()
         checkLogicalBlock()
-    elif (itemNumber == 'A10' and g_opts.skip_OS_Check["A10"]):
+    elif (itemNumber == 'A10'):
         checkIOrequestqueue()
         checkMaxAsyIOrequests()
         checkIOConfigure()
-    elif (itemNumber == 'A11' and g_opts.skip_OS_Check["A11"]):
-        if os.getpid() != 0:
-            return
+    elif (itemNumber == 'A11'):
         checkNetworkConfigure()
-    elif (itemNumber == 'A12' and g_opts.skip_OS_Check["A12"]):
+    elif (itemNumber == 'A12'):
         checkTimeConsistency()
-    elif (itemNumber == 'A13' and g_opts.skip_OS_Check["A13"]):
+    elif (itemNumber == 'A13'):
         checkFirewallService()
-    elif (itemNumber == 'A14' and g_opts.skip_OS_Check["A14"]):
+    elif (itemNumber == 'A14'):
         checkTHPService()
 
 def doSetOS(itemNumber):

@@ -44,7 +44,7 @@ class NetworkGateInfo(Probe):
     def detect(self):
         self._parse_ifconfig()
 
-        if self.is_virbr() or self.is_localhost():
+        if not self.is_enp_gate():
             return
 
         self._detect_irq_binds()
@@ -69,6 +69,9 @@ class NetworkGateInfo(Probe):
 
     def is_virbr(self):
         return self.name.startswith('virbr')
+        
+    def is_enp_gate(self):
+        return self.name.startswith('enp')
 
     def _detect_irq_binds(self):
         script = Project.environ.get_builtin_script('irq_operate.sh')

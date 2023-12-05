@@ -77,8 +77,6 @@ from base_utils.os.user_util import UserUtil
 # Global variables
 #############################################################################
 userNameFirtChar = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
-CHECK_ITEMNUMLIST = ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9',
-                     'A10', 'A11', 'A12', 'A13', 'A14']
 
 
 class Preinstall(ParallelBaseOM):
@@ -94,7 +92,6 @@ class Preinstall(ParallelBaseOM):
         self.preMode = False
         self.skipOSSet = False
         self.skipHostnameSet = False
-        self.skipOSCheck = []
         self.passwordsec = ""
         self.corePath = ""
         self.is_new_root_path = False
@@ -116,7 +113,7 @@ Usage:
     gs_preinstall -? | --help
     gs_preinstall -V | --version
     gs_preinstall -U USER -G GROUP -X XMLFILE
-      [-L]  [--skip-os-set]  [--skip-os-check] [--env-var="ENVVAR" [...]]
+      [-L]  [--skip-os-set] [--env-var="ENVVAR" [...]]
       [--sep-env-file=ENVFILE] [--skip-hostname-set] [-l LOGFILE]
       [--non-interactive] [--delete-root-trust] [--unused-third-party]
 
@@ -128,8 +125,6 @@ General options:
                                        nodes.
         --skip-os-set                  Whether to skip OS parameter setting.
                                        (The default value is set.)
-        --skip-os-check                Whether to skip OS parameter checking.
-                                       (The default value is check A1-A14.)
         --env-var="ENVVAR"             OS user environment variables.
         --sep-env-file=ENVFILE       Path of the MPP environment file.
         --skip-hostname-set            Whether to skip hostname setting.
@@ -206,9 +201,6 @@ General options:
         # parameter --skip-os-set
         if (ParaDict.__contains__("skipOSSet")):
             self.skipOSSet = ParaDict.get("skipOSSet")
-        # parameter --skip-os-check
-        if (ParaDict.__contains__("skipOSCheck")):
-            self.skipOSCheck = ParaDict.get("skipOSCheck")
         # parameter --non-interactive
         if (ParaDict.__contains__("preMode")):
             self.preMode = ParaDict.get("preMode")
@@ -329,27 +321,6 @@ General options:
             GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"]
                                    % self.logFile)
         UserUtil.check_path_owner(self.logFile)
-        
-        
-    def checkskipOS(self):
-        """
-        parse items by value
-        """
-        value = []
-        for val in self.skipOSCheck:
-            if (len(val.split(',')) > 1):
-                for i in val.split(','):
-                    value.append(i)
-            else:
-                value.append(val)
-                         
-        for val in value:
-            val = val.strip().upper()
-            if (val in CHECK_ITEMNUMLIST):
-                continue
-            else:
-                GaussLog.exitWithError(
-                    ErrorCode.GAUSS_500["GAUSS_50004"] % '--skip-os-check')
 
 
     def checkMpprcFile(self):
@@ -432,8 +403,6 @@ General options:
         self.checkMpprcFile()
         # check log file
         self.checkLogFile()
-        # skip OS check
-        self.checkskipOS()
 
     # set LD_LIBRARY_PATH add local lib
     def setLibPath(self):

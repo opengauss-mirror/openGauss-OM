@@ -178,7 +178,6 @@ function clib_copy()
     then
         cp $BINARYLIBS_PATH_INSTALL_TOOLS/libpython3.*m.so.1.0 $PKG_TMP_DIR/script/gspylib/clib
     fi
-    #cp $BUILD_DIR/bin/encrypt $BUILD_DIR/script/gspylib/clib
 }
 
 function lib_copy()
@@ -207,6 +206,12 @@ function lib_copy()
         cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psycopg2    ${PKG_TMP_DIR}/lib
     fi
 
+    # copy scp and ssh
+    cp /usr/bin/scp $PKG_TMP_DIR/script/
+    cp /usr/bin/ssh $PKG_TMP_DIR/script/
+    cp /usr/bin/ssh-agent $PKG_TMP_DIR/script/
+    cp /usr/bin/ssh-add $PKG_TMP_DIR/script/
+    cp /usr/bin/ssh-keyscan $PKG_TMP_DIR/script/
 }
 
 function main()

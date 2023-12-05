@@ -2569,6 +2569,8 @@ Common options:
             "export LD_LIBRARY_PATH=$GPHOME/lib:$LD_LIBRARY_PATH"])
         # set PYTHONPATH
         FileUtil.writeFile(userProfile, ["export PYTHONPATH=$GPHOME/lib"])
+        
+        FileUtil.writeFile(userProfile, [f"alias scp=\"scp -S {self.clusterToolPath}/script/ssh\""])
 
     def clean_tool_env(self, userProfile):
         # clean GPHOME

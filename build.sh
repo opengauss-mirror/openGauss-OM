@@ -178,7 +178,6 @@ function clib_copy()
     then
         cp $BINARYLIBS_PATH_INSTALL_TOOLS/libpython3.*m.so.1.0 $PKG_TMP_DIR/script/gspylib/clib
     fi
-    #cp $BUILD_DIR/bin/encrypt $BUILD_DIR/script/gspylib/clib
 }
 
 function lib_copy()
@@ -206,7 +205,6 @@ function lib_copy()
     if [ -d "${BINARYLIBS_PATH_INSTALL_TOOLS}/psycopg2" ]; then
         cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psycopg2    ${PKG_TMP_DIR}/lib
     fi
-
 }
 
 function main()

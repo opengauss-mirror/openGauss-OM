@@ -54,11 +54,10 @@ class OMCommand():
         """
         Current_Path = os.path.dirname(os.path.realpath(__file__))
 
-        if os.getgid() != 0:
+        if os.getuid() != 0:
             gp_home = EnvUtil.getEnv("GPHOME")
-            if not gp_home:
-                raise Exception(ErrorCode.GAUSS_518["GAUSS_51802"] % "GPHOME")
-            Current_Path = os.path.join(gp_home, "script/gspylib/common")
+            if gp_home:
+                Current_Path = os.path.join(gp_home, "script/gspylib/common")
 
         LocalScript = {
             "Local_Backup": os.path.normpath(

@@ -39,6 +39,7 @@ from domain_utils.domain_common.cluster_constants import ClusterConstants
 from base_utils.common.constantsbase import ConstantsBase
 from base_utils.os.user_util import UserUtil
 from domain_utils.cluster_file.cluster_config_file import ClusterConfigFile
+from base_utils.os.env_util import EnvUtil
 
 
 #############################################################################
@@ -308,9 +309,10 @@ def get_user_info():
         input: NA
         output: NA
         """
-        user_info = UserUtil.getUserInfo()
-        g_opts.user = user_info.get("name")
-        DefaultValue.checkPathVaild(g_opts.user)
+        if os.getuid() != 0:
+            user_info = UserUtil.getUserInfo()
+            g_opts.user = user_info.get("name")
+            DefaultValue.checkPathVaild(g_opts.user)
 
 def readHostFile(hostfile):
     """
@@ -376,16 +378,37 @@ def get_checkos_log_path(log_name, xml):
     except Exception as e:
         GaussLog.exitWithError(str(e))
 
+def create_log_file():
+    cmd = "(if [ ! -d %s ]; then mkdir -p %s -m %s; fi)" % (
+                LOG_DIR, LOG_DIR, DefaultValue.KEY_DIRECTORY_MODE)
+    (status, output) = subprocess.getstatusoutput(cmd)
+    if (status != 0):
+        GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50208"]
+                            % "log of gs_checkos" + " Error: \n%s."
+                            % output + "The cmd is %s" % cmd)
+    g_opts.logFile = os.path.join(LOG_DIR, ClusterConstants.GS_CHECKOS_LOG_FILE)
+
 def setLogFile():
     """
     """
     if (g_opts.logFile == ""):
-        g_opts.logFile = get_checkos_log_path(ClusterConstants.GS_CHECKOS_LOG_FILE, g_opts.confFile)
-        if (not os.path.isabs(g_opts.logFile)):
-            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"]
-                                   % g_opts.logFile)
-        UserUtil.check_path_owner(g_opts.logFile)
+        if os.getuid() == 0:
+            create_log_file()
+        else:
+            # get gausslog from env
+            gauss_log = EnvUtil.getEnv("GAUSSLOG")
+            if gauss_log:
+                g_opts.logFile = os.path.normpath(os.path.join(gauss_log, g_opts.user, "om", ClusterConstants.GS_CHECKOS_LOG_FILE))
+            # get gausslog from xml
+            elif g_opts.confFile:
+                g_opts.logFile = get_checkos_log_path(ClusterConstants.GS_CHECKOS_LOG_FILE, g_opts.confFile)
+                if (not os.path.isabs(g_opts.logFile)):
+                    GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"]
+                                        % g_opts.logFile)
+            else:
+                create_log_file()
 
+        UserUtil.check_path_owner(g_opts.logFile)
 
 def checkItems():
     """
@@ -477,14 +500,19 @@ def doCheckOS(itemNumber):
     elif (itemNumber == 'A8'):
         checkDiskConfigure()
     elif (itemNumber == 'A9'):
-        checkBlockDevConfigure()
-        checkLogicalBlock()
+        if os.getuid() == 0:
+            checkBlockDevConfigure()
+        else:
+            checkLogicalBlock()
     elif (itemNumber == 'A10'):
-        checkIOrequestqueue()
-        checkMaxAsyIOrequests()
-        checkIOConfigure()
+        if os.getuid() == 0:
+            checkIOConfigure()
+        else:
+            checkIOrequestqueue()
+            checkMaxAsyIOrequests()
     elif (itemNumber == 'A11'):
-        checkNetworkConfigure()
+        if os.getuid() == 0:
+            checkNetworkConfigure()
     elif (itemNumber == 'A12'):
         checkTimeConsistency()
     elif (itemNumber == 'A13'):
@@ -1558,7 +1586,7 @@ def main():
                          % g_opts.outputfile)
 
         for item in itemList:
-            if (os.getpid() == 0 and g_opts.set):
+            if (os.getuid() == 0 and g_opts.set):
                 doSetOS(item)
             else:
                 doCheckOS(item)

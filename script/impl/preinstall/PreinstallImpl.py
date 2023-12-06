@@ -1003,12 +1003,12 @@ class PreinstallImpl:
                 namelist = ",".join(NodeNames)
 
             # check skip-os-set parameter
-            if self.context.skipOSSet or not self.context.current_user_root:
+            if self.context.current_user_root and not self.context.skipOSSet:
+                # set and check parameters
+                self.setOSParameter(namelist)
                 # check the OS parameters
                 self.checkOSParameter(namelist)
             else:
-                # set and check parameters
-                self.setOSParameter(namelist)
                 self.checkOSParameter(namelist)
         except Exception as e:
             raise Exception(str(e))

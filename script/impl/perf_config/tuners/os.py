@@ -93,7 +93,7 @@ class CPUTuner(TunerGroup):
                 '' if infos.cpu.count() < 256 or len(infos.cpu.numa) < 4 else "and '--preferred=0'."
             )
             numa_bind_info['suggestions'].append(suggestion)
-            return numa_bind_info
+
         return numa_bind_info
 
     def calculate(self):
@@ -158,7 +158,7 @@ class DiskTuner(TunerGroup):
         infos = Project.getGlobalPerfProbe()
         gausshome_disk = DiskUtil.getMountPathByDataDir(infos.db.gauss_data)
         device = infos.disk.get(gausshome_disk)
-        if device.fstype != 'xfs' or device.bsize != 8192:
+        if device.fstype != 'xfs':
             sug = "Disk {0} is {1} format, you are advised to set the disk format to xfs ".format(
                 device.device, device.fstype
             )
@@ -181,7 +181,7 @@ class NetworkIRQTuner(TunerGroup):
     def calculate(self):
         infos = Project.getGlobalPerfProbe()
         numa_bind_info = infos.cpu.notebook.read('numa_bind_info')
-        if numa_bind_info is None or numa_bind_info.get('network') is None:
+        if numa_bind_info is None or not numa_bind_info.get('use'):
             return
         for ip in infos.db.ip:
             if ip == '*':

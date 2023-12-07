@@ -1046,12 +1046,6 @@ General options:
         with open(hostsFile, 'w') as f:
             for key in tab:
                 f.write(tab[key])
-                
-    def get_scp_sshpath(self):
-        gphome = os.environ["GPHOME"]
-        if not gphome:
-            return ""
-        return f"-S {gphome}/script/ssh"
 
     def sendTrustFile(self, hostname):
         '''
@@ -1061,8 +1055,7 @@ General options:
         '''
         bashrc_file = os.path.join(pwd.getpwuid(os.getuid()).pw_dir, ".bashrc")
         cmd = 'source %s;' %bashrc_file
-        sshpath = self.get_scp_sshpath()
-        cmd += ('scp %s -q -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' % sshpath +
+        cmd += ('scp -q -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' +
                 '%s %s %s:.ssh/' % (self.id_rsa_fname, self.id_rsa_pub_fname, hostname))
         cmd += ''' && temp_auth=$(grep '#OM' %s)''' \
                ''' && ssh %s "sed -i '/#OM/d' %s; echo '${temp_auth}' >> %s"''' % (
@@ -1157,8 +1150,7 @@ General options:
         self.logger.debug("Creating a remote directory [%s] successfully on node "
                         "[%s]." %(tmp_path, hostname))
         # scp ssh_protect to remote node
-        sshpath = self.get_scp_sshpath()
-        cmd = 'source %s; scp %s -q -r -2' % (bashrc_file, sshpath)
+        cmd = 'source %s; scp -q -r -2' % bashrc_file
         cmd = '%s -o "BatchMode yes" -o ' % (cmd)
         cmd = '%s "NumberOfPasswordPrompts 0" %s' % (cmd, protect_path)
         cmd = '%s [%s]:%s' % (cmd, hostname, tmp_path)
@@ -1338,9 +1330,8 @@ General options:
 
     def copy_shell_to_remote_node(self, shell_file, hostname):
         # scp ssh_protect to remote node
-        sshpath = self.get_scp_sshpath()
         cmd = 'source ~/.bashrc;'
-        cmd += ('scp %s -q -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' % sshpath + '%s %s:.ssh/' % (
+        cmd += ('scp -q -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' + '%s %s:.ssh/' % (
                 shell_file, hostname))
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:

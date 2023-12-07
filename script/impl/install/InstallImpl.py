@@ -253,7 +253,7 @@ class InstallImpl:
         self.context.logger.log("Creating the backup directory.", "addStep")
         self.context.managerOperateStepDir()
 
-        # if INSTALL_STEP is exists
+        # if INSTALL_STEP exists
         if (os.path.exists(self.context.operateStepFile)):
             # read the step from INSTALL_STEP
             warmstep = self.context.readOperateStep()

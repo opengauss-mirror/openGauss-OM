@@ -138,7 +138,7 @@ def run(hosts, opts, args):
                        str(agent_port), path, remote_path]
                 manager.add_task(host, cmd)
         else:
-            cmd = ['/usr/bin/scp', '-qCr']
+            cmd = ['scp', '-qCr']
             if opts.extra:
                 cmd.extend(shlex.split(opts.extra))
             if opts.opt:

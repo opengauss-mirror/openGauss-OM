@@ -4617,7 +4617,6 @@ class dbClusterInfo():
         # so we will use the realpath of gausshome
         gaussHome = os.path.realpath(gaussHome)
         dynamicConfigFile = "%s/bin/cluster_dynamic_config" % gaussHome
-        gphome = EnvUtil.getEnv("GPHOME")
         lastSwitchTime = 0
         lastDynamicConfigFile = ""
         fileConsistent = False
@@ -4631,8 +4630,8 @@ class dbClusterInfo():
             remoteDynamicConfigFile = "%s/bin/cluster_dynamic_config_%s" \
                                       % (gaussHome, dbNode.name)
             if dbNode.name != localHostName:
-                cmd = "scp -S %s/script/ssh %s:%s %s" % (
-                    gphome, dbNode.name, dynamicConfigFile, remoteDynamicConfigFile)
+                cmd = "scp %s:%s %s" % (
+                    dbNode.name, dynamicConfigFile, remoteDynamicConfigFile)
                 status, output = subprocess.getstatusoutput(cmd)
                 if status:
                     if output.find("No such file or directory") >= 0:
@@ -4666,14 +4665,13 @@ class dbClusterInfo():
                                    targetFile):
         status = 0
         output = ""
-        gphome = EnvUtil.getEnv("GPHOME")
         for dbNode in self.dbNodes:
             if dbNode.name == localHostName:
                 if sourceFile != targetFile:
                     cmd = "cp -f  %s %s" % (sourceFile, targetFile)
                     status, output = subprocess.getstatusoutput(cmd)
             else:
-                cmd = "scp -S %s/script/ssh %s %s:%s" % (gphome, sourceFile, dbNode.name, targetFile)
+                cmd = "scp %s %s:%s" % (sourceFile, dbNode.name, targetFile)
                 status, output = subprocess.getstatusoutput(cmd)
             if status:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +

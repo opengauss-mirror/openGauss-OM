@@ -141,7 +141,11 @@ class GenerateTemplate:
                 user_input = input(
                     "Please enter the path and file name of the XML file(default:./cluster.xml):  ")
             if not user_input.strip():
-                self.target_xml = "./cluster.xml"
+                cur_dir = os.path.dirname(os.path.realpath(__file__))
+                tmp_dir = os.path.join(cur_dir, 'cluster.xml')
+                if os.path.exists(tmp_dir):
+                    os.removedirs(tmp_dir)
+                self.target_xml = tmp_dir
                 break
             # 校验路径是否合法，判断，路径如果存在，是否有权限；不存在，看能否创建文件
             if not self.check_path(user_input):

@@ -456,6 +456,7 @@ class DefaultValue():
         "GaussMaster": "GaussMaster",
         "Heartbeater": "Heartbeater",
         "JobExecutor": "JobExecutor",
+        "JobScheduler": "JobScheduler",
         "LWLockMonitor": "LWLockMonitor",
         "PageWriter": "PageWriter",
         "ParallelRecov": "ParallelRecov",

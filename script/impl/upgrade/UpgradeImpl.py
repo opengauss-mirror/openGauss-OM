@@ -2599,6 +2599,12 @@ class UpgradeImpl:
             # 8. clean up other upgrade tmp files
             # and uninstall inplace upgrade support functions
             self.cleanInstallPath(const.OLD)
+            # Only delete the old_upgrade_version file under the binary_upgrade directory to 
+            # prevent gaussdb from starting with the old version. However, keep the binary_upgrade
+            # directory temporarily so that CM remains in maintenance mode when restarting,
+            # ensuring that the primary does not switch after the restart.
+            # After the restart is complete, delete the binary_upgrade directory.
+            self._cleanOldUpgradVersion()
             if self.isLargeInplaceUpgrade:
                 self.stop_strategy(is_final=False)
                 self.start_strategy(is_final=False)
@@ -2614,6 +2620,17 @@ class UpgradeImpl:
         # remove global relmap file
         self.cleanTmpGlobalRelampFile()
         self.exitWithRetCode(const.ACTION_INPLACE_UPGRADE, cleanUpSuccess)
+
+    def _cleanOldUpgradVersion(self):
+        """
+        clean binary_upgrade/olg_upgrade_version
+        """
+        olg_upgrade_version_path = os.path.join(self.context.upgradeBackupPath, "old_upgrade_version")
+        cmd = "(if [ -f '{path}' ]; then rm -rf '{path}'; fi) ".format(
+            path=olg_upgrade_version_path)
+        self.context.logger.debug("Command for clean olg_upgrade_version files: %s" % cmd)
+        CmdExecutor.execCommandWithMode(cmd, self.context.sshTool,
+            self.context.isSingle, self.context.mpprcFile)
 
     def install_kerberos(self):
         """

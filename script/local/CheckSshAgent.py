@@ -82,7 +82,7 @@ def check_ssh_agent_available(bashrc_file, logger):
     :param logger:
     :return:
     """
-    check_cmd = "source %s;ssh-add -l" % bashrc_file
+    check_cmd = "source %s;export LD_LIBRARY_PATH=/usr/lib64;ssh-add -l" % bashrc_file
     proc = FastPopen(check_cmd, stdout=PIPE, stderr=PIPE,
                      preexec_fn=os.setsid, close_fds=True)
     stdout, stderr = proc.communicate()

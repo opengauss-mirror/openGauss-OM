@@ -129,6 +129,7 @@ from gspylib.common.aes_cbc_util import AesCbcUtil
 noPassIPs = []
 g_lock = thread.allocate_lock()
 
+SYSTEM_SSH_ENV = "export LD_LIBRARY_PATH=/usr/lib64"
 
 def check_content_key(content, key):
     if not (type(content) == bytes):
@@ -2576,7 +2577,7 @@ class DefaultValue():
         :param logger:
         :return:
         """
-        clear_cmd = "source %s;ssh-add -D" %mpprcfile
+        clear_cmd = "source %s;%s;/usr/bin/ssh-add -D" % (mpprcfile, SYSTEM_SSH_ENV)
         status, output = subprocess.getstatusoutput(clear_cmd)
         if status != 0:
             if logger:
@@ -2597,8 +2598,8 @@ class DefaultValue():
         """
         DefaultValue.clear_ssh_id_rsa(mpprcfile, logger)
         id_rsa_path = DefaultValue.SSH_PRIVATE_KEY
-        cmd = "source %s;echo \"%s\" | /bin/sh %s %s" %(
-            mpprcfile, str(secret_word), shell_file, id_rsa_path)
+        cmd = "source %s;%s;echo \"%s\" | /bin/sh %s %s" %(
+            mpprcfile, SYSTEM_SSH_ENV, str(secret_word), shell_file, id_rsa_path)
         if logger:
             logger.debug("ssh-add cmd:%s" %cmd)
         (status, stdout, stderr) = DefaultValue.try_fast_popen(cmd)
@@ -2613,7 +2614,7 @@ class DefaultValue():
 
 
     @staticmethod
-    def register_ssh_agent(mpprcfile, logger=""):
+    def register_ssh_agent(mpprcfile, logger="", shell_path=""):
         """
         function : register ssh agent
         input : NA
@@ -2621,10 +2622,11 @@ class DefaultValue():
         """
         if logger:
             logger.debug("Start to register ssh agent.")
+
         agent_path = os.path.join("~/gaussdb_tmp/", "gauss_socket_tmp")
         agent_path = os.path.expanduser(agent_path)
         cmd = "ssh-agent -a %s" % (agent_path)
-        cmd_ssh_add = "source %s;ssh-agent -a %s" % (mpprcfile, agent_path)
+        cmd_ssh_add = "source %s;%s;ssh-agent -a %s" % (mpprcfile, SYSTEM_SSH_ENV, agent_path)
         list_pid = DefaultValue.get_pid(cmd)
         if not list_pid:
             if os.path.exists(agent_path):
@@ -2658,12 +2660,12 @@ class DefaultValue():
         if not update_pid_env_flag:
             raise Exception(
                 ErrorCode.GAUSS_518["GAUSS_51804"] % "SSH_AGENT_PID")
-        DefaultValue.check_use_ssh_agent(cmd, bashrc_file, logger)
+        DefaultValue.check_use_ssh_agent(cmd, bashrc_file, logger, shell_path=shell_path)
         if logger:
             logger.debug("ssh-add perform successfully.")
 
     @staticmethod
-    def check_use_ssh_agent(cmd, mpprcfile, logger="", retry_imes=6):
+    def check_use_ssh_agent(cmd, mpprcfile, logger="", shell_path="", retry_imes=6):
         """
         function:check whether the ssh-agent process is available
         :param cmd:
@@ -2672,8 +2674,9 @@ class DefaultValue():
         :return:
         """
         RETRY_TIMES = 0
+
         while True:
-            check_cmd = "source %s;ssh-add -D" % mpprcfile
+            check_cmd = "source %s;%s;ssh-add -D" % (mpprcfile, SYSTEM_SSH_ENV)
             proc = FastPopen(check_cmd, stdout=PIPE, stderr=PIPE,
                              preexec_fn=os.setsid, close_fds=True)
             stdout, stderr = proc.communicate()
@@ -2764,7 +2767,7 @@ class DefaultValue():
         :param logger:
         :return:
         """
-        clear_cmd = "source %s;ssh-add -D" % mpprcfile
+        clear_cmd = "%s;/usr/bin/ssh-add -D" % SYSTEM_SSH_ENV
         (env_msg, channel_read) = DefaultValue.ssh_exec_cmd(session, clear_cmd)
         if env_msg and "All identities removed" not in env_msg:
             if logger:
@@ -2811,7 +2814,7 @@ class DefaultValue():
         delete_cmd = "rm -rf %s" % agent_path
         DefaultValue.ssh_exec_cmd(session, delete_cmd)
         cmd = "ssh-agent -a %s" % agent_path
-        cmd_ssh_add = "source %s;ssh-agent -a %s" % (ClusterConstants.ETC_PROFILE, agent_path)
+        cmd_ssh_add = "source %s;%s;ssh-agent -a %s" % (ClusterConstants.ETC_PROFILE, SYSTEM_SSH_ENV, agent_path)
         (env_msg, channel_read) = DefaultValue.ssh_exec_cmd(session, cmd_ssh_add)
         if env_msg and "Address already in use" not in env_msg:
             if logger:

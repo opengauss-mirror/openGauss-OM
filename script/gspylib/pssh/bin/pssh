@@ -129,7 +129,7 @@ def run(hosts):
             cmd = ['python3', cmd_sender_path, '-H', host, '-p',
                    str(agent_port), '-a', action, '-t', str(opts.timeout)]
         else:
-            cmd = ["ssh", host, "-q",
+            cmd = ["/usr/bin/ssh", host, "-q",
                    "-o", "SendEnv=PSSH_NODENUM PSSH_HOST",
                    "-o", "BatchMode=yes",
                    "-o", "ConnectionAttempts=10",

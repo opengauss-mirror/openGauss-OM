@@ -182,7 +182,7 @@ class PreinstallImpl:
 
             # create SSH trust for root user
             self.create_trust(Ips, username)
-            self.context.logger.debug("Finished execute createTrustForRoot function.")
+            self.context.logger.debug("Finished executing createTrustForRoot function.")
 
         except Exception as e:
             raise Exception(str(e))
@@ -1415,7 +1415,7 @@ class PreinstallImpl:
             return
         if "export GAUSS_ENV=2" not in new_env_list:
             self.context.logger.debug(
-                "There is no install cluster exist. "
+                "There is no existence of cluster. "
                 "Skip check repeat install.")
             return
         for env in new_env_list:

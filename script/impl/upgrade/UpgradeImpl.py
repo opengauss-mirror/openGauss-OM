@@ -7229,7 +7229,7 @@ END;"""
         try:
             self.context.logger.debug("start to get primary dn. \n"
                                       "checkNormal is {0}.".format(checkNormal))
-            if self.context.standbyCluster or self.context.forceRollback:
+            if self.context.standbyCluster:
                 checkNormal = False
             primaryDn = None
             if not checkNormal:

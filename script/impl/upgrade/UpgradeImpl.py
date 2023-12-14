@@ -1449,6 +1449,10 @@ class UpgradeImpl:
         cma_conf_file = os.path.join(cm_agent_dir, "cm_agent.conf")
         origin_value = "off" if value == "on" else "on"
 
+        if not os.path.exists(cms_conf_file) or not os.path.exists(cma_conf_file):
+            self.context.logger.debug("CM config file not exists, no need set ssl.")
+            return
+
         cmd = "sed -i 's/enable_ssl = {0}/enable_ssl = {1}/g' {2}".format(origin_value, value, cma_conf_file)
         self.context.sshTool.executeCommand(cmd, hostList=cm_node_names)
 

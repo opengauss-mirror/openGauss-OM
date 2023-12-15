@@ -132,7 +132,7 @@ General options:
                                        (The default value is set.)
         --skip-cgroup-set               Whether to skip cgroup setting.
         --one-stop-install             Interactive one stop installation
-                                        (The default value is set.)
+                                        (The default value is unset.)
     -l                                 Path of log file.
     -?, --help                         Show help information for this
                                        utility, and exit the command line mode.

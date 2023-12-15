@@ -23,20 +23,29 @@ import os
 import re
 import sys
 import subprocess
+import json
+import socket
 import xml.etree.ElementTree as ET
 
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.Common import DefaultValue
+from base_utils.os.net_util import NetUtil
 
 DSS_PARA_INFO = ['enable_dss', 'dss_home', 'dss_vg_info', 'votingDiskPath', 'shareDiskDir', 'ss_dss_vg_name',
                  'dss_ssl_enable']
-UPDATE_DSS_PARA_INFO = ['dss_vg_info', 'votingDiskPath', 'shareDiskDir']
+UPDATE_DSS_PARA_INFO = ['dss_home', 'dss_vg_info', 'votingDiskPath', 'shareDiskDir']
 CM_PARA_INFO = ['cmDir', 'cmsNum', 'cmServerPortBase', 'cmServerPortStandby', 'cmServerListenIp1',
                 'cmServerHaIp1', 'cmServerlevel', 'cmServerRelation']
 HOST_NODE_INFO = ['node1_hostname', 'node2_hostname', 'node3_hostname', 
                   'node4_hostname', 'node5_hostname', 'node6_hostname', 
                   'node7_hostname', 'node8_hostname', 'node9_hostname']
 
+DATABASE_PORT = "15000"
+CM_SERVER_PORT = "15400"
+
+
+def get_current_dir():
+    return os.path.dirname(os.path.realpath(__file__))
 
 class GenerateTemplate:
 
@@ -54,7 +63,7 @@ class GenerateTemplate:
         self.ip_dict = {}
         self.ip_lists = []
         self.ddes_info = {}
-        self.tries = 3
+        self.tries = 4
         self.database_port = ""
         self.cm_server_port = ""
         self.opengauss_install_dir = ""
@@ -64,378 +73,148 @@ class GenerateTemplate:
         self.xml_file_path = ""
         self.logger = None
         self.logfile = ""
+        self.dss_home = ""
+        self.cm_info = {}
+        self.cluster_info = {}
 
-    def check_isdigit(self, user_input):
-        if not str(user_input).strip().isdigit():
-            if self.is_chinese:
-                self.logger.log("输入字符必须是数字!")
-            else:
-                self.logger.log("The input character must be a number!")
-            return False
-        return True
-
-    def check_path(self, dir_path):
-        one_path = dir_path.strip()
-
-        # 1.dir path illegal characters
+    def check_illegal_character(self, user_put):
         for rac in DefaultValue.PATH_CHECK_LIST:
-            flag = one_path.find(rac)
+            flag = user_put.find(rac)
             if flag >= 0:
-                self.logger.log("There are illegal characters in the path")
-                return False
-        # 2.dir must be abs path
-        if not os.path.abspath(one_path):
-            self.logger.log("%s path nust be abs path" % one_path)
-            return False
-        # 3.if dir exits, delete it
-        if os.path.exists(one_path):
-            cmd = "rm -rf %s" % one_path
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                self.logger.log("The user does not have permission for %s" % one_path)
-                return False
-        else:
-            # 4.if not dir exits, create it and delete it
-            cmd = "mkdir -p %s; rm -rf %s" % (one_path, one_path)
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0:
-                self.logger.log("The user does not have permission for %s" % one_path)
+                self.logger.log("%s %s" % (user_put, resource_data.get('invalid_path')))
                 return False
         return True
 
-    def with_chinese(self):
-        self.logger.log("请选择是英文还是中文导航一键式生成xml文件?")
-        selected_option = 1
-        for i in range(1, 3):
-            if i == selected_option:
-                print(">> " + str(i) + ") " + "中文")
-            else:
-                print("   " + str(i) + ") " + "英文")
+    def check_xml_file(self, xml_dir):
+        # check illegal
+        if not self.check_illegal_character(xml_dir):
+            return False
 
-        self.logger.log("-------------------------------")
-        for i in range(self.tries):
-            if i == 3:
-                sys.exit(0)
-            user_input = input("请输入1/2进行选择,默认选项为1)中文: ")
-            if not user_input.strip():
-                self.is_chinese = True
-                break
-            if not self.check_isdigit(user_input):
-                continue
-            if user_input.strip() == "1":
-                self.is_chinese = True
-                break
-            elif user_input.strip() == "2":
-                self.is_chinese = False
-                break
-            else:
-                self.logger.log("输入字符不合法!")
+        if os.path.exists(xml_dir):
+            if not os.path.isfile(xml_dir):
+                self.logger.log(resource_data.get('invalid_xml_dir'))
+                return False
+        return True
 
-    def with_xml_file(self):
-        for i in range(self.tries):
-            if i == 3:
-                sys.exit(0)
-            if self.is_chinese:
-                user_input = input("请输入xml的路径和文件名(默认:./cluster.xml):  ")
-            else:
-                user_input = input(
-                    "Please enter the path and file name of the XML file(default:./cluster.xml):  ")
-            if not user_input.strip():
-                cur_dir = os.path.dirname(os.path.realpath(__file__))
-                tmp_dir = os.path.join(cur_dir, 'cluster.xml')
-                if os.path.exists(tmp_dir):
-                    os.removedirs(tmp_dir)
-                self.target_xml = tmp_dir
-                break
-            # 校验路径是否合法，判断，路径如果存在，是否有权限；不存在，看能否创建文件
-            if not self.check_path(user_input):
-                continue
-            else:
-                self.target_xml = user_input.strip()
-                break
-
-    def with_database_install_dir(self):
-        for i in range(self.tries):
-            if i == 3:
-                sys.exit(0)
-            if self.is_chinese:
-                user_input = input("请输入数据库安装目录(默认:/opt/openGauss/install):  ")
-            else:
-                user_input = input(
-                    "Please enter the database installation directory(default:/opt/openGauss/install):  ")
-            # 校验路径是否合法，判断，路径如果存在，是否有权限；不存在，看能否创建文件
-            if not user_input.strip():
-                self.opengauss_install_dir = "/opt/openGauss/install"
-                break
-            if not self.check_path(user_input):
-                continue
-            else:
-                self.opengauss_install_dir = user_input.strip()
-                break
-
-    def with_database_port(self):
-        for i in range(self.tries):
-            if i == 3:
-                sys.exit(0)
-            if self.is_chinese:
-                user_input = input("请输入数据库端口(默认:15000):  ")
-            else:
-                user_input = input("Please enter the database port(default:15000):  ")
-            if not user_input.strip():
-                self.database_port = "15000"
-                break
-            if not self.check_isdigit(user_input):
-                continue
-            else:
-                self.database_port = user_input.strip()
-                break
-
-    def with_ddes(self):
-        if self.is_chinese:
-            self.logger.log("请选择是否部署资源池化?(如果配置了资源池化,默认配置cm)")
+    def check_input_xml_info(self):
+        user_input = input(resource_data.get('input_xml_path')).strip()
+        if not user_input:
+            tmp_dir = os.path.join(get_current_dir(), 'cluster.xml')
+            if os.path.exists(tmp_dir):
+                os.remove(tmp_dir)
+            self.target_xml = tmp_dir
+            return True
+        elif not self.check_xml_file(user_input):
+            return False
         else:
-            self.logger.log("Please choose whether to deploy resource pooling? (If configured, cm must be configured)")
-        selected_option = 1
-        for i in range(1, 3):
-            if i == selected_option:
-                if self.is_chinese:
-                    print(">> " + str(i) + ") " + "不部署")
-                else:
-                    print(">> " + str(i) + ") " + "Do not deploy")
-            else:
-                if self.is_chinese:
-                    print("   " + str(i) + ") " + "部署")
-                else:
-                    print("   " + str(i) + ") " + "Deploy")
+            self.target_xml = user_input
+            return True
+        
+    def check_database_dir(self, database_dir):
+        # check illegal character
+        if not self.check_illegal_character(database_dir):
+            return False
+        # check path exists
+        if os.path.exists(database_dir):
+            # check isabs path
+            if not os.path.isabs(database_dir):
+                self.logger.log(resource_data.get('invalid_abs_dir'))
+                return False
 
-        self.logger.log("-------------------------------")
-        for i in range(self.tries):
-            if i == 3:
-                sys.exit(0)
-            if self.is_chinese:
-                user_input = input("请输入 1/2 进行选择，默认选项是 1)不部署 ")
-            else:
-                user_input = input("Please enter 1/2 for selection, the default option is 1) Do not deploy ")
-            if not user_input.lower().strip():
-                self.is_ddes = False
-                break
-            # 校验输入的是否合法，必须是数字，如果不是，提示
-            if not self.check_isdigit(user_input):
-                continue
-            if user_input.lower() == '1':
-                self.is_ddes = False
-                break
-            elif user_input.lower() == '2':
-                self.is_ddes = True
-                self.is_cm = True
-                break
-            else:
-                if self.is_chinese:
-                    self.logger.log("输入的字符不合法!")
-                else:
-                    self.logger.log("The input character is invalid!")
-
-    def with_cm_server_port(self):
-        if not self.is_cm:
-            return
-        for i in range(self.tries):
-            if i == 3:
-                sys.exit(0)
-            if self.is_chinese:
-                user_input = input("请输入cmserver端口(默认:15400):  ")
-            else:
-                user_input = input("Please enter the cmserver port(default:15400):  ")
-            if not user_input.strip():
-                self.cm_server_port = "15400"
-                break
-            # 校验是否是数字，不是,提示
-            if not self.check_isdigit(user_input):
-                continue
-            else:
-                self.cm_server_port = user_input.strip()
-                break
-
-    def with_dss_vg_info(self):
-        if self.is_chinese:
-            self.logger.log("请输入资源池化相关路径信息，友情提示：请检查资源池化各节点间的磁盘映射信息。")
+            files = os.listdir(database_dir)
+            if len(files) != 0:
+                self.logger.log(resource_data.get('invalid_database_dir'))
+                return False
+        return True
+    
+    def check_input_database_install_dir(self):
+        user_input = input(resource_data.get('input_database_path')).strip()
+        if not user_input:
+            self.opengauss_install_dir = "/opt/openGauss/install"
+            return True
+        elif not self.check_database_dir(user_input):
+            return False
         else:
-            self.logger.log(
-                "Please enter the path information related to resource pooling. Friendly reminder: \
-                Please check the disk mapping information between nodes in resource pooling")
-        for i in range(self.tries):
-            if i == 3:
-                sys.exit(0)
-            user_input = input("请输入'dss_vg_info'的路径信息(默认是:data:/dev/sdb,p0:/dev/sdc,p1:/dev/sdd) ")
-            # 校验路径是否合法
-            if not user_input.strip():
-                self.ddes_info['dss_vg_info'] = "data:/dev/sdb,p0:/dev/sdc,p1:/dev/sdd"
-                break
-            else:
-                self.ddes_info['dss_vg_info'] = user_input.strip()
-                break
-
-    def with_voting_disk_path(self):
-        for i in range(self.tries):
-            if i == 3:
-                sys.exit(0)
-            if self.is_chinese:
-                user_input = input("请输入'votingDiskPath'的路径信息(默认是:/dev/sde) ")
-            else:
-                user_input = input("Please enter the path information for 'votingDiskPath'(default:/dev/sde) ")
-            # 校验路径是否合法
-            if not user_input.strip():
-                self.ddes_info['votingDiskPath'] = "/dev/sde"
-                break
-            else:
-                self.ddes_info['votingDiskPath'] = user_input.strip()
-                break
-
-    def with_share_disk_dir(self):
-        for i in range(self.tries):
-            if i == 3:
-                sys.exit(0)
-            if self.is_chinese:
-                user_input = input("请输入'shareDiskDir'的路径信息(默认是:/dev/sdf) ")
-            else:
-                user_input = input("Please enter the path information for 'shareDiskDir'(default:/dev/sdf) ")
-            # 校验路径是否合法
-            if not user_input.strip():
-                self.ddes_info['shareDiskDir'] = "/dev/sdf"
-                break
-            else:
-                self.ddes_info['shareDiskDir'] = user_input.strip()
-                break
-
-    def with_pri_standby(self):
-        if self.is_chinese:
-            self.logger.log("请选择是否主备部署?")
+            self.opengauss_install_dir = user_input
+            return True
+    
+    def check_input_database_port(self):
+        user_input = input(resource_data.get('input_database_port')).strip()
+        if not user_input:
+            self.database_port = DATABASE_PORT
+            return True
+        elif not self.check_port(user_input):
+            return False
         else:
-            self.logger.log("Please choose whether to deploy as primary standby or single?")
-        selected_option = 1
-        for i in range(1, 3):
-            if i == selected_option:
-                if self.is_chinese:
-                    print(">> " + str(i) + ") " + "主备部署")
-                else:
-                    print(">> " + str(i) + ") " + "Primary and standby deployment")
-            else:
-                if self.is_chinese:
-                    print("   " + str(i) + ") " + "单机部署")
-                else:
-                    print("   " + str(i) + ") " + "single deployment")
-        self.logger.log("-------------------------------")
-        for i in range(self.tries):
-            if i == 3:
-                sys.exit(0)
-            if self.is_chinese:
-                user_input = input("请输入 1/2 进行选择，默认选项是 1)主备部署 ")
-            else:
-                user_input = input(
-                    "Please enter 1/2 for selection, the default option is 1) primary and standby deployment ")
-            if not user_input.strip():
-                self.is_pri_standby = True
-                break
-            if not self.check_isdigit(user_input):
-                continue
-            if user_input.strip() == '1':
-                self.is_pri_standby = True
-                break
-            elif user_input.strip() == '2':
-                self.is_pri_standby = False
-                self.pri_standby_count = 1
-                break
-            else:
-                if self.is_chinese:
-                    self.logger.log("输入的字符不合法!")
-                else:
-                    self.logger.log("The input character is invalid!")
+            self.database_port = user_input
+            return True
 
-    def with_cm(self):
-        if self.is_chinese:
-            self.logger.log("请选择是否部署CM?")
+    def check_port(self, port, action=''):
+        if not str(port).isdigit():
+            self.logger.log(resource_data.get('invalid_num'))
+            return False
+        if int(port) > 65535 or int(port) < 0:
+            self.logger.log(resource_data.get('invalid_port'))
+            return False
+
+        if action == 'cm':
+            if port == self.database_port:
+                self.logger.log(resource_data.get('cm_port_repeat'))
+                return False
+        return True
+
+    def check_dss_home(self):
+        user_input = input(resource_data.get('intput_dss_home')).strip()
+        if not user_input:
+            self.ddes_info['dss_home'] = "/opt/openGauss/install/dss_home"
+            return True
+        elif not self.check_database_dir(user_input):
+            return False
         else:
-            self.logger.log("Please choose whether to deploy CM?")
-        selected_option = 1
-        for i in range(1, 3):
-            if i == selected_option:
-                if self.is_chinese:
-                    print(">> " + str(i) + ") " + "部署cm")
-                else:
-                    print(">> " + str(i) + ") " + "Deploy cm")
-            else:
-                if self.is_chinese:
-                    print("   " + str(i) + ") " + "不部署cm")
-                else:
-                    print("   " + str(i) + ") " + "Do not deploy cm")
+            self.ddes_info['dss_home'] = user_input
+            return True
 
-        self.logger.log("-------------------------------")
-        for i in range(self.tries):
-            if i == 3:
-                sys.exit(0)
-            if self.is_chinese:
-                user_input = input("请输入 1/2 进行选择，默认选项是 1)部署 ")
-            else:
-                user_input = input("Please enter 1/2 for selection, the default option is 1) Deployment ")
-            if not user_input.strip():
-                self.is_cm = True
-                break
-            if not self.check_isdigit(user_input):
-                continue
-            if user_input.strip() == "1":
-                self.is_cm = True
-                break
-            elif user_input.strip() == "2":
-                self.is_cm = False
-                break
-            else:
-                if self.is_chinese:
-                    self.logger.log("输入的字符不合法!")
-                else:
-                    self.logger.log("The input character is invalid!")
+    def check_dss_vg_info(self):
+        user_input = input(resource_data.get('input_dss_vg_info')).strip()
+        if not user_input:
+            self.ddes_info['dss_vg_info'] = "data:/dev/sdb,p0:/dev/sdc,p1:/dev/sdd"
+            return True
+        else:
+            self.ddes_info['dss_vg_info'] = user_input
+            return True
 
-    def with_pri_standby_count(self):
-        if not self.is_pri_standby:
-            return
-        for i in range(self.tries):
-            if i == 3:
-                sys.exit(0)
-            if self.is_chinese:
-                user_input = input("请输入节点数量,最多支持一主八备,即9个节点(默认是一主两备,3个节点)  ")
-            else:
-                user_input = input("Please enter the number of nodes, supporting a maximum of one primary and eight backup, which is 9 nodes \
-                (default is one primary and two backup, with 3 nodes)  ")
-            if not user_input.strip():
-                self.pri_standby_count = 3
-                break
-            # 校验输入的字符必须是数字
-            if not self.check_isdigit(user_input):
-                continue
-            if 2 <= int(user_input.strip()) <= 9:
-                self.pri_standby_count = int(user_input.strip())
-                break
-            else:
-                if self.is_chinese:
-                    self.logger.log("输入的字符不合法")
-                else:
-                    self.logger.log("The input character is invalid!")
+    def check_voting_disk_path(self):
+        user_input = input(resource_data.get('input_voting_disk_path')).strip()
+        if not user_input:
+            self.ddes_info['votingDiskPath'] = "/dev/sde"
+            return True
+        else:
+            self.ddes_info['votingDiskPath'] = user_input
+            return True
+
+    def check_share_disk_dir(self):
+        user_input = input(resource_data.get('input_share_disk_dir')).strip()
+        if not user_input:
+            self.ddes_info['shareDiskDir'] = "/dev/sdf"
+            return True
+        else:
+            self.ddes_info['shareDiskDir'] = user_input
+            return True
+
+    def check_input_cm_server_port(self):
+        user_input = input(resource_data.get('cm_port')).strip()
+        if not user_input:
+            self.cm_server_port = DATABASE_PORT
+            return True
+        elif not self.check_port(user_input, 'cm'):
+            return False
+        else:
+            self.cm_server_port = user_input
+            return True
 
     def check_ip_node_count(self):
         if len(self.pri_standby_ip.keys()) != self.pri_standby_count:
-            if self.is_chinese:
-                self.logger.log("输入节点数量和节点ip,hostname不匹配!")
-                return False
-            else:
-                self.logger.log("The number of input nodes and node IP do not match the host name!")
-                return False
-        return True
-
-    def check_ip_tmp(self, ip_address):
-        regex = "^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])$"
-        if not re.match(regex, ip_address):
-            if self.is_chinese:
-                self.logger.log("无效的ip!")
-            else:
-                self.logger.log("Invaild ipaddress!")
+            self.logger.log(resource_data.get('ip_hostname_not_match'))
             return False
         return True
 
@@ -443,44 +222,192 @@ class GenerateTemplate:
         self.pri_standby_ip = {}
         self.ip_lists = []
         self.hostname_lists = []
-        ip_hostname = user_input.strip().split(";")
+        ip_hostname = user_input.split(";")
         for tmp in ip_hostname:
-            ip = tmp.split(" ")[0]
-            hostname = tmp.split(" ")[1]
-            if not self.check_ip_tmp(ip):
-                return False
-            self.pri_standby_ip[ip] = hostname
-            self.ip_lists.append(ip)
-            self.hostname_lists.append(hostname)
+            if tmp:
+                if len(tmp.strip().split()) != 2:
+                    self.logger.log(resource_data.get('ip_hostname_not_match'))
+                    return False
+                ip = str(tmp.strip().split()[0])
+                hostname = str(tmp.strip().split()[1])
+                if not self.check_ip_hostname_valid(ip, hostname):
+                    return False
+                self.pri_standby_ip[ip] = hostname
+                self.ip_lists.append(ip)
+                self.hostname_lists.append(hostname)
+
+        if not self.check_ip_node_count():
+            return False
         return True
 
-    def with_pri_standby_ip(self):
+    def check_ip_hostname_valid(self, ip, hostname):
+        if not NetUtil.isIpValid(ip):
+            self.logger.log("%s %s" % (ip, resource_data.get('invalid_ip')))
+            return False
+        if not self.check_illegal_character(ip):
+            return False
+        if not self.check_illegal_character(hostname):
+            return False
+        return True
+
+    def get_localhost_name(self):
+        return socket.gethostname()
+
+    def check_input_pri_standby_count(self):
+        if not self.is_pri_standby:
+            self.pri_standby_count = 1
+            return True
+        user_input = input(resource_data.get('max_nodes')).strip()
+        if not user_input:
+            self.pri_standby_count = 3
+            return True
+        elif not user_input.isdigit():
+            self.logger.log(resource_data.get('invalid_num'))
+            return False
+        elif 2 <= int(user_input) <= 9:
+            self.pri_standby_count = int(user_input)
+            return True
+        else:
+            self.logger.log(resource_data.get('invalid_character'))
+            return False
+
+    def check_input_pri_standby_ip(self):
+        self.ip_lists = []
+        self.hostname_lists = []
+        if not self.is_pri_standby:
+            self.ip_lists.append("127.0.0.1")
+            self.hostname_lists.append(self.get_localhost_name())
+            return True
+        user_input = input(resource_data.get('input_ip_hostname')).strip()
+        if not user_input:
+            self.logger.log(resource_data.get('ip_hostname_empty'))
+            return False
+        if not self.get_ip_hostname(user_input):
+            return False
+        return True
+
+    def check_input_chinese(self):
+        user_input = input(resource_data.get('input_chinese')).strip()
+        if not user_input:
+            self.is_chinese = True
+            return True
+        if user_input == "1":
+            self.is_chinese = True
+            return True
+        elif user_input == "2":
+            self.is_chinese = False
+            return True
+        else:
+            self.logger.log(resource_data.get('invalid_character'))
+            return False
+
+    def with_chinese(self):
+        self.logger.log(resource_data.get('navigation'))
+        self.select_option(resource_data.get('chinese'), resource_data.get('english'))
+        self.check_common(self.check_input_chinese)
+
+    def user_input_select_common(self, action='', promp=''):
         for i in range(self.tries):
             if i == 3:
                 sys.exit(0)
-            if self.is_chinese:
-                user_input = input("请输入主机节点IP和节点名称(如:192.168.0.1 hostname1) ")
+            user_input = input(promp).strip()
+            if not user_input:
+                self.is_pri_standby = True
+                self.is_cm = True
+                self.is_ddes = False
+                break
+            if not user_input.isdigit():
+                self.logger.log(resource_data.get('invalid_num'))
+                continue
+            if user_input == "1":
+                if action == "ddes":
+                    self.is_ddes = False
+                elif action == "cm":
+                    self.is_cm = True
+                elif action == "pri_standby":
+                    self.is_pri_standby = True
+                break
+            elif user_input == "2":
+                if action == "ddes":
+                    self.is_ddes = True
+                    self.is_cm = True
+                elif action == "cm":
+                    self.is_cm = False
+                elif action == "pri_standby":
+                    self.is_pri_standby = False
+                break
             else:
-                user_input = input("Please enter the host node IP and node name(如:192.168.0.1 hostname1) ")
-            if not user_input.strip():
-                if self.is_chinese:
-                    self.logger.log("输入的ip和hostname不能为空")
-                else:
-                    self.logger.log("The input IP and host name cannot be empty")
+                self.logger.log(resource_data.get('invalid_character'))
+
+    def select_option(self, valid_str, invalid_str):
+        selected_option = 1
+        for i in range(1, 3):
+            if i == selected_option:
+                self.logger.log(">> " + str(i) + ") " + valid_str)
             else:
-                if not self.get_ip_hostname(user_input.strip()):
-                    continue
-                else:
-                    # 校验ip数量是否一样
-                    if self.check_ip_node_count():
-                        break
+                self.logger.log("   " + str(i) + ") " + invalid_str)
+                
+        self.logger.log("-------------------------------")
+
+    def check_common(self, check):
+        for i in range(self.tries):
+            if i == 3:
+                sys.exit(0)
+            if not check():
+                continue
+            else:
+                break
+
+    def with_xml_file(self):
+        self.check_common(self.check_input_xml_info)
+
+    def with_database_install_dir(self):
+        self.check_common(self.check_input_database_install_dir)
+
+    def with_database_port(self):
+        self.check_common(self.check_input_database_port)
+
+    def with_pri_standby(self):
+        self.logger.log(resource_data.get('choose_pri_standby'))
+        self.select_option(resource_data.get('deploy_pri_standby'), resource_data.get('deploy_single'))
+        self.user_input_select_common('pri_standby', resource_data.get('input_pri_standby'))
+
+    def with_pri_standby_count(self):
+        self.check_common(self.check_input_pri_standby_count)
+
+    def with_pri_standby_ip(self):
+        self.check_common(self.check_input_pri_standby_ip)
+
+    def with_ddes(self):
+        self.logger.log(resource_data.get('choose_ddes'))
+        self.select_option(resource_data.get('not_deploy'), resource_data.get('deploy'))
+        self.user_input_select_common('ddes', resource_data.get('input_ddes'))
+
+    def with_dss_home(self):
+        self.check_common(self.check_dss_home)
+
+    def with_dss_vg_info(self):
+        self.check_common(self.check_dss_vg_info)
+
+    def with_voting_disk_path(self):
+        self.check_common(self.check_voting_disk_path)
+
+    def with_share_disk_dir(self):
+        self.check_common(self.check_share_disk_dir)
+
+    def with_cm(self):
+        self.logger.log(resource_data.get('choose_cm'))
+        self.select_option(resource_data.get('deploy'), resource_data.get('not_deploy'))
+        self.user_input_select_common('cm', resource_data.get('input_cm'))
+
+    def with_cm_server_port(self):
+        self.check_common(self.check_input_cm_server_port)
             
     def load_xml(self):
         try:
             # xml default path is ./cluster_tmp.xml 
             tmp_xml_dir = "./cluster_tmp.xml"
-            current_dir = os.path.dirname(os.path.realpath(__file__))
-            xml_dir = os.path.normpath(os.path.join(current_dir, tmp_xml_dir))
+            xml_dir = os.path.normpath(os.path.join(get_current_dir(), tmp_xml_dir))
             self.tree = ET.parse(xml_dir)
             self.root = self.tree.getroot()
             self.xml_file_path = xml_dir
@@ -501,7 +428,6 @@ class GenerateTemplate:
         for child in self.root[0].findall('PARAM'):
             if child.attrib['name'] in DSS_PARA_INFO:
                 self.root[0].remove(child)
-                
 
     def delete_xml_cm(self):
         if self.is_cm:
@@ -617,42 +543,63 @@ class GenerateTemplate:
         ET.ElementTree(self.root).write(self.target_xml)
 
     def display_xml_info(self):
-        # 判断xml文件是否存在，存在 读取；不存在 报错
         if not os.path.exists(self.target_xml):
             raise Exception("new xml file not found!")
-        self.logger.log("The generated XML path and file name are:  " + self.target_xml)
-        self.logger.log("The content is:")
+        self.logger.log("%s   %s" % (resource_data.get('target_xml_dir'), self.target_xml))
+        self.logger.log(resource_data.get('target_xml_content'))
         # use cat 
         cmd = "cat %s" % self.target_xml
         (status, output) = subprocess.getstatusoutput(cmd)
         if status == 0:
-            self.logger.log(output) 
+            self.logger.log(output)
+
+    def get_locale(self):
+        cmd = "echo $LANG"
+        (status, ouptut) = subprocess.getstatusoutput(cmd)
+        if status == 0:
+            if "zh_CN.UTF-8" in ouptut:
+                self.is_chinese = True
+            else:
+                self.is_chinese = False
 
     def init_globals(self):
         if self.logfile == "":
-            self.logfile = "/tmp/xml_template.log"
+            if os.getuid() == 0:
+                self.logfile = "/tmp/root/xml_template.log"
+            else:
+                self.logfile = "/tmp/xml_template.log"
         self.logger = GaussLog(self.logfile, "xml_template")
 
     def confim_xml(self):
         for i in range(self.tries):
             if i == 3:
                 sys.exit(0)
-            if self.is_chinese:
-                user_input = input("请确认xml的内容是否正确,正确输入yes;如需修改xml内容请自行修改,然后输入yes确认  ")
-            else:
-                user_input = input("Please confirm if the content of the XML is correct and input yes correctly;\
-                     If you need to modify the XML content, please modify it yourself and then enter yes to confirm  ")
+            user_input = input(resource_data.get('confirm_xml')).strip()
             
-            if user_input.strip().lower() == 'y' or user_input.strip().lower() == 'yes':
+            if user_input.lower() in ('y', 'yes'):
                 return
             else:
-                self.logger.log("Only you can be entered y or yes")
-                continue
+                self.logger.log(resource_data.get('invalid_confirm_xml'))
 
+    def delete_log(self):
+        if os.getuid() == 0:
+            cmd = "rm -rf /tmp/root/xml_template*.log"
+        else:
+            cmd = "rm -rf /tmp/xml_template*.log"
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            self.logger.error("delete /tmp/xml_template*.log failed! Error: %s" % output) 
 
-    def run(self):
-        self.init_globals()
-        self.with_chinese()
+    def load_json_file(self):
+        global resource_data
+        if self.is_chinese:
+            resource = "resource_zh.json"
+        else:
+            resource = "resource_en.json"
+        with open(os.path.join(get_current_dir(), resource), 'r') as f:
+            resource_data = json.load(f)
+
+    def input_user_info(self):
         self.with_xml_file()
         self.with_database_install_dir()
         self.with_database_port()
@@ -660,22 +607,39 @@ class GenerateTemplate:
         if self.is_pri_standby:
             self.with_ddes()
             if self.is_ddes:
-                self.with_cm_server_port()
+                self.with_dss_home()
                 self.with_dss_vg_info()
                 self.with_voting_disk_path()
                 self.with_share_disk_dir()
-                self.with_pri_standby_count()
-                self.with_pri_standby_ip()
             else:
                 self.with_cm()
             if self.is_cm:
                 self.with_cm_server_port()
                 self.with_pri_standby_count()
                 self.with_pri_standby_ip()
+            else:
+                self.with_pri_standby_count()
+                self.with_pri_standby_ip()
         else:
             self.with_pri_standby_count()
             self.with_pri_standby_ip()
 
+    def run(self):
+        global DATABASE_PORT
+        global CM_SERVER_PORT
+
+        # init globals
+        self.init_globals()
+        # get loacle
+        self.get_locale()
+        # load json file
+        self.load_json_file()
+        # navigation for englist or chinese
+        self.with_chinese()
+        # load json file
+        self.load_json_file()
+        # input user info
+        self.input_user_info()
         # load xml
         self.load_xml()
         # delete xml excess node count
@@ -690,5 +654,7 @@ class GenerateTemplate:
         self.generate_new_xml_file()
         # display xml info
         self.display_xml_info()
+        # delete log
+        self.delete_log()
         # confim xml content
         self.confim_xml()

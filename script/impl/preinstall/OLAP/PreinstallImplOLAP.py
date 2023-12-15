@@ -450,6 +450,8 @@ class PreinstallImplOLAP(PreinstallImpl):
         input: NA
         output: NA
         """
+        if not self.context.current_user_root:
+            return
         self.context.logger.log("Set ARM Optimization.", "addStep")
         cmd = "python3 -c 'import platform;print(platform.machine())'"
         (status, output) = subprocess.getstatusoutput(cmd)

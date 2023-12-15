@@ -1,0 +1,51 @@
+{
+    "navigation": "Please choose whether to generate an XML file with one click navigation in English or Chinese?",
+    "input_chinese": "Please enter 1/2 for selection, the default option is 1) Chinese:",
+    "chinese": "chinese",
+    "english": "english",
+
+    "input_xml_path": "Please enter the path and file name of the XML file(default:./cluster.xml):",
+    "input_database_path": "Please enter the database installation directory(default:/opt/openGauss/install):",
+    "input_database_port": "Please enter the database port(default:15000):",
+  
+    "choose_ddes": "Please choose whether to deploy ddes?",
+    "input_ddes": "Please enter 1/2 for selection, the default option is 1) Do not deploy",
+    "intput_dss_home": "Please enter dss_home dir(default:/opt/openGauss/install/dss_home)",
+    "input_voting_disk_path": "Please enter the path information for 'votingDiskPath'(default:/dev/sde)",
+    "input_dss_vg_info": "Please enter the path information for 'dss_vg_info'(default:data:/dev/sdb,p0:/dev/sdc,p1:/dev/sdd)",
+    "input_share_disk_dir": "Please enter the path information for 'shareDiskDir'(default:/dev/sdf)",
+    "deploy": "Deploy",
+    "not_deploy": "Do not deploy",
+  
+    "choose_cm": "Please choose whether to deploy CM?",
+    "input_cm": "Please enter 1/2 for selection, the default option is 1) Deploy CM",
+    "cm_port": "Please enter the cmserver port(default:15400):",
+  
+    "choose_pri_standby": "Please choose whether to deploy as primary standby or single?",
+    "input_pri_standby": "Please enter 1/2 for selection, the default option is 1) primary and standby deployment",
+    "input_ip_hostname": "Please enter the host node IP and node name(for example:192.168.0.1 hostname1;192.168.0.2 hostname2)",
+    "max_nodes": "Please enter the number of nodes, supporting a maximum of one primary and eight backup, which is 9 node (default is one primary and two backup, with 3 nodes)",
+    
+    "deploy_pri_standby": "Primary and standby deployment",
+    "deploy_single": "single deployment",
+  
+    "not_permission": "The user does not have permission for",
+    "invalid_path": "There are illegal characters in the path!",
+    "invalid_num": "The input character must be a number!",
+    "invalid_ip": "Invalid ipaddress!",
+    "invalid_character": "The input character is invalid!",
+    "ip_hostname_empty": "The input IP and host name cannot be empty",
+    "ip_hostname_not_match": "The number of input nodes and node IP do not match the host name!",
+    "invalid_xml_dir": "The XML path must be a file",
+    "invalid_abs_dir": "The directory entered is not an absolute directory",
+    "invalid_database_dir": "The database directory must be non-existent or an empty directory",
+    "invalid_port": "Invalid port (0-65535)",
+    "cm_port_repeat": "The cm port and database port are duplicated",
+    "invalid_hostname_scope": "The current node host name is not within the scope of the deployed node",
+    "invalid_confirm_xml": "Only you can be entered y or yes",
+
+    "target_xml_dir": "The generated XML path is:",
+    "target_xml_content": "The xml file content is:",
+    "confirm_xml": "Please confirm if the content of the XML is correct and input yes correctly;If you need to modify the XML content, please modify it yourself and then enter yes to confirm"
+  }
+  

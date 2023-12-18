@@ -40,10 +40,29 @@ class Collector(object):
     @staticmethod
     def prepare_db_list(action):
         if action == Action.VERIFY:
-            search_db_sql = "select datname from pg_database where datname not in ('template0', 'template1')"
+            search_db_sql = "select datname from pg_database " \
+                            "where datname not in ('template0', 'template1') and " \
+                            "      datcompatibility != 'A'"
             qres = og.query(search_db_sql)
+            if qres.row_count() != 0:
+                ignore_list = ','.join([line[0] for line in qres])
+                logger.warning(f'暂不支持非A库的校验，{ignore_list} 将被跳过。')
+            
+            search_db_sql = "select datname from pg_database " \
+                            "where datname not in ('template0', 'template1') and " \
+                            "      datcompatibility = 'A'"
+            qres = og.query(search_db_sql)
+            if qres.row_count() == 0:
+                logger.fatal('没有需要校验的库。')
+                
             return [row[0] for row in qres]
         elif action == Action.EXPORT:
+            search_db_sql = "select datname from pg_database " \
+                            "where datname = 'postgres' and datcompatibility = 'A'"
+            qres = og.query(search_db_sql)
+            if qres.row_count() == 0:
+                logger.fatal('暂不支持非A兼容性的postgres库。')
+            
             return ['postgres']
         else:
             assert False

@@ -29,7 +29,7 @@
     "deploy_pri_standby": "主备部署",
     "deploy_single": "单机部署",
 
-    "not_permission": "当前用户没有权限",
+    "not_permission": "当前用户没有权限操作",
     "invalid_path": "路径中存在不合法的字符",
     "invalid_num": "字符必须是数字!",
     "invalid_ip": "无效的ip!",

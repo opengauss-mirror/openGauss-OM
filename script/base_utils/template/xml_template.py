@@ -94,6 +94,11 @@ class GenerateTemplate:
             if not os.path.isfile(xml_dir):
                 self.logger.log(resource_data.get('invalid_xml_dir'))
                 return False
+
+            # check permission
+            if not os.access(xml_dir, os.R_OK | os.W_OK):
+                self.logger.log("%s %s" % (resource_data.get('not_permission'), xml_dir))
+                return False
         return True
 
     def check_input_xml_info(self):
@@ -124,6 +129,11 @@ class GenerateTemplate:
             files = os.listdir(database_dir)
             if len(files) != 0:
                 self.logger.log(resource_data.get('invalid_database_dir'))
+                return False
+
+            # check permission
+            if not os.access(database_dir, os.R_OK | os.W_OK):
+                self.logger.log("%s %s" % (resource_data.get('not_permission'), database_dir))
                 return False
         return True
     
@@ -250,8 +260,13 @@ class GenerateTemplate:
             return False
         return True
 
-    def get_localhost_name(self):
+    @staticmethod
+    def get_localhost_name():
         return socket.gethostname()
+
+    @staticmethod
+    def get_localhost_ip():
+        return socket.gethostbyname(GenerateTemplate.get_localhost_name())
 
     def check_input_pri_standby_count(self):
         if not self.is_pri_standby:
@@ -275,8 +290,8 @@ class GenerateTemplate:
         self.ip_lists = []
         self.hostname_lists = []
         if not self.is_pri_standby:
-            self.ip_lists.append("127.0.0.1")
-            self.hostname_lists.append(self.get_localhost_name())
+            self.ip_lists.append(GenerateTemplate.get_localhost_ip())
+            self.hostname_lists.append(GenerateTemplate.get_localhost_name())
             return True
         user_input = input(resource_data.get('input_ip_hostname')).strip()
         if not user_input:
@@ -555,12 +570,17 @@ class GenerateTemplate:
 
     def get_locale(self):
         cmd = "echo $LANG"
-        (status, ouptut) = subprocess.getstatusoutput(cmd)
+        (status, output) = subprocess.getstatusoutput(cmd)
         if status == 0:
-            if "zh_CN.UTF-8" in ouptut:
-                self.is_chinese = True
+            if output:
+                if "CN" in output:
+                    self.is_chinese = True
+                else:
+                    self.is_chinese = False
             else:
-                self.is_chinese = False
+                self.logger.exitWithError("Executing %s failed. output is empty." % cmd)
+        else:
+            self.logger.exitWithError("Executing %s failed. Error: %s" % (cmd, output))
 
     def init_globals(self):
         if self.logfile == "":

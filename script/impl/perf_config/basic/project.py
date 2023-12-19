@@ -173,6 +173,42 @@ class ProjectEnv(object):
             Project.log(f'export env: {kv[0]}={kv[1]}')
 
 
+class ProjectRole(object):
+    """
+    Role control. Check who the current user is and who the omm user is.
+    Use gausslog's folder owner to automatically find omm users and optimize the use experience.
+    """
+    def __init__(self):
+        self.current_role = getpass.getuser()
+
+        stat = os.stat(Project.environ.gauss_log)
+        self.user_name = pwd.getpwuid(stat.st_uid).pw_name
+        self.user_uid = stat.st_uid
+        self.user_gid = stat.st_gid
+
+        if self.current_role != 'root' and self.current_role != self.user_name:
+            Project.fatal(f'Illegal access detected. Current role is {self.current_role}, '
+                          f'but owner of $GAUSSHOME is {self.user_name}.')
+        
+        check_dir_list = [
+            Project.environ.workspace1,
+            Project.environ.workspace2,
+            Project.environ.preset_dir1,
+            Project.environ.preset_dir2
+        ]
+        for diretory in check_dir_list:
+            if os.access(diretory, os.F_OK):
+                self.chown_to_user(Project.environ.workspace2)
+
+        Project.notice(f'Role init done(current:{self.current_role}, user:{self.user_name}).')
+
+    def chown_to_user(self, file):
+        if self.current_role != 'root':
+            assert self.current_role == self.user_name
+            return
+        os.chown(file, self.user_uid, self.user_gid)
+
+
 class ProjectLogLevel(Enum):
     LOG = 0
     MSG = 1
@@ -288,32 +324,6 @@ class ProjectReport(object):
                 f.write('\n\n'.join(self._suggestions))
         Project.role.chown_to_user(self._file)
         Project.notice('Report: ' + self._file)
-
-
-class ProjectRole(object):
-    """
-    Role control. Check who the current user is and who the omm user is.
-    Use gausslog's folder owner to automatically find omm users and optimize the use experience.
-    """
-    def __init__(self):
-        self.current_role = getpass.getuser()
-
-        stat = os.stat(Project.environ.gauss_log)
-        self.user_name = pwd.getpwuid(stat.st_uid).pw_name
-        self.user_uid = stat.st_uid
-        self.user_gid = stat.st_gid
-
-        if self.current_role != 'root' and self.current_role != self.user_name:
-            Project.fatal(f'Illegal access detected. Current role is {self.current_role}, '
-                          f'but owner of $GAUSSHOME is {self.user_name}.')
-
-        Project.notice(f'Role init done(current:{self.current_role}, user:{self.user_name}).')
-
-    def chown_to_user(self, file):
-        if self.current_role != 'root':
-            assert self.current_role == self.user_name
-            return
-        os.chown(file, self.user_uid, self.user_gid)
 
 
 class Project(object):

@@ -222,7 +222,7 @@ General options:
         if (ParaDict.__contains__("dorado-cluster-mode")):
             self.dorado_cluster_mode = ParaDict.get("dorado-cluster-mode")
         # parameter --enable-perf-config
-        if (ParaDict.__contains__("enable-perf-config")):
+        if (ParaDict.__contains__("enable_perf_config")):
             self.enable_perf_config = True
 
     def checkUser(self):

@@ -118,7 +118,7 @@ class CpuUtil(object):
         input: NA
         output: cpu architecture
         """
-        cmd = f"{CmdUtil.getLscpuCmd()} | {CmdUtil.getGrepCmd} Architecture"
+        cmd = f"{CmdUtil.getLscpuCmd()} | {CmdUtil.getGrepCmd()} Architecture"
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             return CpuArchitecture.UNKNOWN
@@ -133,7 +133,7 @@ class CpuUtil(object):
         input: NA
         output: cpu Model name
         """
-        cmd = f"{CmdUtil.getLscpuCmd()} | {CmdUtil.getGrepCmd} 'Model name'"
+        cmd = f"{CmdUtil.getLscpuCmd()} | {CmdUtil.getGrepCmd()} 'Model name'"
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             return ''
@@ -148,7 +148,7 @@ class CpuUtil(object):
         input: NA
         output: cpu vendor
         """
-        cmd = f"{CmdUtil.getLscpuCmd()} | {CmdUtil.getGrepCmd} 'Vendor ID'"
+        cmd = f"{CmdUtil.getLscpuCmd()} | {CmdUtil.getGrepCmd()} 'Vendor ID'"
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             return ''
@@ -204,7 +204,7 @@ class CpuUtil(object):
         input: NA
         output: [[cpu id of numa 0], [cpu id of numa 1], ...]
         """
-        cmd = f"{CmdUtil.getLscpuCmd()} | {CmdUtil.getGrepCmd} 'NUMA node' | {CmdUtil.getGrepCmd} 'CPU(s)'"
+        cmd = f"{CmdUtil.getLscpuCmd()} | {CmdUtil.getGrepCmd()} 'NUMA node' | {CmdUtil.getGrepCmd()} 'CPU(s)'"
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +

@@ -62,11 +62,7 @@ class KernelResourceGUC(GUCTuneGroup):
         self.temp_file_limit = self.bind('temp_file_limit')
 
     def calculate(self):
-        infos = Project.getGlobalPerfProbe()
-
-        # double maybe ok
-        max_files_per_process = infos.business.relfilenode_count() * 2
-        self.max_files_per_process.set(str(max_files_per_process))
+        pass
 
 
 class MemoryGUC(GUCTuneGroup):
@@ -205,16 +201,26 @@ class ThreadPoolGUC(GUCTuneGroup):
             self.enable_thread_pool.turn_off()
             return
 
+        self.enable_thread_pool.turn_on()
+
         for sug in numa_bind_info['suggestions']:
             Project.report.suggest(sug)
 
         numa_group_count = len(infos.cpu.numa())
-        thread_count = math.floor(len(numa_bind_info['threadpool']) * 7.25)
+        thread_count = self._calc_thread_count(infos, numa_bind_info)
         cpubind = 'cpubind:{}'.format(CpuUtil.cpuListToCpuRangeStr(numa_bind_info['threadpool'])) \
             if len(numa_bind_info['threadpool']) != infos.cpu.count() else 'allbind'
 
-        thread_pool_attr = '{0},{1},({2})'.format(numa_group_count, thread_count, cpubind)
+        thread_pool_attr = '{0},{1},({2})'.format(thread_count, numa_group_count, cpubind)
         self.thread_pool_attr.set(thread_pool_attr)
+        
+    def _calc_thread_count(self, infos, numa_bind_info):
+        max_count = len(numa_bind_info['threadpool']) * 7.25
+        min_count = len(numa_bind_info['threadpool'])
+        value = infos.business.parallel / (1.1 if infos.business.scenario == BsScenario.TP_PERFORMANCE else 2)
+        
+        res = math.floor(max(min(max_count, value), min_count))
+        return res
 
 
 class UpgradeGUC(GUCTuneGroup):

@@ -324,8 +324,8 @@ class BusinessProbe(Probe):
             self.isolated_xlog = None
             return
 
-        if os.path.isdir(isolated_xlog) or not os.access(isolated_xlog):
-            Project.warning('Could not access ' + isolated_xlog)
+        if  not os.access(isolated_xlog, os.F_OK) or not os.path.isdir(isolated_xlog):
+            Project.warning('Could not access ' + isolated_xlog + ' or it is not a dir.')
             self.isolated_xlog = None
             return
 

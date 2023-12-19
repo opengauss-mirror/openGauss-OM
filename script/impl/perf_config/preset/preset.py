@@ -134,7 +134,7 @@ class PsOptionRule(object):
         :return: NA
         """
         path = value if type(value) == str else str(value)
-        if check_exist and not os.path.access(path, os.F_OK):
+        if check_exist and not os.access(path, os.F_OK):
             raise ValueError(f'Could not access path Option path {path}.')
         return path
 

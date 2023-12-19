@@ -1592,7 +1592,7 @@ class PreinstallImpl:
             return
         self.context.logger.log("gs_preinstall has finished, start gs_perfconfig now.")
 
-        cmd = 'gs_perfconfig tune -t os,suggest --apply -y'
+        cmd = './gs_perfconfig tune -t os,suggest --apply -y'
         if self.context.mpprcFile:
             cmd += (' --env ' + self.context.mpprcFile)
         os.system(cmd)

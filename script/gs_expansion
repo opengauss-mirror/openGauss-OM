@@ -217,7 +217,7 @@ General options:
         """
         if not self.clusterInfo.clusterType == DefaultValue.CLUSTER_TYPE_SINGLE_INST:
             self.logger.log("The cluster type is not single-inst.")
-            raise Expansion("Cluster type is not single-inst.")
+            raise Exception("Cluster type is not single-inst.")
         node = self.clusterInfo.getDbNodeByName(node_name)
         if node.datanodes:
             return node.datanodes[0].port

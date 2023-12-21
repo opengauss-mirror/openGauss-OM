@@ -69,6 +69,13 @@ class TblKind(Enum):
     def isColumnTbl(kind):
         return kind in [TblKind.COLUMN_TBL, TblKind.PART_COLUMN_TBL]
 
+    @staticmethod
+    def haveColumnTbl(kinds):
+        for kind in kinds:
+            if TblKind.isColumnTbl(kind):
+                return True
+        return False
+
 
 class BusinessProbe(Probe):
     def __init__(self):

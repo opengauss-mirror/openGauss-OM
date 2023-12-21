@@ -22,29 +22,24 @@
 from impl.perf_config.basic.project import Project
 from impl.perf_config.basic.tuner import Tuner, TunerGroup
 from impl.perf_config.basic.guc import GucMap, GUCTuneGroup
-from impl.perf_config.probes.business import BsScenario
+from impl.perf_config.probes.business import BsScenario, TblKind
 
 
 class OptNodeCostGUC(GUCTuneGroup):
     def __init__(self):
         super(OptNodeCostGUC, self).__init__()
-        self.enable_broadcast = self.bind('enable_broadcast')
-        self.enable_material = self.bind('enable_material')
-        self.enable_sort = self.bind('enable_sort')
-
+        # scan
         self.enable_bitmapscan = self.bind('enable_bitmapscan')
         self.enable_indexscan = self.bind('enable_indexscan')
         self.enable_indexonlyscan = self.bind('enable_indexonlyscan')
         self.enable_seqscan = self.bind('enable_seqscan')
         self.enable_tidscan = self.bind('enable_tidscan')
         self.force_bitmapand = self.bind('force_bitmapand')
-        self.cost_weight_index = self.bind('cost_weight_index')
-        self.effective_cache_size = self.bind('effective_cache_size')
-
+        # agg
         self.enable_hashagg = self.bind('enable_hashagg')
         self.enable_sortgroup_agg = self.bind('enable_sortgroup_agg')
         self.enable_sonic_hashagg = self.bind('enable_sonic_hashagg')
-
+        # join
         self.enable_hashjoin = self.bind('enable_hashjoin')
         self.enable_mergejoin = self.bind('enable_mergejoin')
         self.enable_nestloop = self.bind('enable_nestloop')
@@ -53,26 +48,30 @@ class OptNodeCostGUC(GUCTuneGroup):
         self.enable_change_hjcost = self.bind('enable_change_hjcost')
         self.enable_sonic_hashjoin = self.bind('enable_sonic_hashjoin')
         self.enable_sonic_optspill = self.bind('enable_sonic_optspill')
-
+        # other nodes
+        self.enable_sort = self.bind('enable_sort')
+        self.enable_broadcast = self.bind('enable_broadcast')
+        self.enable_material = self.bind('enable_material')
+        # vector
         self.enable_vector_engine = self.bind('enable_vector_engine')
         self.enable_vector_targetlist = self.bind('enable_vector_targetlist')
         self.enable_force_vector_engine = self.bind('enable_force_vector_engine')
         self.try_vector_engine_strategy = self.bind('try_vector_engine_strategy')
-
+        # cost
         self.seq_page_cost = self.bind('seq_page_cost')
         self.random_page_cost = self.bind('random_page_cost')
         self.cpu_tuple_cost = self.bind('cpu_tuple_cost')
         self.cpu_index_tuple_cost = self.bind('cpu_index_tuple_cost')
         self.cpu_operator_cost = self.bind('cpu_operator_cost')
         self.allocate_mem_cost = self.bind('allocate_mem_cost')
-
-        self.var_eq_const_selectivity = self.bind('var_eq_const_selectivity')
+        self.cost_weight_index = self.bind('cost_weight_index')
+        self.effective_cache_size = self.bind('effective_cache_size')
         self.cost_param = self.bind('cost_param')
-
+        self.var_eq_const_selectivity = self.bind('var_eq_const_selectivity')
+        # others
         self.enable_functional_dependency = self.bind('enable_functional_dependency')
         self.default_statistics_target = self.bind('default_statistics_target')
         self.constraint_exclusion = self.bind('constraint_exclusion')
-
         self.cursor_tuple_fraction = self.bind('cursor_tuple_fraction')
         self.default_limit_rows = self.bind('default_limit_rows')
         self.enable_extrapolation_stats = self.bind('enable_extrapolation_stats')
@@ -84,8 +83,8 @@ class OptNodeCostGUC(GUCTuneGroup):
 class OptRewriteGUC(GUCTuneGroup):
     def __init__(self):
         super(OptRewriteGUC, self).__init__()
-        self.qrw_inlist2join_optmode = self.bind('qrw_inlist2join_optmode')
         self.rewrite_rule = self.bind('rewrite_rule')
+        self.qrw_inlist2join_optmode = self.bind('qrw_inlist2join_optmode')
         self.from_collapse_limit = self.bind('from_collapse_limit')
         self.join_collapse_limit = self.bind('join_collapse_limit')
 
@@ -131,7 +130,9 @@ class OptCodeGenGUC(GUCTuneGroup):
         self.codegen_cost_threshold = self.bind('codegen_cost_threshold')
 
     def calculate(self):
-        self.enable_codegen.turn_off()
+        infos = Project.getGlobalPerfProbe()
+        if infos.business.scenario == BsScenario.TP_PERFORMANCE:
+            self.enable_codegen.turn_off()
 
 
 class OptBypassGUC(GUCTuneGroup):
@@ -142,8 +143,10 @@ class OptBypassGUC(GUCTuneGroup):
         self.opfusion_debug_mode = self.bind('opfusion_debug_mode')
 
     def calculate(self):
+        infos = Project.getGlobalPerfProbe()
         self.enable_opfusion.turn_on()
-        self.enable_partition_opfusion.turn_on()
+        if infos.business.scenario == BsScenario.TP_PERFORMANCE and TblKind.havePartTbl(infos.business.rel_kind):
+            self.enable_partition_opfusion.turn_on()
 
 
 class OptExplainGUC(GUCTuneGroup):
@@ -210,22 +213,17 @@ class OptOtherGUC(GUCTuneGroup):
 
         self.analysis_options = self.bind('analysis_options')
         self.plan_mode_seed = self.bind('plan_mode_seed')
-
         self.enable_global_stats = self.bind('enable_global_stats')
-
         self.sql_beta_feature = self.bind('sql_beta_feature')
-
         self.enable_bloom_filter = self.bind('enable_bloom_filter')
 
-        self.autoanalyze = self.bind('autoanalyze')
-        self.enable_analyze_check = self.bind('enable_analyze_check')
-
-        self.skew_option = self.bind('skew_option')
+        self.enable_seqscan_fusion = self.bind('enable_seqscan_fusion')
         self.enable_expr_fusion = self.bind('enable_expr_fusion')
         self.enable_indexscan_optimization = self.bind('enable_indexscan_optimization')
         self.enable_default_index_deduplication = self.bind('enable_default_index_deduplication')
 
         # some option
+        self.skew_option = self.bind('skew_option')
         self.hashagg_table_size = self.bind('hashagg_table_size')
         self.check_implicit_conversions = self.bind('check_implicit_conversions')
         self.max_recursive_times = self.bind('max_recursive_times')
@@ -235,4 +233,10 @@ class OptOtherGUC(GUCTuneGroup):
         self.enforce_a_behavior = self.bind('enforce_a_behavior')
 
     def calculate(self):
-        self.sql_beta_feature.set('partition_opfusion')
+        infos = Project.getGlobalPerfProbe()
+        if infos.business.scenario == BsScenario.TP_PERFORMANCE:
+            self.enable_expr_fusion.turn_on()
+            if TblKind.havePartTbl(infos.business.rel_kind):
+                self.sql_beta_feature.set('partition_opfusion')
+
+        self.enable_indexscan_optimization.turn_on()

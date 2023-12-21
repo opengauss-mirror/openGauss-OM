@@ -32,7 +32,7 @@ from impl.perf_config.tuners.gucs.common import CommonGUC, FileLocationGUC, Kern
      AlarmGUC, RegionFormatGUC, ThreadPoolGUC, UpgradeGUC, MotGUC, GlobalTempTableGUC, UserDefineFuncGUC, JobScheduleGUC
 from impl.perf_config.tuners.gucs.connection import ConnectionGUC, PoolerGUC
 from impl.perf_config.tuners.gucs.execute import StmtBehaviorGUC, VersionCompatibilityGUC, EnvCompatibilityGUC
-from impl.perf_config.tuners.gucs.ha_cluster import SenderServerGUC, PrimaryServerGUC, StandbyServerGUC
+from impl.perf_config.tuners.gucs.ha_cluster import SenderServerGUC, PrimaryServerGUC, StandbyServerGUC, ReplConnInfoGUC
 from impl.perf_config.tuners.gucs.ops import StatisticCollectGUC, WorkloadManagerGUC, TrackStmtGUC, WdrAspGUC, LogGUC
 from impl.perf_config.tuners.gucs.optimizer import OptNodeCostGUC, OptRewriteGUC, OptPartTableGUC, OptGeqoGUC, \
     OptCodeGenGUC, OptBypassGUC, OptExplainGUC, OptSmpGUC, OptNgrmGUC, OptPbeGUC, OptGlobalPlanCacheGUC, OptOtherGUC
@@ -108,6 +108,7 @@ class GucTuner(GucRootTuner):
         self.shared_storage = self.add(SharedStorageGUC())
 
         # ha
+        self.repl_conn_info = self.add(ReplConnInfoGUC())
         self.sender_server = self.add(SenderServerGUC())
         self.primary_server = self.add(PrimaryServerGUC())
         self.standby_server = self.add(StandbyServerGUC())

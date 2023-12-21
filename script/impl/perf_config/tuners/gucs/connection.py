@@ -37,7 +37,6 @@ class ConnectionGUC(GUCTuneGroup):
         self.unix_socket_directory = self.bind('unix_socket_directory')
         self.unix_socket_group = self.bind('unix_socket_group')
         self.unix_socket_permissions = self.bind('unix_socket_permissions')
-        self.application_name = self.bind('application_name')
         self.connection_info = self.bind('connection_info')
         self.enable_dolphin_proto = self.bind('enable_dolphin_proto')
         self.dolphin_server_port = self.bind('dolphin_server_port')
@@ -51,7 +50,7 @@ class ConnectionGUC(GUCTuneGroup):
         infos = Project.getGlobalPerfProbe()
         self.light_comm.set('on')
 
-        max_connections = int(infos.business.parallel) * 4
+        max_connections = max(int(infos.business.parallel) * 5, 100)
         self.max_connections.set(str(max_connections))
 
 

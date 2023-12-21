@@ -27,13 +27,14 @@ from base_utils.os.cpu_util import CpuArchitecture, CpuUtil
 from impl.perf_config.basic.project import Project
 from impl.perf_config.basic.tuner import Tuner, TunerGroup
 from impl.perf_config.basic.guc import GucMap, GUCTuneGroup
-from impl.perf_config.probes.business import BsScenario
+from impl.perf_config.probes.business import BsScenario, TblKind
 from impl.perf_config.tuners.os import CPUTuner
 
 class CommonGUC(GUCTuneGroup):
     def __init__(self):
         super(CommonGUC, self).__init__()
         self.pgxc_node_name = self.bind('pgxc_node_name')
+        self.application_name = self.bind('application_name')
 
     def calculate(self):
         pass
@@ -68,48 +69,57 @@ class KernelResourceGUC(GUCTuneGroup):
 class MemoryGUC(GUCTuneGroup):
     def __init__(self):
         super(MemoryGUC, self).__init__()
+        # memory pool
         self.memorypool_enable = self.bind('memorypool_enable')
         self.memorypool_size = self.bind('memorypool_size')
+        # memory seciruty
         self.enable_memory_limit = self.bind('enable_memory_limit')
-        self.max_process_memory = self.bind('max_process_memory')
         self.enable_memory_context_control = self.bind('enable_memory_context_control')
         self.uncontrolled_memory_context = self.bind('uncontrolled_memory_context')
+        # size, buffer and work mem
+        self.max_process_memory = self.bind('max_process_memory')
         self.shared_buffers = self.bind('shared_buffers')
         self.cstore_buffers = self.bind('cstore_buffers')
         self.segment_buffers = self.bind('segment_buffers')
         self.temp_buffers = self.bind('temp_buffers')
-        self.bulk_write_ring_size = self.bind('bulk_write_ring_size')
-        self.standby_shared_buffers_fraction = self.bind('standby_shared_buffers_fraction')
-        self.max_prepared_transactions = self.bind('max_prepared_transactions')
         self.work_mem = self.bind('work_mem')
         self.query_mem = self.bind('query_mem')
         self.query_max_mem = self.bind('query_max_mem')
-        self.maintenance_work_mem = self.bind('maintenance_work_mem')
         self.psort_work_mem = self.bind('psort_work_mem')
+        self.maintenance_work_mem = self.bind('maintenance_work_mem')
+        # huge pages
+        self.enable_huge_pages = self.bind('enable_huge_pages')
+        self.huge_page_size = self.bind('huge_page_size')
+        # others
+        self.bulk_write_ring_size = self.bind('bulk_write_ring_size')
         self.max_loaded_cudesc = self.bind('max_loaded_cudesc')
         self.max_stack_depth = self.bind('max_stack_depth')
         self.bulk_read_ring_size = self.bind('bulk_read_ring_size')
         self.enable_early_free = self.bind('enable_early_free')
         self.resilience_memory_reject_percent = self.bind('resilience_memory_reject_percent')
-
-        self.enable_huge_pages = self.bind('enable_huge_pages')
-        self.huge_page_size = self.bind('huge_page_size')
-
         self.pca_shared_buffers = self.bind('pca_shared_buffers')
 
     def calculate(self):
         infos = Project.getGlobalPerfProbe()
+        self._calc_memorypool(infos)
+        self._calc_memory_security(infos)
+        self._calc_memory_size(infos)
+        self._calc_memory_others(infos)
+
+    def _calc_memorypool(self, infos):
         self.memorypool_enable.turn_off()
 
+    def _calc_memory_security(self, infos):
         if infos.business.scenario == BsScenario.TP_PERFORMANCE:
             self.enable_memory_limit.turn_off()
             self.enable_memory_context_control.turn_off()
 
-        max_process_memory_rate = 0.666
+    def _calc_memory_size(self, infos):
+        max_process_memory_rate = 0.55
         shared_buffers_rate = 0.4
         if infos.business.scenario == BsScenario.TP_PERFORMANCE:
-            max_process_memory_rate = 0.7
-            shared_buffers_rate = 0.5
+            max_process_memory_rate = 0.6
+            shared_buffers_rate = 0.45
         elif infos.business.scenario == BsScenario.AP:
             max_process_memory_rate = 0.65
             shared_buffers_rate = 0.5
@@ -124,10 +134,16 @@ class MemoryGUC(GUCTuneGroup):
             Project.fatat('Your machine memory is too small to support configuration.')
         self.shared_buffers.set('{}MB'.format(shared_buffers))
 
+        cstore_buffers = 16
+        if TblKind.haveColumnTbl(infos.business.rel_kind):
+            cstore_buffers = 512
+        self.cstore_buffers.set('{}MB'.format(cstore_buffers))
+
         if infos.business.scenario == BsScenario.TP_PERFORMANCE:
             self.work_mem.set('1MB')
             self.maintenance_work_mem.set('2GB')
 
+    def _calc_memory_others(self, infos):
         if infos.business.scenario == BsScenario.AP:
             self.enable_early_free.turn_on()
 
@@ -175,6 +191,8 @@ class RegionFormatGUC(GUCTuneGroup):
         self.lc_monetary = self.bind('lc_monetary')
         self.lc_numeric = self.bind('lc_numeric')
         self.lc_time = self.bind('lc_time')
+        self.lc_collate = self.bind('lc_collate')
+        self.lc_ctype = self.bind('lc_ctype')
         self.default_text_search_config = self.bind('default_text_search_config')
 
     def calculate(self):
@@ -191,17 +209,20 @@ class ThreadPoolGUC(GUCTuneGroup):
         self.thread_pool_attr = self.bind('thread_pool_attr')
         self.thread_pool_stream_attr = self.bind('thread_pool_stream_attr')
         self.resilience_threadpool_reject_cond = self.bind('resilience_threadpool_reject_cond')
+        self.numa_distribute_mode = self.bind('numa_distribute_mode')
 
     def calculate(self):
         infos = Project.getGlobalPerfProbe()
         numa_bind_info = infos.cpu.notebook.read('numa_bind_info')
         if numa_bind_info is None:
             numa_bind_info = CPUTuner.calculate_numa_bind()
+            infos.cpu.notebook.write('numa_bind_info', numa_bind_info)
         if not numa_bind_info['use']:
             self.enable_thread_pool.turn_off()
             return
 
         self.enable_thread_pool.turn_on()
+        self.numa_distribute_mode.set('all')
 
         for sug in numa_bind_info['suggestions']:
             Project.report.suggest(sug)
@@ -217,7 +238,7 @@ class ThreadPoolGUC(GUCTuneGroup):
     def _calc_thread_count(self, infos, numa_bind_info):
         max_count = len(numa_bind_info['threadpool']) * 7.25
         min_count = len(numa_bind_info['threadpool'])
-        value = infos.business.parallel / (1.1 if infos.business.scenario == BsScenario.TP_PERFORMANCE else 2)
+        value = infos.business.parallel / (1.2 if infos.business.scenario == BsScenario.TP_PERFORMANCE else 2)
         
         res = math.floor(max(min(max_count, value), min_count))
         return res

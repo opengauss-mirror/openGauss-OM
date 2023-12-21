@@ -39,8 +39,11 @@ class StatisticCollectGUC(GUCTuneGroup):
         self.track_sql_count = self.bind('track_sql_count')
 
     def calculate(self):
-        self.track_activities.turn_off()
-        self.track_sql_count.turn_off()
+        infos = Project.getGlobalPerfProbe()
+        if infos.business.scenario == BsScenario.TP_PERFORMANCE:
+            self.track_activities.turn_off()
+            self.track_sql_count.turn_off()
+            self.enable_save_datachanged_timestamp.turn_off()
 
 
 class WorkloadManagerGUC(GUCTuneGroup):

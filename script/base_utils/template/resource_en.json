@@ -44,6 +44,8 @@
     "invalid_hostname_scope": "The current node host name is not within the scope of the deployed node",
     "invalid_confirm_xml": "Only you can be entered y or yes",
 
+    "mkdir_dir_failed": "mkdir dir failed",
+    "invalid_xml_path": "xml file can not be",
     "target_xml_dir": "The generated XML path is:",
     "target_xml_content": "The xml file content is:",
     "confirm_xml": "Please confirm if the content of the XML is correct and input yes correctly;If you need to modify the XML content, please modify it yourself and then enter yes to confirm"

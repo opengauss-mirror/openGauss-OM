@@ -157,7 +157,6 @@ class DevelopOptionGUC(GUCTuneGroup):
         self.resource_track_log = self.bind('resource_track_log')
         self.show_acce_estimate_detail = self.bind('show_acce_estimate_detail')
         self.support_batch_bind = self.bind('support_batch_bind')
-        self.numa_distribute_mode = self.bind('numa_distribute_mode')
         self.log_pagewriter = self.bind('log_pagewriter')
         self.advance_xlog_file_num = self.bind('advance_xlog_file_num')
         self.enable_beta_opfusion = self.bind('enable_beta_opfusion')
@@ -200,18 +199,13 @@ class OtherDefaultGUC(GUCTuneGroup):
 class OtherOptionsGUC(GUCTuneGroup):
     def __init__(self):
         super(OtherOptionsGUC, self).__init__()
-        self.enable_default_ustore_table = self.bind('enable_default_ustore_table')
-        self.enable_ustore = self.bind('enable_ustore')
         self.reserve_space_for_nullable_atts = self.bind('reserve_space_for_nullable_atts')
-        self.ustore_attr = self.bind('ustore_attr')
         self.server_version = self.bind('server_version')
         self.server_version_num = self.bind('server_version_num')
         self.block_size = self.bind('block_size')
         self.segment_size = self.bind('segment_size')
         self.max_index_keys = self.bind('max_index_keys')
         self.integer_datetimes = self.bind('integer_datetimes')
-        self.lc_collate = self.bind('lc_collate')
-        self.lc_ctype = self.bind('lc_ctype')
         self.max_identifier_length = self.bind('max_identifier_length')
         self.server_encoding = self.bind('server_encoding')
         self.enable_upgrade_merge_lock_mode = self.bind('enable_upgrade_merge_lock_mode')
@@ -221,7 +215,6 @@ class OtherOptionsGUC(GUCTuneGroup):
         self.basebackup_timeout = self.bind('basebackup_timeout')
         self.datanode_heartbeat_interval = self.bind('datanode_heartbeat_interval')
         self.max_concurrent_autonomous_transactions = self.bind('max_concurrent_autonomous_transactions')
-        self.enable_seqscan_fusion  = self.bind('enable_seqscan_fusion ')
         self.sql_ignore_strategy = self.bind('sql_ignore_strategy')
 
     def calculate(self):

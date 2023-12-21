@@ -19,23 +19,14 @@
 # Description  : gs_perfconfg is a utility to optimize system and database configure about openGauss
 #############################################################################
 
+from impl.perf_config.basic.project import Project
 from impl.perf_config.basic.guc import GucMap, GUCTuneGroup
+from impl.perf_config.probes.business import BsScenario
 
 
-class SenderServerGUC(GUCTuneGroup):
+class ReplConnInfoGUC(GUCTuneGroup):
     def __init__(self):
-        super(SenderServerGUC, self).__init__()
-        self.max_wal_senders = self.bind('max_wal_senders')
-        self.wal_keep_segments = self.bind('wal_keep_segments')
-        self.wal_sender_timeout = self.bind('wal_sender_timeout')
-        self.logical_sender_timeout = self.bind('logical_sender_timeout')
-        self.max_replication_slots = self.bind('max_replication_slots')
-        self.enable_slot_log = self.bind('enable_slot_log')
-        self.max_changes_in_memory = self.bind('max_changes_in_memory')
-        self.max_cached_tuplebufs = self.bind('max_cached_tuplebufs')
-        self.enable_wal_shipping_compression = self.bind('enable_wal_shipping_compression')
-        self.repl_auth_mode = self.bind('repl_auth_mode')
-        self.repl_uuid = self.bind('repl_uuid')
+        super(ReplConnInfoGUC, self).__init__()
         self.replconninfo1 = self.bind('replconninfo1')
         self.replconninfo2 = self.bind('replconninfo2')
         self.replconninfo3 = self.bind('replconninfo3')
@@ -52,12 +43,33 @@ class SenderServerGUC(GUCTuneGroup):
         self.cross_cluster_replconninfo6 = self.bind('cross_cluster_replconninfo6')
         self.cross_cluster_replconninfo7 = self.bind('cross_cluster_replconninfo7')
         self.cross_cluster_replconninfo8 = self.bind('cross_cluster_replconninfo8')
+
+    def calculate(self):
+        pass
+
+
+class SenderServerGUC(GUCTuneGroup):
+    def __init__(self):
+        super(SenderServerGUC, self).__init__()
+        self.max_wal_senders = self.bind('max_wal_senders')
+        self.wal_keep_segments = self.bind('wal_keep_segments')
+        self.wal_sender_timeout = self.bind('wal_sender_timeout')
+        self.logical_sender_timeout = self.bind('logical_sender_timeout')
+        self.max_replication_slots = self.bind('max_replication_slots')
+        self.enable_slot_log = self.bind('enable_slot_log')
+        self.max_changes_in_memory = self.bind('max_changes_in_memory')
+        self.max_cached_tuplebufs = self.bind('max_cached_tuplebufs')
+        self.enable_wal_shipping_compression = self.bind('enable_wal_shipping_compression')
+        self.repl_auth_mode = self.bind('repl_auth_mode')
+        self.repl_uuid = self.bind('repl_uuid')
         self.available_zone = self.bind('available_zone')
         self.max_keep_log_seg = self.bind('max_keep_log_seg')
         self.cluster_run_mode = self.bind('cluster_run_mode')
 
     def calculate(self):
-        pass
+        infos = Project.getGlobalPerfProbe()
+        if infos.business.scenario == BsScenario.TP_PERFORMANCE:
+            self.wal_keep_segments.set(1025)
 
 
 class PrimaryServerGUC(GUCTuneGroup):
@@ -68,7 +80,6 @@ class PrimaryServerGUC(GUCTuneGroup):
         self.keep_sync_window = self.bind('keep_sync_window')
         self.enable_stream_replication = self.bind('enable_stream_replication')
         self.enable_mix_replication = self.bind('enable_mix_replication')
-        self.vacuum_defer_cleanup_age = self.bind('vacuum_defer_cleanup_age')
         self.data_replicate_buffer_size = self.bind('data_replicate_buffer_size')
         self.walsender_max_send_size = self.bind('walsender_max_send_size')
         self.enable_data_replicate = self.bind('enable_data_replicate')
@@ -85,7 +96,9 @@ class PrimaryServerGUC(GUCTuneGroup):
         self.ignore_feedback_xmin_window = self.bind('ignore_feedback_xmin_window')
 
     def calculate(self):
-        pass
+        infos = Project.getGlobalPerfProbe()
+        if infos.business.scenario == BsScenario.TP_PERFORMANCE:
+            self.walsender_max_send_size.set('32MB')
 
 
 class StandbyServerGUC(GUCTuneGroup):
@@ -103,7 +116,13 @@ class StandbyServerGUC(GUCTuneGroup):
         self.primary_slotname = self.bind('primary_slotname')
         self.max_logical_replication_workers = self.bind('max_logical_replication_workers')
         self.max_sync_workers_per_subscription = self.bind('max_sync_workers_per_subscription')
+        self.standby_shared_buffers_fraction = self.bind('standby_shared_buffers_fraction')
 
     def calculate(self):
-        pass
+        infos = Project.getGlobalPerfProbe()
+        if infos.business.scenario == BsScenario.TP_PERFORMANCE:
+            self.hot_standby.turn_off()
+            self.wal_receiver_buffer_size.set('256MB')
+            self.standby_shared_buffers_fraction.set(0.9)
+
 

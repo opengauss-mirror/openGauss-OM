@@ -28,6 +28,7 @@ from impl.perf_config.probes.business import BsScenario
 class VacuumGUC(GUCTuneGroup):
     def __init__(self):
         super(VacuumGUC, self).__init__()
+        # vacuum
         self.vacuum_cost_delay = self.bind('vacuum_cost_delay')
         self.vacuum_cost_page_hit = self.bind('vacuum_cost_page_hit')
         self.vacuum_cost_page_miss = self.bind('vacuum_cost_page_miss')
@@ -35,7 +36,8 @@ class VacuumGUC(GUCTuneGroup):
         self.vacuum_cost_limit = self.bind('vacuum_cost_limit')
         self.vacuum_freeze_min_age = self.bind('vacuum_freeze_min_age')
         self.vacuum_freeze_table_age = self.bind('vacuum_freeze_table_age')
-
+        self.vacuum_defer_cleanup_age = self.bind('vacuum_defer_cleanup_age')
+        # auto vacuum
         self.autovacuum = self.bind('autovacuum')
         self.autovacuum_mode = self.bind('autovacuum_mode')
         self.autovacuum_io_limits = self.bind('autovacuum_io_limits')
@@ -48,13 +50,20 @@ class VacuumGUC(GUCTuneGroup):
         self.autovacuum_freeze_max_age = self.bind('autovacuum_freeze_max_age')
         self.autovacuum_vacuum_cost_delay = self.bind('autovacuum_vacuum_cost_delay')
         self.autovacuum_vacuum_cost_limit = self.bind('autovacuum_vacuum_cost_limit')
+        # auto analyze
+        self.autoanalyze = self.bind('autoanalyze')
+        self.enable_analyze_check = self.bind('enable_analyze_check')
         self.autoanalyze_timeout = self.bind('autoanalyze_timeout')
+        # others
         self.defer_csn_cleanup_time = self.bind('defer_csn_cleanup_time')
         self.log_autovacuum_min_duration = self.bind('log_autovacuum_min_duration')
 
     def calculate(self):
         infos = Project.getGlobalPerfProbe()
-        if infos.business.scenario in [BsScenario.TP_PERFORMANCE, BsScenario.TP_PRODUCE]:
+        if infos.business.scenario == BsScenario.TP_PERFORMANCE:
+            self.vacuum_cost_limit.set(10000)
+
+        if BsScenario.isOLTPScenario(infos.business.scenario):
             self.autovacuum.turn_on()
             self.autovacuum_mode.set('vacuum')
 
@@ -77,19 +86,25 @@ class CheckpointGUC(GUCTuneGroup):
         self.checkpoint_completion_target = self.bind('checkpoint_completion_target')
         self.checkpoint_warning = self.bind('checkpoint_warning')
         self.checkpoint_wait_timeout = self.bind('checkpoint_wait_timeout')
+
         self.enable_incremental_checkpoint = self.bind('enable_incremental_checkpoint')
         self.incremental_checkpoint_timeout = self.bind('incremental_checkpoint_timeout')
+
         self.enable_xlog_prune = self.bind('enable_xlog_prune')
         self.max_redo_log_size = self.bind('max_redo_log_size')
         self.max_size_for_xlog_prune = self.bind('max_size_for_xlog_prune')
 
     def calculate(self):
         infos = Project.getGlobalPerfProbe()
-        if infos.business.scenario in [BsScenario.TP_PERFORMANCE, BsScenario.TP_PRODUCE]:
-
+        if BsScenario.isOLTPScenario(infos.business.scenario):
             self.enable_incremental_checkpoint.turn_on()
+
+        if infos.business.scenario == BsScenario.TP_PERFORMANCE:
+            self.checkpoint_segments.set(3000)
+            self.checkpoint_timeout.set('15min')
             self.incremental_checkpoint_timeout.set('5min')
             self.enable_xlog_prune.turn_off()
+            self.max_redo_log_size.set('400GB')
 
 
 class BackendWriteThreadGUC(GUCTuneGroup):
@@ -108,10 +123,14 @@ class BackendWriteThreadGUC(GUCTuneGroup):
 
     def calculate(self):
         infos = Project.getGlobalPerfProbe()
-        if infos.business.scenario in [BsScenario.TP_PERFORMANCE, BsScenario.TP_PRODUCE]:
+        if infos.business.scenario == BsScenario.TP_PERFORMANCE:
+            self.candidate_buf_percent_target.set('0.7')
             self.bgwriter_delay.set('5s')
             self.bgwriter_flush_after.set('32')
-            self.candidate_buf_percent_target.set('0.7')
+
+            self.pagewriter_thread_num.set(2)
+            self.pagewriter_sleep.set(100)
+            self.max_io_capacity.set('2GB')
 
 
 class DoubleWriteGUC(GUCTuneGroup):
@@ -151,8 +170,8 @@ class WalGUC(GUCTuneGroup):
         self.wal_level = self.bind('wal_level')
         self.fsync = self.bind('fsync')
         self.synchronous_commit = self.bind('synchronous_commit')
-        self.wal_sync_method = self.bind('wal_sync_method')
         self.full_page_writes = self.bind('full_page_writes')
+        self.wal_sync_method = self.bind('wal_sync_method')
         self.wal_log_hints = self.bind('wal_log_hints')
         self.wal_buffers = self.bind('wal_buffers')
         self.wal_writer_delay = self.bind('wal_writer_delay')
@@ -169,10 +188,25 @@ class WalGUC(GUCTuneGroup):
         self.force_promote = self.bind('force_promote')
         self.wal_flush_timeout = self.bind('wal_flush_timeout')
         self.wal_flush_delay = self.bind('wal_flush_delay')
-        self.autocommit = self.bind('autocommit')
 
     def calculate(self):
-        pass
+        infos = Project.getGlobalPerfProbe()
+        self.full_page_writes.turn_off()
+        self._calc_walwriter_cpu_bind(infos)
+
+        if infos.business.scenario == BsScenario.TP_PERFORMANCE:
+            self.wal_level.set('archive')
+            self.wal_buffers.set('1GB')
+            self.wal_log_hints.turn_off()
+            self.walwriter_sleep_threshold.set(50000)
+            self.wal_file_init_num.set(1000)
+
+
+    def _calc_walwriter_cpu_bind(self, infos):
+        # we're already calculated the res when we adjust the network, cpu and thread pool GUC.
+        numa_bind_info = infos.cpu.notebook.read('numa_bind_info')
+        if numa_bind_info['use']:
+            self.walwriter_cpu_bind.set(0)
 
 
 class RecoveryGUC(GUCTuneGroup):
@@ -183,12 +217,14 @@ class RecoveryGUC(GUCTuneGroup):
         self.recovery_parse_workers = self.bind('recovery_parse_workers')
         self.recovery_redo_workers = self.bind('recovery_redo_workers')
         self.recovery_parallelism = self.bind('recovery_parallelism')
-        self.enable_page_lsn_check = self.bind('enable_page_lsn_check')
         self.recovery_min_apply_delay = self.bind('recovery_min_apply_delay')
         self.redo_bind_cpu_attr = self.bind('redo_bind_cpu_attr')
+        self.enable_page_lsn_check = self.bind('enable_page_lsn_check')
 
     def calculate(self):
-        pass
+        infos = Project.getGlobalPerfProbe()
+        if infos.business.scenario == BsScenario.TP_PERFORMANCE:
+            self.enable_page_lsn_check.turn_off()
 
 
 class BackoutRecoveryGUC(GUCTuneGroup):
@@ -231,20 +267,42 @@ class LockManagerGUC(GUCTuneGroup):
         self.num_internal_lock_partitions = self.bind('num_internal_lock_partitions')
 
     def calculate(self):
-        self.update_lockwait_timeout.set('40min')
+        infos = Project.getGlobalPerfProbe()
+        if infos.business.scenario == BsScenario.TP_PERFORMANCE:
+            self.update_lockwait_timeout.set('20min')
+            self.gs_clean_timeout.set(0)
 
 
 class TransactionGUC(GUCTuneGroup):
     def __init__(self):
         super(TransactionGUC, self).__init__()
+        self.default_transaction_isolation = self.bind('default_transaction_isolation')
+        self.default_transaction_read_only = self.bind('default_transaction_read_only')
+        self.default_transaction_deferrable = self.bind('default_transaction_deferrable')
         self.transaction_isolation = self.bind('transaction_isolation')
         self.transaction_read_only = self.bind('transaction_read_only')
+        self.transaction_deferrable = self.bind('transaction_deferrable')
+
+        self.autocommit = self.bind('autocommit')
         self.xc_maintenance_mode = self.bind('xc_maintenance_mode')
         self.allow_concurrent_tuple_update = self.bind('allow_concurrent_tuple_update')
-        self.transaction_deferrable = self.bind('transaction_deferrable')
+        self.max_prepared_transactions = self.bind('max_prepared_transactions')
         self.enable_show_any_tuples = self.bind('enable_show_any_tuples')
         self.replication_type = self.bind('replication_type')
         self.enable_defer_calculate_snapshot = self.bind('enable_defer_calculate_snapshot')
+
+    def calculate(self):
+        infos = Project.getGlobalPerfProbe()
+        max_prepared_transactions = infos.business.parallel * 10
+        self.max_prepared_transactions.set(max_prepared_transactions)
+
+
+class UstoreGUC(GUCTuneGroup):
+    def __init__(self):
+        super(UstoreGUC, self).__init__()
+        self.enable_ustore = self.bind('enable_ustore')
+        self.enable_default_ustore_table = self.bind('enable_default_ustore_table')
+        self.ustore_attr = self.bind('ustore_attr')
 
     def calculate(self):
         pass

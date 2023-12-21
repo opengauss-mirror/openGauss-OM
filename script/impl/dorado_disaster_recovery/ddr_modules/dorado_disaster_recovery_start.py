@@ -32,7 +32,7 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def _first_step_for_ddr_start(self, step):
+    def first_step_create_ddr_dir(self, step):
         """
         First step for ddr start
         """
@@ -43,7 +43,7 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         self.check_action_and_mode()
         self.init_cluster_status()
 
-    def _second_step_for_ddr_start(self, step):
+    def second_step_check_cluster_status(self, step):
         """
         Second step for ddr start
         """
@@ -68,7 +68,7 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         self.distribute_cluster_conf()
         
 
-    def _third_step_for_ddr_start(self, step):
+    def third_step_set_guc_param(self, step):
         """
         Third step for ddr start
         """
@@ -82,8 +82,7 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         self.set_ha_module_mode()
         self.write_dorado_step("3_set_datanode_guc_step")
 
-
-    def _fourth_step_for_ddr_start(self, step):
+    def fourth_step_stop_cluster(self, step):
         """
         Fourth step for ddr start
         """
@@ -93,7 +92,7 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         self.stop_cluster()
         self.write_dorado_step("4_stop_cluster_step")
 
-    def _fifth_step_for_ddr_start(self, step):
+    def fifth_step_start_cluster(self, step):
         """
         Fifth step for ddr start
         """
@@ -104,7 +103,7 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         self.start_cluster(only_mode="primary")
         self.write_dorado_step("5_start_primary_cluster_step")
 
-    def _sixth_step_for_ddr_start(self, step):
+    def sixth_step_build_main_standby(self, step):
         """
         Sixth step for ddr start
         """
@@ -123,7 +122,7 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         self.write_dorado_step("6_build_dn_instance_step")
         
 
-    def _seventh_step_for_ddr_start(self, step):
+    def seventh_step_set_cm_guc(self, step):
         """
         Seventh step for ddr start
         """
@@ -137,7 +136,7 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         self.write_dorado_step("7_set_cm_guc_step")
         
 
-    def _eighth_step_for_ddr_start(self, step):
+    def eighth_step_wait_main_standby(self, step):
         """
         Eighth step for ddr start
         """
@@ -160,7 +159,7 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         self.update_dorado_info("cluster", "archive", only_mode='primary')
         self.write_dorado_step("8_start_cluster_step")
 
-    def _ninth_step_for_ddr_start(self, step):
+    def ninth_step_clean(self, step):
         """
         ninth step for ddr start
         """
@@ -172,16 +171,16 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
     def run(self):
         self.logger.log("Start create dorado storage disaster relationship.")
         step = self.query_dorado_step()
-        self._first_step_for_ddr_start(step)
+        self.first_step_create_ddr_dir(step)
         self.parse_cluster_status()
-        self._second_step_for_ddr_start(step)
+        self.second_step_check_cluster_status(step)
         self.common_step_for_ddr_start()
-        self._third_step_for_ddr_start(step)
-        self._fourth_step_for_ddr_start(step)
-        self._fifth_step_for_ddr_start(step)
-        self._sixth_step_for_ddr_start(step)
-        self._seventh_step_for_ddr_start(step)
-        self._eighth_step_for_ddr_start(step)
-        self._ninth_step_for_ddr_start(step)
+        self.third_step_set_guc_param(step)
+        self.fourth_step_stop_cluster(step)
+        self.fifth_step_start_cluster(step)
+        self.sixth_step_build_main_standby(step)
+        self.seventh_step_set_cm_guc(step)
+        self.eighth_step_wait_main_standby(step)
+        self.ninth_step_clean(step)
         self.logger.log("Successfully do dorado disaster recovery start.")
  

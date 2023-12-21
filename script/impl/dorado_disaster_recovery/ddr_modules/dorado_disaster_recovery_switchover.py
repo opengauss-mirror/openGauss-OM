@@ -46,7 +46,7 @@ class DisasterRecoverySwitchoverHandler(DoradoDisasterRecoveryBase):
         """
         self.logger.log("Start dorado disaster switchover.")
         self.check_action_and_mode()
-        #self.check_switchover_workable()
+        self.check_switchover_workable()
         self.init_cluster_conf()
         self.check_dn_instance_params()
         self.check_is_under_upgrade()
@@ -102,11 +102,6 @@ class DisasterRecoverySwitchoverHandler(DoradoDisasterRecoveryBase):
             except Exception as error:
                 self.logger.error("Failed to do dorado disaster cluster switchover, Error:"
                                   " \n%s" % str(error))
-                rollback_step = self.query_dorado_step()
-                self.logger.debug("Roll back switchover step:%s" % rollback_step)
-                # if rollback_step >= 2:
-                #    self.dorado_switchover_roll_back(update_query=True)
-                # self.clean_step_file()
                 raise Exception(error)
         self.remove_ddr_switchover_process_file()
 

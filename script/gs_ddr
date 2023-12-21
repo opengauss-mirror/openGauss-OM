@@ -49,8 +49,7 @@ HANDLER_MAPPING = {
     "query": DoradoQueryHandler
 }
 
-
-class DoradoStorageDisasterRecoveryBase(object):
+class DoradoDisasterRecoveryBase(object):
     def __init__(self):
         self.params = None
         self.user = None
@@ -58,12 +57,6 @@ class DoradoStorageDisasterRecoveryBase(object):
         self.logger = None
         self.trace_id = uuid.uuid1().hex
         self.__init_globals()
-
-    @staticmethod
-    def mock_process_user_sensitive_info():
-        """mock_process_user_sensitive_info"""
-        cmdline = DefaultValue.get_proc_title("-W")
-        DefaultValue.set_proc_title(cmdline)
 
     def __init_globals(self):
         self.user = UserUtil.getUserInfo()['name']
@@ -79,7 +72,7 @@ if __name__ == '__main__':
     if os.getuid() == 0:
         GaussLog.exitWithError(ErrorCode.GAUSS_501["GAUSS_50105"])
 
-    base = DoradoStorageDisasterRecoveryBase()
+    base = DoradoDisasterRecoveryBase()
     handler = HANDLER_MAPPING[base.params.task](base.params, base.user,
                                                 base.logger, base.trace_id, base.log_file)
     handler.handle_lock_file(handler.trace_id, 'create')

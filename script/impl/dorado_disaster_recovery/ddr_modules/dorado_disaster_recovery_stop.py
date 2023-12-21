@@ -26,7 +26,7 @@ class DisasterRecoveryStopHandler(DoradoDisasterRecoveryBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def _first_step_for_ddr_stop(self, step):
+    def first_step_init_and_check(self, step):
         """
         First step for ddr stop
         """
@@ -36,7 +36,7 @@ class DisasterRecoveryStopHandler(DoradoDisasterRecoveryBase):
         self.init_cluster_status()
         self.check_action_and_mode()
 
-    def _second_step_for_ddr_stop(self, step):
+    def second_step_check_cluster_status(self, step):
         """
         Second step for ddr stop
         """
@@ -48,7 +48,7 @@ class DisasterRecoveryStopHandler(DoradoDisasterRecoveryBase):
         self.check_is_under_upgrade()
         self.write_dorado_step("2_check_cluster_step")
 
-    def _third_step_for_ddr_stop(self, step):
+    def third_step_remove_ddr_config(self, step):
         """
         Third step for ddr stop
         """
@@ -60,23 +60,13 @@ class DisasterRecoveryStopHandler(DoradoDisasterRecoveryBase):
         self.remove_streaming_cluster_file()
         self.write_dorado_step("3_remove_config_step")
 
-    def _fourth_step_for_ddr_stop(self, step):
+    def fourth_step_clean_dir(self, step):
         """
         Fourth step for ddr stop
         """
-        if step >= 4:
-            return
-        self.logger.debug("Start fourth step of dorado disaster recovery stop.")
-        #self.restore_guc_params()
-        self.write_dorado_step("4_remove_pg_hba_step")
-
-    def _fifth_step_for_ddr_stop(self, step):
-        """
-        Fifth step for ddr stop
-        """
         if step >= 5:
             return
-        self.logger.debug("Start fifth step of dorado disaster recovery start.")
+        self.logger.debug("Start fourth step of dorado disaster recovery stop.")
         self.check_cluster_status(['Normal'])
         self.update_dorado_info("cluster", "normal")
         self.clean_streaming_dir()
@@ -84,10 +74,9 @@ class DisasterRecoveryStopHandler(DoradoDisasterRecoveryBase):
     def run(self):
         self.logger.log("Start remove dorado disaster recovery relationship.")
         step = self.query_dorado_step()
-        self._first_step_for_ddr_stop(step)
+        self.first_step_init_and_check(step)
         self.parse_cluster_status()
-        self._second_step_for_ddr_stop(step)
-        self._third_step_for_ddr_stop(step)
-        self._fourth_step_for_ddr_stop(step)
-        self._fifth_step_for_ddr_stop(step)
+        self.second_step_check_cluster_status(step)
+        self.third_step_remove_ddr_config(step)
+        self.fourth_step_clean_dir(step)
         self.logger.log("Successfully do dorado disaster recovery stop.")

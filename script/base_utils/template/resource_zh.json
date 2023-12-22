@@ -39,8 +39,9 @@
     "invalid_xml_dir": "xml路径必须是一个文件",
     "invalid_abs_dir": "输入的目录不是绝对目录",
     "invalid_database_dir": "数据库目录必须是不存在的或者空目录",
-    "invalid_port": "无效的端口(0-65535)",
+    "invalid_port": "无效的端口(1024-65535)",
     "cm_port_repeat": "cm端口和数据库端口重复",
+    "cm_port_beyond": "cm端口和数据库端口间距在10以外",
     "invalid_hostname_scope": "当前节点hostname不在部署的节点范围内",
     "invalid_confirm_xml": "只能输入y 或 yes",
 

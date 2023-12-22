@@ -189,13 +189,16 @@ class GenerateTemplate:
         if not str(port).isdigit():
             self.logger.log(resource_data.get('invalid_num'))
             return False
-        if int(port) > 65535 or int(port) < 0:
+        if int(port) > 65535 or int(port) < 1024:
             self.logger.log(resource_data.get('invalid_port'))
             return False
 
         if action == 'cm':
             if port == self.database_port:
                 self.logger.log(resource_data.get('cm_port_repeat'))
+                return False
+            if int(port) in range(int(self.database_port), int(self.database_port) + 11):
+                self.logger.log(resource_data.get('cm_port_beyond'))
                 return False
         return True
 

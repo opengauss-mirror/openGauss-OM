@@ -44,6 +44,8 @@
     "invalid_hostname_scope": "当前节点hostname不在部署的节点范围内",
     "invalid_confirm_xml": "只能输入y 或 yes",
 
+    "mkdir_dir_failed": "创建路径失败",
+    "invalid_xml_path": "xml文件不能是",
     "target_xml_dir": "生成的xml路径是:",
     "target_xml_content": "xml内容是:",
     "confirm_xml": "请确认xml的内容是否正确,正确输入yes;如需修改xml内容请自行修改,然后输入yes确认"

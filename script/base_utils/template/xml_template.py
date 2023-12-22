@@ -43,6 +43,8 @@ HOST_NODE_INFO = ['node1_hostname', 'node2_hostname', 'node3_hostname',
 DATABASE_PORT = "15000"
 CM_SERVER_PORT = "15400"
 
+KEEP_FILES = ['cluster_tmp.xml', 'resource_en.json', 'resource_zh.json', 'xml_template.py', '__init__.py']
+
 
 def get_current_dir():
     return os.path.dirname(os.path.realpath(__file__))
@@ -89,17 +91,40 @@ class GenerateTemplate:
         # check illegal
         if not self.check_illegal_character(xml_dir):
             return False
+        if os.path.isabs(xml_dir):
+            self.target_xml = xml_dir
+        else:
+            self.target_xml = os.path.normpath(os.path.join(get_current_dir(), xml_dir))
 
-        if os.path.exists(xml_dir):
-            if not os.path.isfile(xml_dir):
+        if os.path.exists(self.target_xml):
+            if not os.path.isfile(self.target_xml):
                 self.logger.log(resource_data.get('invalid_xml_dir'))
                 return False
 
             # check permission
-            if not os.access(xml_dir, os.R_OK | os.W_OK):
+            if not os.access(self.target_xml, os.R_OK | os.W_OK):
                 self.logger.log("%s %s" % (resource_data.get('not_permission'), xml_dir))
                 return False
+        else:
+            (tmp_dir, top_dir_name) = os.path.split(self.target_xml)
+            cmd = "mkdir -p %s" % tmp_dir
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                self.logger.log("%s %s" % (resource_data.get('mkdir_dir_failed'), tmp_dir))
+                return False
         return True
+
+    def check_xml_dir_repeat(self):
+        cur_dir = get_current_dir()
+        files = []
+        for tmp in KEEP_FILES:
+            file = os.path.normpath(os.path.join(cur_dir, tmp))
+            files.append(file)
+        if self.target_xml in files:
+            self.logger.log("%s %s" % (resource_data.get('invalid_xml_path'), self.target_xml))
+            return False
+        else:
+            return True
 
     def check_input_xml_info(self):
         user_input = input(resource_data.get('input_xml_path')).strip()
@@ -109,23 +134,24 @@ class GenerateTemplate:
                 os.remove(tmp_dir)
             self.target_xml = tmp_dir
             return True
-        elif not self.check_xml_file(user_input):
+        if not self.check_xml_file(user_input):
             return False
-        else:
-            self.target_xml = user_input
-            return True
+        if not self.check_xml_dir_repeat():
+            return False
+        return True
         
     def check_database_dir(self, database_dir):
         # check illegal character
         if not self.check_illegal_character(database_dir):
             return False
+        
+        # check isabs path
+        if not os.path.isabs(database_dir):
+            self.logger.log(resource_data.get('invalid_abs_dir'))
+            return False
+
         # check path exists
         if os.path.exists(database_dir):
-            # check isabs path
-            if not os.path.isabs(database_dir):
-                self.logger.log(resource_data.get('invalid_abs_dir'))
-                return False
-
             files = os.listdir(database_dir)
             if len(files) != 0:
                 self.logger.log(resource_data.get('invalid_database_dir'))
@@ -678,3 +704,4 @@ class GenerateTemplate:
         self.delete_log()
         # confim xml content
         self.confim_xml()
+

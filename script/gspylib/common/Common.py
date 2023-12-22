@@ -3457,9 +3457,9 @@ class ClusterCommand():
         if showDetail:
             if (clusterType ==
                     DefaultValue.CLUSTER_TYPE_SINGLE_PRIMARY_MULTI_STANDBY):
-                cmd += " -v -C -i -d -z ALL"
+                cmd += " -v -C -i -d -p -z ALL"
             else:
-                cmd += " -v -C -i -d"
+                cmd += " -v -C -i -d -p"
         else:
             if showAll:
                 cmd += " -v"

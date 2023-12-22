@@ -39,8 +39,9 @@
     "invalid_xml_dir": "The XML path must be a file",
     "invalid_abs_dir": "The directory entered is not an absolute directory",
     "invalid_database_dir": "The database directory must be non-existent or an empty directory",
-    "invalid_port": "Invalid port (0-65535)",
+    "invalid_port": "Invalid port (1024-65535)",
     "cm_port_repeat": "The cm port and database port are duplicated",
+    "cm_port_beyond": "The distance between the cm port and the database port is beyond 10",
     "invalid_hostname_scope": "The current node host name is not within the scope of the deployed node",
     "invalid_confirm_xml": "Only you can be entered y or yes",
 

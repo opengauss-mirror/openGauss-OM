@@ -823,12 +823,11 @@ class CM_OLAP(CM):
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_535["GAUSS_53507"] % create_cmd)
             openssl = None
-            while True:
-                FileUtil.cleanDirectoryContent(target_dir)
-                openssl = self._retry_generate_ca(target_dir, CM_OLAP.RETRY_COUNT)
-                # number of assurance certificate files.
-                if openssl and len(os.listdir(target_dir)) > CM_OLAP.CM_CERT_FILES_NUM:
-                    break
+            FileUtil.cleanDirectoryContent(target_dir)
+            openssl = self._retry_generate_ca(target_dir, CM_OLAP.RETRY_COUNT)
+            # number of assurance certificate files.
+            if not openssl or len(os.listdir(target_dir)) <= CM_OLAP.CM_CERT_FILES_NUM:
+                raise Exception(ErrorCode.GAUSS_502["GAUSS_50231"] % "cm ca")
             if (ssh_tool):
                 openssl.distribute_cert(ssh_tool)
             self.logger.log("Create CA files on directory [{0}]. "

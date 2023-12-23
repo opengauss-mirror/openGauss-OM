@@ -4,4 +4,4 @@
 # FileName     : ssh
 # Date         : 2023-12-09
 #############################################################################
-export LD_LIBRARY_PATH=/usr/lib64 && /usr/bin/ssh-keygen $@
+export LD_LIBRARY_PATH=/usr/lib64 && /usr/bin/ssh-keygen "$@"

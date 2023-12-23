@@ -11,6 +11,7 @@
     "choose_ddes": "Please choose whether to deploy ddes?",
     "input_ddes": "Please enter 1/2 for selection, the default option is 1) Do not deploy",
     "intput_dss_home": "Please enter dss_home dir(default:/opt/openGauss/install/dss_home)",
+    "intput_ss_dss_vg_name": "Please enter 'ss_dss_vg_name'(default:data)",
     "input_voting_disk_path": "Please enter the path information for 'votingDiskPath'(default:/dev/sde)",
     "input_dss_vg_info": "Please enter the path information for 'dss_vg_info'(default:data:/dev/sdb,p0:/dev/sdc,p1:/dev/sdd)",
     "input_share_disk_dir": "Please enter the path information for 'shareDiskDir'(default:/dev/sdf)",
@@ -30,25 +31,27 @@
     "deploy_single": "single deployment",
   
     "not_permission": "The user does not have permission for",
-    "invalid_path": "There are illegal characters in the path!",
+    "invalid_character": "The input character is invalid!",
     "invalid_num": "The input character must be a number!",
     "invalid_ip": "Invalid ipaddress!",
-    "invalid_character": "The input character is invalid!",
     "ip_hostname_empty": "The input IP and host name cannot be empty",
-    "ip_hostname_not_match": "The number of input nodes and node IP do not match the host name!",
+    "ip_hostname_not_match": "The number of input nodes does not match the corresponding IP addresses and hostnames.",
     "invalid_xml_dir": "The XML path must be a file",
     "invalid_abs_dir": "The directory entered is not an absolute directory",
     "invalid_database_dir": "The database directory must be non-existent or an empty directory",
     "invalid_port": "Invalid port (1024-65535)",
     "cm_port_repeat": "The cm port and database port are duplicated",
-    "cm_port_beyond": "The distance between the cm port and the database port is beyond 10",
+    "cm_port_beyond": "The cm port cannot be between database ports (port~port+10).",
     "invalid_hostname_scope": "The current node host name is not within the scope of the deployed node",
     "invalid_confirm_xml": "Only you can be entered y or yes",
+    "not_back": "Unable to return to the previous step",
+    "finish": "Finished",
+    "invalid_local_ip": "Unable to obtain local IP address",
 
     "mkdir_dir_failed": "mkdir dir failed",
     "invalid_xml_path": "xml file can not be",
     "target_xml_dir": "The generated XML path is:",
     "target_xml_content": "The xml file content is:",
-    "confirm_xml": "Please confirm if the content of the XML is correct and input yes correctly;If you need to modify the XML content, please modify it yourself and then enter yes to confirm"
+    "confirm_xml": "Please confirm if the content of the XML is correct and Enter yes if it is correct; If you need to modify the XML content, please modify it yourself and then enter yes to confirm"
   }
   

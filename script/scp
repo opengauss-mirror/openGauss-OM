@@ -4,4 +4,4 @@
 # FileName     : scp
 # Date         : 2023-12-09
 #############################################################################
-export LD_LIBRARY_PATH=/usr/lib64 && /usr/bin/scp $@
+export LD_LIBRARY_PATH=/usr/lib64 && /usr/bin/scp "$@"

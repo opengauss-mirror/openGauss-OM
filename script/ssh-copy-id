@@ -4,4 +4,4 @@
 # FileName     : ssh-copy-id
 # Date         : 2023-12-09
 #############################################################################
-export LD_LIBRARY_PATH=/usr/lib64 && /usr/bin/ssh-copy-id $@
+export LD_LIBRARY_PATH=/usr/lib64 && /usr/bin/ssh-copy-id "$@"

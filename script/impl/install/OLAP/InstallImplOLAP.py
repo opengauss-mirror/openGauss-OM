@@ -351,7 +351,7 @@ class InstallImplOLAP(InstallImpl):
             % [node.name for node in all_dn])
         for dbNode in all_dn:
             memCheck = "cat /proc/cpuinfo | grep processor | wc -l"
-            coresCheck = "free -g --si | grep 'Mem' | awk -F ' ' '{print \$2}'"
+            coresCheck = "env -u LANGUAGE LC_ALL=C free -g --si | grep 'Mem' | awk -F ' ' '{print \$2}'"
             cmd = "pssh -s -H %s \"%s & %s\"" % (
                 dbNode.name, memCheck, coresCheck)
             (status, output) = subprocess.getstatusoutput(cmd)

@@ -10,7 +10,8 @@ declare ERR_MKGS_FAILED=1
 declare LOG_FILE="${ROOT_DIR}/build.log"
 declare PKG_DIR="${ROOT_DIR}/package"
 declare PKG_TMP_DIR="${ROOT_DIR}/package/temp"
-declare version_string="${module_name}-${version_number}"
+declare product_mode="opengauss"
+
 
 #########################################################################
 ##read command line paramenters
@@ -21,6 +22,7 @@ function print_help()
     echo "Usage: $0 [OPTION]
     -h|--help                         show help information
     -3rd|--binarylib_dir              the parent directory of binarylibs
+    -pm|--product_mode                the product mode: opengauss|finance
     "
 }
 
@@ -36,6 +38,14 @@ while [ $# -gt 0 ]; do
                 exit 1
             fi
             binarylib_dir=$2
+            shift 2
+            ;;
+        -pm|--product_mode)
+            if [ "$2"X != "opengauss"X ] && [ "$2"X != "finance"X ]; then
+                echo "product_mode value error."
+                exit 1
+            fi
+            product_mode=$2
             shift 2
             ;;
          *)
@@ -76,6 +86,10 @@ else
     exit 1
 fi
 
+if [ "$product_mode"  == "finance" ]; then
+    module_name="openGauss-Finance"
+fi
+declare version_string="${module_name}-${version_number}"
 declare package_pre_name="${version_string}-${dist_version}-${PLATFORM}bit-om"
 declare package_name="${package_pre_name}.tar.gz"
 declare sha256_name="${package_pre_name}.sha256"
@@ -159,6 +173,12 @@ function version_cfg()
             die "Failed to replace OM tools version number."
         fi
     fi
+
+    if [ "$product_mode"  == "finance" ]; then
+        sed -i "s/PRODUCT_NAME = \"openGauss\"/PRODUCT_NAME = \"openGauss-Finance\"/g" ${PKG_TMP_DIR}/script/gspylib/common/VersionInfo.py
+        sed -i "s/PRODUCT_NAME = \"openGauss\"/PRODUCT_NAME = \"openGauss-Finance\"/g" ${PKG_TMP_DIR}/script/domain_utils/cluster_file/version_info.py
+    fi 
+
 }
 
 function clib_copy()

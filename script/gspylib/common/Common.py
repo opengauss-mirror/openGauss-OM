@@ -133,6 +133,10 @@ from base_utils.os.user_util import UserUtil
 noPassIPs = []
 g_lock = thread.allocate_lock()
 
+# uwal num
+BASE_ID_GTM = 1001
+BASE_ID_DATANODE = 6001
+
 
 def check_content_key(content, key):
     if not (type(content) == bytes):
@@ -3974,6 +3978,20 @@ class ClusterInstanceConfig():
             DefaultValue.retry_gs_guc(cmd)
 
     @staticmethod
+    def setUwalRepConninfo(dbInst, connInfo):
+        """
+        function: Construct uwal replconninfo
+        input: dbInst, connInfo
+        output: connInfo
+        """
+        remotenodeid = int(dbInst.instanceId) - BASE_ID_DATANODE
+        remoteuwalhost = dbInst.uwal_ip
+        remoteuwalport = dbInst.port + BASE_ID_GTM
+        connInfo += " remotenodeid=%d remoteuwalhost=%s remoteuwalport=%d" % \
+                    (remotenodeid, remoteuwalhost, remoteuwalport)
+        return connInfo
+
+    @staticmethod
     def setReplConninfo(dbInst, peerInsts, clusterInfo):
         """
         function: Modify replconninfo for datanode
@@ -4050,6 +4068,8 @@ class ClusterInstanceConfig():
                               standbyInst.haIps[i],
                               standbyInst.haPort, (standbyInst.port +
                                                    standbyDataNum * 4))
+                if standbyInst.uwal_ip != "":
+                    connInfo1 = ClusterInstanceConfig.setUwalRepConninfo(standbyInst, connInfo1)
                 if dummyStandbyInst is not None:
                     if (i > 0):
                         connInfo2 += ","
@@ -4061,6 +4081,8 @@ class ClusterInstanceConfig():
                                   dummyStandbyInst.haIps[i],
                                   dummyStandbyInst.haPort,
                                   (dummyStandbyInst.port + dummyDataNum * 4))
+                    if dummyStandbyInst.uwal_ip != "":
+                        connInfo2 = ClusterInstanceConfig.setUwalRepConninfo(dummyStandbyInst, connInfo2)
             elif dbInst.instanceType == DefaultValue.STANDBY_INSTANCE:
                 if i > 0:
                     connInfo1 += ","
@@ -4071,6 +4093,8 @@ class ClusterInstanceConfig():
                               (dbInst.port + standbyDataNum * 4),
                               masterInst.haIps[i], masterInst.haPort,
                               (masterInst.port + masterDataNum * 4))
+                if masterInst.uwal_ip != "":
+                    connInfo1 = ClusterInstanceConfig.setUwalRepConninfo(masterInst, connInfo1)
                 if (dummyStandbyInst is not None):
                     if i > 0:
                         connInfo2 += ","
@@ -4082,6 +4106,8 @@ class ClusterInstanceConfig():
                                   dummyStandbyInst.haIps[i],
                                   dummyStandbyInst.haPort,
                                   (dummyStandbyInst.port + dummyDataNum * 4))
+                    if dummyStandbyInst.uwal_ip != "":
+                        connInfo2 = ClusterInstanceConfig.setUwalRepConninfo(dummyStandbyInst, connInfo2)
             elif (dbInst.instanceType == DefaultValue.DUMMY_STANDBY_INSTANCE):
                 if i > 0:
                     connInfo1 += ","
@@ -4092,6 +4118,8 @@ class ClusterInstanceConfig():
                               masterInst.haIps[i],
                               masterInst.haPort,
                               (masterInst.port + masterDataNum * 4))
+                if masterInst.uwal_ip != "":
+                    connInfo1 = ClusterInstanceConfig.setUwalRepConninfo(masterInst, connInfo1)
                 if i > 0:
                     connInfo2 += ","
                 connInfo2 += "localhost=%s localport=%d " \
@@ -4101,6 +4129,8 @@ class ClusterInstanceConfig():
                               (dbInst.port + dummyDataNum * 4),
                               standbyInst.haIps[i], standbyInst.haPort,
                               (standbyInst.port + standbyDataNum * 4))
+                if standbyInst.uwal_ip != "":
+                    connInfo2 = ClusterInstanceConfig.setUwalRepConninfo(standbyInst, connInfo2)
 
         return connInfo1, connInfo2, dummyStandbyInst, nodename
 
@@ -4187,6 +4217,8 @@ class ClusterInstanceConfig():
                                    (dbInst.port + 4), pj.haIps[i],
                                    pj.haPort, pj.port + 5,
                                    pj.port + 4)
+                    if pj.uwal_ip != "":
+                        chanalInfo = ClusterInstanceConfig.setUwalRepConninfo(pj, chanalInfo)
                     if pj.instanceType == DefaultValue.CASCADE_STANDBY:
                         chanalInfo += " iscascade=true"
 
@@ -4211,6 +4243,8 @@ class ClusterInstanceConfig():
                                    (dbInst.port + 4), pj.haIps[i],
                                    pj.haPort, pj.port + 5,
                                    (pj.port + 4))
+                    if pj.uwal_ip != "":
+                        chanalInfo = ClusterInstanceConfig.setUwalRepConninfo(pj, chanalInfo)
                     if pj.instanceType == DefaultValue.CASCADE_STANDBY:
                         chanalInfo += " iscascade=true"
                 connInfo1.append(chanalInfo)

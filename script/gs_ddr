@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+#############################################################################
+# Copyright (c) 2020 Huawei Technologies Co.,Ltd.
+#
+# openGauss is licensed under Mulan PSL v2.
+# You can use this software according to the terms
+# and conditions of the Mulan PSL v2.
+# You may obtain a copy of Mulan PSL v2 at:
+#
+#          http://license.coscl.org.cn/MulanPSL2
+#
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS,
+# WITHOUT WARRANTIES OF ANY KIND,
+# EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+# MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+# See the Mulan PSL v2 for more details.
+# ----------------------------------------------------------------------------
+# Description  : gs_ddr is a utility for dorado
+# disaster recovery fully options.
+#############################################################################
+
+import os
+import uuid
+
+from gspylib.common.Common import DefaultValue
+from gspylib.common.ErrorCode import ErrorCode
+from gspylib.common.GaussLog import GaussLog
+from impl.dorado_disaster_recovery.ddr_constants import DoradoDisasterRecoveryConstants
+from base_utils.os.user_util import UserUtil
+from domain_utils.cluster_file.cluster_log import ClusterLog
+from impl.dorado_disaster_recovery.params_handler import ParamsHandler
+from impl.dorado_disaster_recovery.ddr_modules.\
+    dorado_disaster_recovery_start import DisasterRecoveryStartHandler
+from impl.dorado_disaster_recovery.ddr_modules.\
+    dorado_disaster_recovery_stop import DisasterRecoveryStopHandler
+from impl.dorado_disaster_recovery.ddr_modules.\
+    dorado_disaster_recovery_failover import DisasterRecoveryFailoverHandler
+from impl.dorado_disaster_recovery.ddr_modules.\
+    dorado_disaster_recovery_switchover import DisasterRecoverySwitchoverHandler
+from impl.dorado_disaster_recovery.ddr_modules.\
+    dorado_disaster_recovery_query import DoradoQueryHandler
+
+HANDLER_MAPPING = {
+    "start": DisasterRecoveryStartHandler,
+    "stop": DisasterRecoveryStopHandler,
+    "switchover": DisasterRecoverySwitchoverHandler,
+    "failover": DisasterRecoveryFailoverHandler,
+    "query": DoradoQueryHandler
+}
+
+class DoradoDisasterRecoveryBase(object):
+    def __init__(self):
+        self.params = None
+        self.user = None
+        self.log_file = None
+        self.logger = None
+        self.trace_id = uuid.uuid1().hex
+        self.__init_globals()
+
+    def __init_globals(self):
+        self.user = UserUtil.getUserInfo()['name']
+        tmp_logger_file = ClusterLog.getOMLogPath(DoradoDisasterRecoveryConstants.DDR_LOG_FILE, self.user)
+        tmp_logger = GaussLog(tmp_logger_file, 'parse_and_validate_params', trace_id=self.trace_id)
+        self.params = ParamsHandler(tmp_logger, self.trace_id).get_valid_params()
+        self.log_file = self.params.logFile if self.params.logFile else \
+            ClusterLog.getOMLogPath(DoradoDisasterRecoveryConstants.DDR_LOG_FILE, self.user)
+        self.logger = GaussLog(self.log_file, self.params.task, trace_id=self.trace_id)
+
+
+if __name__ == '__main__':
+    if os.getuid() == 0:
+        GaussLog.exitWithError(ErrorCode.GAUSS_501["GAUSS_50105"])
+
+    base = DoradoDisasterRecoveryBase()
+    handler = HANDLER_MAPPING[base.params.task](base.params, base.user,
+                                                base.logger, base.trace_id, base.log_file)
+    handler.handle_lock_file(handler.trace_id, 'create')
+    try:
+        if base.params.task in DoradoDisasterRecoveryConstants.TASK_EXIST_CHECK:
+            handler.check_parallel_process_is_running()
+        handler.run()
+    except Exception as error:
+        handler.logger.error(error)
+        raise Exception(str(error))
+    finally:
+        handler.handle_lock_file(handler.trace_id, 'remove')

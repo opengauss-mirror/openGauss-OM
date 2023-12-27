@@ -415,6 +415,24 @@ class InstallImplOLAP(InstallImpl):
             cmd_param += "*==SYMBOL==*-D*==SYMBOL==*%s" % (
                     "dcf_config=" + self.context.clusterInfo.dcf_config.replace('"', '\\"'))
             cmd_param += "*==SYMBOL==*-X*==SYMBOL==*%s" % (self.context.xmlFile)
+        
+        if self.context.clusterInfo.enable_uwal == 'on':
+            cmd_param += "*==SYMBOL==*-D*==SYMBOL==*%s" % (
+                    "enable_uwal=" + self.context.clusterInfo.enable_uwal)
+            cmd_param += "*==SYMBOL==*-D*==SYMBOL==*%s" % (
+                    "uwal_disk_size=" + self.context.clusterInfo.uwal_disk_size)
+            cmd_param += "*==SYMBOL==*-D*==SYMBOL==*%s" % (
+                    "uwal_devices_path=" + self.context.clusterInfo.uwal_devices_path)
+            cmd_param += "*==SYMBOL==*-D*==SYMBOL==*%s" % (
+                    "uwal_log_path=" + self.context.clusterInfo.uwal_log_path)
+            cmd_param += "*==SYMBOL==*-D*==SYMBOL==*%s" % (
+                    "uwal_rpc_compression_switch=" + self.context.clusterInfo.uwal_rpc_compression_switch)
+            cmd_param += "*==SYMBOL==*-D*==SYMBOL==*%s" % (
+                    "uwal_rpc_flowcontrol_switch=" + self.context.clusterInfo.uwal_rpc_flowcontrol_switch)
+            cmd_param += "*==SYMBOL==*-D*==SYMBOL==*%s" % (
+                    "uwal_rpc_flowcontrol_value=" + self.context.clusterInfo.uwal_rpc_flowcontrol_value)
+            cmd_param += "*==SYMBOL==*-D*==SYMBOL==*%s" % (
+                    "uwal_async_append_switch=" + self.context.clusterInfo.uwal_async_append_switch)
         # create tmp file for guc parameters
         # comm_max_datanode and max_process_memory
         self.context.logger.debug("create tmp_guc file.")

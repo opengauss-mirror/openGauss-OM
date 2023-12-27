@@ -618,6 +618,8 @@ class instanceInfo():
         self.cascadeRole = "off"
         # dcf_data_path
         self.dcf_data_path = ""
+        # uwal_ip
+        self.uwal_ip = ""
 
     def __cmp__(self, target):
         """
@@ -716,6 +718,8 @@ class dbNodeInfo():
         self.standbyDnNum = 0
         self.dummyStandbyDnNum = 0
         self.cascadeRole = "off"
+        # enable_uwal
+        self.enable_uwal = ""
 
     def __cmp__(self, target):
         """
@@ -813,6 +817,8 @@ class dbNodeInfo():
                 dbInst.haIps = self.backIps[:]
             else:
                 dbInst.haIps = haIps[:]
+        if self.enable_uwal == "on":
+            dbInst.uwal_ip = self.backIps[-1]
         # cm_server
         if (instRole == INSTANCE_ROLE_CMSERVER):
             dbInst.datadir = os.path.join(self.cmDataDir, "cm_server")
@@ -996,6 +1002,15 @@ class dbClusterInfo():
         self.remote_stream_ip_map = []
         self.remote_dn_base_port = 0
         self.local_dn_base_port = 0
+        # add for uwal
+        self.enable_uwal = ""
+        self.uwal_disk_size = ""
+        self.uwal_devices_path = ""
+        self.uwal_log_path = ""
+        self.uwal_rpc_compression_switch = ""
+        self.uwal_rpc_flowcontrol_switch = ""
+        self.uwal_rpc_flowcontrol_value = ""
+        self.uwal_async_append_switch = ""
 
     def __str__(self):
         """
@@ -1042,6 +1057,25 @@ class dbClusterInfo():
 
         DssSimpleChecker.check_dss_some_param(self)
 
+    def init_uwal_config(self, xml_entiy):
+        '''
+        init uwal input parameter
+        '''
+
+        _, self.uwal_disk_size = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "uwal_disk_size", "cluster")
+        _, self.uwal_devices_path = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "uwal_devices_path", "cluster")
+        _, self.uwal_log_path = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "uwal_log_path", "cluster")
+        _, self.uwal_rpc_compression_switch = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "uwal_rpc_compression_switch", "cluster")
+        _, self.uwal_rpc_flowcontrol_switch = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "uwal_rpc_flowcontrol_switch", "cluster")
+        _, self.uwal_rpc_flowcontrol_value = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "uwal_rpc_flowcontrol_value", "cluster")
+        _, self.uwal_async_append_switch = ClusterConfigFile.readOneClusterConfigItem(
+            xml_entiy, "uwal_async_append_switch", "cluster")
 
     def check_conf_cm_state(self):
         """
@@ -3033,6 +3067,17 @@ class dbClusterInfo():
         else:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % \
                             "cluster network type" + " Error: \n%s" % retValue)
+        
+        # Read enable_uwal
+        _, self.enable_uwal = ClusterConfigFile.readOneClusterConfigItem(
+            xmlRootNode, "enable_uwal", "cluster")
+
+        if self.enable_uwal not in ['', 'on', 'off']:
+            raise Exception(ErrorCode.GAUSS_500["GAUSS_50011"] %
+                                ('enable_uwal', self.enable_uwal))
+
+        if self.enable_uwal == 'on':
+            self.init_uwal_config(xml_entiy=xmlRootNode)
 
         if "HOST_IP" in os.environ.keys():
             self.corePath = self.__read_and_check_config_item(xmlRootNode, "corePath",
@@ -3266,6 +3311,8 @@ class dbClusterInfo():
         # Get DB number
         dbNode.dataNum = self.__readNodeIntValue(dbNode.name, "dataNum", True,
                                                  0)
+        # Get enable_uwal
+        dbNode.enable_uwal = self.enable_uwal
         # read cm directory for server and agent
         try:
             dbNode.cmDataDir = self.__readNodeStrValue(dbNode.name, "cmDir")

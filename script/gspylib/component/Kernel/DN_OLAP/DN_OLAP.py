@@ -45,6 +45,9 @@ STANDBY_INSTANCE = 1
 DUMMY_STANDBY_INSTANCE = 2
 CASCADE_STANDBY_INSTANCE = 3
 
+# uwal num
+BASE_ID_GTM = 1001
+BASE_ID_DATANODE = 6001
 
 class DN_OLAP(Kernel):
     '''
@@ -241,6 +244,11 @@ class DN_OLAP(Kernel):
             tmp_dn_dict["enable_data_replicate"] = "off"
             tmp_dn_dict["replication_type"] = "1"
             tmp_dn_dict["max_wal_senders"] = "16"
+            if self.instInfo.uwal_ip != "":
+                uwal_id = int(self.instInfo.instanceId) - BASE_ID_DATANODE
+                uwal_ip = self.instInfo.uwal_ip
+                uwal_port = self.instInfo.port + BASE_ID_GTM
+                tmp_dn_dict["uwal_config"] = "'{\\\"uwal_nodeid\\\": %d, \\\"uwal_ip\\\": \\\"%s\\\", \\\"uwal_port\\\": %d}'" % (uwal_id, uwal_ip, uwal_port)
             totalnum = len(peerInsts)
             for inst in peerInsts:
                 if inst.instanceType == CASCADE_STANDBY_INSTANCE:

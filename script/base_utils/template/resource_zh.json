@@ -7,10 +7,11 @@
     "input_xml_path": "请输入xml的路径和文件名(默认:./cluster.xml):",
     "input_database_path": "请输入数据库安装目录(默认:/opt/openGauss/install):",
     "input_database_port": "请输入数据库端口(默认:15000):",
-  
+
     "choose_ddes": "请选择是否部署资源池化?",
     "input_ddes": "请输入 1/2 进行选择,默认选项是 1)不部署",
     "intput_dss_home": "请输入'dss_home'的路径信息(默认:/opt/openGauss/install/dss_home)",
+    "intput_ss_dss_vg_name": "请输入'ss_dss_vg_name'的路径信息(默认:data)",
     "input_voting_disk_path": "请输入'votingDiskPath'的路径信息(默认是:/dev/sde)",
     "input_dss_vg_info": "请输入'dss_vg_info'的路径信息(默认是:data:/dev/sdb,p0:/dev/sdc,p1:/dev/sdd)",
     "input_share_disk_dir": "请输入'shareDiskDir'的路径信息(默认是:/dev/sdf)",
@@ -20,7 +21,7 @@
     "choose_cm": "请选择是否部署CM?",
     "input_cm": "请输入 1/2 进行选择,默认选项是 1)部署CM",
     "cm_port": "请输入cmserver端口(默认:15400):",
-  
+
     "choose_pri_standby": "请选择是否主备部署?",
     "input_pri_standby": "请输入 1/2 进行选择，默认选项是 1)主备部署",
     "input_ip_hostname": "请输入主机节点IP和节点名称(如:192.168.0.1 hostname1;192.168.0.2 hostname2)",
@@ -30,10 +31,9 @@
     "deploy_single": "单机部署",
 
     "not_permission": "当前用户没有权限操作",
-    "invalid_path": "路径中存在不合法的字符",
+    "invalid_character": "存在不合法的字符",
     "invalid_num": "字符必须是数字!",
     "invalid_ip": "无效的ip!",
-    "invalid_character": "无效的字符!",
     "ip_hostname_empty": "输入的ip和hostname不能为空!",
     "ip_hostname_not_match": "输入节点数量和节点ip,hostname不匹配!",
     "invalid_xml_dir": "xml路径必须是一个文件",
@@ -41,9 +41,12 @@
     "invalid_database_dir": "数据库目录必须是不存在的或者空目录",
     "invalid_port": "无效的端口(1024-65535)",
     "cm_port_repeat": "cm端口和数据库端口重复",
-    "cm_port_beyond": "cm端口和数据库端口间距在10以外",
+    "cm_port_beyond": "cm端口不能是数据库端口(port~port+10)之间",
     "invalid_hostname_scope": "当前节点hostname不在部署的节点范围内",
     "invalid_confirm_xml": "只能输入y 或 yes",
+    "not_back": "无法返回到上一步",
+    "finish": "输入完成",
+    "invalid_local_ip": "无法获取到本地ip",
 
     "mkdir_dir_failed": "创建路径失败",
     "invalid_xml_path": "xml文件不能是",

@@ -2439,13 +2439,18 @@ class UpgradeImpl:
             # flush new app dynamic configuration
             dynamicConfigFile = "%s/bin/cluster_dynamic_config" % \
                                 self.context.newClusterAppPath
-            if os.path.exists(dynamicConfigFile) \
+            # If the target to upgrade has CM, there is no need to update the dynamic file,
+            # because the dynamic configuration files of OM and CM are inconsistent,
+            # and problems may occur after OM updates the dynamic file.
+            if self.get_upgrade_cm_strategy() == 0 \
+                    and os.path.exists(dynamicConfigFile) \
                     and self.isLargeInplaceUpgrade:
                 self.refresh_dynamic_config_file()
                 self.context.logger.debug(
                     "Successfully refresh dynamic config file")
             self.stop_strategy(is_final=False)
-            if os.path.exists(dynamicConfigFile) \
+            if self.get_upgrade_cm_strategy() == 0 \
+                    and os.path.exists(dynamicConfigFile) \
                     and self.isLargeInplaceUpgrade:
                 self.restore_dynamic_config_file()
             self.progressReport()               
@@ -2670,6 +2675,12 @@ class UpgradeImpl:
             # 8. clean up other upgrade tmp files
             # and uninstall inplace upgrade support functions
             self.cleanInstallPath(const.OLD)
+            # Only delete the old_upgrade_version file under the binary_upgrade directory to 
+            # prevent gaussdb from starting with the old version. However, keep the binary_upgrade
+            # directory temporarily so that CM remains in maintenance mode when restarting,
+            # ensuring that the primary does not switch after the restart.
+            # After the restart is complete, delete the binary_upgrade directory.
+            self._cleanOldUpgradVersion()
             if self.isLargeInplaceUpgrade:
                 self.stop_strategy(is_final=False)
                 self.start_strategy(is_final=False)
@@ -2684,6 +2695,17 @@ class UpgradeImpl:
         # remove global relmap file
         self.cleanTmpGlobalRelampFile()
         self.exitWithRetCode(const.ACTION_INPLACE_UPGRADE, cleanUpSuccess)
+
+    def _cleanOldUpgradVersion(self):
+        """
+        clean binary_upgrade/olg_upgrade_version
+        """
+        olg_upgrade_version_path = os.path.join(self.context.upgradeBackupPath, "old_upgrade_version")
+        cmd = "(if [ -f '{path}' ]; then rm -rf '{path}'; fi) ".format(
+            path=olg_upgrade_version_path)
+        self.context.logger.debug("Command for clean olg_upgrade_version files: %s" % cmd)
+        CmdExecutor.execCommandWithMode(cmd, self.context.sshTool,
+            self.context.isSingle, self.context.mpprcFile)
 
     def install_kerberos(self):
         """

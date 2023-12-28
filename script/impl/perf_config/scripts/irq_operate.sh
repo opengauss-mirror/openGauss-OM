@@ -4,6 +4,7 @@ echo '
 RUN LIKE:
     sh irq_operate.sh bind enp1s1 "1 2 3 4 5 6"
     sh irq_operate.sh check enp1s1
+    sh irq_operate.sh test enp1s1
 '
 }
 
@@ -45,11 +46,23 @@ function check_irq
     done
 }
 
+function test_intf
+{
+    res=`cat /proc/interrupts | grep ${intf}`
+    if [ "$res" = "" ]; then
+        echo "The device ${intf} is not supported to bind irq."
+        exit 1
+    fi
+    echo "ok"
+}
+
 
 if [ "$action" = "bind" ]; then
     bind_irq
 elif [ "$action" = "check" ]; then
     check_irq
+elif [ "$action" = "test" ]; then
+    test_intf
 else
     helper
     exit 0

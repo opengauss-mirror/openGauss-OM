@@ -187,13 +187,13 @@ class NetworkIRQTuner(TunerGroup):
             if ip == '*':
                 continue
             gate = infos.network.get_gate(ip)
-            if gate is None or gate.is_localhost() or gate.is_virbr():
+            if gate is None or gate.is_localhost() or gate.is_virbr() or gate.irq_binds is None:
                 continue
 
             bind_list = CpuUtil.cpuRangeStrToCpuList(numa_bind_info.get('network'))
             roll_list = gate.irq_binds
-            cmd = 'sh {0} bind "{1}"'.format(self.script, ' '.join([str(cpuid) for cpuid in bind_list]))
-            anti = 'sh {0} bind "{1}"'.format(self.script, ' '.join([str(cpuid) for cpuid in roll_list]))
+            cmd = 'sh {0} bind {1} "{2}"'.format(self.script, gate.name, ' '.join([str(cpuid) for cpuid in bind_list]))
+            anti = 'sh {0} bind {1} "{2}"'.format(self.script, gate.name, ' '.join([str(cpuid) for cpuid in roll_list]))
             desc = 'bind irq'
             self.add(ShellTunePoint(cmd, anti, desc))
 

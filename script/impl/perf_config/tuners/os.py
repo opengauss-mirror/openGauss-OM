@@ -90,7 +90,7 @@ class CPUTuner(TunerGroup):
 
             suggestion = "If you use numactl for startup, you are advised to add param '-C {0}'{1}.".format(
                 numactl_param,
-                '' if infos.cpu.count() < 256 or len(infos.cpu.numa) < 4 else "and '--preferred=0'."
+                '' if infos.cpu.count() < 256 or len(infos.cpu.numa()) < 4 else "and '--preferred=0'."
             )
             numa_bind_info['suggestions'].append(suggestion)
 

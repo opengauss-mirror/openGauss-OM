@@ -75,10 +75,17 @@ class NetworkGateInfo(Probe):
 
     def _detect_irq_binds(self):
         script = Project.environ.get_builtin_script('irq_operate.sh')
+        cmd = f'sh {script} test {self.name}'
+        output = CmdUtil.execCmd(cmd, noexcept=True)
+        if output != 'ok':
+            Project.log(output)
+            return
+
         cmd = f'sh {script} check {self.name}'
         output = CmdUtil.execCmd(cmd)
         lines = output.split('\n')
         self.irq_binds = [int(num) for num in lines[2:]]
+        Project.log(f'Irq binds of {self.name} is: ' + str(self.irq_binds))
 
     def _detect_combined(self):
         cmd = f'ethtool -l {self.name} | grep Combined'

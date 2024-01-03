@@ -141,12 +141,15 @@ class OptBypassGUC(GUCTuneGroup):
         self.enable_opfusion = self.bind('enable_opfusion')
         self.enable_partition_opfusion = self.bind('enable_partition_opfusion')
         self.opfusion_debug_mode = self.bind('opfusion_debug_mode')
+        self.enable_beta_opfusion = self.bind('enable_beta_opfusion')
 
     def calculate(self):
         infos = Project.getGlobalPerfProbe()
         self.enable_opfusion.turn_on()
-        if infos.business.scenario == BsScenario.TP_PERFORMANCE and TblKind.havePartTbl(infos.business.rel_kind):
-            self.enable_partition_opfusion.turn_on()
+        if infos.business.scenario == BsScenario.TP_PERFORMANCE:
+            self.enable_beta_opfusion.turn_on()
+            if TblKind.havePartTbl(infos.business.rel_kind):
+                self.enable_partition_opfusion.turn_on()
 
 
 class OptExplainGUC(GUCTuneGroup):

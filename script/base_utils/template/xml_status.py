@@ -202,11 +202,10 @@ class DatabaseInstallStatus(TemplateStatus):
             if not user_input:
                 XmlConstant.OPENGAUSS_INSTALL_DIR = XmlConstant.DATABASE_INSTALL_DIR
                 return DataPortStatus()
-            elif not check_database_dir(user_input):
+            if not check_database_dir(user_input):
                 continue
-            else:
-                XmlConstant.OPENGAUSS_INSTALL_DIR = user_input
-                return DataPortStatus()
+            XmlConstant.OPENGAUSS_INSTALL_DIR = user_input
+            return DataPortStatus()
 
 
 class DataPortStatus(TemplateStatus):
@@ -219,13 +218,11 @@ class DataPortStatus(TemplateStatus):
             if user_input.lower() in ('back', 'b'):
                 return DatabaseInstallStatus()
             if not user_input:
-                XmlConstant.DATABASE_PORT = XmlConstant.DATABASE_PORT
                 return PriStandbyStatus()
             if not check_port(user_input):
                 continue
-            else:
-                XmlConstant.DATABASE_PORT = user_input
-                return PriStandbyStatus()
+            XmlConstant.DATABASE_PORT = user_input
+            return PriStandbyStatus()
 
 
 class PriStandbyStatus(TemplateStatus):
@@ -314,12 +311,10 @@ class DdesDssVgNameStatus(TemplateStatus):
                 sys.exit(0)
             user_input = input(XmlConstant.RESOURCE_DATA.get('intput_ss_dss_vg_name')).strip()
             if user_input.lower() in ('back', 'b'):
-                return DdesStatus()
+                return DdesDssHomeStatus()
             if not user_input:
                 XmlConstant.DDES_INFO['ss_dss_vg_name'] = XmlConstant.DSS_VG_NAME_DIR
                 return DdesDssVgInfoStatus()
-            if not check_database_dir(user_input):
-                continue
             XmlConstant.DDES_INFO['ss_dss_vg_name'] = user_input
             return DdesDssVgInfoStatus()
 
@@ -332,7 +327,7 @@ class DdesDssVgInfoStatus(TemplateStatus):
                 sys.exit(0)
             user_input = input(XmlConstant.RESOURCE_DATA.get('input_dss_vg_info')).strip()
             if user_input.lower() in ('back', 'b'):
-                return DdesDssHomeStatus()
+                return DdesDssVgNameStatus()
             if not user_input:
                 XmlConstant.DDES_INFO['dss_vg_info'] = XmlConstant.DSS_VG_INFO_DIR
                 return DdesVotingStatus()
@@ -486,7 +481,7 @@ class PriStandbyIpStatus(TemplateStatus):
                 return PriStandbyCountStatus()
             if not user_input:
                 GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('ip_hostname_empty'))
-                return PriStandbyIpStatus()
+                continue
             if not get_ip_hostname(user_input):
                 continue
             GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('finish'))

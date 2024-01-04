@@ -754,7 +754,6 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
         primaryHost = self.getPrimaryHostName()
         dataNode = self.context.clusterInfoDict[primaryHost]["dataNode"]
         command = "source %s; gs_ctl reload -D %s " % (self.envFile, dataNode)
-        command = CmdUtil.get_user_exec_cmd(self.context.current_user_root, user, command)
         sshTool = SshTool([primaryHost])
         self.logger.debug(command)
         resultMap, outputCollect = sshTool.getSshStatusOutput(command,

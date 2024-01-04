@@ -93,19 +93,6 @@ def with_chinese():
     XmlConstant.select_option(XmlConstant.RESOURCE_DATA.get('chinese'), XmlConstant.RESOURCE_DATA.get('english'))
     check_common(check_input_chinese)
 
-
-def display_xml_info():
-    if not os.path.exists(XmlConstant.TARGET_XML):
-        raise Exception("new xml file not found!")
-    GaussLog.printMessage("%s   %s" % (XmlConstant.RESOURCE_DATA.get('target_xml_dir'), XmlConstant.TARGET_XML))
-    GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('target_xml_content'))
-    # use cat
-    cmd = "cat %s" % XmlConstant.TARGET_XML
-    (status, output) = subprocess.getstatusoutput(cmd)
-    if status == 0:
-        GaussLog.printMessage(output)
-
-
 def confirm_xml():
     for i in range(XmlConstant.TRIES):
         if i == 3:
@@ -127,6 +114,7 @@ class GenerateTemplate:
         self.tree = ET.ElementTree()
         self.root = None
         self.xml_file_path = ""
+        self.target_xml = ""
 
     def load_xml(self):
         try:
@@ -174,15 +162,15 @@ class GenerateTemplate:
     def update_database_install_dir(self):
         for child in self.root[0]:
             if child.get('name') == "gaussdbAppPath":
-                child.attrib['value'] = os.path.normpath(os.path.join(XmlConstant.DATABASE_INSTALL_DIR, 'app'))
+                child.attrib['value'] = os.path.normpath(os.path.join(XmlConstant.OPENGAUSS_INSTALL_DIR, 'app'))
             elif child.get('name') == "gaussdbLogPath":
-                child.attrib['value'] = os.path.normpath(os.path.join(XmlConstant.DATABASE_INSTALL_DIR, 'log'))
+                child.attrib['value'] = os.path.normpath(os.path.join(XmlConstant.OPENGAUSS_INSTALL_DIR, 'log'))
             elif child.get('name') == "tmpMppdbPath":
-                child.attrib['value'] = os.path.normpath(os.path.join(XmlConstant.DATABASE_INSTALL_DIR, 'tmp'))
+                child.attrib['value'] = os.path.normpath(os.path.join(XmlConstant.OPENGAUSS_INSTALL_DIR, 'tmp'))
             elif child.get('name') == "gaussdbToolPath":
-                child.attrib['value'] = os.path.normpath(os.path.join(XmlConstant.DATABASE_INSTALL_DIR, 'tool'))
+                child.attrib['value'] = os.path.normpath(os.path.join(XmlConstant.OPENGAUSS_INSTALL_DIR, 'tool'))
             elif child.get('name') == "corePath":
-                child.attrib['value'] = os.path.normpath(os.path.join(XmlConstant.DATABASE_INSTALL_DIR, 'corefile'))
+                child.attrib['value'] = os.path.normpath(os.path.join(XmlConstant.OPENGAUSS_INSTALL_DIR, 'corefile'))
 
     def update_cluster_label_common_info(self):
         self.update_cluster_label_nodename_info()
@@ -195,7 +183,7 @@ class GenerateTemplate:
                     child.attrib['value'] = XmlConstant.DATABASE_PORT
 
     def update_node_ip_hostname_info(self):
-        datanode1 = os.path.normpath(os.path.join(XmlConstant.DATABASE_INSTALL_DIR, "data/dn1"))
+        datanode1 = os.path.normpath(os.path.join(XmlConstant.OPENGAUSS_INSTALL_DIR, "data/dn1"))
         if not XmlConstant.IS_PRI_STANDBY:
             datanode1_value = datanode1
         else:
@@ -262,9 +250,21 @@ class GenerateTemplate:
         self.update_cm_info()
 
     def generate_new_xml_file(self):
-        if os.path.exists(XmlConstant.TARGET_XML):
-            os.remove(XmlConstant.TARGET_XML)
-        ET.ElementTree(self.root).write(XmlConstant.TARGET_XML)
+        self.target_xml = XmlConstant.TARGET_XML
+        if os.path.exists(self.target_xml):
+            os.remove(self.target_xml)
+        ET.ElementTree(self.root).write(self.target_xml)
+
+    def display_xml_info(self):
+        if not os.path.exists(self.target_xml):
+            raise Exception("new xml file not found!")
+        GaussLog.printMessage("%s   %s" % (XmlConstant.RESOURCE_DATA.get('target_xml_dir'), self.target_xml))
+        GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('target_xml_content'))
+        # use cat
+        cmd = "cat %s" % self.target_xml
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status == 0:
+            GaussLog.printMessage(output)
 
     def run(self):
         # get locale
@@ -290,6 +290,6 @@ class GenerateTemplate:
         # generate a new xml file
         self.generate_new_xml_file()
         # display xml info
-        display_xml_info()
+        self.display_xml_info()
         # confirm xml content
         confirm_xml()

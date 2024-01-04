@@ -238,10 +238,18 @@ class ThreadPoolGUC(GUCTuneGroup):
     def _calc_thread_count(self, infos, numa_bind_info):
         max_count = len(numa_bind_info['threadpool']) * 7.25
         min_count = len(numa_bind_info['threadpool'])
-        value = infos.business.parallel / (1.2 if infos.business.scenario == BsScenario.TP_PERFORMANCE else 2)
-        
-        res = math.floor(max(min(max_count, value), min_count))
-        return res
+
+        ratio = 0.5
+        if infos.db.is_single_node:
+            if infos.business.scenario == BsScenario.TP_PERFORMANCE:
+                ratio = 0.83
+            elif infos.business.scenario == BsScenario.TP_PRODUCE:
+                ratio = 0.6
+
+        Project.log(f'ratio (thread count / parallel) is {ratio}.')
+        thread_count = infos.business.parallel * ratio
+
+        return math.floor(max(min(max_count, thread_count), min_count))
 
 
 class UpgradeGUC(GUCTuneGroup):

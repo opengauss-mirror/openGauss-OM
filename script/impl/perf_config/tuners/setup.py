@@ -31,10 +31,11 @@ class SetupTuner(TunerGroup):
         super(SetupTuner, self).__init__()
 
     def calculate(self):
-        self._calculate_isolated_xlog()
-
-    def _calculate_isolated_xlog(self):
         infos = Project.getGlobalPerfProbe()
+        self._calculate_isolated_xlog(infos)
+        self._calculate_data_split_tablespace(infos)
+
+    def _calculate_isolated_xlog(self, infos):
         if infos.business.isolated_xlog is None:
             return
 
@@ -47,4 +48,9 @@ class SetupTuner(TunerGroup):
         desc = 'Storing wal on a separate disk.'
 
         self.add(ShellTunePoint(cmd, anti, desc))
+
+    def _calculate_data_split_tablespace(self, infos):
+        if len(infos.disk) > 2 and infos.business.data_size > 1024:
+            Project.report.suggest(
+                'Detect that you have multiple disks, you can allocate data to different disks through tablespaces.')
 

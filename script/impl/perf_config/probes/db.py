@@ -35,8 +35,8 @@ class DBSeverMode(Enum):
 class DBInfo(Probe):
     def __init__(self):
         super(DBInfo, self).__init__()
-        self.ip = None
-        self.port = None
+        self.ip = ['*']
+        self.port = 5432
         self.omm = Project.role.user_name
         self.omm_uid = Project.role.user_uid
         self.omm_gid = Project.role.user_gid
@@ -44,22 +44,39 @@ class DBInfo(Probe):
         self.gauss_data = Project.environ.gauss_data
         self.gauss_log = Project.environ.gauss_log
         self.postgresql_conf = os.path.join(self.gauss_data, 'postgresql.conf')
+        self.init_done = True
+        self.is_single_node = True
 
     def detect(self):
+        if not os.access(self.postgresql_conf, os.F_OK):
+            Project.log(f'detect that database is not init done.')
+            self.init_done = False
+
         self._detect_ip_port()
+        self._detect_is_single_node()
 
     def _detect_ip_port(self):
+        if not self.init_done:
+            return
+
         listen_addresses = self._read_guc_in_postgresql_conf('listen_addresses')
-        if listen_addresses is None:
-            listen_addresses = '*'
-        Project.log(f'detect database listen_addresses: {listen_addresses}')
-        self.ip = [ip.strip() for ip in listen_addresses.split(',')]
+        if listen_addresses is not None:
+            Project.log(f'detect that database listen_addresses: {listen_addresses}')
+            self.ip = [ip.strip() for ip in listen_addresses.split(',')]
 
         port = self._read_guc_in_postgresql_conf('port')
-        if port is None:
-            port = 5432
-        Project.log(f'detect database port: {port}')
-        self.port = port
+        if port is not None:
+            Project.log(f'detect that database port: {port}')
+            self.port = port
+
+    def _detect_is_single_node(self):
+        if not self.init_done:
+            return
+
+        replconninfo = self._read_guc_in_postgresql_conf('replconninfo1')
+        if replconninfo is not None:
+            self.is_single_node = False
+            Project.log('detect that database is cluster mode.')
 
     def _read_guc_in_postgresql_conf(self, guc):
         cmd = f'grep "{guc}" {self.postgresql_conf} -i'

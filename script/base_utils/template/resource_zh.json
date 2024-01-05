@@ -48,7 +48,8 @@
     "finish": "输入完成",
     "invalid_local_ip": "无法获取到本地ip",
 
-    "mkdir_dir_failed": "创建路径失败",
+    "mkdir_dir_failed": "创建目录失败",
+    "mkdir_file_failed": "创建文件失败",
     "invalid_xml_path": "xml文件不能是",
     "target_xml_dir": "生成的xml路径是:",
     "target_xml_content": "xml内容是:",

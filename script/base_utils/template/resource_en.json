@@ -49,6 +49,7 @@
     "invalid_local_ip": "Unable to obtain local IP address",
 
     "mkdir_dir_failed": "mkdir dir failed",
+    "mkdir_file_failed": "touch file failed",
     "invalid_xml_path": "xml file can not be",
     "target_xml_dir": "The generated XML path is:",
     "target_xml_content": "The xml file content is:",

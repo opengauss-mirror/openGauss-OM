@@ -27,8 +27,11 @@ class XmlConstant:
                       'node4_hostname', 'node5_hostname', 'node6_hostname',
                       'node7_hostname', 'node8_hostname', 'node9_hostname']
 
-    DATABASE_PORT = "15000"
-    CM_SERVER_PORT = "15400"
+    DATABASE_PORT = ""
+    CM_SERVER_PORT = ""
+
+    DEFAULT_DATABASE_PORT = "15000"
+    DEFAULT_CM_SERVER_PORT = "15400"
 
     KEEP_FILES = ['cluster_tmp.xml', 'resource_en.json', 'resource_zh.json', 'xml_template.py', '__init__.py',
                   'xml_constant,py', "xml_status.py"]

@@ -45,6 +45,8 @@ def check_database_dir(database_dir):
     if not os.path.isabs(database_dir):
         GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('invalid_abs_dir'))
         return False
+    
+    database_dir = os.path.normpath(database_dir)
 
     # check path exists
     if os.path.exists(database_dir):
@@ -56,6 +58,12 @@ def check_database_dir(database_dir):
         # check permission
         if not os.access(database_dir, os.R_OK | os.W_OK):
             GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('not_permission'), database_dir)
+            return False
+    else:
+        cmd = "mkdir -p %s && rm -rf %s" % (database_dir, database_dir)
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            GaussLog.printMessage("%s %s" % (database_dir, XmlConstant.RESOURCE_DATA.get('mkdir_dir_failed')))
             return False
     return True
 
@@ -118,8 +126,8 @@ def check_xml_isabs(xml_dir):
     if os.path.isabs(xml_dir):
         target_xml = xml_dir
     else:
-        target_xml = os.path.normpath(os.path.join(XmlConstant.get_current_dir(), xml_dir))
-    return target_xml
+        target_xml = os.path.join(XmlConstant.get_current_dir(), xml_dir)
+    return os.path.normpath(target_xml)
 
 
 def check_xml_file_permission(target_xml):
@@ -133,11 +141,10 @@ def check_xml_file_permission(target_xml):
             GaussLog.printMessage("%s %s" % (XmlConstant.RESOURCE_DATA.get('not_permission'), target_xml))
             return False
     else:
-        (tmp_dir, top_dir_name) = os.path.split(target_xml)
-        cmd = "mkdir -p %s" % tmp_dir
+        cmd = "touch %s && rm -rf %s" % (target_xml, target_xml)
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
-            GaussLog.printMessage("%s %s" % (XmlConstant.RESOURCE_DATA.get('mkdir_dir_failed'), tmp_dir))
+            GaussLog.printMessage("%s %s" % (target_xml, XmlConstant.RESOURCE_DATA.get('mkdir_file_failed')))
             return False
     return True
 
@@ -183,10 +190,11 @@ class XmlStatus(TemplateStatus):
                 if os.path.exists(tmp_dir):
                     os.remove(tmp_dir)
                 XmlConstant.TARGET_XML = tmp_dir
+                if not check_input_xml_info(tmp_dir):
+                    continue
                 return DatabaseInstallStatus()
             if not check_input_xml_info(user_input):
                 continue
-            XmlConstant.TARGET_XML = user_input
             return DatabaseInstallStatus()
 
 
@@ -201,10 +209,12 @@ class DatabaseInstallStatus(TemplateStatus):
                 return XmlStatus()
             if not user_input:
                 XmlConstant.OPENGAUSS_INSTALL_DIR = XmlConstant.DATABASE_INSTALL_DIR
+                if not check_database_dir(XmlConstant.OPENGAUSS_INSTALL_DIR):
+                    continue
                 return DataPortStatus()
             if not check_database_dir(user_input):
                 continue
-            XmlConstant.OPENGAUSS_INSTALL_DIR = user_input
+            XmlConstant.OPENGAUSS_INSTALL_DIR = os.path.normpath(user_input)
             return DataPortStatus()
 
 
@@ -218,6 +228,7 @@ class DataPortStatus(TemplateStatus):
             if user_input.lower() in ('back', 'b'):
                 return DatabaseInstallStatus()
             if not user_input:
+                XmlConstant.DATABASE_PORT = XmlConstant.DEFAULT_DATABASE_PORT
                 return PriStandbyStatus()
             if not check_port(user_input):
                 continue
@@ -296,10 +307,12 @@ class DdesDssHomeStatus(TemplateStatus):
                 return DdesStatus()
             if not user_input:
                 XmlConstant.DDES_INFO['dss_home'] = XmlConstant.DSS_HOME_DIR
+                if not check_database_dir(XmlConstant.DDES_INFO['dss_home']):
+                    continue
                 return DdesDssVgNameStatus()
             if not check_database_dir(user_input):
                 continue
-            XmlConstant.DDES_INFO['dss_home'] = user_input
+            XmlConstant.DDES_INFO['dss_home'] = os.path.normpath(user_input)
             return DdesDssVgNameStatus()
 
 
@@ -411,6 +424,7 @@ class CmServerPortStatus(TemplateStatus):
                     return DdesShareDiskStatus()
                 return CmStatus()
             if not user_input:
+                XmlConstant.CM_SERVER_PORT = XmlConstant.DEFAULT_CM_SERVER_PORT
                 if not check_port(XmlConstant.CM_SERVER_PORT, 'cm', XmlConstant.DATABASE_PORT):
                     continue
                 return PriStandbyCountStatus()

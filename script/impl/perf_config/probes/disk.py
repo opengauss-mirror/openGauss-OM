@@ -123,6 +123,8 @@ class DiskInfo(Probe):
         partitions = DiskUtil.getMountInfo()
 
         for partition in partitions:
+            if partition.maxfile is None:
+                continue
             device = DiskDeviceInfo(partition)
             device.detect()
             self._devices.append(device)

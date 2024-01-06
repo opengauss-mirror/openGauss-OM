@@ -24,6 +24,7 @@ import re
 import time
 from datetime import datetime
 from datetime import timedelta
+import subprocess
 
 from domain_utils.cluster_file.version_info import VersionInfo
 from impl.streaming_disaster_recovery.streaming_constants import StreamingConstants
@@ -1247,28 +1248,57 @@ class StreamingBase(object):
         self.__pg_ident_backup_handler(inst.hostname, inst.datadir, inst.instanceId, mode="backup")
         # -t 1209600 means default value 14 days
         if local_ip == inst.hostname:
-            cmd = "source %s; %s/gs_ctl build -D %s -M hadr_main_standby -r 7200 -q%s -Q " \
-                  "force_copy_from_local -U %s -P '%s' -t %s" \
+            cmd = "source %s; nohup %s/gs_ctl build -D %s -M hadr_main_standby -r 7200 -q%s -Q " \
+                  "force_copy_from_local -U %s -P '%s' -t %s &" \
                   % (self.mpp_file, bin_path, inst.datadir, distribute_arg, rds_backup, backup_pwd,
                      StreamingConstants.MAX_BUILD_TIMEOUT)
         else:
-            cmd = "echo \"source %s; %s/gs_ctl build -D %s -M hadr_main_standby -r 7200 -q%s " \
-                  "-Q force_copy_from_local -U %s -P '%s' -t %s\" | pssh -s -t %s -H %s" \
+            cmd = "echo \"source %s; nohup %s/gs_ctl build -D %s -M hadr_main_standby -r 7200 -q%s " \
+                  "-Q force_copy_from_local -U %s -P '%s' -t %s &\" | pssh -s -t %s -H %s" \
                   % (self.mpp_file, bin_path, inst.datadir, distribute_arg, rds_backup,
                      backup_pwd, StreamingConstants.MAX_BUILD_TIMEOUT,
                      StreamingConstants.MAX_BUILD_TIMEOUT + 10, inst.hostname)
         cmd_log = cmd.replace(backup_pwd, '***')
         self.logger.debug("Building with cmd:%s." % cmd_log)
-        status, output = CmdUtil.retry_util_timeout(cmd, build_timeout)
-        if status != 0:
-            error_detail = "Error: Failed to do build because of pssh timeout." \
-                if "was killed or timeout" in output else \
-                "Error: Failed to do build because of retry timeout in %s s." \
-                % build_timeout
-            self.logger.debug("Failed to do gs_ctl build. " + error_detail)
-            raise Exception(ErrorCode.GAUSS_516["GAUSS_51632"]
-                            % "full build from remote cluster" + error_detail)
-        self.logger.log("Successfully build main standby dn:%s" % inst.instanceId)
+
+        check_building_cmd = "ps x | grep -v grep | grep -E 'gs_ctl build.*hadr_main_standby' " \
+            "> /dev/null && echo 'building'"
+        build_completed_done_dir = os.path.join(inst.datadir, "build_completed.done")
+        rm_build_completed_done_cmd = "rm -f %s" % build_completed_done_dir
+        check_build_complete_done_cmd = "ls %s > /dev/null && echo 'build completed'" % build_completed_done_dir
+        if local_ip != inst.hostname:
+            check_building_cmd = "pssh -s -H %s %s" % (inst.hostname, check_building_cmd)
+            check_build_complete_done_cmd = "pssh -s -H %s %s" % (inst.hostname, check_build_complete_done_cmd)
+            rm_build_completed_done_cmd = "pssh -s -H %s %s" % (inst.hostname, rm_build_completed_done_cmd)
+        subprocess.getstatusoutput(rm_build_completed_done_cmd)
+
+        max_try_times = 3
+        try_time = 0
+        while try_time < max_try_times:
+            status, output = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                self.logger.debug("Building failed with cmd:%s, output:%s." % (cmd_log, output))
+                try_time += 1
+                continue
+
+            while True:
+                status, output = subprocess.getstatusoutput(check_building_cmd)
+                if output != "building":
+                    break
+                time.sleep(5)
+            status, output = subprocess.getstatusoutput(check_build_complete_done_cmd)
+            if output == "build completed":
+                self.logger.log("Successfully build main standby dn:%s" % inst.instanceId)
+                break
+            else:
+                self.logger.debug("building process of main standby interupted abnormally!")
+                self.logger.log("Failed to build main standby dn:%s. Try next time." % inst.instanceId)
+                try_time += 1
+
+        if try_time == max_try_times:
+            self.logger.log("Failed to build main standby more than three times.")
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51632"] % "full build from remote cluster")
+
         self.__pghba_backup_handler(inst.hostname, inst.datadir, inst.instanceId, mode="restore")
         self.__pg_ident_backup_handler(inst.hostname, inst.datadir, inst.instanceId, mode="restore")
         start_params = (local_ip, inst, bin_path, distribute_arg, build_timeout)
@@ -1276,32 +1306,58 @@ class StreamingBase(object):
 
     def __build_cascade_standby_dn(self, params):
         """
-        Build single main standby dn
+        Build single cascade standby dn
         """
         inst, build_timeout, local_ip, bin_path, distribute_arg = params
         self.logger.log("Start build cascade standby dn:%s" % inst.instanceId)
         # -t 1209600 means default value 14 days
         if local_ip == inst.hostname:
-            cmd = "source %s; %s/gs_ctl build -D %s -M cascade_standby " \
-                  "-b standby_full -r 7200%s -t %s" \
+            cmd = "source %s; nohup %s/gs_ctl build -D %s -M cascade_standby " \
+                  "-b standby_full -r 7200%s -t %s &" \
                   % (self.mpp_file, bin_path, inst.datadir, distribute_arg,
                      StreamingConstants.MAX_BUILD_TIMEOUT)
         else:
-            cmd = "echo \"source %s; %s/gs_ctl build -D %s -M cascade_standby -b standby_full " \
-                  "-r 7200%s -t %s\" | pssh -s -t %s -H %s" \
+            cmd = "echo \"source %s; nohup %s/gs_ctl build -D %s -M cascade_standby -b standby_full " \
+                  "-r 7200%s -t %s & \" | pssh -s -t %s -H %s" \
                   % (self.mpp_file, bin_path, inst.datadir, distribute_arg,
                      StreamingConstants.MAX_BUILD_TIMEOUT,
                      StreamingConstants.MAX_BUILD_TIMEOUT + 10, inst.hostname)
         self.logger.debug("Building with cmd:%s." % cmd)
-        status, output = CmdUtil.retry_util_timeout(cmd, build_timeout)
-        if status != 0:
-            error_detail = "Error: Failed to do build because of pssh timeout." \
-                if "was killed or timeout" in output else \
-                "Error: Failed to do build because of retry timeout in %s s." \
-                % build_timeout
-            self.logger.debug("Failed to do gs_ctl build. " + error_detail)
-            raise Exception(ErrorCode.GAUSS_516["GAUSS_51632"]
-                            % "full build from remote cluster" + error_detail)
+
+        check_building_cmd = "ps x | grep -v grep | grep -E 'gs_ctl build.*cascade_standby' " \
+            "> /dev/null && echo 'building'"
+        check_build_complete_done_cmd = "source %s; %s/gs_ctl query -D %s | grep 'db_state.*Normal' " \
+            "> /dev/null && echo 'build completed'" % (self.mpp_file, bin_path, inst.datadir)
+        if local_ip != inst.hostname:
+            check_building_cmd = "pssh -s -H %s %s" % (inst.hostname, check_building_cmd)
+            check_build_complete_done_cmd = "pssh -s -H %s %s" % (inst.hostname, check_build_complete_done_cmd)
+
+        max_try_times = 3
+        try_time = 0
+        while try_time < max_try_times:
+            status, output = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                self.logger.debug("Building failed with cmd:%s, output:%s." % (cmd, output))
+                try_time += 1
+                continue
+
+            while True:
+                status, output = subprocess.getstatusoutput(check_building_cmd)
+                if output != "building":
+                    break
+                time.sleep(5)
+            status, output = subprocess.getstatusoutput(check_build_complete_done_cmd)
+            if output == "build completed":
+                break
+            else:
+                self.logger.debug("building process of cascade standby interupted abnormally!")
+                self.logger.log("Failed to build cascade standby dn:%s. Try next time." % inst.instanceId)
+                try_time += 1
+
+        if try_time == max_try_times:
+            self.logger.log("Failed to build cascade standby more than three times.")
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51632"] % "full build from remote cluster")
+
         self.logger.log("Successfully build cascade standby dn:%s" % inst.instanceId)
 
     def build_dn_instance(self, only_mode=None):

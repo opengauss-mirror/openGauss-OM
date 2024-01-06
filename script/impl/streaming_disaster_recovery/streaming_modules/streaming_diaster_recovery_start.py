@@ -130,13 +130,13 @@ class StreamingStartHandler(StreamingBase):
         self.stop_cluster_by_node(only_mode='disaster_standby')
         self.write_streaming_step("5_set_wal_segments_step")
 
-    def common_step_for_streaming_start(self):
+    def common_step_for_streaming_start(self, step):
         """
         Common step for streaming start between step 1 and 2
         """
         self.logger.debug("Start common config step of streaming start.")
         self.distribute_cluster_conf()
-        self.update_streaming_pg_hba()
+        self.update_streaming_pg_hba(step)
         self.config_streaming_repl_info()
 
     def _sixth_step_for_streaming_start(self, step):
@@ -225,7 +225,7 @@ class StreamingStartHandler(StreamingBase):
         self.parse_cluster_status()
         self._check_and_refresh_disaster_user_permission()
         self._second_step_for_streaming_start(step)
-        self.common_step_for_streaming_start()
+        self.common_step_for_streaming_start(step)
         self._third_step_for_streaming_start(step)
         self._fourth_step_for_streaming_start(step)
         self._fifth_step_for_streaming_start(step)

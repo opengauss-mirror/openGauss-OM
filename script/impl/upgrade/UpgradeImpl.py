@@ -1494,6 +1494,14 @@ class UpgradeImpl:
             # 6.chose the node name list that satisfy the condition as
             # upgrade nodes
             self.chooseUpgradeNodes()
+            
+            # 7.refresh dynamic once
+            stepFile = os.path.join(self.context.upgradeBackupPath,
+                                    const.GREY_UPGRADE_STEP_FILE)
+            if self.get_upgrade_cm_strategy() == 0 \
+                    and not os.path.exists(stepFile):
+                self.refresh_dynamic_config_file()
+            
             # check if it satisfy upgrade again, if it is the second loop to
             # upgrade, it can go go upgrade again branch
             upgradeAgain = self.canUpgradeAgain()

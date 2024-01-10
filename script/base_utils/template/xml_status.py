@@ -50,9 +50,8 @@ def check_database_dir(database_dir):
 
     # check path exists
     if os.path.exists(database_dir):
-        files = os.listdir(database_dir)
-        if len(files) != 0:
-            GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('invalid_database_dir'))
+        if not os.path.isdir(database_dir):
+            GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('invalid_dir'))
             return False
 
         # check permission

@@ -38,6 +38,7 @@
     "ip_hostname_not_match": "The number of input nodes does not match the corresponding IP addresses and hostnames.",
     "invalid_xml_dir": "The XML path must be a file",
     "invalid_abs_dir": "The directory entered is not an absolute directory",
+    "invalid_dir": "The input must be a directory",
     "invalid_database_dir": "The database directory must be non-existent or an empty directory",
     "invalid_port": "Invalid port (1024-65535)",
     "cm_port_repeat": "The cm port and database port are duplicated",

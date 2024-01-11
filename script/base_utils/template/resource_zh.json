@@ -38,6 +38,7 @@
     "ip_hostname_not_match": "输入节点数量和节点ip,hostname不匹配!",
     "invalid_xml_dir": "xml路径必须是一个文件",
     "invalid_abs_dir": "输入的目录不是绝对目录",
+    "invalid_dir": "输入的必须是目录",
     "invalid_database_dir": "数据库目录必须是不存在的或者空目录",
     "invalid_port": "无效的端口(1024-65535)",
     "cm_port_repeat": "cm端口和数据库端口重复",

@@ -47,6 +47,7 @@ class UninstallImpl:
         """
         self.logFile = unstallation.logFile
         self.cleanInstance = unstallation.cleanInstance
+        self.clearDisk = unstallation.clearDisk
 
         self.localLog = unstallation.localLog
         self.user = unstallation.user
@@ -401,7 +402,7 @@ class UninstallImpl:
                                             self.mpprcFile)
         except Exception as e:
             self.logger.exitWithError(str(e))
-        self.logger.debug("Successfully deleted log.", "constant")
+        self.logger.log("Successfully deleted log.", "constant")
 
     def checkEnv(self):
         """
@@ -460,6 +461,35 @@ class UninstallImpl:
             with open(source_file, 'a') as file:
                 file.write(enable_dssLine)
 
+    def clear_dss_disk(self):
+        """
+        function: clear dss disk if dss_mode enabled.
+        input : NA
+        output: NA
+        """
+        if not self.clearDisk:
+            self.logger.log("No need to clear dss disk.")
+            return
+
+        try:
+            enabled_dss = EnvUtil.getEnv("DSS_HOME")
+            if enabled_dss:
+                disks = []
+                dss_vg_info = enabled_dss + os.sep + "cfg" + os.sep + "dss_vg_conf.ini"
+                cm_vg_info = enabled_dss + os.sep + "cfg" + os.sep + "dss_cm_conf.ini"
+                with open(dss_vg_info, 'r') as fr_dss:
+                    for dss_info in fr_dss.readlines():
+                        disks.append(dss_info.split(':')[1].strip())
+                with open(cm_vg_info, 'r') as fr_cm:
+                    for cm_info in fr_cm.readlines():
+                        disks.append(cm_info.strip())
+                for disk in list(map(os.path.realpath, disks)):
+                    subprocess.getstatusoutput("dd if=/dev/zero of=" + disk)
+                    self.logger.log("dd if=/dev/zero of=" + disk + "complete.")
+        except Exception as e:
+            self.logger.exitWithError(str(e))
+        self.logger.log("Successfully clear dss disk.")
+
     def run(self):
         """
         function: Uninstall database cluster
@@ -484,6 +514,7 @@ class UninstallImpl:
             self.clean_dss_home()
             self.CleanLog()
             self.check_dss()
+            self.clear_dss_disk()     
             self.logger.log("Uninstallation succeeded.")
         except Exception as e:
             self.logger.logExit(str(e))

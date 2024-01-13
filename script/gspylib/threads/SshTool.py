@@ -58,6 +58,27 @@ except ImportError as ex:
     except ImportError as ex:
             raise Exception(ErrorCode.GAUSS_522["GAUSS_52200"] % str(ex))
 
+def get_package_path():
+    """
+    get package path, then can get script path, /package_path/script/
+    :return:
+    """
+    dir_name = os.path.dirname(os.path.realpath(__file__))
+    package_dir = os.path.join(dir_name, "./../../")
+    return os.path.realpath(package_dir)
+
+def get_sshexkey_file():
+    """
+    get gs_sshexkey file
+    """
+    gphome = os.environ.get("GPHOME")
+    if gphome:
+        trust_file = os.path.normpath(os.path.join(gphome, "script", "gs_sshexkey"))
+    else:
+        package_path = get_package_path()
+        trust_file = os.path.normpath(os.path.join(package_path, "gs_sshexkey"))
+    return trust_file
+
 class SshTool():
     """
     Class for controling multi-hosts
@@ -143,12 +164,12 @@ class SshTool():
         """
         self._finalizer()
 
-    def createTrust(self, user, ips=[], mpprcFile="", skipHostnameSet=False, action=''):
+    def createTrust(self, user, ips=[], skipHostnameSet=False, action=''):
         """
         function: create trust for specified user with both ip and hostname,
         when using N9000 tool create trust failed
         do not support using a normal user to create trust for another user.
-        input : user, pwd, ips, mpprcFile, skipHostnameSet 
+        input : user, pwd, ips, skipHostnameSet 
         output: NA
         """
         tmp_log_file = copy.deepcopy(self.__logFile)
@@ -175,30 +196,8 @@ class SshTool():
                               "python")
 
             # 2.call createtrust script
-            create_trust_file = "gs_sshexkey"
-            gphome = os.getenv("GPHOME")
-            if user == "root":
-                if mpprcFile != "" and FileUtil.check_file_permission(mpprcFile, True) and \
-                        self.checkMpprcfile(user, mpprcFile):
-                    cmd = "source %s; %s -f %s -l '%s'" % (
-                        mpprcFile, create_trust_file, tmp_hosts, tmp_log_file)
-                elif mpprcFile == "" and FileUtil.check_file_permission(
-                        ClusterConstants.ETC_PROFILE, True):
-                    cmd = "source %s; %s -f %s -l '%s'" % (
-                        ClusterConstants.ETC_PROFILE, create_trust_file,
-                        tmp_hosts, tmp_log_file)
-            else:
-                if mpprcFile != "" and FileUtil.check_file_permission(mpprcFile, True) and \
-                        self.checkMpprcfile(user, mpprcFile):
-                    cmd = "source %s; %s/script/%s -f %s -l '%s'" % (
-                        mpprcFile, gphome, create_trust_file, tmp_hosts,
-                        tmp_log_file)
-                elif mpprcFile == "" and FileUtil.check_file_permission(
-                        ClusterConstants.ETC_PROFILE, True):
-                    cmd = "source %s; %s/script/%s -f %s -l '%s'" % (
-                        ClusterConstants.ETC_PROFILE, gphome,
-                        create_trust_file, tmp_hosts, tmp_log_file)
-
+            trust_file = get_sshexkey_file()
+            cmd = "%s -f %s -l '%s'" % (trust_file, tmp_hosts, tmp_log_file)
             if skipHostnameSet:
                 cmd += " --skip-hostname-set"
 
@@ -728,7 +727,6 @@ class SshTool():
         input : srcFile, targetDir, hostList, env_file, gp_path, parallel_num
         output: NA
         """
-        scpCmd = "source /etc/profile"
         outputCollect = ""
         localMode = False
         resultMap = {}
@@ -740,19 +738,19 @@ class SshTool():
                 mpprcFile = env_file
             else:
                 mpprcFile = EnvUtil.getEnv(DefaultValue.MPPRC_FILE_ENV)
-            if mpprcFile != "" and mpprcFile is not None:
-                scpCmd += " && source %s" % mpprcFile
-
-            if gp_path == "":
-                cmdpre = "%s && echo $GPHOME" % scpCmd
-                (status, output) = subprocess.getstatusoutput(cmdpre)
+            
+            if mpprcFile and os.path.isfile(mpprcFile):
+                cmd = "source %s && echo $GPHOME" % mpprcFile
+                (status, output) = subprocess.getstatusoutput(cmd)
                 if status != 0 or not output or output.strip() == "":
                     raise Exception(ErrorCode.GAUSS_518["GAUSS_51802"]
-                                    % "GPHOME" + "The cmd is %s" % cmdpre)
-                GPHOME = output.strip()
+                                    % "GPHOME" + "The cmd is %s" % cmd)
+                gp_home = output.strip()
             else:
-                GPHOME = gp_path.strip()
-            pscppre = "python3 %s/script/gspylib/pssh/bin/pscp" % GPHOME
+                gp_home = os.environ.get('GPHOME')
+            if gp_path != "":
+                gp_home = gp_path.strip()
+            pscppre = "python3 %s/script/gspylib/pssh/bin/pscp" % gp_home
 
             if len(hostList) == 0:
                 ssh_hosts = copy.deepcopy(self.hostNames)
@@ -777,7 +775,7 @@ class SshTool():
                             resultMap[socket.gethostname()] = DefaultValue.FAILURE
                 if not ssh_hosts:
                     return
-                scpCmd += " && %s -r -v -t %s -p %s -H %s -o %s -e %s %s %s" \
+                scpCmd = "%s -r -v -t %s -p %s -H %s -o %s -e %s %s %s" \
                           " 2>&1 | tee %s" % (pscppre, self.__timeout,
                                               parallel_num,
                                               " -H ".join(ssh_hosts),

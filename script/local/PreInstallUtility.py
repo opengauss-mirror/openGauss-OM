@@ -1541,6 +1541,10 @@ Common options:
             # have check its exists when check parameters,
             # so it should exist here
             user_profile = self.mpprcFile
+            if not os.path.exists(user_profile):
+                FileUtil.createFile(user_profile)
+                FileUtil.changeMode(DefaultValue.DIRECTORY_MODE, user_profile)
+            FileUtil.changeOwner(self.user, user_profile)
         else:
             # check if os profile exist
             user_profile = ProfileFile.get_user_bashrc(self.user)

@@ -220,26 +220,6 @@ class PreinstallImplOLAP(PreinstallImpl):
             # check the current storage package path is legal
             Current_Path = os.path.dirname(os.path.realpath(__file__))
             DefaultValue.checkPathVaild(os.path.normpath(Current_Path))
-            # set ENV
-            cmd = "%s -t %s -u %s -l %s -X '%s' -Q %s" % (
-                OMCommand.getLocalScript("Local_PreInstall"),
-                ACTION_SET_TOOL_ENV,
-                self.context.user,
-                self.context.localLog,
-                self.context.xmlFile,
-                self.context.clusterToolPath)
-            if self.context.mpprcFile != "":
-                cmd += " -s '%s' " % self.context.mpprcFile
-                #check the localmode,if mode is local then modify user group
-                if self.context.localMode:
-                    cmd += "-g %s" % self.context.group
-            (status, output) = subprocess.getstatusoutput(cmd)
-            # if cmd failed, then exit
-            if status != 0:
-                self.context.logger.debug(
-                    "Command for setting %s tool environment variables: %s" % (
-                        VersionInfo.PRODUCT_NAME, cmd))
-                raise Exception(output)
 
         except Exception as e:
             raise Exception(str(e))

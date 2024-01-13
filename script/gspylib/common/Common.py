@@ -3864,7 +3864,7 @@ class ClusterCommand():
         if status != 0 and "encrypt success" not in output:
             raise Exception(ErrorCode.GAUSS_511["GAUSS_51103"] % "encrypt ..."
                             + "Error is:%s" % SensitiveMask.mask_pwd(output))
-        logger.log("Generate cluster user password files successfully.\n")
+        logger.log("Generate cluster user password files successfully.")
 
     @staticmethod
     def executeSQLOnRemoteHost(hostName, port, sql, outputfile,

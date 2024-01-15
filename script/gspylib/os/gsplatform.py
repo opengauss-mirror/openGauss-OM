@@ -73,8 +73,9 @@ ASIANUX = "asianux"
 DEBIAN = "debian"
 UBUNTU = "ubuntu"
 UNIONTECH = "uniontech"
+UOS = "uos"
 SUPPORT_WHOLE_PLATFORM_LIST = [SUSE, REDHAT, CENTOS, EULEROS, FUSIONOS,
-                               OPENEULER, KYLIN, ASIANUX, DEBIAN, UBUNTU, UNIONTECH]
+                               OPENEULER, KYLIN, ASIANUX, DEBIAN, UBUNTU, UOS, UNIONTECH]
 # RedhatX platform
 SUPPORT_RHEL_SERIES_PLATFORM_LIST = [REDHAT, CENTOS, "kylin", "asianux"]
 SUPPORT_RHEL6X_VERSION_LIST = ["6.4", "6.5", "6.6", "6.7", "6.8", "6.9", "10"]
@@ -110,12 +111,13 @@ PAK_ASIANUX = "Asianux"
 PAK_UBUNTU = "Ubuntu"
 PAK_SUSE = "SUSE"
 PAK_UNIONTECH = "UnionTech"
-
+PAK_KYLIN = "Kylin"
+PAK_UOS = "UOS"
 #######################################################
 _supported_dists = (
-    'SuSE', 'debian', 'fedora', 'redhat', 'centos', 'euleros', "openEuler",
+    'SuSE', 'debian', 'fedora', 'redhat', 'centos', 'euleros', 'openEuler',
     'mandrake', 'mandriva', 'rocks', 'slackware', 'yellowdog', 'gentoo',
-    'FusionOS', 'UnitedLinux', 'turbolinux', 'kylin', 'asianux', 'ubuntu')
+    'FusionOS', 'UnitedLinux', 'turbolinux', 'kylin', 'asianux', 'ubuntu', 'uos', 'UnionTech')
 _release_filename = re.compile(r'(\w+)[-_](release|version)')
 _lsb_release_version = re.compile(r'(.+)'
                                   ' release '
@@ -336,7 +338,8 @@ def linux_distribution(distname='', version='', idNum='',
                 gFile = file
                 distname = _distname
                 break
-
+    if distname == "UnionTech":
+        distname = "uos"
     # Read the first line
     if gFile is None:
         return distname, version, idNum
@@ -1728,11 +1731,11 @@ class LinuxPlatform(GenericPlatform):
                                         prefixStr, packageVersion,
                                         PAK_UBUNTU,
                                         BIT_VERSION, postfixStr))
-        elif distname in UNIONTECH:
+        elif distname in UOS:
             fileName = os.path.join(dirName, "./../../../",
                                     "%s-%s-%s-%s.%s" % (
                                         prefixStr, packageVersion,
-                                        PAK_UNIONTECH,
+                                        PAK_UOS,
                                         BIT_VERSION, postfixStr))
         else:
             raise Exception(ErrorCode.GAUSS_519["GAUSS_51900"] +

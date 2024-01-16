@@ -99,6 +99,7 @@ class PrimaryServerGUC(GUCTuneGroup):
         infos = Project.getGlobalPerfProbe()
         if infos.business.scenario == BsScenario.TP_PERFORMANCE:
             self.walsender_max_send_size.set('32MB')
+            self.data_replicate_buffer_size.set('128MB')
 
 
 class StandbyServerGUC(GUCTuneGroup):

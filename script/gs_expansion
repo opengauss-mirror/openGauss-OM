@@ -69,6 +69,9 @@ ABORT_CHECK_PROPERTY = ["xmlFile", "id", "gtmNum", "instanceId",
                         "dss_ssl_enable", "ss_rdma_work_config", "ss_interconnect_type", "syncNumFirst"]
 IGNORE_CHECK_KEY = ["cascadeRole"]
 
+# uwal num
+BASE_ID_GTM = 4001
+
 class Expansion(ParallelBaseOM):
     """
     """
@@ -262,12 +265,27 @@ General options:
                 "instanceType": -1,
                 "azPriority": dbNode.azPriority
             }
+
+            # fill uwal config into clusterInfo
+            if clusterInfo.enable_uwal == 'on':
+                clusterInfoDict[nodeName]["remotenodeid"] = int(dbNode.id) - 1
+                clusterInfoDict[nodeName]["remoteuwalhost"] = ipList[-1]
+                clusterInfoDict[nodeName]["remoteuwalport"] = port + BASE_ID_GTM
+                clusterInfoDict[nodeName]["enable_uwal"] = clusterInfo.enable_uwal
+                clusterInfoDict[nodeName]["uwal_disk_size"] = clusterInfo.uwal_disk_size
+                clusterInfoDict[nodeName]["uwal_devices_path"] = clusterInfo.uwal_devices_path
+                clusterInfoDict[nodeName]["uwal_log_path"] = clusterInfo.uwal_log_path
+                clusterInfoDict[nodeName]["uwal_rpc_compression_switch"] = clusterInfo.uwal_rpc_compression_switch
+                clusterInfoDict[nodeName]["uwal_rpc_flowcontrol_switch"] = clusterInfo.uwal_rpc_flowcontrol_switch
+                clusterInfoDict[nodeName]["uwal_rpc_flowcontrol_value"] = clusterInfo.uwal_rpc_flowcontrol_value
+                clusterInfoDict[nodeName]["uwal_async_append_switch"] = clusterInfo.uwal_async_append_switch
         
         nodeIdList = clusterInfo.getClusterNodeIds()
         for id in nodeIdList:
             insType = clusterInfo.getdataNodeInstanceType(id)
             hostName = clusterInfo.getHostNameByNodeId(id)
             clusterInfoDict[hostName]["instanceType"] = insType
+            clusterInfoDict[hostName]["localnodeid"] = id - 1
         self.clusterInfoDict = clusterInfoDict
 
     def initLogs(self):

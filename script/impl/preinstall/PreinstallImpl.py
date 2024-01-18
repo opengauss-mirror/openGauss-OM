@@ -1575,8 +1575,11 @@ class PreinstallImpl:
             set_cron_cmd = "crontab -l > %s && " % cron_file
         set_cron_cmd += "sed -i '/CheckSshAgent.py/d' %s;" % cron_file
         set_cron_cmd += "echo '*/1 * * * * source ~/.bashrc;python3 %s/script/local/CheckSshAgent.py >>/dev/null 2>&1 &' >> %s;" % (gaussdb_tool_path, cron_file)
-        set_cron_cmd += "rm -f '%s'" % cron_file
-        set_cron_cmd += "crontab %s " % cron_file
+        if self.context.current_user_root:
+            set_cron_cmd += "crontab -u %s %s ;" % (self.context.user, cron_file)
+        else:
+            set_cron_cmd += "crontab %s ;" % cron_file
+        set_cron_cmd += "rm -f '%s';" % cron_file
         self.context.logger.debug("Command for setting CRON: %s" % set_cron_cmd)
         CmdExecutor.execCommandWithMode(set_cron_cmd,
                                         self.context.sshTool,

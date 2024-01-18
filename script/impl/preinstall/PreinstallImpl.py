@@ -710,6 +710,10 @@ class PreinstallImpl:
 
         if createTrustFlag:
             return
+        
+        if os.getuid() != 0 and self.context.preMode:
+            return
+
         if not self.context.current_user_root and not self.context.create_user_ssh_trust:
             return
         self.context.logger.log(

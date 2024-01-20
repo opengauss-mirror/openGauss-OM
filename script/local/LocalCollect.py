@@ -1693,7 +1693,7 @@ def parseConfig():
     if g_opts.config != "":
         d = json.loads(g_opts.config)
         g_opts.content = list(filter(None, d['Content'].split(",")))
-        g_opts.file_number = int(d['FileNumber'])
+        g_opts.file_number = int(d.get('FileNumber', 0))
 
 def main():
     """

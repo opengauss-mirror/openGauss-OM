@@ -912,7 +912,7 @@ def copy_log(log_files, deleteCmd):
             elif 'pg_log/DSS' in log:
                 cmd = "cd $GAUSSLOG && rsync --bwlimit=%d '%s' " \
                       "tmp_gs_collector/pg_log/DSS/." % (g_opts.speedLimitKBs, log)
-            elif dss_home in log:
+            elif dss_home and dss_home in log:
                 log_str = log.split('.')[-1]
                 cmd = "cd $GAUSSLOG && rsync --bwlimit=%d '%s' " \
                       "tmp_gs_collector/DSSLog/%s/." % (g_opts.speedLimitKBs, log, dss_log[log_str])
@@ -925,7 +925,7 @@ def copy_log(log_files, deleteCmd):
                 cmd = "cd $GAUSSLOG && cp %s tmp_gs_collector/pg_log/DMS/." % log
             elif 'pg_log/DSS' in log:
                 cmd = "cd $GAUSSLOG && cp %s tmp_gs_collector/pg_log/DSS/." % log
-            elif dss_home in log:
+            elif dss_home and dss_home in log:
                 log_str = log.split('.')[-1]
                 cmd = "cd $GAUSSLOG && cp %s tmp_gs_collector/DSSLog/%s/." % (log, dss_log[log_str])
             else:

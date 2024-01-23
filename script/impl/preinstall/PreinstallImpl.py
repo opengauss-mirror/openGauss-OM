@@ -38,6 +38,7 @@ from base_utils.os.password_util import PasswordUtil
 from base_utils.os.net_util import NetUtil
 from base_utils.os.env_util import EnvUtil
 from domain_utils.cluster_file.profile_file import ProfileFile
+from domain_utils.cluster_file.version_info import VersionInfo
 
 # action name
 # prepare cluster tool package path
@@ -215,7 +216,7 @@ class PreinstallImpl:
             retry_times = 0
             while True:
                 try:
-                    self.context.sshTool.createTrust(username, ip_list, self.context.mpprcFile,
+                    self.context.sshTool.createTrust(username, ip_list,
                                                      self.context.skipHostnameSet)
                     break
                 except Exception as err_msg:
@@ -604,21 +605,6 @@ class PreinstallImpl:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
                                 + " Error: \n%s" % output)
 
-            # set tool env on all hosts
-            cmd = "%s -t %s -u %s -l %s -X '%s' -Q %s" % (
-                OMCommand.getLocalScript("Local_PreInstall"),
-                ACTION_SET_TOOL_ENV,
-                self.context.user,
-                self.context.localLog,
-                self.context.xmlFile,
-                self.context.clusterToolPath)
-            if self.context.mpprcFile != "":
-                cmd += " -s '%s' -g %s" % (
-                    self.context.mpprcFile, self.context.group)
-            self.context.sshTool.executeCommand(cmd,
-                                                DefaultValue.SUCCESS,
-                                                [],
-                                                self.context.mpprcFile)
             cmd = "%s -t %s -u %s -g %s -P %s -l %s" % (
                 OMCommand.getLocalScript("Local_PreInstall"),
                 ACTION_PREPARE_PATH,
@@ -726,7 +712,7 @@ class PreinstallImpl:
             for ips in sshIps:
                 allIps.extend(ips)
             # create trust
-            self.context.sshTool.createTrust(self.context.user, allIps, self.context.mpprcFile)
+            self.context.sshTool.createTrust(self.context.user, allIps)
             self.context.user_ssh_agent_flag = True
             self.context.logger.debug("{debug exception010} Finished execute sshTool."
                                       "createTrust for common user.")
@@ -932,6 +918,30 @@ class PreinstallImpl:
     def check_error_code(self,error_message):
         if (error_message.find("GAUSS-50305") > 0):
             raise Exception(str(error_message))
+        
+    def set_tool_env(self):
+        # set tool env on all hosts
+        cmd = "%s -t %s -u %s -l %s -X '%s' -Q %s" % (
+            OMCommand.getLocalScript("Local_PreInstall"),
+            ACTION_SET_TOOL_ENV,
+            self.context.user,
+            self.context.localLog,
+            self.context.xmlFile,
+            self.context.clusterToolPath)
+        if self.context.mpprcFile != "":
+            cmd += " -s '%s' -g %s" % (
+                self.context.mpprcFile, self.context.group)
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            self.context.logger.debug(
+                "Command for setting %s tool environment variables: %s" % (
+                    VersionInfo.PRODUCT_NAME, cmd))
+            raise Exception(output)
+
+        self.context.sshTool.executeCommand(cmd,
+                                            DefaultValue.SUCCESS,
+                                            [],
+                                            self.context.mpprcFile)
 
     def createDirs(self):
         """
@@ -1624,12 +1634,14 @@ class PreinstallImpl:
         self.installToolsPhase1()
         # exchange user key for root user
         self.createTrustForRoot()
-        # distribute server package
         # set HOST_IP env
         self.setHostIpEnv()
+        # distribute server package
         self.distributePackages()
         # create user and exchange keys for database user
         self.createOSUser()
+        # set tool env on all host
+        self.set_tool_env()
         # prepare sshd service for user.
         # This step must be nearly after createOSUser,
         # which needs sshd service to be restarted.

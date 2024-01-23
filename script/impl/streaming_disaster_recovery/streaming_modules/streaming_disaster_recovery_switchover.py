@@ -115,10 +115,10 @@ class StreamingSwitchoverHandler(StreamingBase):
                     self.start_cluster()
                     self.write_streaming_step("4_start_cluster_done")
                 if stream_disaster_step < 5:
-                    self.wait_for_normal(timeout=self.params.waitingTimeout,
-                                         streaming_switchover="streaming_switchover")
                     self.set_cluster_read_only_params({"default_transaction_read_only": "off"})
                     self.revise_dn_readonly_status_in_switch_process("end")
+                    self.wait_for_normal(timeout=self.params.waitingTimeout,
+                                         streaming_switchover="streaming_switchover")
                     self.streaming_clean_replication_slot()
                     self.update_streaming_info("cluster", "recovery")
             except Exception as error:

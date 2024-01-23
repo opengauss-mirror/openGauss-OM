@@ -4793,7 +4793,7 @@ class dbClusterInfo():
             remoteDynamicConfigFile = "%s/bin/cluster_dynamic_config_%s" \
                                       % (gaussHome, dbNode.name)
             if dbNode.name != localHostName:
-                cmd = "scp %s:%s %s" % (
+                cmd = "export LD_LIBRARY_PATH=/usr/lib64;/usr/bin/scp %s:%s %s" % (
                     dbNode.name, dynamicConfigFile, remoteDynamicConfigFile)
                 status, output = subprocess.getstatusoutput(cmd)
                 if status:
@@ -4834,7 +4834,7 @@ class dbClusterInfo():
                     cmd = "cp -f  %s %s" % (sourceFile, targetFile)
                     status, output = subprocess.getstatusoutput(cmd)
             else:
-                cmd = "scp %s %s:%s" % (sourceFile, dbNode.name, targetFile)
+                cmd = "export LD_LIBRARY_PATH=/usr/lib64;/usr/bin/scp %s %s:%s" % (sourceFile, dbNode.name, targetFile)
                 status, output = subprocess.getstatusoutput(cmd)
             if status:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +

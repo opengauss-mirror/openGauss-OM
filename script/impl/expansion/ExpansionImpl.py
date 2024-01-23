@@ -1059,18 +1059,72 @@ localservice={localservice} \
 remotehost={remoteNode} \
 remoteport={remotePort} \
 remoteheartbeatport={remoteHeartPort} \
-remoteservice={remoteservice}'"
-                """.format(dn=localeHostInfo["dataNode"],
-                index=index,
-                localhost=localeHostInfo["backIp"],
-                localport=localeHostInfo["localport"],
-                localeHeartPort=localeHostInfo["heartBeatPort"],
-                localservice=localeHostInfo["localservice"],
-                remoteNode=remoteHostInfo["backIp"],
-                remotePort=remoteHostInfo["localport"],
-                remoteHeartPort=remoteHostInfo["heartBeatPort"],
-                remoteservice=remoteHostInfo["localservice"])
-                guc_tempate_str += guc_repl_template
+remoteservice={remoteservice}'"\
+""".format(dn=localeHostInfo["dataNode"],
+                    index=index,
+                    localhost=localeHostInfo["backIp"],
+                    localport=localeHostInfo["localport"],
+                    localeHeartPort=localeHostInfo["heartBeatPort"],
+                    localservice=localeHostInfo["localservice"],
+                    remoteNode=remoteHostInfo["backIp"],
+                    remotePort=remoteHostInfo["localport"],
+                    remoteHeartPort=remoteHostInfo["heartBeatPort"],
+                    remoteservice=remoteHostInfo["localservice"])
+
+                if "remoteuwalhost" in remoteHostInfo:
+                    # add uwal replconninfo
+                    guc_repluwal_template = " remotenodeid=%d remoteuwalhost=%s remoteuwalport=%d" % \
+                        (remoteHostInfo["remotenodeid"], remoteHostInfo["remoteuwalhost"], remoteHostInfo["remoteuwalport"])
+                    guc_repl_template = guc_repl_template[:-2] + guc_repluwal_template + guc_repl_template[-2:] + "\n"
+                    guc_tempate_str += guc_repl_template
+                    
+                    # add other config
+                    uwal_id = localeHostInfo["localnodeid"]
+                    uwal_ip = localeHostInfo["backIp"]
+                    uwal_port = remoteHostInfo["remoteuwalport"]
+                    uwal_config = "'{\\\"uwal_nodeid\\\": %d, \\\"uwal_ip\\\": \\\"%s\\\", \\\"uwal_port\\\": %d}'" % (uwal_id, uwal_ip, uwal_port)
+
+                    guc_uwal_template = """\
+                        gs_guc set -D {dn} -c "uwal_config={uwal_config_json}"
+                    """.format(dn=localeHostInfo["dataNode"],
+                            uwal_config_json=uwal_config)
+                    guc_uwal_template += """\
+                        gs_guc set -D {dn} -c "enable_uwal={enable_uwal}"
+                    """.format(dn=localeHostInfo["dataNode"],
+                            enable_uwal=localeHostInfo["enable_uwal"])
+                    guc_uwal_template += """\
+                        gs_guc set -D {dn} -c "uwal_disk_size={uwal_disk_size}"
+                    """.format(dn=localeHostInfo["dataNode"],
+                            uwal_disk_size=localeHostInfo["uwal_disk_size"])
+                    guc_uwal_template += """\
+                        gs_guc set -D {dn} -c "uwal_devices_path={uwal_devices_path}"
+                    """.format(dn=localeHostInfo["dataNode"],
+                            uwal_devices_path=localeHostInfo["uwal_devices_path"])
+                    guc_uwal_template += """\
+                        gs_guc set -D {dn} -c "uwal_log_path={uwal_log_path}"
+                    """.format(dn=localeHostInfo["dataNode"],
+                            uwal_log_path=localeHostInfo["uwal_log_path"])
+                    guc_uwal_template += """\
+                        gs_guc set -D {dn} -c "uwal_rpc_compression_switch={uwal_rpc_compression_switch}"
+                    """.format(dn=localeHostInfo["dataNode"],
+                            uwal_rpc_compression_switch=localeHostInfo["uwal_rpc_compression_switch"])
+                    guc_uwal_template += """\
+                        gs_guc set -D {dn} -c "uwal_rpc_flowcontrol_switch={uwal_rpc_flowcontrol_switch}"
+                    """.format(dn=localeHostInfo["dataNode"],
+                            uwal_rpc_flowcontrol_switch=localeHostInfo["uwal_rpc_flowcontrol_switch"])
+                    guc_uwal_template += """\
+                        gs_guc set -D {dn} -c "uwal_rpc_flowcontrol_value={uwal_rpc_flowcontrol_value}"
+                    """.format(dn=localeHostInfo["dataNode"],
+                            uwal_rpc_flowcontrol_value=localeHostInfo["uwal_rpc_flowcontrol_value"])
+                    guc_uwal_template += """\
+                        gs_guc set -D {dn} -c "uwal_async_append_switch={uwal_async_append_switch}"
+                    """.format(dn=localeHostInfo["dataNode"],
+                            uwal_async_append_switch=localeHostInfo["uwal_async_append_switch"])
+                    guc_tempate_str += guc_uwal_template
+                    
+                else:
+                    guc_tempate_str += guc_repl_template + "\n"
+
                 index += 1
 
             gucDict[hostName] = guc_tempate_str

@@ -134,7 +134,7 @@ noPassIPs = []
 g_lock = thread.allocate_lock()
 
 # uwal num
-BASE_ID_GTM = 1001
+BASE_ID_GTM = 4001
 BASE_ID_DATANODE = 6001
 
 

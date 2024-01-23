@@ -10,11 +10,11 @@ RUN LIKE:
 
 action=$1
 intf=$2
-cpu_qrrqy_irq=($3)
+cpu_array_irq=($3)
 
 function bind_irq
 {
-    cpunum=${#cpu_qrrqy_irq[*]}
+    cpunum=${#cpu_array_irq[*]}
     
     ethtool -L ${intf} combined $cpunum
     

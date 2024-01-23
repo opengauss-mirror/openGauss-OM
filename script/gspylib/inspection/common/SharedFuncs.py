@@ -83,7 +83,7 @@ def runSshCmd(cmd, host, user="", mpprcFile="", timeout=""):
     # but SuSE executes when using ssh to remotely execute commands
     # Some environment variables are written in /etc/profile
     # when there is no separation of environment variables
-    if (host == NetUtil.GetHostIpOrName()):
+    if (host == NetUtil.GetHostIpOrName() or host in NetUtil.getIpAddressList()):
         sshCmd = cmd
     else:
         sshCmd = "pssh -s -H %s %s 'source /etc/profile 2>/dev/null;%s'" % (

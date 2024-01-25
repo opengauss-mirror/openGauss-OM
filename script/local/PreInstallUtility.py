@@ -913,6 +913,19 @@ Common options:
         FileUtil.write_custom_context(
             dss_vg_ini, context, authority=DefaultValue.KEY_FILE_MODE_IN_OS)
 
+    def prepare_cm_vg_ini(self, dss_home):
+        '''
+        Preparing the VG Configuration File
+        '''
+        dss_vg_ini = os.path.realpath(
+            os.path.join(dss_home, 'cfg', 'dss_cm_conf.ini'))
+
+        context = [
+            self.clusterInfo.cm_share_disk,
+            self.clusterInfo.cm_vote_disk
+        ]
+        FileUtil.write_custom_context(
+            dss_vg_ini, context, authority=DefaultValue.KEY_FILE_MODE_IN_OS)
 
     def prepare_dss_home_path(self, dss_id):
         '''
@@ -927,6 +940,7 @@ Common options:
         self.prepare_dss_inst_ini(dss_home, dss_id)
         # this function does not need to be detected under multipath
         self.prepare_dss_vg_ini(dss_home)
+        self.prepare_cm_vg_ini(dss_home)
 
 
     def prepare_dss_soft_link(self):

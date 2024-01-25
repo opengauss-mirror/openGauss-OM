@@ -56,6 +56,7 @@ class Uninstall(ParallelBaseOM):
         """
         ParallelBaseOM.__init__(self)
         self.cleanInstance = False
+        self.clearDisk = False
 
     def usage(self):
         """
@@ -97,6 +98,8 @@ General options:
         # check if need clean instances
         if (ParaDict.__contains__("cleanInstance")):
             self.cleanInstance = True
+        if (ParaDict.__contains__("clearDisk")):
+            self.clearDisk = True
 
     def checkParameter(self):
         """

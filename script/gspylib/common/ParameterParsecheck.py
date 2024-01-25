@@ -72,7 +72,7 @@ gs_install = ["-?", "--help", "-V", "--version", "-X:", "-l:",
               "--time-out=", "--dorado-cluster-mode=", "--alarm-component=",
               "--enable-perf-config"]
 gs_uninstall = ["-?", "--help", "-V", "--version", "-l:", "-L",
-                "--delete-data"]
+                "--delete-data", "--clear-disk"]
 gs_postuninstall = ["-?", "--help", "-V", "--version", "--delete-user",
                     "--delete-group", "--clean-gphome",
                     "-U:", "-X:", "-l:", "-L"]
@@ -358,6 +358,7 @@ class Parameter():
                            "--parameter": "isParameter",
                            "--binary": "isBinary",
                            "--delete-data": "cleanInstance",
+                           "--clear-disk": "clearDisk",
                            "--delete-user": "delete-user",
                            "--delete-group": "delete-group",
                            "--dws-mode": "dws-mode",

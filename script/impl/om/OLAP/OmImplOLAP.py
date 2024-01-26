@@ -22,6 +22,8 @@ import sys
 import re
 import time
 import getpass
+import os
+import pwd
 
 sys.path.append(sys.path[0] + "/../../../../")
 from gspylib.common.DbClusterInfo import queryCmd
@@ -36,6 +38,7 @@ from base_utils.os.net_util import NetUtil
 from base_utils.os.env_util import EnvUtil
 from gspylib.component.DSS.dss_checker import DssConfig
 from gspylib.common.Common import DefaultValue, ClusterCommand
+from gspylib.common.generate_xml import GenerateXml
 from base_utils.os.cmd_util import CmdUtil
 
 
@@ -402,3 +405,34 @@ class OmImplOLAP(OmImpl):
                                                sshtool)
 
         self.logger.log("Successfully generated dynamic configuration file.")
+
+    def do_generate_xml(self):
+        """
+        function: Generate XML based on cluster
+        input  : NA
+        output : NA
+        """
+        self.logger.log("Start generate xml.")
+        gen_xml = GenerateXml()
+        try:
+            if not self.context.g_opts.add_hostnames:
+                gen_xml.do_generate_xml(self.context.clusterInfo)
+            else:
+                new_hostname_list = self.context.g_opts.add_hostnames.split(",")
+                new_hostip_list = self.context.g_opts.add_hostips.split(",")
+                new_host_dict = dict(zip(new_hostname_list, new_hostip_list))
+                gen_xml.do_generate_xml(self.context.clusterInfo, new_host_dict)
+        except Exception as e:
+            self.logger.exitWithError("Failed to generated xml. Error: %s" % str(e))
+        user = pwd.getpwuid(os.getuid()).pw_name
+        # XML temporary file storage XML file path
+        xml_tmp_file = "/home/%s/tmp_generate_xml" % user
+        if not os.path.exists(xml_tmp_file):
+            self.logger.exitWithError(ErrorCode.GAUSS_502["GAUSS_50201"] % xml_tmp_file)
+        # get xml file path and print
+        cmd = "cat %s" % xml_tmp_file
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            self.logger.exitWithError(ErrorCode.GAUSS_502["GAUSS_50205"] % cmd)
+        xml_file = output.strip()
+        self.logger.log("Successfully generated xml. the xml is %s" % xml_file)

@@ -105,6 +105,7 @@ class Preinstall(ParallelBaseOM):
         self.dss_vgname = ""
         self.enable_perf_config = False
         self.skip_cgroup_set = False
+        self.cluster_core_path = ""
 
     def usage(self):
         """
@@ -493,6 +494,7 @@ General options:
         if len(temp_nodes.split(',')) < 2:
             self.isSingle = True
         os.environ[ClusterConstants.TOOL_PATH_ENV] = self.clusterToolPath
+        self.cluster_core_path = self.clusterInfo.readClustercorePath(self.xmlFile)
 
         self.logger.log("Parsing the configuration file.", "addStep")
         try:

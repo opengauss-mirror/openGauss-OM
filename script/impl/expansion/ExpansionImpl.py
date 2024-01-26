@@ -47,6 +47,7 @@ from gspylib.os.gsfile import g_file
 from domain_utils.cluster_file.cluster_dir import ClusterDir
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.cmd_util import CmdUtil
+from domain_utils.cluster_file.version_info import VersionInfo
 
 #boot/build mode
 MODE_PRIMARY = "primary"
@@ -210,7 +211,7 @@ class ExpansionImpl():
     def generateAndSendXmlFile(self):
         """
         """
-        self.logger.debug("Start to generateAndSend XML file.\n")
+        self.logger.debug("Start to generateAndSend XML file.")
 
         tempXmlFile = "%s/clusterconfig.xml" % self.tempFileDir
         cmd = "mkdir -p %s; touch %s; cat /dev/null > %s" % \
@@ -238,7 +239,7 @@ class ExpansionImpl():
             tempXmlFile, [host], self.envFile)
             self.cleanSshToolFile(sshTool)
         
-        self.logger.debug("End to generateAndSend XML file.\n")
+        self.logger.debug("End to generateAndSend XML file.")
 
     def __generateXml(self, backIp):
         """
@@ -255,6 +256,9 @@ class ExpansionImpl():
         appPath = self.context.clusterInfoDict["appPath"]
         logPath = self.context.clusterInfoDict["logPath"]
         corePath = self.context.clusterInfoDict["corePath"]
+        core_path_config = ""
+        if corePath:
+            core_path_config = '<PARAM name="corePath" value="%s" />' % corePath
         toolPath = self.context.clusterInfoDict["toolPath"]
         mppdbconfig = ""
         tmpMppdbPath = EnvUtil.getEnv("PGHOST")
@@ -274,7 +278,7 @@ class ExpansionImpl():
         <PARAM name="gaussdbLogPath" value="{logPath}" />
         <PARAM name="gaussdbToolPath" value="{toolPath}" />
         {mappdbConfig}
-        <PARAM name="corePath" value="{corePath}"/>
+        {core_path_config}
         <PARAM name="clusterType" value="single-inst"/>
     </CLUSTER>
     <DEVICELIST>
@@ -292,7 +296,7 @@ class ExpansionImpl():
     </DEVICELIST>
 </ROOT>
         """.format(clusterName = clusterName, nodeName = nodeName, backIp = backIp,
-        appPath = appPath, logPath = logPath, toolPath = toolPath, corePath = corePath,
+        appPath = appPath, logPath = logPath, toolPath = toolPath, core_path_config = core_path_config,
         sshIp = sshIp, port = port, dataNode = dataNode, azName = azName,
         azPriority = azPriority, mappdbConfig = mppdbconfig)
         return xmlConfig
@@ -1022,7 +1026,7 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
                 if status != 0:
                     GaussLog.exitWithError("Copy file faild. %s" % output)
                 
-        self.logger.log("End to generate and send cluster static file.\n")
+        self.logger.log("End to generate and send cluster static file.")
         if DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo) > 0:
             self.logger.debug("Check new host state after restart.")
             return
@@ -1214,7 +1218,7 @@ remoteservice={remoteservice}'"\
         if wrongGsomVersionHosts:
             self.logger.log(ErrorCode.GAUSS_357["GAUSS_35708"] %
                 ("gs_om", ", ".join(wrongGsomVersionHosts)))
-        self.logger.log("End to check gaussdb and gs_om version.\n")
+        self.logger.log("End to check gaussdb and gs_om version.")
         if self._isAllFailed():
             GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35706"] %
                 "check gaussdb and gs_om version")
@@ -1227,7 +1231,7 @@ remoteservice={remoteservice}'"\
         self.sendSoftToHosts()
         self.generateAndSendXmlFile()
         self.preInstallOnHosts()
-        self.logger.log("End to preinstall database on new nodes.\n")
+        self.logger.log("End to preinstall database on new nodes.")
         if self._isAllFailed():
             GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35706"] % "preinstall")
 
@@ -1628,7 +1632,7 @@ remoteservice={remoteservice}'"\
         if not self.context.standbyLocalMode:
             self.logger.log("Start to install database on new nodes.")
             self.installDatabaseOnHosts()
-        self.logger.log("Database on standby nodes installed finished.\n")
+        self.logger.log("Database on standby nodes installed finished.")
         self.checkGaussdbAndGsomVersionOfStandby()
         self.logger.log("Start to establish the relationship.")
         self.buildStandbyRelation()

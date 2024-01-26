@@ -23,6 +23,7 @@ import os
 import sys
 import subprocess
 import socket
+import datetime
 package_path = os.path.dirname(os.path.realpath(__file__))
 ld_path = package_path + "/gspylib/clib"
 if 'LD_LIBRARY_PATH' not in os.environ:
@@ -34,6 +35,8 @@ if not os.environ.get('LD_LIBRARY_PATH').startswith(ld_path):
     os.execve(os.path.realpath(__file__), sys.argv, os.environ)
 
 sys.path.append(sys.path[0])
+from gspylib.common.copy_python_lib import copy_lib
+copy_lib()
 from gspylib.common.DbClusterInfo import dbClusterInfo, \
     checkPathVaild, dbNodeInfo, instanceInfo
 from gspylib.common.GaussLog import GaussLog
@@ -41,6 +44,7 @@ from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.ParallelBaseOM import ParallelBaseOM
 from gspylib.common.ParameterParsecheck import Parameter
+from gspylib.threads.SshTool import SshTool
 from impl.expansion.ExpansionImpl import ExpansionImpl
 from impl.expansion.expansion_impl_with_cm import ExpansionImplWithCm
 from impl.expansion.expansion_impl_with_cm_local import ExpansionImplWithCmLocal
@@ -49,6 +53,7 @@ from domain_utils.cluster_file.cluster_log import ClusterLog
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.user_util import UserUtil
 from base_utils.os.cmd_util import CmdUtil
+from base_utils.os.file_util import FileUtil
 
 ENV_LIST = ["MPPDB_ENV_SEPARATE_PATH", "GPHOME", "PATH",
             "LD_LIBRARY_PATH", "PYTHONPATH", "GAUSS_WARNING_TYPE",
@@ -190,8 +195,6 @@ General options:
                 GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35701"] % "-U")
             if len(self.group) == 0:
                 GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35701"] % "-G")
-        if len(self.xmlFile) == 0:
-            GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35701"] % "-X")
         if len(self.newHostList) == 0:
             GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35701"] % "-h")
         # check if upgrade action is exist
@@ -232,7 +235,6 @@ General options:
         self.clusterInfo = clusterInfo
         hostNameIpDict = clusterInfo.initFromXml(self.xmlFile)
         clusterDict = clusterInfo.get_cluster_directory_dict()
-        self.nodeNameList = clusterInfo.getClusterNodeNames()
 
         # get corepath and toolpath from xml file
         corePath = clusterInfo.readClustercorePath(self.xmlFile)
@@ -308,6 +310,41 @@ General options:
             if output != self.user:
                 subprocess.getstatusoutput("chown {}:{} {}".format(self.user, self.group, self.logger.logFile))
         self.logger.ignoreErr = True
+
+    def generate_xml(self):
+        if self.xmlFile:
+            return
+        self.logger.log("Start generate xml")
+        # get current path
+        currentPath = os.path.dirname(os.path.realpath(__file__))
+        gs_om = os.path.join(currentPath, "gs_om")
+        # get new hostname and hostip
+        hostname_str, hostip_str = self.get_new_hostname_and_hostip()
+        # execute gs_om -t generate_xml
+        if not self.envFile:
+            self.envFile = "/home/%s/.bashrc" % self.user
+        cmd = "source %s; %s -t generate_xml --add-hostname=%s --add-hostip=%s" % (self.envFile, gs_om, hostname_str, hostip_str)
+        if os.getuid() == 0:
+            cmd = "su - %s -c '%s'" % (self.user, cmd)
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50231"] % self.xmlFile)
+        xml_tmp_file = "/home/%s/tmp_generate_xml" % self.user
+        if not os.path.exists(xml_tmp_file):
+            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50201"] % xml_tmp_file)
+        self.xmlFile = FileUtil.readFile(xml_tmp_file)[0].strip()
+        # delete xml tmp file
+        FileUtil.removeFile(xml_tmp_file)
+        self.logger.log("Successfully generate xml, the xml file is %s" % self.xmlFile)
+
+    def get_new_hostname_and_hostip(self):
+        hostip_str = ",".join(self.newHostList)
+        hostname_list = []
+        for ip in self.newHostList:
+            hostname = socket.gethostbyaddr(ip)[0]
+            hostname_list.append(hostname)
+        hostname_str = ",".join(hostname_list)
+        return hostname_str, hostip_str
     
     def getExpansionInfo(self):
         self._getClusterInfoDict()
@@ -345,6 +382,15 @@ General options:
         if currentHost != primaryHost:
             GaussLog.exitWithError(ErrorCode.GAUSS_501["GAUSS_50110"] %
                 (currentHost + ", which is not primary"))
+            
+    def init_cluster_info_all_node(self):
+        """
+        init cluster info for all node
+        """
+        clusterInfo = dbClusterInfo()
+        clusterInfo.initFromXml(self.xmlFile)
+        self.clusterInfo = clusterInfo
+        self.nodeNameList = clusterInfo.getClusterNodeNames()
 
     def checkTrust(self, hostList = None):
         """
@@ -356,33 +402,43 @@ General options:
             hostList += backIpList
         gpHome = EnvUtil.getEnv("GPHOME")
         psshPath = "python3 %s/script/gspylib/pssh/bin/pssh" % gpHome
-        rootSSHExceptionHosts = []
-        individualSSHExceptionHosts = []
+        ssh_exception_hosts = []
         for host in hostList:
             if os.getuid() == 0:
-                # check root's trust
-                check_root_trust_cmd = "%s -s -H %s 'pwd'" % (psshPath, host)
-                (status, output) = subprocess.getstatusoutput(check_root_trust_cmd)
+                # check individual user's trust
+                check_user_trust_cmd = "su - %s -c '%s -s -H %s pwd'" % (self.user, psshPath, host)
+                (status, output) = subprocess.getstatusoutput(check_user_trust_cmd)
                 if status != 0:
-                    rootSSHExceptionHosts.append(host)
-            # check individual user's trust
-            check_user_trust_cmd = "su - %s -c '%s -s -H %s pwd'" % (self.user, psshPath, host)
+                    ssh_exception_hosts.append(host)
+            # check current user's trust
+            check_user_trust_cmd = "%s -s -H %s 'pwd'" % (psshPath, host)
             (status, output) = subprocess.getstatusoutput(check_user_trust_cmd)
             if status != 0:
-                individualSSHExceptionHosts.append(host)
+                ssh_exception_hosts.append(host)
+        
         # output ssh exception info if ssh connect failed
-        if rootSSHExceptionHosts or individualSSHExceptionHosts:
-            sshExceptionInfo = ""
-            if rootSSHExceptionHosts:
-                sshExceptionInfo += "\n"
-                sshExceptionInfo += ", ".join(rootSSHExceptionHosts)
-                sshExceptionInfo += " by root"
-            if individualSSHExceptionHosts:
-                sshExceptionInfo += "\n"
-                sshExceptionInfo += ", ".join(individualSSHExceptionHosts)
-                sshExceptionInfo += " by individual user"
-            GaussLog.exitWithError(ErrorCode.GAUSS_511["GAUSS_51100"] %
-                sshExceptionInfo)
+        if ssh_exception_hosts:
+            self.logger.log("The cluster need create ssh trust")
+            self.create_trust()
+        else:
+            self.logger.log("The cluster no need create ssh trust")
+            
+    def create_trust(self):
+        cluster_info = dbClusterInfo()
+        cluster_info.initFromXml(self.xmlFile)
+        all_ips = []
+        sships = cluster_info.getClusterSshIps()
+        for ips in sships:
+            all_ips.extend(ips)
+        if os.getuid() == 0:
+            self.create_trust_for_user("root", all_ips)
+        self.create_trust_for_user(self.user, all_ips)
+
+    def create_trust_for_user(self, user, all_ips):
+        self.logger.log("Please enter password for %s" % user)
+        self.sshTool = SshTool(self.nodeNameList, self.logFile, DefaultValue.TIMEOUT_PSSH_PREINSTALL)
+        self.sshTool.createTrust(user, all_ips)
+        self.logger.debug("Successfully created SSH trust for the %s" % user)
 
     def checkEnvfile(self):
         """
@@ -516,10 +572,7 @@ class ExpansionClusterInfo(dbClusterInfo):
         Find instance in b_list
         """
         for inst in b_list:
-            if inst.instanceId == a_inst.instanceId:
-                return inst
-            elif inst.instanceRole in [DefaultValue.INSTANCE_ROLE_CMSERVER,
-                                       DefaultValue.INSTANCE_ROLE_CMAGENT]:
+            if inst.hostname == a_inst.hostname:
                 return inst
         raise Exception("Instance {0} not config in XML.".format(inst.instanceId))
 
@@ -626,9 +679,11 @@ if __name__ == "__main__":
     expansion.parseCommandLine()
     expansion.checkParameters()
     expansion.initLogs()
-    expansion.getExpansionInfo()
     expansion.checkEnvfile()
+    expansion.generate_xml()
+    expansion.init_cluster_info_all_node()
+    expansion.checkTrust()
+    expansion.getExpansionInfo()
     expansion.checkXmlIncludeNewHost()
     expansion.checkExecutingHost()
-    expansion.checkTrust()
     expansion.expand_run(expansion)

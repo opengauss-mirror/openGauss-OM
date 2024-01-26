@@ -1199,7 +1199,9 @@ class ErrorCode():
         "GAUSS_35709": "[GAUSS-35709] The %s of %s is not %s.",
         "GAUSS_35710": "[GAUSS-35710] Generate static file [%s] not found.",
         "GAUSS_35711": "[GAUSS-35711] %s in xml is not consistent with that in cluster.",
-        "GAUSS_35712": "[GAUSS-35712] User [%s] is not in the group [%s]."
+        "GAUSS_35712": "[GAUSS-35712] User [%s] is not in the group [%s].",
+        "GAUSS_35713": "[GAUSS-35713] The number of parameter hostname is %s, the number of parameter hostip is %s,"
+                       "The values of these two parameters are different."
     }
 
     ##########################################################################

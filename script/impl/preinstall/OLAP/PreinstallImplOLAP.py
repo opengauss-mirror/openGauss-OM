@@ -292,9 +292,11 @@ class PreinstallImplOLAP(PreinstallImpl):
         function: set file size and path with core file
         :return: NA
         """
+        if os.getuid() != 0:
+            return
         self.context.clusterInfo.corePath = \
             self.context.clusterInfo.readClustercorePath(self.context.xmlFile)
-        if not self.context.clusterInfo.corePath or not self.context.current_user_root:
+        if not self.context.clusterInfo.corePath:
             return
         self.context.logger.log("Setting Core file", "addStep")
         try:

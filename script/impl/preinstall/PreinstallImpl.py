@@ -921,13 +921,14 @@ class PreinstallImpl:
         
     def set_tool_env(self):
         # set tool env on all hosts
-        cmd = "%s -t %s -u %s -l %s -X '%s' -Q %s" % (
+        cmd = "%s -t %s -u %s -l %s -X '%s' -Q %s -C %s" % (
             OMCommand.getLocalScript("Local_PreInstall"),
             ACTION_SET_TOOL_ENV,
             self.context.user,
             self.context.localLog,
             self.context.xmlFile,
-            self.context.clusterToolPath)
+            self.context.clusterToolPath,
+            self.context.cluster_core_path)
         if self.context.mpprcFile != "":
             cmd += " -s '%s' -g %s" % (
                 self.context.mpprcFile, self.context.group)
@@ -938,6 +939,8 @@ class PreinstallImpl:
                     VersionInfo.PRODUCT_NAME, cmd))
             raise Exception(output)
 
+        if self.context.localMode or self.context.isSingle:
+            return
         self.context.sshTool.executeCommand(cmd,
                                             DefaultValue.SUCCESS,
                                             [],

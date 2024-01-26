@@ -359,12 +359,17 @@ General options:
         rootSSHExceptionHosts = []
         individualSSHExceptionHosts = []
         for host in hostList:
+            if os.getuid() == 0:
+                # check root's trust
+                check_root_trust_cmd = "%s -s -H %s 'pwd'" % (psshPath, host)
+                (status, output) = subprocess.getstatusoutput(check_root_trust_cmd)
+                if status != 0:
+                    rootSSHExceptionHosts.append(host)
             # check individual user's trust
-            check_trust_cmd = "%s -s -H %s pwd" % (psshPath, host)
-            check_trust_cmd = CmdUtil.get_user_exec_cmd(self.current_user_root, self.user, check_trust_cmd)
-            (status, output) = subprocess.getstatusoutput(check_trust_cmd)
+            check_user_trust_cmd = "su - %s -c '%s -s -H %s pwd'" % (self.user, psshPath, host)
+            (status, output) = subprocess.getstatusoutput(check_user_trust_cmd)
             if status != 0:
-                    individualSSHExceptionHosts.append(host)
+                individualSSHExceptionHosts.append(host)
         # output ssh exception info if ssh connect failed
         if rootSSHExceptionHosts or individualSSHExceptionHosts:
             sshExceptionInfo = ""

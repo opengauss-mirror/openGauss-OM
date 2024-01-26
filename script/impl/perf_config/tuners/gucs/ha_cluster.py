@@ -118,6 +118,7 @@ class StandbyServerGUC(GUCTuneGroup):
         self.max_logical_replication_workers = self.bind('max_logical_replication_workers')
         self.max_sync_workers_per_subscription = self.bind('max_sync_workers_per_subscription')
         self.standby_shared_buffers_fraction = self.bind('standby_shared_buffers_fraction')
+        self.advance_xlog_file_num = self.bind('advance_xlog_file_num')
 
     def calculate(self):
         infos = Project.getGlobalPerfProbe()
@@ -125,5 +126,6 @@ class StandbyServerGUC(GUCTuneGroup):
             self.hot_standby.turn_off()
             self.wal_receiver_buffer_size.set('256MB')
             self.standby_shared_buffers_fraction.set(0.9)
+            self.advance_xlog_file_num.set(100000)
 
 

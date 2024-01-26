@@ -158,7 +158,6 @@ class DevelopOptionGUC(GUCTuneGroup):
         self.show_acce_estimate_detail = self.bind('show_acce_estimate_detail')
         self.support_batch_bind = self.bind('support_batch_bind')
         self.log_pagewriter = self.bind('log_pagewriter')
-        self.advance_xlog_file_num = self.bind('advance_xlog_file_num')
         self.enable_csqual_pushdown = self.bind('enable_csqual_pushdown')
         self.string_hash_compatible = self.bind('string_hash_compatible')
         self.pldebugger_timeout = self.bind('pldebugger_timeout')

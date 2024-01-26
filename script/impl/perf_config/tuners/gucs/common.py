@@ -245,6 +245,11 @@ class ThreadPoolGUC(GUCTuneGroup):
                 ratio = 0.83
             elif infos.business.scenario == BsScenario.TP_PRODUCE:
                 ratio = 0.6
+        else:
+            if infos.business.scenario == BsScenario.TP_PERFORMANCE:
+                ratio = 0.9
+            elif infos.business.scenario == BsScenario.TP_PRODUCE:
+                ratio = 0.7
 
         Project.log(f'ratio (thread count / parallel) is {ratio}.')
         thread_count = infos.business.parallel * ratio

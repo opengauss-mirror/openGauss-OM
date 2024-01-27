@@ -859,13 +859,9 @@ class PostUninstallImpl:
 
             self.logger.log("Please enter password for root.")
             retry_times = 0
-            user_profile = self.context.mpprcFile
-            if not self.context.mpprcFile:
-                user_profile = ProfileFile.get_user_bashrc(self.context.user)
             while True:
                 try:
                     self.sshTool.createTrust(username,
-                                             user_profile,
                                              Ips,
                                              action='gs_postuninstall')
                     break

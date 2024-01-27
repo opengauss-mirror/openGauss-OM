@@ -327,6 +327,14 @@ class DoradoDisasterRecoveryBase(StreamingBase):
         self.connected_nodes = connected_hosts
         return self.connected_nodes
 
+    def set_ss_enable_doraro(self):
+        """
+        guc set ss_enable_dorado value
+        :return:NA
+        """ 
+        self.logger.log("Start open ss_enable_dorado")
+        self.set_datanode_guc("ss_enable_dorado", "on", "set") 
+
     def update_pg_hba(self):
         """
         update pg_hba.conf, read config_param.json file and set other cluster ip
@@ -855,21 +863,24 @@ class DoradoDisasterRecoveryBase(StreamingBase):
         if action_flag != DoradoDisasterRecoveryConstants.ACTION_SWITCHOVER:
             self.update_dorado_info("cluster", "promote")
         # 0. check cluster status and get normal instance list
-        if dorado_disaster_step < 0:
-            if action_flag == DoradoDisasterRecoveryConstants.ACTION_SWITCHOVER:
-                self.update_dorado_info(DoradoDisasterRecoveryConstants.ACTION_SWITCHOVER, "10%")
-            else:
-                self.update_dorado_info(DoradoDisasterRecoveryConstants.ACTION_FAILOVER, "10%")
-            self.init_cluster_status()
-            self.parse_cluster_status()
-            if self.params.restart:
-                self.stop_cluster()
-            self.write_dorado_step("0_dorado_disaster_stop_cluster_for_failover")
-        if dorado_disaster_step < 1:
-            self.check_input(DoradoDisasterRecoveryConstants.PRIMARY_MSG)
-            self.write_dorado_step("1_set_remote_replication_pairs_for_failover")
-        self._failover_config_step(dorado_disaster_step, action_flag)
-        self._failover_start_step(dorado_disaster_step, action_flag)
+        if self.params.stage is None or int(self.params.stage) == 1:
+            if dorado_disaster_step < 0:
+                if action_flag == DoradoDisasterRecoveryConstants.ACTION_SWITCHOVER:
+                    self.update_dorado_info(DoradoDisasterRecoveryConstants.ACTION_SWITCHOVER, "10%")
+                else:
+                    self.update_dorado_info(DoradoDisasterRecoveryConstants.ACTION_FAILOVER, "10%")
+                self.init_cluster_status()
+                self.parse_cluster_status()
+                if self.params.restart:
+                    self.stop_cluster()
+                self.write_dorado_step("0_dorado_disaster_stop_cluster_for_failover")
+            self.logger.log("Successfully do_first_stage_for_switchover.")
+        if self.params.stage is None or int(self.params.stage) == 2:
+            if dorado_disaster_step < 1:
+                self.check_input(DoradoDisasterRecoveryConstants.PRIMARY_MSG)
+                self.write_dorado_step("1_set_remote_replication_pairs_for_failover")
+            self._failover_config_step(dorado_disaster_step, action_flag)
+            self._failover_start_step(dorado_disaster_step, action_flag)
 
     def _failover_start_step(self, dorado_disaster_step, action_flag):
         """
@@ -931,9 +942,7 @@ class DoradoDisasterRecoveryBase(StreamingBase):
                 self.update_dorado_info(DoradoDisasterRecoveryConstants.ACTION_SWITCHOVER, "30%")
             else:
                 self.update_dorado_info(DoradoDisasterRecoveryConstants.ACTION_FAILOVER, "30%")
-            self.set_cmserver_guc("backup_open", "0", "set")
-            self.set_cmagent_guc("agent_backup_open", "0", "set")
-            self.set_cmagent_guc("dorado_cluster_mode", "1", "set")
+            self.set_cmagent_guc("ss_double_cluster_mode", "1", "set")
             if not self.params.restart:
                 self.reload_cm_guc()
             self.set_dss_cluster_run_mode("cluster_primary")

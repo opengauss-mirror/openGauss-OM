@@ -44,21 +44,51 @@ class DisasterRecoverySwitchoverHandler(DoradoDisasterRecoveryBase):
         """
         dorado disaster recovery switchover
         """
-        self.logger.log("Start dorado disaster switchover.")
-        self.check_action_and_mode()
-        self.check_switchover_workable()
-        self.init_cluster_conf()
-        self.check_dn_instance_params()
-        self.check_is_under_upgrade()
+        if (self.params.stage is None or int(self.params.stage) == 1):
+            self.logger.log("Start dorado disaster switchover.")
+            self.check_action_and_mode()
+            self.init_cluster_conf()
+            self.check_dn_instance_params()
+            self.check_is_under_upgrade()
         try:
             self.dorado_switchover_single_inst()
-            self.clean_step_file()
+            if (self.params.stage is None or int(self.params.stage) == 2):
+                self.clean_step_file()
         except Exception as error:
             if self.params.mode == "primary":
                 self.update_dorado_info("cluster", "promote_fail")
             raise Exception(
                 ErrorCode.GAUSS_516["GAUSS_51632"] % "switchover" + "Error:%s" % str(error))
-        self.logger.log("Successfully do dorado disaster recovery switchover.")
+        
+        if (self.params.stage is None or int(self.params.stage) == 2):
+            self.logger.log("Successfully do dorado disaster recovery switchover.")
+
+    def handle_standby_inst_cfg(self, dorado_disaster_step):
+        if self.params.stage is None or int(self.params.stage) == 1:
+            if dorado_disaster_step < 1:
+                self.update_dorado_info(DoradoDisasterRecoveryConstants.ACTION_SWITCHOVER, "10%")
+                self.stop_cluster()
+                self.write_dorado_step("1_dorado_disaster_stop_cluster_for_switchover")
+            self.logger.log("Successfully do_first_stage_for_switchover.")
+        if self.params.stage is None or int(self.params.stage) == 2:
+            if dorado_disaster_step < 2:
+                self.update_dorado_info(DoradoDisasterRecoveryConstants.ACTION_SWITCHOVER, "30%")
+                self.check_input(DoradoDisasterRecoveryConstants.STANDBY_MSG)
+                self.write_dorado_step("2_set_remote_replication_pairs_for_switchover")
+            if dorado_disaster_step < 3:
+                self.set_cmagent_guc("ss_double_cluster_mode", "2", "set")
+                self.set_dss_cluster_run_mode("cluster_standby",only_mode='disaster_standby')
+                self.write_dorado_step("3_set_cluster_guc_done")
+            if dorado_disaster_step < 4:
+                self.update_dorado_info(DoradoDisasterRecoveryConstants.ACTION_SWITCHOVER, "50%")
+                self.start_cluster()
+                self.write_dorado_step("4_start_cluster_done")
+            if dorado_disaster_step < 5:
+                self.wait_for_normal(timeout=self.params.waitingTimeout,
+                                    dorado_switchover="disaster_switchover")
+                self.check_dorado_datanode_query_info(timeout=self.params.waitingTimeout,
+                                                    dorado_switchover="disaster_switchover")
+                self.update_dorado_info("cluster", "recovery")
 
     def dorado_switchover_single_inst(self):
         """
@@ -66,7 +96,8 @@ class DisasterRecoverySwitchoverHandler(DoradoDisasterRecoveryBase):
         disaster_standby: expect primary cluster becomes standby
         primary: expect standby cluster becomes primary
         """
-        self.update_dorado_info("cluster", DoradoDisasterRecoveryConstants.ACTION_SWITCHOVER)
+        if (self.params.stage is None or int(self.params.stage == 1)):
+            self.update_dorado_info("cluster", DoradoDisasterRecoveryConstants.ACTION_SWITCHOVER)
         dorado_disaster_step = self.query_dorado_step()
         if dorado_disaster_step < 1:
             self.check_switchover_workable()
@@ -75,35 +106,14 @@ class DisasterRecoverySwitchoverHandler(DoradoDisasterRecoveryBase):
                                              DoradoDisasterRecoveryConstants.ACTION_SWITCHOVER)
         else:
             try:
-                if dorado_disaster_step < 1:
-                    self.update_dorado_info(DoradoDisasterRecoveryConstants.ACTION_SWITCHOVER, "10%")
-                    self.stop_cluster()
-                    self.write_dorado_step("1_dorado_disaster_stop_cluster_for_switchover")
-                if dorado_disaster_step < 2:
-                    self.update_dorado_info(DoradoDisasterRecoveryConstants.ACTION_SWITCHOVER, "30%")
-                    self.check_input(DoradoDisasterRecoveryConstants.STANDBY_MSG)
-                    self.write_dorado_step("2_set_remote_replication_pairs_for_switchover")
-                if dorado_disaster_step < 3:
-                    self.set_cmserver_guc("backup_open", "1", "set")
-                    self.set_cmagent_guc("agent_backup_open", "1", "set")
-                    self.set_cmagent_guc("dorado_cluster_mode", "2", "set")
-                    self.set_dss_cluster_run_mode("cluster_standby",only_mode='disaster_standby')
-                    self.write_dorado_step("3_set_cluster_guc_done")
-                if dorado_disaster_step < 4:
-                    self.update_dorado_info(DoradoDisasterRecoveryConstants.ACTION_SWITCHOVER, "50%")
-                    self.start_cluster()
-                    self.write_dorado_step("4_start_cluster_done")
-                if dorado_disaster_step < 5:
-                    self.wait_for_normal(timeout=self.params.waitingTimeout,
-                                         dorado_switchover="disaster_switchover")
-                    self.check_dorado_datanode_query_info(timeout=self.params.waitingTimeout,
-                                                          dorado_switchover="disaster_switchover")
-                    self.update_dorado_info("cluster", "recovery")
+                self.handle_standby_inst_cfg(dorado_disaster_step)
             except Exception as error:
                 self.logger.error("Failed to do dorado disaster cluster switchover, Error:"
                                   " \n%s" % str(error))
                 raise Exception(error)
-        self.remove_ddr_switchover_process_file()
+            
+        if self.params.stage is None or int(self.params.stage) == 2:
+            self.remove_ddr_switchover_process_file()
 
     def remove_ddr_switchover_process_file(self):
         self.logger.debug("Remove ddr switchover process file for switchover.")
@@ -167,14 +177,10 @@ class DisasterRecoverySwitchoverHandler(DoradoDisasterRecoveryBase):
         self.logger.log("Roll back dorado disaster cluster switchover...")
         self.stop_cluster()
         if self.params.mode == "primary":
-            self.set_cmserver_guc("backup_open", "1", "set")
-            self.set_cmagent_guc("agent_backup_open", "1", "set")
-            self.set_cmagent_guc("dorado_cluster_mode", "2", "set")
+            self.set_cmagent_guc("ss_double_cluster_mode", "2", "set")
             self.set_dss_cluster_run_mode("cluster_standby")
         else:
-            self.set_cmserver_guc("backup_open", "0", "set")
-            self.set_cmagent_guc("agent_backup_open", "0", "set")
-            self.set_cmagent_guc("dorado_cluster_mode", "1", "set")
+            self.set_cmagent_guc("ss_double_cluster_mode", "1", "set")
             self.set_dss_cluster_run_mode("cluster_primary")
         self.logger.log("Successfully modify cma and cms parameters to start according to original "
                         "cluster mode")
@@ -190,18 +196,6 @@ class DisasterRecoverySwitchoverHandler(DoradoDisasterRecoveryBase):
         """
         Check switchover is workable
         """
-        if not DefaultValue.is_disaster_cluster(self.cluster_info) \
-                and self.params.mode == "primary":
-            self.logger.debug("The primary dn exist, do nothing except record the result file.")
-            raise Exception(ErrorCode.GAUSS_516["GAUSS_51632"] %
-                            "dorado disaster cluster switchover, Because the primary cluster "
-                            "[drClusterMode] parameter must be disaster_standby")
-        if DefaultValue.is_disaster_cluster(self.cluster_info) and \
-                self.params.mode == "disaster_standby":
-            self.logger.debug("The primary dn not exist, do nothing except record the result file.")
-            raise Exception(ErrorCode.GAUSS_516["GAUSS_51632"] %
-                            "dorado disaster cluster switchover, Because the disaster_standby "
-                            "cluster [drClusterMode] parameter must be primary")
         self.logger.log("Waiting for cluster and all instances normal.")
         if self.params.mode == "primary":
             end_time = datetime.now() + timedelta(seconds=600)

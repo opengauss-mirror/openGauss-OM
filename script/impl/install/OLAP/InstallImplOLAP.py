@@ -480,6 +480,8 @@ class InstallImplOLAP(InstallImpl):
         if self.checkMemAndCores():
             para_line += "*==SYMBOL==*--gucXml"
         para_line += "*==SYMBOL==*-X*==SYMBOL==*%s" % self.context.xmlFile
+        if self.context.clusterInfo.enable_dss == 'on':
+            para_line += "*==SYMBOL==*--dss_mode"
         cmd += DefaultValue.encodeParaline(para_line, DefaultValue.BASE_ENCODE)
 
         self.context.logger.debug(

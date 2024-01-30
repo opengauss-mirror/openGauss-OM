@@ -77,6 +77,7 @@ class CmdOptions():
         self.gucXml = False
         self.vcMode = False
         self.dws_mode = False
+        self.dss_mode = False
         self.clusterConf = ""
 
 
@@ -109,7 +110,7 @@ def parseCommandLine():
         paraList = paraLine.split("*==SYMBOL==*")
         opts, args = getopt.getopt(paraList[1:], "U:C:D:S:T:P:l:hX:",
                                    ["help", "alarm=", "gucXml",
-                                    "vc_mode", "dws-mode"])
+                                    "vc_mode", "dws-mode", "dss_mode"])
     except Exception as e:
         usage()
         GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"]
@@ -146,6 +147,8 @@ def parseCommandLine():
             g_opts.vcMode = True
         elif (key == "--dws-mode"):
             g_opts.dws_mode = True
+        elif (key == "--dss_mode"):
+            g_opts.dss_mode = True
         elif key == "-X":
             g_opts.clusterConf = os.path.realpath(value)
         Parameter.checkParaVaild(key, value)
@@ -193,7 +196,7 @@ class ConfigInstance(LocalBaseOM):
     """
 
     def __init__(self, logFile, user, clusterConf, dwsMode=False,
-                 dataParams=None, confType="",
+                 dataParams=None, confType="", dss_mode=False,
                  clusterStaticConfigFile="", alarmComponent="", cmsParams=None):
         """
         function: configure all instance on local node
@@ -202,7 +205,8 @@ class ConfigInstance(LocalBaseOM):
             dataParams = []
         if cmsParams is None:
             cmsParams = []
-        LocalBaseOM.__init__(self, logFile, user, clusterConf, dwsMode)
+        LocalBaseOM.__init__(self, logFile, user, clusterConf,
+                             dwsMode, dss_mode=dss_mode)
         if (self.clusterConfig == ""):
             # Read config from static config file
             self.readConfigInfo()
@@ -362,6 +366,7 @@ if __name__ == '__main__':
                                   g_opts.clusterConf,
                                   False,
                                   g_opts.dataGucParams, g_opts.configType,
+                                  g_opts.dss_mode,
                                   g_opts.clusterStaticConfigFile,
                                   g_opts.alarmComponent, g_opts.cmsGucParams)
         configer.modifyInstance()

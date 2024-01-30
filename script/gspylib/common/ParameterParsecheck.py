@@ -361,6 +361,7 @@ class Parameter():
                            "--delete-user": "delete-user",
                            "--delete-group": "delete-group",
                            "--dws-mode": "dws-mode",
+                           "--dss_mode": "dss_mode",
                            "--detail": "show_detail",
                            "--detail-all": "show_detail_all",
                            "--rollback": "rollback",

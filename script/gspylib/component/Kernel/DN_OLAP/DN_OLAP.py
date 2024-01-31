@@ -317,8 +317,8 @@ class DN_OLAP(Kernel):
             tmp_dn_dict["enable_cstore_ssd_cache"] = "on"
 
         if self.dss_mode:
-            del tmp_dn_dict["synchronous_standby_names"]
-        
+            tmp_dn_dict["synchronous_standby_names"] = "'*'"
+
         self.logger.debug("DN parameter value is : {0}".format(tmp_dn_dict))
         return tmp_dn_dict
 

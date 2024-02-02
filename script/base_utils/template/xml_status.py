@@ -56,7 +56,7 @@ def check_database_dir(database_dir):
 
         # check permission
         if not os.access(database_dir, os.R_OK | os.W_OK):
-            GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('not_permission'), database_dir)
+            GaussLog.printMessage("%s %s" % (XmlConstant.RESOURCE_DATA.get('not_permission'), database_dir))
             return False
     else:
         cmd = "mkdir -p %s && rm -rf %s" % (database_dir, database_dir)
@@ -445,12 +445,11 @@ class PriStandbyCountStatus(TemplateStatus):
                 sys.exit(0)
             user_input = input(XmlConstant.RESOURCE_DATA.get('max_nodes')).strip()
             if user_input.lower() in ('back', 'b'):
-                if XmlConstant.IS_DDES:
+                if XmlConstant.IS_DDES or XmlConstant.IS_CM:
                     return CmServerPortStatus()
-                elif XmlConstant.IS_CM:
-                    return CmServerPortStatus()
-                else:
-                    return PriStandbyStatus()
+                if not XmlConstant.IS_CM:
+                    return CmStatus()
+                return PriStandbyStatus()
             if not user_input:
                 XmlConstant.PRI_STANDBY_COUNT = 3
                 return PriStandbyIpStatus()

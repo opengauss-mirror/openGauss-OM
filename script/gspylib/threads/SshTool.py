@@ -269,12 +269,18 @@ class SshTool():
         output: output
         """
         try:
-            cmd = "source %s && echo $GPHOME" % osProfile
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0 or not output or output.strip() == "":
-                raise Exception(ErrorCode.GAUSS_518["GAUSS_51802"] % "GPHOME"
-                                + "The cmd is %s" % cmd)
-            return output.strip()
+            gp_home = ""
+            # osProfile if exists
+            if osProfile and os.path.isfile(osProfile):
+                cmd = "source %s && echo $GPHOME" % osProfile
+                (status, output) = subprocess.getstatusoutput(cmd)
+                if status == 0:
+                    gp_home = output.strip()
+            if not gp_home:
+                gp_home = os.environ.get('GPHOME')
+            if not gp_home:
+                raise Exception(ErrorCode.GAUSS_518["GAUSS_51802"] % "GPHOME")
+            return gp_home
         except Exception as e:
             raise Exception(str(e))
 
@@ -727,6 +733,7 @@ class SshTool():
         input : srcFile, targetDir, hostList, env_file, gp_path, parallel_num
         output: NA
         """
+        gp_home = ""
         outputCollect = ""
         localMode = False
         resultMap = {}
@@ -742,11 +749,9 @@ class SshTool():
             if mpprcFile and os.path.isfile(mpprcFile):
                 cmd = "source %s && echo $GPHOME" % mpprcFile
                 (status, output) = subprocess.getstatusoutput(cmd)
-                if status != 0 or not output or output.strip() == "":
-                    raise Exception(ErrorCode.GAUSS_518["GAUSS_51802"]
-                                    % "GPHOME" + "The cmd is %s" % cmd)
-                gp_home = output.strip()
-            else:
+                if status == 0:
+                    gp_home = output.strip()
+            if not gp_home:
                 gp_home = os.environ.get('GPHOME')
             if gp_path != "":
                 gp_home = gp_path.strip()

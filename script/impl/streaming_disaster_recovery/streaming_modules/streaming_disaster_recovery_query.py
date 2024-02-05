@@ -97,6 +97,27 @@ class StreamingQueryHandler(StreamingBase):
         if self.primary_dn_ids or (not self.main_standby_ids):
             self.logger.debug("Ignore update recovery for primary cluster.")
             return recovery_status
+        sql_check = "select 1 from pg_catalog.pg_stat_get_wal_receiver() where local_role" \
+                    "='Main Standby' and state = 'Normal' and peer_role='Primary' and peer_state='Normal';"
+        dn_instances = [inst for node in self.cluster_info.dbNodes for inst in node.datanodes
+                        if inst.instanceId in self.main_standby_ids]
+        self.logger.debug("Check recovery with cmd:%s." % sql_check)
+        if not dn_instances:
+            return recovery_status
+        status, output = ClusterCommand.remoteSQLCommand(sql_check, self.user,
+            dn_instances[0].hostname, dn_instances[0].port)
+        if status == 0 and output and output.strip():
+            recovery_status = "recovery"
+            self.logger.debug("Successfully check recovery, results:%s." %
+                                SensitiveMask.mask_pwd(output))
+            return recovery_status
+        elif status == 0 and not output.strip():
+            self.logger.debug("Check recovery fail.")
+            return recovery_status
+        else:
+            self.logger.debug("Check recovery status:%s, output:%s."
+                                % (status, output))
+        self.logger.debug("Check recovery result:%s." % recovery_status)
         return "recovery"
 
     def get_max_rpo_rto(self):

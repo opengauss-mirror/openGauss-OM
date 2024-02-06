@@ -135,6 +135,7 @@ class PreInstall(LocalBaseOM):
         self.white_list = {}
         self.logger = None
         self.current_user_root = False
+        self.cluster_core_path = ""
 
     def get_current_user(self):
         """
@@ -193,6 +194,7 @@ Common options:
     -s                                The path of MPP environment file.
     -l                                The path of log file.
     -R                                The path of cluster install path.
+    -C                                The path of cluster core path.
     --help                            Show this help, then exit.
         """
         print(self.usage.__doc__)
@@ -204,7 +206,7 @@ Common options:
         output: NA
         """
         try:
-            opts, args = getopt.getopt(sys.argv[1:], "t:u:g:X:P:Q:e:s:l:f:R:",
+            opts, args = getopt.getopt(sys.argv[1:], "t:u:g:X:P:Q:e:s:l:f:R:C:",
                                        ["check_empty", "help"])
         except Exception as e:
             self.usage()
@@ -218,7 +220,7 @@ Common options:
                          "-X": self.clusterConfig,
                          "-P": self.preparePath, "-Q": self.clusterToolPath,
                          "-s": self.mpprcFile, "-f": self.tmpFile,
-                         "-R": self.clusterAppPath}
+                         "-R": self.clusterAppPath, "-C": self.cluster_core_path}
         parameter_keys = parameter_map.keys()
 
         for (key, value) in opts:
@@ -245,6 +247,7 @@ Common options:
         self.mpprcFile = parameter_map["-s"]
         self.tmpFile = parameter_map["-f"]
         self.clusterAppPath = parameter_map["-R"]
+        self.cluster_core_path = parameter_map["-C"]
 
     def checkParameter(self):
         """
@@ -1611,6 +1614,8 @@ Common options:
 
         # clean GPHOME
         FileUtil.deleteLine(userProfile, "^\\s*export\\s*GPHOME=.*$")
+        # clean COREPATH
+        FileUtil.deleteLine(userProfile, "^\\s*export\\s*COREPATH=.*$")
         # clean UNPACKPATH
         FileUtil.deleteLine(userProfile, "^\\s*export\\s*UNPACKPATH=.*$")
         self.logger.debug(
@@ -1692,6 +1697,9 @@ Common options:
             datadir = node_info.datanodes[0].datadir
             FileUtil.writeFile(userProfile,
                              ["export PGDATA=%s" % datadir])
+            
+            # set COREPATH
+            FileUtil.writeFile(userProfile, ["export COREPATH=%s" % self.cluster_core_path])
             # set PGDATABASE
             FileUtil.writeFile(userProfile, ["export PGDATABASE=%s" % "postgres"])
 

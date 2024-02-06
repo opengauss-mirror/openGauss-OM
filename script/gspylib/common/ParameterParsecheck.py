@@ -123,6 +123,7 @@ gs_om_kerberos = ["-t:", "-?", "--help", "-V", "--version", "-m:", "-U:",
                   "-X:", "-l:", "--krb-server", "--krb-client"]
 gs_om_refreshconf = ["-t:", "-?", "--help", "-V", "--version", "-l:"]
 gs_om_killmonitor = ["-t:", "-?", "--help", "-V", "--version", "-l:"]
+gs_om_generate_xml = ["-t:", "-?", "--help", "-V", "--version", "-l:", "--add-hostname=", "--add-hostip="]
 # gs_upgradectl child branch
 # AP and TP are same
 gs_upgradectl_chose_strategy = ["-t:", "-?", "--help", "-V", "--version",
@@ -167,7 +168,8 @@ ParameterDict = {"preinstall": gs_preinstall,
                  "refreshconf": gs_om_refreshconf,
                  "expansion": gs_expansion,
                  "dropnode": gs_dropnode,
-                 "killmonitor": gs_om_killmonitor
+                 "killmonitor": gs_om_killmonitor,
+                 "generate_xml": gs_om_generate_xml
                  }
 
 # List of scripts with the -t parameter
@@ -175,7 +177,7 @@ special_list = ["gs_om", "backup", "upgradectl"]
 
 # The -t parameter list
 action_om = ["start", "stop", "status", "restart", "generateconf", "kerberos",
-             "cert", "view", "query", "refreshconf", "killmonitor"]
+             "cert", "view", "query", "refreshconf", "killmonitor", "generate_xml"]
 action_upgradectl = ["chose-strategy", "auto-upgrade", "auto-rollback",
                      "commit-upgrade", "upgrade-cm"]
 
@@ -341,6 +343,8 @@ class Parameter():
                               "--dbname": "dbname",
                               "--dbuser": "dbuser",
                               "--nodeId": "nodeId",
+                              "--add-hostname": "add_hostname",
+                              "--add-hostip": "add_hostip",
                               "--security-mode": "security_mode",
                               "--cluster-number": "cluster_number"
                               }

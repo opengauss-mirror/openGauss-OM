@@ -52,6 +52,7 @@ ACTION_QUERY = "query"
 ACTION_KERBEROS = "kerberos"
 ACTION_REFRESHCONF = "refreshconf"
 ACTION_KILLMONITOR = "killmonitor"
+ACTION_GENERATE_XML = "generate_xml"
 
 # postgis
 ACTION_DEL_POSTGIs = "rmlib"
@@ -111,6 +112,10 @@ class CmdOptions():
         # view
         self.is_dynamic = False
 
+        # generate_xml
+        self.add_hostips = ""
+        self.add_hostnames = ""
+
 
 ###########################################
 class OperationManager(ParallelBaseOM):
@@ -150,6 +155,7 @@ Usage:
     gs_om -t query [-o OUTPUT] [--time-out=SECS]
     gs_om -t refreshconf
     gs_om -t killmonitor
+    gs_om -t generate_xml [--add-hostname=hostname1,hostname2] [--add-hostip=hostip1,hostip2]
 
 General options:
   -t                              Type of the OM command.
@@ -461,6 +467,12 @@ Install options:
         if (ParaDict.__contains__("logFile")):
             self.g_opts.logFile = ParaDict.get("logFile")
 
+    def parse_generate_xml(self, ParaDict):
+        if (ParaDict.__contains__("add_hostname")):
+            self.g_opts.add_hostnames = ParaDict.get("add_hostname")
+        if (ParaDict.__contains__("add_hostip")):
+            self.g_opts.add_hostips = ParaDict.get("add_hostip")
+
     def parseCommandLine(self):
         """
         function:Parse command line and save to global variable
@@ -510,6 +522,8 @@ Install options:
         self.parseLog(ParaDict)
         # Parse Az info
         self.parseAZ(ParaDict)
+        # Parse generate xml parameter
+        self.parse_generate_xml(ParaDict)
 
     ###########################################################################
     # Check parameters for all operations
@@ -552,6 +566,8 @@ Install options:
             pass
         elif (self.g_opts.action == ACTION_KILLMONITOR):
             pass
+        elif (self.g_opts.action == ACTION_GENERATE_XML):
+            self.check_generate_xml_parameter()
         else:
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % "t")
 
@@ -764,6 +780,14 @@ Install options:
             return wrongChar
         else:
             return True
+        
+    def check_generate_xml_parameter(self):
+        add_hostnames = self.g_opts.add_hostnames.split(',')
+        add_hostips = self.g_opts.add_hostips.split(',')
+
+        if (len(add_hostnames) != len(add_hostips)):
+            GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35713"] %
+                                    (len(add_hostnames), len(add_hostips)))
 
 
 def main():
@@ -798,7 +822,8 @@ def main():
                                           ACTION_VIEW,
                                           ACTION_QUERY,
                                           ACTION_REFRESHCONF,
-                                          ACTION_KILLMONITOR
+                                          ACTION_KILLMONITOR,
+                                          ACTION_GENERATE_XML
                                           ]):
             raise Exception(ErrorCode.GAUSS_531['GAUSS_53104']
                             % ("gs_om -t " + manager.g_opts.action))
@@ -832,6 +857,8 @@ def main():
             impl.doRefreshConf()
         elif (manager.g_opts.action == ACTION_KILLMONITOR):
             impl.kill_om_monitor()
+        elif (manager.g_opts.action == ACTION_GENERATE_XML):
+            impl.do_generate_xml()
 
         manager.logger.closeLog()
     except Exception as e:

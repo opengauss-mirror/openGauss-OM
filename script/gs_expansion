@@ -23,7 +23,6 @@ import os
 import sys
 import subprocess
 import socket
-import datetime
 package_path = os.path.dirname(os.path.realpath(__file__))
 ld_path = package_path + "/gspylib/clib"
 if 'LD_LIBRARY_PATH' not in os.environ:
@@ -311,6 +310,28 @@ General options:
                 subprocess.getstatusoutput("chown {}:{} {}".format(self.user, self.group, self.logger.logFile))
         self.logger.ignoreErr = True
 
+    def check_env_variable(self):
+        """
+        check whether env file is sourced
+        """
+        self.logger.debug("Checking environment variable.")
+        if not self.envFile:
+            self.envFile = "/home/%s/.bashrc" % self.user
+        cmd = "source %s" % self.envFile
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Expansion("not found envfile.")
+        if not EnvUtil.getEnv("GPHOME"):
+            GaussLog.exitWithError(ErrorCode.GAUSS_518["GAUSS_51802"] % (
+                "\"GPHOME\", please import environment variable"))
+        if not EnvUtil.getEnv("GAUSSHOME"):
+            GaussLog.exitWithError(ErrorCode.GAUSS_518["GAUSS_51802"] % (
+                "\"GAUSSHOME\", please import environment variable"))
+        if not EnvUtil.getEnv("PGHOST"):
+            GaussLog.exitWithError(ErrorCode.GAUSS_518["GAUSS_51802"] % (
+                "\"PGHOST\", please import environment variable"))
+        self.logger.debug("Successfully checked environment variable.")
+
     def generate_xml(self):
         if self.xmlFile:
             return
@@ -440,27 +461,10 @@ General options:
         self.sshTool.createTrust(user, all_ips)
         self.logger.debug("Successfully created SSH trust for the %s" % user)
 
-    def checkEnvfile(self):
+    def check_xml_env_consistent(self):
         """
-        check whether env file is sourced
         check whether info in XML is consistent with environment variable
         """
-        self.logger.debug("Checking environment variable.")
-        if not self.envFile:
-            self.envFile = "/home/%s/.bashrc" % self.user
-        cmd = "source %s" % self.envFile
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            raise Expansion("not found envfile.")
-        if not EnvUtil.getEnv("GPHOME"):
-            GaussLog.exitWithError(ErrorCode.GAUSS_518["GAUSS_51802"] % (
-                "\"GPHOME\", please import environment variable"))
-        if not EnvUtil.getEnv("GAUSSHOME"):
-            GaussLog.exitWithError(ErrorCode.GAUSS_518["GAUSS_51802"] % (
-                "\"GAUSSHOME\", please import environment variable"))
-        if not EnvUtil.getEnv("PGHOST"):
-            GaussLog.exitWithError(ErrorCode.GAUSS_518["GAUSS_51802"] % (
-                "\"PGHOST\", please import environment variable"))
         clusterInfoDict = self.clusterInfoDict
         toolPath = EnvUtil.getEnv("GPHOME")
         appPath = EnvUtil.getEnv("GAUSSHOME")
@@ -679,11 +683,12 @@ if __name__ == "__main__":
     expansion.parseCommandLine()
     expansion.checkParameters()
     expansion.initLogs()
-    expansion.checkEnvfile()
+    expansion.check_env_variable()
     expansion.generate_xml()
     expansion.init_cluster_info_all_node()
     expansion.checkTrust()
     expansion.getExpansionInfo()
+    expansion.check_xml_env_consistent()
     expansion.checkXmlIncludeNewHost()
     expansion.checkExecutingHost()
     expansion.expand_run(expansion)

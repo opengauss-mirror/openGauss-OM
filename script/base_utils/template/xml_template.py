@@ -187,11 +187,12 @@ class GenerateTemplate:
         if not XmlConstant.IS_PRI_STANDBY:
             datanode1_value = datanode1
         else:
-            last = XmlConstant.HOSTNAME_LISTS[-1]
-            datanode1_value = datanode1 + ","
-            for hostname in XmlConstant.HOSTNAME_LISTS[1:-1]:
-                datanode1_value += hostname + "," + datanode1 + ","
-            datanode1_value += last + "," + datanode1
+            datanode1_list = []
+            datanode1_list.append(datanode1)
+            for hostname in XmlConstant.HOSTNAME_LISTS[1:]:
+                datanode1_list.append(hostname)
+                datanode1_list.append(datanode1)
+            datanode1_value = ",".join(datanode1_list)
 
         for i in range(len(self.root[1])):
             for ele in self.root[1][i]:

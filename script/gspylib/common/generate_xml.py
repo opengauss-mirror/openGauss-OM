@@ -118,19 +118,13 @@ class GenerateXml:
         self.tree = ET.ElementTree(root)
         self.root = self.tree.getroot()
 
-    def has_new_host(self, new_host_info):
-        if new_host_info:
-            self.new_flag = True
-        else:
-            self.new_flag = False
-
     def update_cluster_node_info(self, cluster_info, new_host_info):
         """
         function: update cluster new node info
         input  : cluster_info new_host_info
         output : NA
         """
-        if not self.new_flag:
+        if not new_host_info:
             return
         for hostname, hostip in new_host_info.items():
             new_node = copy.deepcopy(cluster_info.dbNodes[-1])
@@ -152,8 +146,6 @@ class GenerateXml:
         input  : cluster_info new_host_info
         output : NA
         """
-        # If the parameter has add_ Hostname
-        self.has_new_host(new_host_info)
         # Add node information to the existing cluster information
         self.update_cluster_node_info(cluster_info, new_host_info)
         # if has cm
@@ -241,11 +233,12 @@ class GenerateXml:
 
     def get_datanodes1_value(self, cluster_info):
         datanode = cluster_info.dbNodes[0].datanodes[0].datadir
-        datanode1 = ""
-        datanode1 += datanode + ","
-        for node in cluster_info.dbNodes[1:-1]:
-            datanode1 += node.name + "," + datanode + ","
-        datanode1 += cluster_info.dbNodes[-1].name + "," + datanode
+        datanode1_list = []
+        datanode1_list.append(datanode)
+        for node in cluster_info.dbNodes[1:]:
+            datanode1_list.append(node.name)
+            datanode1_list.append(datanode)
+        datanode1 = ",".join(datanode1_list)
         return datanode1
 
     def gen_om(self, cluster_info, cluster_info_dict):

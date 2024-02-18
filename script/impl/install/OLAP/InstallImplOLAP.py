@@ -379,7 +379,7 @@ class InstallImplOLAP(InstallImpl):
         except Exception as e:
             raise Exception(ErrorCode.GAUSS_530["GAUSS_53023"] % str(e))
         self.context.logger.log(
-            "Successful check consistence of memCheck "
+            "Successfully check consistence of memCheck "
             "and coresCheck on all nodes.")
         return checkConsistence
 

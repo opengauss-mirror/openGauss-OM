@@ -131,6 +131,7 @@ class GenerateXml:
             new_node.name = hostname
             new_node.backIps[0] = hostip
             new_node.sshIps[0] = hostip
+            new_node.datanodes[0].instanceType = '1'
             cluster_info.dbNodes.append(new_node)
 
             # if has cm, need copy cmservers cmagents

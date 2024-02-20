@@ -209,6 +209,8 @@ class ParamsHandler(object):
                           help='Path of log file.')
         parser.add_option('-r', "--restart", dest='restart', action='store_true',
                           help='restart cluster when do gs_ddr switchover or failover.')
+        parser.add_option('--stage=', dest='stage', default="None", type='string',
+                          help='[Internal Usage] Stage when do gs_ddr. It could be 1 or 2')
         return parser
 
     def __print_usage(self):

@@ -76,6 +76,7 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
             return
         self.logger.debug("Start third step of ddr start.")
 
+        self.set_ss_enable_doraro()
         self.update_pg_hba()
         self.config_cross_cluster_repl_info()
         self.set_application_name()
@@ -99,9 +100,10 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         if step >= 5:
             return
         self.logger.debug("Start fifth step of ddr start.")
-        self.set_cmagent_guc("dorado_cluster_mode", "1", "set", only_mode='primary')
+        self.set_cmagent_guc("ss_double_cluster_mode", "1", "set", only_mode='primary')
         self.start_cluster(only_mode="primary")
         self.write_dorado_step("5_start_primary_cluster_step")
+        self.logger.log("Successfully set ss_double_cluster_mode")
 
     def sixth_step_build_main_standby(self, step):
         """
@@ -129,9 +131,7 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         if step >= 7 or self.params.mode == "primary":
             return
         self.logger.debug("Start seventh step of ddr start.")
-        self.set_cmserver_guc("backup_open", "1", "set", only_mode='disaster_standby')
-        self.set_cmagent_guc("agent_backup_open", "1", "set", only_mode='disaster_standby')
-        self.set_cmagent_guc("dorado_cluster_mode", "2", "set", only_mode='disaster_standby')
+        self.set_cmagent_guc("ss_double_cluster_mode", "2", "set", only_mode='disaster_standby')
         self.set_dss_cluster_run_mode("cluster_standby",only_mode='disaster_standby')
         self.write_dorado_step("7_set_cm_guc_step")
         
@@ -170,17 +170,21 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
 
     def run(self):
         self.logger.log("Start create dorado storage disaster relationship.")
+        self.logger.log("param.stage = %s." % self.params.stage)
         step = self.query_dorado_step()
-        self.first_step_create_ddr_dir(step)
-        self.parse_cluster_status()
-        self.second_step_check_cluster_status(step)
-        self.common_step_for_ddr_start()
-        self.third_step_set_guc_param(step)
-        self.fourth_step_stop_cluster(step)
-        self.fifth_step_start_cluster(step)
-        self.sixth_step_build_main_standby(step)
-        self.seventh_step_set_cm_guc(step)
-        self.eighth_step_wait_main_standby(step)
-        self.ninth_step_clean(step)
-        self.logger.log("Successfully do dorado disaster recovery start.")
+        if self.params.stage is None or int(self.params.stage) == 1:
+            self.first_step_create_ddr_dir(step)
+            self.parse_cluster_status()
+            self.second_step_check_cluster_status(step)
+            self.common_step_for_ddr_start()
+            self.third_step_set_guc_param(step)
+            self.fourth_step_stop_cluster(step)
+            self.fifth_step_start_cluster(step)
+            self.sixth_step_build_main_standby(step)
+            self.seventh_step_set_cm_guc(step)
+            self.logger.log("Successfully set cm_guc.")
+        if self.params.stage is None or int(self.params.stage) == 2:
+            self.eighth_step_wait_main_standby(step)
+            self.ninth_step_clean(step)
+            self.logger.log("Successfully do dorado disaster recovery start.")
  

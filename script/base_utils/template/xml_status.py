@@ -238,6 +238,7 @@ class DataPortStatus(TemplateStatus):
 class PriStandbyStatus(TemplateStatus):
 
     def work(self):
+        XmlConstant.IS_PRI_STANDBY = False
         GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('choose_pri_standby'))
         XmlConstant.select_option(XmlConstant.RESOURCE_DATA.get('deploy_pri_standby'),
                                   XmlConstant.RESOURCE_DATA.get('deploy_single'))
@@ -268,6 +269,8 @@ class PriStandbyStatus(TemplateStatus):
 class DdesStatus(TemplateStatus):
 
     def work(self):
+        XmlConstant.IS_DDES = False
+        XmlConstant.IS_CM = False
         GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('choose_ddes'))
         XmlConstant.select_option(XmlConstant.RESOURCE_DATA.get('not_deploy'), XmlConstant.RESOURCE_DATA.get('deploy'))
 
@@ -382,6 +385,7 @@ class DdesShareDiskStatus(TemplateStatus):
 class CmStatus(TemplateStatus):
 
     def work(self):
+        XmlConstant.IS_CM = False
         GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('choose_cm'))
         XmlConstant.select_option(XmlConstant.RESOURCE_DATA.get('deploy'), XmlConstant.RESOURCE_DATA.get('not_deploy'))
 

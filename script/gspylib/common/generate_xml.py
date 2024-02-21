@@ -93,6 +93,11 @@ class ClusterKey:
                    CM_SERVER_LEVEL, CM_SERVER_RELATION, CM_SERVER_PORT_STANDBY, CM_DIR]
 
 
+def check_cluster_node_count(cluster_info):
+    node_count = len(cluster_info.dbNodes)
+    if node_count < 0 or node_count > 9:
+        raise Exception("The cluster supports a maximum of one primary node and eight backup nodes")
+
 class GenerateXml:
 
     def __init__(self):
@@ -140,6 +145,8 @@ class GenerateXml:
                 cm_server.hostname = hostname
                 cm_server.listenIps[0] = hostip
                 cm_server.haIps[0] = hostip
+        
+        check_cluster_node_count(cluster_info)
 
     def do_generate_xml(self, cluster_info, new_host_info=None):
         """

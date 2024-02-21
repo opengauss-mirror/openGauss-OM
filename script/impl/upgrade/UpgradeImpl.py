@@ -2502,6 +2502,7 @@ class UpgradeImpl:
                                        const.BINARY_UPGRADE_STEP_PRE_COMMIT)
             self.printPrecommitBanner()
             self.progressReport()
+            self.context.logger.log("Successfully upgrade all nodes.")
         except Exception as e:
             self.context.logger.error(str(e))
             self.context.logger.log("Binary upgrade failed. Rollback"

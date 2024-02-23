@@ -305,7 +305,7 @@ General options:
         self.initLogger("gs_expansion")
         # change the owner of gs_expansion.log to the db user
         if os.path.isfile(self.logger.logFile):
-            (status, output) = subprocess.getstatusoutput("ls gs_expansion* -al | cut -d' ' -f3")
+            (status, output) = subprocess.getstatusoutput("ls %s -al | cut -d' ' -f3" % self.logger.logFile)
             if output != self.user:
                 subprocess.getstatusoutput("chown {}:{} {}".format(self.user, self.group, self.logger.logFile))
         self.logger.ignoreErr = True

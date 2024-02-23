@@ -141,12 +141,21 @@ class ExpansionImplWithCm(ExpansionImpl):
                                               self.context.xmlFile,
                                               sep_env_file)
         self.logger.log("Preinstall command is: {0}".format(cmd))
-        result_map, output = \
-            self.ssh_tool.getSshStatusOutput(cmd,
-                                             ExpansionImplWithCm.get_node_names(self.new_nodes))
 
-        self.logger.debug("Preinstall result: {0}".format(result_map))
-        self.logger.debug("Preinstall output: {0}".format(output))
+        failed_preinstall_hosts = []
+        for host in ExpansionImplWithCm.get_node_names(self.new_nodes):
+            sshTool = SshTool([host], timeout=300)
+            result_map, output = sshTool.getSshStatusOutput(cmd, [])
+            self.logger.debug(result_map)
+            self.logger.debug(output)
+            if result_map[host] == DefaultValue.SUCCESS:
+                self.logger.log("Preinstall %s success" % host)
+            else:
+                failed_preinstall_hosts.append(host)
+            self.cleanSshToolFile(sshTool)
+        if failed_preinstall_hosts:
+            self.logger.log("Failed to preinstall on: \n%s" % ", ".join(failed_preinstall_hosts))
+        self.logger.log("End to preinstall database step.")
 
     def install_app(self):
         """

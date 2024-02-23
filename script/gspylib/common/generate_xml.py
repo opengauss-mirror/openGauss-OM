@@ -363,11 +363,9 @@ class GenerateXml:
         # convert ElementTree tag tree to string
         xml_str = ET.tostring(self.root, encoding="UTF-8", method="xml")
         dom = minidom.parseString(xml_str)
-        formatted_xml = dom.toprettyxml()
-        cmd = "echo '%s' > %s" % (formatted_xml, target_xml)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            raise Exception("Failed to write xml file: %s" % output)
+        formatted_xml = dom.toprettyxml(encoding="UTF-8")
+        with open(target_xml, "wb") as f:
+            f.write(formatted_xml)
         xml_tmp_file = "/home/%s/tmp_generate_xml" % user
         cmd = "echo '%s' > '%s'" % (target_xml, xml_tmp_file)
         (status, output) = subprocess.getstatusoutput(cmd)

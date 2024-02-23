@@ -424,37 +424,32 @@ class Postuninstall(LocalBaseOM):
                 "The %s does not exist." % self.userProfile
                 + " Please skip to check UnPreInstall.")
             return
-
-            # check $GAUSSHOME
-        cmd = "su - %s -c 'source %s && echo $GAUSS_ENV' 2>/dev/null" % (
-            self.user, self.userProfile)
-        self.logger.debug("Command for getting $GAUSSHOME: %s" % cmd)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            self.logger.logExit(
-                ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                + " Error:\n%s" % output)
-        gaussEnv = output.strip()
-        if gaussEnv == "2":
+        
+        # check $GAUSSHOME
+        gauss_env = self.check_enviroment("GAUSSHOME")
+        if gauss_env == "2":
             self.logger.logExit(
                 ErrorCode.GAUSS_525["GAUSS_52501"] % "gs_uninstall")
 
-            # check $GAUSS_ENV
-        cmd = "su - %s -c 'source %s && echo $GAUSS_ENV' 2>/dev/null" % (
-            self.user, self.userProfile)
-        self.logger.debug("Command for getting $GAUSS_ENV: %s" % cmd)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            self.logger.logExit(
-                ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                + " Error:\n%s" % output)
-        gaussEnv = output.strip()
-
-        if str(gaussEnv) != "1":
+        # check $GAUSS_ENV   
+        gauss_env = self.check_enviroment("GAUSS_ENV")
+        if str(gauss_env) != "1":
             self.logger.logExit(
                 ErrorCode.GAUSS_525["GAUSS_52501"] % "gs_preinstall")
 
         self.logger.debug("Successfully checked UnPreInstall.")
+
+    def check_enviroment(self, enviro_variable):
+        cmd = ("su - %s -c 'source %s && echo $" + enviro_variable + "' 2>/dev/null") % (
+            self.user, self.userProfile)
+        self.logger.debug("Command for getting $" + enviro_variable + ": %s" % cmd)
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            self.logger.logExit(
+                ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
+                + " Error:\n%s" % output)
+        gauss_env = output.strip()
+        return gauss_env
 
     def cleanGaussEnv(self):
         """

@@ -511,10 +511,10 @@ class UninstallImpl:
             self.logger.closeLog()
             self.CleanStaticConfFile()
             self.CleanRackFile()
+            self.clear_dss_disk()
             self.clean_dss_home()
             self.CleanLog()
-            self.check_dss()
-            self.clear_dss_disk()     
+            self.check_dss()     
             self.logger.log("Uninstallation succeeded.")
         except Exception as e:
             self.logger.logExit(str(e))

@@ -904,7 +904,7 @@ class DefaultValue():
             return initSystemFile
         if (distname == "SuSE" and os.path.isfile(initFileSuse)):
             initFile = initFileSuse
-        elif (distname in ("redhat", "centos", "euleros", "openEuler", "FusionOS") and
+        elif (distname in ("redhat", "centos", "euleros", "openEuler", "FusionOS", "kylin") and
               os.path.isfile(initFileRedhat)):
             initFile = initFileRedhat
         elif (distname == "debian" and version == "buster/sid" and

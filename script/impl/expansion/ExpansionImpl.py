@@ -113,8 +113,8 @@ class ExpansionImpl():
 
         self.commonGsCtl = GsCtlCommon(expansion)
         self.tempFileDir = "/tmp/gs_expansion_%s" % (currentTime)
-        dirName = os.path.dirname(os.path.realpath(__file__))
-        self.remote_pkg_dir = os.path.normath(os.path.join(dirName, "./../../../"))
+        dir_name = os.path.dirname(os.path.realpath(__file__))
+        self.remote_pkg_dir = os.path.normath(os.path.join(dir_name, "./../../../"))
         self.logger.debug("tmp expansion dir is %s ." % self.tempFileDir)
         self.logger.debug("remote_pkg_dir is %s ." % self.remote_pkg_dir)
         # primary's wal_keep_segments value

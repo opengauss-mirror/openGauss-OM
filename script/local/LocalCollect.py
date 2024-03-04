@@ -826,13 +826,15 @@ def find_log():
     if g_opts.key is not None and g_opts.key != "":
         cmd = "cd $GAUSSLOG && if [ -d tmp_gs_collector ];" \
               "then rm -rf tmp_gs_collector; " \
-              "fi && find . -type f -iname '*.log' -print " \
+              "fi && (find . -type f -iname '*.log' -print && " \
+              "find . -type f -iname '*.log.gz' -print)" \
               " | xargs ls --time-style='+ %Y%m%d%H%M' -ll"
     else:
         cmd = "cd $GAUSSLOG && if [ -d tmp_gs_collector ];" \
               "then rm -rf tmp_gs_collector; " \
               "fi && (find . -type f -iname '*.log' -print && " \
-              "find . -type f -iname '*.prf' -print) " \
+              "find . -type f -iname '*.prf' -print && " \
+              "find . -type f -iname '*.log.gz' -print)" \
               "| xargs ls --time-style='+ %Y%m%d%H%M' -ll"
     if check_dss_env():
         cmd = "%s && (find $GAUSSLOG/pg_log -type f -iname '*.rlog' -print && " \

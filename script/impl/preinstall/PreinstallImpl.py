@@ -81,6 +81,8 @@ ACTION_CHECK_OS_SOFTWARE = "check_os_software"
 ACTION_CHANGE_TOOL_ENV = "change_tool_env"
 #check config
 ACTION_CHECK_CONFIG = "check_config"
+# check cpu
+ACTION_CHECK_CPU_INSTRUCTIONS = "check_cpu_instructions"
 #############################################################################
 # Global variables
 #   self.context.logger: globle logger
@@ -747,6 +749,30 @@ class PreinstallImpl:
         except Exception as e:
             raise Exception(str(e))
         self.context.logger.log("Successfully checked OS version.", "constant")
+
+    def check_cpu_instructions(self):
+        """
+        function: Check if CPU instructions support rdtscp and avx
+        input:NA
+        output:NA
+        """
+        self.context.logger.log("Checking cpu instructions.", "addStep")
+        try:
+            # Checking OS version
+            cmd = "%s -t %s -u %s -l %s" % (
+                OMCommand.getLocalScript("Local_PreInstall"),
+                ACTION_CHECK_CPU_INSTRUCTIONS,
+                self.context.user,
+                self.context.localLog)
+            self.context.logger.debug("Checking cpu instructions: %s" % cmd)
+            CmdExecutor.execCommandWithMode(
+                cmd,
+                self.context.sshTool,
+                self.context.localMode or self.context.isSingle,
+                self.context.mpprcFile)
+        except Exception as e:
+            self.context.logger.log("Warning: This cluster is missing the rdtscp or avx instruction.")
+        self.context.logger.log("Successfully checked cpu instructions.", "constant")
 
     def createOSUser(self):
         """
@@ -1664,6 +1690,8 @@ class PreinstallImpl:
         self.checkOSSoftware()
         # check os version
         self.checkOSVersion()
+        # check cpu instructions
+        self.check_cpu_instructions()
         # create path and set mode
         self.createDirs()
         # set os parameters

@@ -30,6 +30,7 @@ import pwd
 import grp
 import configparser
 import re
+import platform
 
 
 sys.path.append(sys.path[0] + "/../")
@@ -86,6 +87,7 @@ ACTION_CHANGE_TOOL_ENV = "change_tool_env"
 ACTION_SET_CGROUP = "set_cgroup"
 ACTION_CHECK_CONFIG = "check_config"
 ACTION_DSS_NIT = "dss_init"
+ACTION_CHECK_CPU_INSTRUCTIONS = "check_cpu_instructions"
 
 g_nodeInfo = None
 envConfig = {}
@@ -277,7 +279,7 @@ Common options:
                           ACTION_SET_ARM_OPTIMIZATION,
                           ACTION_CHECK_DISK_SPACE, ACTION_SET_WHITELIST,
                           ACTION_FIX_SERVER_PACKAGE_OWNER, ACTION_DSS_NIT,
-                          ACTION_CHANGE_TOOL_ENV, ACTION_CHECK_CONFIG]
+                          ACTION_CHANGE_TOOL_ENV, ACTION_CHECK_CONFIG, ACTION_CHECK_CPU_INSTRUCTIONS]
         if self.action == "":
             GaussLog.exitWithError(
                 ErrorCode.GAUSS_500["GAUSS_50001"] % 't' + ".")
@@ -1968,6 +1970,28 @@ Common options:
         for etcd_inst in g_nodeInfo.etcds:
             UserUtil.check_path_owner(etcd_inst.datadir)
 
+    def check_cpu_instructions(self):
+        """
+        function: Check if CPU instructions support rdtscp and avx
+        input:NA
+        output:NA
+        """
+        if "x86_64" not in platform.machine():
+            return
+        self.logger.debug("Checking cpu instructions.")
+        cpu_mission = "Warning: This cluster is missing the rdtscp or avx instruction."
+        try:
+            cmd = "lscpu | grep rdtscp && lscpu | grep avx"
+            # Checking cpu instructions
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status != 0 or not output:
+                raise Exception(cpu_mission)
+            else:
+                self.logger.debug("Successfully checked cpu instructions.")
+        except Exception as e:
+            self.logger.debug(cpu_mission)
+            raise Exception(cpu_mission)
+
     def checkPlatformArm(self):
         """
         function: Setting ARM Optimization
@@ -3093,6 +3117,8 @@ Common options:
                 self.setCgroup()
             elif self.action == ACTION_CHECK_CONFIG:
                 self.check_config()
+            elif self.action == ACTION_CHECK_CPU_INSTRUCTIONS:
+                self.check_cpu_instructions()
             else:
                 self.logger.logExit(ErrorCode.GAUSS_500["GAUSS_50000"]
                                     % self.action)

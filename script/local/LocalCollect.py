@@ -640,48 +640,8 @@ def database_check():
                     g_logger.debug(
                         "Successfully collected %s statistics. %s" % (
                         view, sql))
-        execute_sqls(sqls, dnInst)
     g_logger.log(json.dumps(g_jobInfo.__dict__))
     g_logger.debug("Successfully collected catalog statistics.")
-
-
-def execute_sqls(sqls, dnInst):
-    """
-    function: execute the sql commands
-    input : sqls, dnInst
-    output: NA
-    """
-    # Writes the formatted content to the specified file
-    filePath = "%s/catalogfiles/gs_clean_%s.txt" % (
-    g_resultdir, datetime.datetime.now().strftime("%Y%m%d_%H%M%S%f"))
-    FileUtil.createFileInSafeMode(filePath)
-    with open(filePath, "w") as f:
-        f.write(
-            "************************************\n"
-            "* Catalog statistics for host "
-            "%s \n************************************" % dnInst.hostname)
-        for sql in sqls:
-            # Execute each sql and write the results to a file
-            f.write(
-                "\n\n************************************\n %s "
-                "\n************************************\n" % sql)
-            output = ClusterCommand.execSQLCommand(sql, g_opts.user, "",
-                                                   dnInst.port)[1]
-            f.write(str(output))
-
-        userProfile = EnvUtil.getMpprcFile()
-        cmd = "source %s ; gs_clean -a -N -s -p %s" \
-              % (userProfile, dnInst.port)
-        f.write(
-            "\n\n************************************\n %s "
-            "\n************************************\n" % cmd)
-        output = subprocess.getstatusoutput(cmd)[1]
-        f.write(str(output))
-
-        f.flush()
-    # Modify the file permissions to 640
-    os.chmod(filePath, DefaultValue.FILE_MODE_PERMISSION)
-
 
 def log_check(logFileName):
     """
@@ -1602,8 +1562,8 @@ def getBakConfCmd(Inst):
                   " '%s'/gaussdb.state  %s/pg_replslot/ %s/pg_ident.conf" \
                   " '%s'/configfiles/config_%s/dn_%s/" % \
                   (cmd, Inst.datadir, Inst.datadir, Inst.datadir,
-                   Inst.datadir, Inst.datadir,
-                   g_resultdir, g_current_time, Inst.instanceId)
+                  Inst.datadir, Inst.datadir,
+                  g_resultdir, g_current_time, Inst.instanceId)
             pg_conf_dir = os.path.realpath(
                 os.path.join(Inst.datadir, 'global/pg_control'))
             cmd = cmd.format(pg_conf_dir if os.path.isdir(pg_conf_dir) else "")
@@ -1629,11 +1589,52 @@ def getBakConfCmd(Inst):
                 ErrorCode.GAUSS_535["GAUSS_53511"] % 'DN'
     return (cmd, pidfile)
 
-def get_dss_bak_conf():
+def get_dss_replslot_dir(vgname):
+    cmd = "dsscmd ls -p +%s/pg_replslot/" % vgname
+    (status, output) = subprocess.getstatusoutput(cmd)
+    if status != 0:
+        g_logger.debug("Failed to collect pg_replslot directorys."
+                       " Command: %s \n Error: %s.\n" % (cmd, output))
+        raise Exception("Failed to collect pg_replslot directorys.")
+    file_dirs = []
+    out_list = output.split('\n')
+    for out in out_list:
+        dir_name = (out.split())[-1]
+        if 'name' not in dir_name and 'info' not in dir_name:
+            file_dirs.append(dir_name)
+
+    return file_dirs
+
+def get_dss_repslot_files(vgname, slot_path):
+    cmd = "dsscmd ls -p +%s/pg_replslot/%s/" % (vgname, slot_path)
+    (status1, output1) = subprocess.getstatusoutput(cmd)
+    if status1 != 0:
+        g_logger.debug("Failed to collect pg_replslot directorys."
+                       " Command: %s \n Error: %s.\n" % (cmd, output1))
+        raise Exception("Failed to collect pg_replslot directorys.")
+    slot_files = []
+    out1_lines = output1.split('\n')
+    for line in out1_lines:
+        data_line = line.split()
+        if 'name' not in data_line[-1] and 'info' not in data_line[-1]:
+            slot_files.append(slot_path + '/' + data_line[-1])
+    return slot_files
+
+def get_dss_bak_conf(Inst):
     vgname = EnvUtil.getEnv("VGNAME")
-    cmd = "dsscmd cp -s +%s/pg_control -d '%s'/configfiles/pg_control && " \
-          "dsscmd cp -s +%s/pg_replslot -d '%s'/configfiles/pg_replslot" % (
-          vgname, g_resultdir, vgname, g_resultdir)
+    cmd = "dsscmd cp -s +%s/pg_control -d '%s'/configfiles/config_%s/pg_control" % \
+          (vgname, g_resultdir, g_current_time)
+    create_path = '%s/configfiles/config_%s/pg_replslot' % (g_resultdir, g_current_time)
+    cmd = "%s && mkdir -p %s" % (cmd, create_path)
+    slot_dir = get_dss_replslot_dir(vgname)
+    slots = []
+    for sdir in slot_dir:
+        cmd = "%s && mkdir -p %s/%s" % (cmd, create_path, sdir)
+        slot_files = get_dss_repslot_files(vgname, sdir)
+        slots.extend(slot_files)
+    for slot in slots:
+        cmd = "%s && dsscmd cp -s +%s/pg_replslot/%s -d %s/%s" % \
+              (cmd, vgname, slot, create_path, slot)
     (status1, output1) = subprocess.getstatusoutput(cmd)
     if status1 != 0:
         g_jobInfo.failedTask[
@@ -1642,6 +1643,7 @@ def get_dss_bak_conf():
             "Failed to collect configuration files."
             " Command: %s \n Error: %s.\n" % (
             cmd, output1))
+        raise Exception("Failed to collect configuration files.")
 
 def parallel_conf_gstack(Inst):
     """
@@ -1676,7 +1678,8 @@ def parallel_conf_gstack(Inst):
             raise Exception("")
         else:
             if check_dss_env():
-                get_dss_bak_conf()
+                get_dss_bak_conf(Inst)
+                return
             g_jobInfo.failedTask[
                         "collect configuration files"] = replaceInvalidStr(output)
             g_logger.debug(

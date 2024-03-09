@@ -6591,6 +6591,14 @@ END;"""
             self.context.logger.debug("Successfully cleaned backup files.",
                                       "constant")
 
+    def checkCMPausing(self):
+        cmd = "source %s; gs_om -t status" % self.context.userProfile
+        status, output = subprocess.getstatusoutput(cmd)
+        if status == 0 and "pausing" in output:
+            self.context.logger.debug("The cluster has been paused, upgrade is forbidden.")
+            return True
+        return False
+
     ###########################################################################
     # Rollback upgrade functions
     ###########################################################################
@@ -6620,6 +6628,10 @@ END;"""
                 output += "\n    Cluster status does not match condition."
             if self.checkConnection() != 0:
                 output += "\n    Database could not be connected."
+            old_cluster_config_file = os.path.realpath(os.path.join(
+                self.context.oldClusterAppPath, "bin", "cluster_static_config"))
+            if self.get_cms_num(old_cluster_config_file) != 0 and self.checkCMPausing():
+                output += "\n    Cluster is pausing."
         elif checkPosition == const.OPTION_POSTCHECK:
             if len(self.context.nodeNames) != 0:
                 checknodes = self.context.nodeNames

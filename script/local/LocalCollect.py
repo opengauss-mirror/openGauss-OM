@@ -797,8 +797,12 @@ def find_log():
               "find . -type f -iname '*.log.gz' -print)" \
               "| xargs ls --time-style='+ %Y%m%d%H%M' -ll"
     if check_dss_env():
-        cmd = "%s && (find $GAUSSLOG/pg_log -type f -iname '*.rlog' -print && " \
-              "find $DSS_HOME/log -type f -iname '*log' -print) " \
+        cmd = "%s && (find $GAUSSLOG/pg_log/DMS -type f -iname '*.*log' -print && " \
+              "find $GAUSSLOG/pg_log/DMS -type f -iname '*.*log.gz' -print && "\
+              "find $GAUSSLOG/pg_log/DSS -type f -iname '*.*log' -print && "\
+              "find $GAUSSLOG/pg_log/DSS -type f -iname '*.*log.gz' -print && "\
+              "find $DSS_HOME/log -type f -iname '*.*log' -print && " \
+              "find $DSS_HOME/log -type f -iname '*.*log.gz' -print)" \
               "| xargs ls --time-style='+ %%Y%%m%%d%%H%%M' -ll" % cmd
     (status, output) = subprocess.getstatusoutput(cmd)
     logFiles = output.split("\n")
@@ -834,11 +838,15 @@ def make_log_dir(log_files, deleteCmd):
     cmd = "cd $GAUSSLOG && mkdir -p -m %s tmp_gs_collector" % \
            DefaultValue.DIRECTORY_MODE
     if check_dss_env():
-        cmd = "%s && cd $GAUSSLOG && mkdir -p -m %s tmp_gs_collector/pg_log/DMS && " \
-              "mkdir -p -m %s tmp_gs_collector/pg_log/DSS && " \
-              "mkdir -p -m %s tmp_gs_collector/DSSLog" % (
-              cmd, DefaultValue.DIRECTORY_MODE, DefaultValue.DIRECTORY_MODE,
-              DefaultValue.DIRECTORY_MODE)
+        cmd = "%s && cd $GAUSSLOG && mkdir -p -m %s tmp_gs_collector/pg_log/DMS/run && " \
+              "mkdir -p -m %s tmp_gs_collector/pg_log/DMS/debug && mkdir -p -m %s tmp_gs_collector/pg_log/DMS/oper" \
+              " && mkdir -p -m %s tmp_gs_collector/pg_log/DMS/blackbox && " \
+              "mkdir -p -m %s tmp_gs_collector/pg_log/DSS/run && mkdir -p -m %s tmp_gs_collector/pg_log/DSS/debug" \
+              " && mkdir -p -m %s tmp_gs_collector/pg_log/DSS/oper && " \
+              "mkdir -p -m %s tmp_gs_collector/pg_log/DSS/blackbox && mkdir -p -m %s tmp_gs_collector/DSSLog" % (
+              cmd, DefaultValue.DIRECTORY_MODE, DefaultValue.DIRECTORY_MODE, DefaultValue.DIRECTORY_MODE,
+              DefaultValue.DIRECTORY_MODE, DefaultValue.DIRECTORY_MODE, DefaultValue.DIRECTORY_MODE,
+              DefaultValue.DIRECTORY_MODE, DefaultValue.DIRECTORY_MODE, DefaultValue.DIRECTORY_MODE)
         cmd = "%s && mkdir -p -m %s tmp_gs_collector/DSSLog/run &&" \
               "mkdir -p -m %s tmp_gs_collector/DSSLog/debug && mkdir -p -m %s tmp_gs_collector/DSSLog/oper &&" \
               "mkdir -p -m %s tmp_gs_collector/DSSLog/blackbox" % (
@@ -867,15 +875,15 @@ def copy_log(log_files, deleteCmd):
     for k, v in dss_str:
         dss_log[k] = v
     for log in log_files:
+        log_str = log.split('.')[-1] if log.split('.')[-1] in dss_log else log.split('.')[-2]
         if int(g_opts.speedLimitFlag) == 1:
             if 'pg_log/DMS' in log:
                 cmd = "cd $GAUSSLOG && rsync --bwlimit=%d '%s' " \
-                      "tmp_gs_collector/pg_log/DMS/." % (g_opts.speedLimitKBs, log)
+                      "tmp_gs_collector/pg_log/DMS/%s/." % (g_opts.speedLimitKBs, log, dss_log[log_str])
             elif 'pg_log/DSS' in log:
                 cmd = "cd $GAUSSLOG && rsync --bwlimit=%d '%s' " \
-                      "tmp_gs_collector/pg_log/DSS/." % (g_opts.speedLimitKBs, log)
+                      "tmp_gs_collector/pg_log/DSS/%s/." % (g_opts.speedLimitKBs, log, dss_log[log_str])
             elif dss_home and dss_home in log:
-                log_str = log.split('.')[-1]
                 cmd = "cd $GAUSSLOG && rsync --bwlimit=%d '%s' " \
                       "tmp_gs_collector/DSSLog/%s/." % (g_opts.speedLimitKBs, log, dss_log[log_str])
 
@@ -884,11 +892,10 @@ def copy_log(log_files, deleteCmd):
                       "tmp_gs_collector/'%s'" % (g_opts.speedLimitKBs, log, log)
         else:
             if 'pg_log/DMS' in log:
-                cmd = "cd $GAUSSLOG && cp %s tmp_gs_collector/pg_log/DMS/." % log
+                cmd = "cd $GAUSSLOG && cp %s tmp_gs_collector/pg_log/DMS/%s/." % (log, dss_log[log_str])
             elif 'pg_log/DSS' in log:
-                cmd = "cd $GAUSSLOG && cp %s tmp_gs_collector/pg_log/DSS/." % log
+                cmd = "cd $GAUSSLOG && cp %s tmp_gs_collector/pg_log/DSS/%s/." % (log, dss_log[log_str])
             elif dss_home and dss_home in log:
-                log_str = log.split('.')[-1]
                 cmd = "cd $GAUSSLOG && cp %s tmp_gs_collector/DSSLog/%s/." % (log, dss_log[log_str])
             else:
                 cmd = "cd $GAUSSLOG && cp '%s' tmp_gs_collector/'%s'" % (log, log)
@@ -1038,7 +1045,10 @@ def formatTime(filename):
     output : str
     """
     try:
-        timelist = re.findall(r"\d\d\d\d-\d\d-\d\d_\d\d\d\d\d\d", filename)
+        if 'dms' or 'dss' in filename:
+            timelist = re.findall(r"\d\d\d\d\d\d\d\d\d\d\d\d\d\d", filename)
+        else:
+            timelist = re.findall(r"\d\d\d\d-\d\d-\d\d_\d\d\d\d\d\d", filename)
         if not timelist:
             with open(filename, 'r') as f:
                 lines = f.readlines()

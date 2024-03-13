@@ -414,11 +414,18 @@ class StreamingBase(object):
         """
         Streaming step
         """
-        step = -1
-        if os.path.isfile(self.step_file_path):
+        step = 0
+        if not os.path.exists(os.path.dirname(self.step_file_path)):
+            # If streaming dir(streaming_cabin) does not exist,
+            # it means the cluster is not a DR cluster, return -1.
+            step = -1
+        elif os.path.isfile(self.step_file_path):
             step_list = FileUtil.readFile(self.step_file_path)
             if step_list:
                 step = int(step_list[0].split("_")[0])
+        # When streaming dir exists but the step file does not exist,
+        # it means the cluster is a DR cluster but it is in archive or recovery
+        # and not in any operation process(start, stop, failover, switchover), return 0.
         if step == -1:
             self.logger.log("Got the step for action:[%s]." % self.params.task)
         else:

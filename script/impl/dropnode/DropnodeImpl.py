@@ -130,21 +130,9 @@ class DropnodeImpl():
                                                       self.userProfile, True)
                     self.commonOper.stopInstance(hostNameLoop, sshtool_host, i,
                                                  self.userProfile)
-                cmdDelCert = "ls %s/share/sslcert/grpc/* | " \
-                    "grep -v openssl.cnf | xargs rm -rf" % self.appPath
-                result, output = sshtool_host.getSshStatusOutput(cmdDelCert,
-                    [hostNameLoop], self.userProfile)
-                if result[hostNameLoop] != 'Success':
-                    self.logger.debug(output)
-                    self.logger.log("[gs_dropnode]Failed to delete the GRPC "
-                        "sslcert of %s." % hostNameLoop)
-                    self.logger.log("[gs_dropnode]Please check and delete the "
-                        "GRPC sslcert of %s manually." % hostNameLoop)
                 self.cleanSshToolFile(sshtool_host)
             else:
-                self.logger.log("[gs_dropnode]Cannot connect %s. Please check "
-                                "and delete the GRPC sslcert of %s manually."
-                                % (hostNameLoop, hostNameLoop))
+                self.logger.log("[gs_dropnode]Cannot connect %s." % (hostNameLoop))
 
     def dropNodeOnAllHosts(self):
         """

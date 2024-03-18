@@ -1237,6 +1237,26 @@ class StreamingBase(object):
                     "GAUSS_51400"] % cmd_start + " Error: \n%s " % output)
         self.logger.log("Successfully start single main standby dn:%s" % inst.instanceId)
 
+    def __check_build_state(self, host, is_local, datadir):
+        """
+        check build state:
+            Build failed
+            Building
+            Build completed
+        """
+        check_build_state_cmd = "source %s; gs_ctl querybuild -D %s" % (self.mpp_file, datadir)
+        if not is_local:
+            check_build_state_cmd = "pssh -s -H %s \"%s\"" % (host, check_build_state_cmd)
+        status, output = subprocess.getstatusoutput(check_build_state_cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % check_build_state_cmd +
+                            "status: %s\n" % status + " output: \n%s " % output)
+        build_states = re.findall(r'db_state *: *(.*)', output)
+        if len(build_states) < 1:
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % check_build_state_cmd +
+                            "\nstatus: %s\n" % status + " output: \n%s " % output)
+        return build_states[0]
+
     def __build_main_standby_dn(self, params):
         """
         Build single main standby dn
@@ -1261,17 +1281,6 @@ class StreamingBase(object):
         cmd_log = cmd.replace(backup_pwd, '***')
         self.logger.debug("Building with cmd:%s." % cmd_log)
 
-        check_building_cmd = "ps x | grep -v grep | grep -E 'gs_ctl build.*hadr_main_standby' " \
-            "> /dev/null && echo 'building'"
-        build_completed_done_dir = os.path.join(inst.datadir, "build_completed.done")
-        rm_build_completed_done_cmd = "rm -f %s" % build_completed_done_dir
-        check_build_complete_done_cmd = "ls %s > /dev/null && echo 'build completed'" % build_completed_done_dir
-        if local_ip != inst.hostname:
-            check_building_cmd = "pssh -s -H %s %s" % (inst.hostname, check_building_cmd)
-            check_build_complete_done_cmd = "pssh -s -H %s %s" % (inst.hostname, check_build_complete_done_cmd)
-            rm_build_completed_done_cmd = "pssh -s -H %s %s" % (inst.hostname, rm_build_completed_done_cmd)
-        subprocess.getstatusoutput(rm_build_completed_done_cmd)
-
         max_try_times = 3
         try_time = 0
         while try_time < max_try_times:
@@ -1282,12 +1291,11 @@ class StreamingBase(object):
                 continue
 
             while True:
-                status, output = subprocess.getstatusoutput(check_building_cmd)
-                if output != "building":
+                output = self.__check_build_state(inst.hostname, local_ip == inst.hostname, inst.datadir)
+                if output != "Building":
                     break
                 time.sleep(5)
-            status, output = subprocess.getstatusoutput(check_build_complete_done_cmd)
-            if output == "build completed":
+            if output == "Build completed":
                 self.logger.log("Successfully build main standby dn:%s" % inst.instanceId)
                 break
             else:
@@ -1324,14 +1332,6 @@ class StreamingBase(object):
                      StreamingConstants.MAX_BUILD_TIMEOUT + 10, inst.hostname)
         self.logger.debug("Building with cmd:%s." % cmd)
 
-        check_building_cmd = "ps x | grep -v grep | grep -E 'gs_ctl build.*cascade_standby' " \
-            "> /dev/null && echo 'building'"
-        check_build_complete_done_cmd = "source %s; %s/gs_ctl query -D %s | grep 'db_state.*Normal' " \
-            "> /dev/null && echo 'build completed'" % (self.mpp_file, bin_path, inst.datadir)
-        if local_ip != inst.hostname:
-            check_building_cmd = "pssh -s -H %s %s" % (inst.hostname, check_building_cmd)
-            check_build_complete_done_cmd = "pssh -s -H %s %s" % (inst.hostname, check_build_complete_done_cmd)
-
         max_try_times = 3
         try_time = 0
         while try_time < max_try_times:
@@ -1342,12 +1342,11 @@ class StreamingBase(object):
                 continue
 
             while True:
-                status, output = subprocess.getstatusoutput(check_building_cmd)
-                if output != "building":
+                output = self.__check_build_state(inst.hostname, local_ip == inst.hostname, inst.datadir)
+                if output != "Building":
                     break
                 time.sleep(5)
-            status, output = subprocess.getstatusoutput(check_build_complete_done_cmd)
-            if output == "build completed":
+            if output == "Build completed":
                 break
             else:
                 self.logger.debug("building process of cascade standby interupted abnormally!")

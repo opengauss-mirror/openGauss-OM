@@ -30,6 +30,8 @@ class StreamingStopHandler(StreamingBase):
         """
         First step for streaming stop
         """
+        if step == -1:
+            self.logger.logExit("No need to stop because the cluster is not a disaster cluster.")
         if step >= 2:
             return
         self.logger.debug("Start first step of streaming stop.")

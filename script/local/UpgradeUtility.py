@@ -4211,25 +4211,18 @@ def switchDn():
     """
     function: switch DN after checkpoint
     """
-    g_logger.log("Killing DN processes.")
     needKillDn = isKillDn()
-    cmd = "(ps ux | grep '\-D' |  grep '%s' | grep -v grep | " \
-          "awk '{print $2}' | xargs -r kill -9 )"
-    killCmd = ""
-    if needKillDn:
-        killCmd += " && " + cmd % g_gausshome
-    if killCmd:
-        killCmd = killCmd.strip()
-        if killCmd.startswith("&&"):
-            killCmd = killCmd[2:]
-        g_logger.log("Command to kill other process: %s" % killCmd)
-        (status, output) = CmdUtil.retryGetstatusoutput(killCmd, 3, 5)
-        if status == 0:
-            g_logger.log("Successfully killed DN processes.")
-        else:
-            raise Exception("Failed to kill DN processes.")
-    else:
+    if not needKillDn:
         g_logger.log("No need to kill DN.")
+        return
+    g_logger.log("Killing DN processes.")
+    killDNCmd = "pkill -9 gaussdb -U " + g_opts.user
+    g_logger.log("Command to kill DN process: %s" % killDNCmd)
+    (status, output) = CmdUtil.retryGetstatusoutput(killDNCmd, 3, 5)
+    if status == 0:
+        g_logger.log("Successfully killed DN processes.")
+    else:
+        raise Exception("Failed to kill DN processes.\nstatus: %s\nouput:%s" % (status, output))
 
 
 def isKillDn():

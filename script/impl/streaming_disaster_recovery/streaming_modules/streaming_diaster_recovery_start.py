@@ -41,6 +41,17 @@ class StreamingStartHandler(StreamingBase):
         self.logger.debug("Start first step of streaming start.")
         self.create_streaming_dir(self.streaming_file_dir)
         self.check_action_and_mode()
+        if step == 0:
+            dr_state_file_path = os.path.realpath(os.path.join(
+                self.streaming_file_dir, StreamingConstants.HADR_CLUSTER_STAT))
+            if os.path.isfile(dr_state_file_path):
+                with open(dr_state_file_path, 'r') as read_file:
+                    value = read_file.read().strip()
+                # If cluster is already in archive or recovery, start is forbidden.
+                if "archive" in value:
+                    self.logger.logExit("Current cluster is already in archive, start is forbidden.")
+                if "recovery" in value:
+                    self.logger.logExit("Current cluster is already in recovery, start is forbidden.")
         self.init_cluster_status()
 
     def _second_step_for_streaming_start(self, step):

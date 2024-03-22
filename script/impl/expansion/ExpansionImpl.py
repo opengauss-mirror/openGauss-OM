@@ -114,8 +114,10 @@ class ExpansionImpl():
 
         self.commonGsCtl = GsCtlCommon(expansion)
         self.tempFileDir = "/tmp/gs_expansion_%s" % (currentTime)
-        self.remote_pkg_dir = os.path.join(self.tempFileDir, "pkg")
+        dir_name = os.path.dirname(os.path.realpath(__file__))
+        self.remote_pkg_dir = os.path.normath(os.path.join(dir_name, "./../../../"))
         self.logger.debug("tmp expansion dir is %s ." % self.tempFileDir)
+        self.logger.debug("remote_pkg_dir is %s ." % self.remote_pkg_dir)
         # primary's wal_keep_segments value
         self.walKeepSegments = -1
 
@@ -180,8 +182,8 @@ class ExpansionImpl():
         for host in self.context.newHostList:
             sshTool = SshTool([host], timeout=time_out)
             # mkdir package dir and send package to remote nodes.
-            sshTool.executeCommand("umask 0022;mkdir -m a+x -p %s; chown %s:%s %s" % \
-                (self.remote_pkg_dir, self.user, self.group, self.tempFileDir),
+            sshTool.executeCommand("umask 0022;mkdir -m a+x -p %s; mkdir -m a+x -p %s; chown %s:%s %s" % \
+                (self.remote_pkg_dir, self.tempFileDir, self.user, self.group, self.tempFileDir),
                 DefaultValue.SUCCESS, [host])
             if send_pkg:
                 for file in pkgfiles:

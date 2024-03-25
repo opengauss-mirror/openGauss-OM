@@ -52,6 +52,7 @@ from base_utils.common.fast_popen import FastPopen
 from gspylib.common.copy_python_lib import copy_lib
 from base_utils.os.user_util import UserUtil
 
+copy_lib()
 DefaultValue.doConfigForParamiko()
 
 SYSTEM_SSH_ENV = "export LD_LIBRARY_PATH=/usr/lib64"
@@ -673,11 +674,40 @@ General options:
             self.synchronizationLicenseFile(result)
             self.retry_register_other_ssh_agent()
             self.verifyTrust()
+            self.set_user_crontab(result)
             self.logger.log("Successfully created SSH trust.")
         except Exception as e:
             self.logger.logExit(str(e))
         finally:
             self.passwd = []
+
+    def set_user_crontab(self, hostnames_ips):
+        if os.getuid() == 0:
+            return
+        hostnames = list(hostnames_ips.values())
+        self.logger.log("Start set cron for %s" % self.user)
+        package_path = os.path.dirname(os.path.realpath(__file__))
+        gp_home = os.path.join(package_path, '../')
+        check_cron = True
+        try:
+            # create cron tmp file
+            cron_file = "/tmp/gauss_cron_%s" % self.user
+            set_cron_cmd = "crontab -l > %s && " % cron_file
+            set_cron_cmd += "sed -i '/CheckSshAgent.py/d' %s;" % cron_file
+            set_cron_cmd += "echo '*/1 * * * * source ~/.bashrc;python3 %s/script/local/CheckSshAgent.py >>/dev/null 2>&1 &' >> %s" % \
+                            (gp_home, cron_file)
+            set_cron_cmd += "&& crontab %s" % cron_file
+            set_cron_cmd += "&& rm -f '%s';" % cron_file
+            self.logger.debug("Command for setting CRON: %s" % set_cron_cmd)
+            ssh_tool = SshTool(hostnames)
+            os.environ['GPHOME'] = gp_home
+            ssh_tool.executeCommand(set_cron_cmd, DefaultValue.SUCCESS, '', '')
+            ssh_tool.clenSshResultFiles()
+        except Exception as e:
+            check_cron = False
+            self.logger.log("Warning: The %s user does not have permission for crontab." % self.user)
+        if check_cron:
+            self.logger.log("Successfully to set cron for %s" % self.user)
 
     def createPublicPrivateKeyFile(self):
         """

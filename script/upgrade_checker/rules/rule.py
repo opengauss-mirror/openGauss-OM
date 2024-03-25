@@ -116,8 +116,13 @@ class Conclusion(object):
 
         self.details = []
         self.warnings = []
+        self.suc_count = 0
+        self.err_count = 0
 
         self._analyze(rule, expect)
+
+    def all_success(self):
+        return self.err_count == 0
 
     def _analyze_one_row(self, key, e_key, row_desc, val, e_val, accuracy):
         """
@@ -150,6 +155,11 @@ class Conclusion(object):
         else:
             detail['state'] = ConclusionState.SUCCESS
             detail['summary'] = '%s 校验成功' % row_desc
+
+        if detail['state'] == ConclusionState.SUCCESS:
+            self.suc_count += 1
+        else:
+            self.err_count += 1
 
         self.details.append(detail)
 

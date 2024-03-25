@@ -122,7 +122,7 @@ class MDTable(object):
                "  <tbody>\n" \
                "{1}" \
                "  </tbody>\n" \
-               "</table>".format(self.thead, self.tbody)
+               "</table>\n\n".format(self.thead, self.tbody)
 
 
 class MarkDown(object):

@@ -19,6 +19,8 @@
 # Description  : streaming_disaster_recovery_stop.py is a utility for stopping
 # streaming disaster recovery on primary cluster.
 
+import os
+
 from impl.streaming_disaster_recovery.streaming_base import StreamingBase
 
 
@@ -30,10 +32,10 @@ class StreamingStopHandler(StreamingBase):
         """
         First step for streaming stop
         """
-        if step == -1:
-            self.logger.logExit("No need to stop because the cluster is not a disaster cluster.")
         if step >= 2:
             return
+        if step == -1 and not os.path.exists(self.streaming_file_dir):
+            self.logger.logExit("No need to stop because the cluster is not a disaster cluster.")
         self.logger.debug("Start first step of streaming stop.")
         self.init_cluster_status()
         self.check_action_and_mode()

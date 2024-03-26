@@ -414,18 +414,11 @@ class StreamingBase(object):
         """
         Streaming step
         """
-        step = 0
-        if not os.path.exists(os.path.dirname(self.step_file_path)):
-            # If streaming dir(streaming_cabin) does not exist,
-            # it means the cluster is not a DR cluster, return -1.
-            step = -1
-        elif os.path.isfile(self.step_file_path):
+        step = -1
+        if os.path.isfile(self.step_file_path):
             step_list = FileUtil.readFile(self.step_file_path)
             if step_list:
                 step = int(step_list[0].split("_")[0])
-        # When streaming dir exists but the step file does not exist,
-        # it means the cluster is a DR cluster but it is in archive or recovery
-        # and not in any operation process(start, stop, failover, switchover), return 0.
         if step == -1:
             self.logger.log("Got the step for action:[%s]." % self.params.task)
         else:
@@ -2165,7 +2158,7 @@ class StreamingBase(object):
                 self.update_streaming_info(StreamingConstants.ACTION_FAILOVER, "80%")
                 if not os.path.isfile(max_term_record):
                     raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % max_term_record)
-                _, dn_infos = self.get_specified_dn_infos()
+                _, dn_infos = self.get_specified_dn_infos(dn_status="Main Standby")
                 max_term_list = DefaultValue.obtain_file_content(max_term_record)
                 if not max_term_list:
                     raise Exception(ErrorCode.GAUSS_516["GAUSS_51632"] % "read max term")
@@ -2303,7 +2296,7 @@ class StreamingBase(object):
                 one_dn_info["data_dir"] = data_inst.datadir
                 dn_ids.append(data_inst.instanceId)
                 dn_infos.append(one_dn_info)
-        self.logger.debug("Got primary dn infos: %s:%s" % (dn_ids, dn_infos))
+        self.logger.debug("Got %s dn infos: %s:%s" % (dn_status, dn_ids, dn_infos))
         return dn_ids, dn_infos
 
     def start_primary_dn(self, params):
@@ -2338,7 +2331,7 @@ class StreamingBase(object):
                          % (self.mpp_file, bin_path, opt_type, data_dir, max_term)
         else:
             cmd_config = "source %s; pssh -s -t 900 -H %s \"source %s; %s/gs_ctl notify%s -D %s " \
-                         "-M primary -T %s -t 600\""  % (self.mpp_file, self.mpp_file, hostname,
+                         "-M primary -T %s -t 600\""  % (self.mpp_file, hostname, self.mpp_file,
                                                          bin_path, opt_type, data_dir, max_term)
         self.logger.debug("Config primary dn with cmd:%s" % cmd_config)
         status, output = CmdUtil.retryGetstatusoutput(cmd_config)

@@ -1018,7 +1018,7 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
                     (dynamic_file, dynamic_file)
                         
             if hostName != socket.gethostname():
-                hostSsh = SshTool([hostName])
+                hostSsh = SshTool([hostName], timeout=300)
                 hostSsh.scpFiles(srcFile, targetFile, [hostName], self.envFile)
                 hostSsh.getSshStatusOutput(dynamic_opt_cmd, [hostName], self.envFile)
                 self.cleanSshToolFile(hostSsh)

@@ -25,6 +25,7 @@ sys.path.append(sys.path[0] + "/../../../")
 from gspylib.common.Common import DefaultValue
 from gspylib.common.OMCommand import OMCommand
 from gspylib.common.ErrorCode import ErrorCode
+from gspylib.common.Signal import Signal
 from impl.collect.CollectImpl import CollectImpl
 from base_utils.executor.cmd_executor import CmdExecutor
 from base_utils.os.cmd_util import CmdUtil
@@ -608,6 +609,8 @@ class CollectImplOLAP(CollectImpl):
                 timeout = DefaultValue.TIMEOUT_PSSH_COLLECTOR
             elif (timeout > 3600):
                 timeout = 3600
+            if (self.context.timeout > 0):
+                timeout = self.context.timeout
             self.context.sshTool.setTimeOut(timeout)
             self.context.logger.debug(
                 "Collection will be timeout in %ds." % timeout)

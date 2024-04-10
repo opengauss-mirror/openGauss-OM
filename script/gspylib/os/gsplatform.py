@@ -76,6 +76,7 @@ UNIONTECH = "uniontech"
 UOS = "uos"
 SUPPORT_WHOLE_PLATFORM_LIST = [SUSE, REDHAT, CENTOS, EULEROS, FUSIONOS,
                                OPENEULER, KYLIN, ASIANUX, DEBIAN, UBUNTU, UOS, UNIONTECH]
+SUPPORT_USER_DEFINED_OS_LIST = []
 # RedhatX platform
 SUPPORT_RHEL_SERIES_PLATFORM_LIST = [REDHAT, CENTOS, "kylin", "asianux"]
 SUPPORT_RHEL6X_VERSION_LIST = ["6.4", "6.5", "6.6", "6.7", "6.8", "6.9", "10"]
@@ -320,7 +321,7 @@ def linux_distribution(distname='', version='', idNum='',
 
     """
     is_flag_osid = False
-    is_flag_oscorrect = True
+    is_flag_oscorrect = False
     try:
         etc = os.listdir('/etc')
     except os.error:
@@ -341,24 +342,24 @@ def linux_distribution(distname='', version='', idNum='',
     if distname == "UnionTech":
         distname = "uos"
     # Read the first line
-    if gFile is None:
-        return distname, version, idNum
-    with open('/etc/' + gFile, 'r') as f:
-        firstline = f.readline()
-    _distname, _version, _id = _parse_release_file(firstline)
+    if gFile is not None:
+        with open('/etc/' + gFile, 'r') as f:
+            firstline = f.readline()
+        _distname, _version, _id = _parse_release_file(firstline)
 
-    if _distname and full_distribution_name:
-        distname = _distname
-        for dist in SUPPORT_WHOLE_PLATFORM_LIST:
-            if dist.lower == _distname.lower:
-                is_flag_oscorrect = True
-    if _version:
-        version = _version
-    if _id:
-        idNum = _id
-    if is_flag_oscorrect == True:
-        return distname, version, idNum
-    elif is_flag_oscorrect == False:
+        if _distname and full_distribution_name:
+            distname = _distname
+            for dist in SUPPORT_WHOLE_PLATFORM_LIST:
+                if dist.lower == _distname.lower:
+                    is_flag_oscorrect = True
+        if _version:
+            version = _version
+        if _id:
+            idNum = _id
+        if is_flag_oscorrect == True:
+            return distname, version, idNum
+
+    if is_flag_oscorrect == False:
         # Read system information from configuration file
         # Call the function and pass in the filename
         osid_path = os.path.realpath(
@@ -379,11 +380,11 @@ def linux_distribution(distname='', version='', idNum='',
         if is_flag_osid:
             if selected_data['os']:
                 distname = selected_data['os']
+                SUPPORT_USER_DEFINED_OS_LIST.append(distname)
+                SUPPORT_USER_DEFINED_OS_LIST.append(distname.lower())
             if selected_data['version']:
                 version = selected_data['version']
-            if selected_data['bit']:
-                idNum = selected_data['bit']
-            return distname, version, idNum
+    return distname, version, idNum
 
 def dist(supported_dists=_supported_dists):
     """ Tries to determine the name of the Linux OS distribution name.
@@ -1737,6 +1738,12 @@ class LinuxPlatform(GenericPlatform):
                                         prefixStr, packageVersion,
                                         PAK_UOS,
                                         BIT_VERSION, postfixStr))
+        elif distname in SUPPORT_USER_DEFINED_OS_LIST:
+            fileName = os.path.join(dirName, "./../../../",
+                                    "%s-%s-%s-%s.%s" % (
+                                        prefixStr, packageVersion,
+                                        SUPPORT_USER_DEFINED_OS_LIST[0],
+                                        BIT_VERSION, postfixStr))
         else:
             raise Exception(ErrorCode.GAUSS_519["GAUSS_51900"] +
                             "Supported platforms are: %s." % str(
@@ -2156,7 +2163,8 @@ class RHELPlatform(LinuxPlatform):
                    version[0:3] in SUPPORT_RHEL_SERIES_VERSION_LIST)) or
                  (distName.lower() == OPENEULER) or
                  (distName.lower() == FUSIONOS) or
-                 (distName.lower() == DEBIAN and version == "buster/sid")
+                 (distName.lower() == DEBIAN and version == "buster/sid") or
+                 (distName.lower() in SUPPORT_USER_DEFINED_OS_LIST)
             )):
                 return distName.lower(), version[0:3]
             else:
@@ -2214,7 +2222,8 @@ class UserPlatform():
         #     Kylin           "10" 64bit
         #     Ubuntu          "18.04" 64bit
         distName, version, idNum = dist()
-        if distName.lower() not in SUPPORT_WHOLE_PLATFORM_LIST:
+        if dist_name.lower() not in SUPPORT_WHOLE_PLATFORM_LIST \
+            and dist_name.lower() not in SUPPORT_USER_DEFINED_OS_LIST:
             raise Exception(ErrorCode.GAUSS_519["GAUSS_51900"] +
                             "Supported platforms are: %s." % str(
                 SUPPORT_WHOLE_PLATFORM_LIST))

@@ -569,5 +569,5 @@ class ExpansionImplWithCm(ExpansionImpl):
         change_user_executor(self.do_install)
         change_user_executor(self.do_config)
         change_user_executor(self.do_start)
+        change_user_executor(self.check_tblspc_directory)
         self.check_new_node_state(True)
-

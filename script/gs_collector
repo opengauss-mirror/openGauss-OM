@@ -79,6 +79,8 @@ class Collect(ParallelBaseOM):
         # speed limit to copy/scp files, in MB/s
         self.speedLimit = 1024
         self.speedLimitFlag = 0
+        # max time for collecting xlog when enable dss
+        self.timeout = 0
 
         # config file
         self.configFile = ""
@@ -108,13 +110,15 @@ Usage:
   gs_collector -? | --help
   gs_collector -V | --version
   gs_collector --begin-time="BEGINTIME" --end-time="ENDTIME" [-h HOSTNAME | -f HOSTFILE] 
-                [--keyword=KEYWORD] [--speed-limit=SPEED] [-o OUTPUT] [-l LOGFILE] [-C CONFIGFILE]
+                [--keyword=KEYWORD] [--speed-limit=SPEED] [-o OUTPUT] [-l LOGFILE] [-C CONFIGFILE] [--timeout=TIMEOUT]
 
 General options:
       --begin-time=BEGINTIME      Time to start log file collection. Pattern:yyyymmdd hh:mm.
       --end-time=ENDTIME          Time to end log file collection. Pattern:yyyymmdd hh:mm.
       --speed-limit=SPEED         Bandwidth to copy files, a nonnegative integer, in MByte/s.
                                   0 means unlimited. Only supported if rsync command exists.
+      --timeout=TIMEOUT           Max time to collect log or xlog when enable dss, in seconds.
+                                  0 means using default value.
   -h                              Names of hosts whose information is to be collected.
                                   Example: host1,host2.
   -f                              File listing names of all the hosts to connect to.
@@ -232,6 +236,13 @@ General options:
         # Save parameter configFile
         if (ParaDict.__contains__("configFile")):
             self.configFile = ParaDict.get("configFile")
+
+        # Get max time to collect log/xlog.
+        if (ParaDict.__contains__("timeout")):
+            self.timeout = str(ParaDict.get("timeout"))
+            if (not self.timeout.isdigit() or int(self.timeout) < 0):
+                GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50003"] % ('-timeout', 'a nonnegative integer'))
+            self.timeout = int(self.timeout)
 
     def checkParameter(self):
         """
@@ -385,6 +396,9 @@ General options:
 
         if (self.speedLimit == 0):
             self.speedLimit = 1024
+
+        if (self.timeout < 0):
+            self.timeout = 0
 
 
 if __name__ == '__main__':

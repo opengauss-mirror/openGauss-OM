@@ -90,7 +90,7 @@ gs_backup = ["-?", "--help", "-V", "--version", "--backup-dir=",
 gs_collector = ["-?", "--help", "-V", "--version", "--begin-time=",
                 "--end-time=",
                 "--keyword=", "--speed-limit=", "-h:", "-f:", "-o:",
-                "-l:", "-C:"]
+                "-l:", "-C:", "--timeout="]
 gs_checkperf = ["-?", "--help", "-V", "--version", "--detail", "-o:",
                 "-i:", "-l:", "-U:"]
 gs_ssh = ["-?", "--help", "-V", "--version", "-c:"]
@@ -329,6 +329,7 @@ class Parameter():
                               "--dilatation-mode": "dilatation_mode",
                               "--nodegroup-name": "nodegroup_name",
                               "--speed-limit": "speedLimit",
+                              "--timeout": "timeout",
                               # add "resourcectl" for resource control
                               # in data redistribution
                               "--resource-level": "resource_level",

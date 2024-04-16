@@ -953,6 +953,72 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             sshTool.getSshStatusOutput(fixCmd, [hostName], self.envFile)
         self.cleanSshToolFile(sshTool)
 
+    def is_rename_tblspc_dir(self, new_host, node_name, tblspc_path):
+        """
+        Rename tblspc dir.
+        """
+        paths = []
+        for path, dir_lis, _ in os.walk(tblspc_path):
+            for dir_name in dir_lis:
+                paths.append(os.path.join(path, dir_name))
+        
+        if not paths:
+            return
+        
+        sshTool = SshTool([new_host])
+        for path in paths:
+            cmd = "cd %s && find . -type d -iname 'PG_9.2*'" % path
+            result_map, output_map = sshTool.getSshStatusOutput(cmd, [new_host], self.envFile)
+            results = output_map.split("\n")
+            res_dirs = [res for res in results if "PG" in res]
+            for dir_name in res_dirs:
+                if node_name not in dir_name:
+                    old_pgxc_name = dir_name[dir_name.find("dn"):]
+                    pgxc_dir_name = dir_name.replace(old_pgxc_name, node_name)
+                    pgxc_cmd = "cd %s && if [ ! -d %s ]; then mkdir %s; fi && cp -r %s/. %s && rm -rf %s" % (
+                                path, pgxc_dir_name, pgxc_dir_name, dir_name, pgxc_dir_name, dir_name)
+                    res_map, _ = sshTool.getSshStatusOutput(pgxc_cmd, [new_host], self.envFile)
+                    if res_map[new_host] != DefaultValue.SUCCESS:
+                        self.logger.debug("Failed to rename tblspc directory.")
+                        continue
+
+    def check_tblspc_directory(self, pvalue):
+        """
+        Check tblspc_directory if exists.
+        """
+        if os.getuid() == 0:
+            self.changeUser()
+        pgdata_path = EnvUtil.getEnv("PGDATA")
+        tblspc_path = pgdata_path + "/pg_tblspc"
+        pg_port = EnvUtil.getEnv("PGPORT")
+        if os.path.exists(tblspc_path):
+            for host in self.context.newHostList:
+                sql = "show pgxc_node_name;"
+                gsql_cmd = "source %s; gsql -d postgres -p %s -A -t -c '%s'" % (self.envFile, pg_port, sql)
+                sshTool = SshTool([host])
+                result_map, output_collect = \
+                    sshTool.getSshStatusOutput(gsql_cmd, [host], self.envFile)
+                if result_map[host] != DefaultValue.SUCCESS:
+                    self.logger.debug("Failed to get pgxc_node_name on new host %s" % host)
+                    continue
+                res_dict = self._parse_ssh_tool_output_collect(output_collect)
+                pgxc_node_name = res_dict[host]
+                self.is_rename_tblspc_dir(host, pgxc_node_name, tblspc_path)
+        pvalue.value = 1
+
+    def change_user_tblspc(self):
+        """
+        Check tblspc directory with db om user
+        """
+        p_value = Value('i', 0)
+        proc = Process(target=self.check_tblspc_directory, args=(p_value,))
+        proc.start()
+        proc.join()
+        if not p_value.value:
+            sys.exit(1)
+        else:
+            proc.terminate()
+
     def check_new_node_state(self, is_root_user):
         """
         Check new node state.
@@ -1032,6 +1098,7 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
         if DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo) > 0:
             self.logger.debug("Check new host state after restart.")
             return
+        self.change_user_tblspc()
         self.check_new_node_state(False)
 
     def getGUCConfig(self):

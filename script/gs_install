@@ -94,6 +94,7 @@ General options:
   --alarm-component=ALARMCOMPONENT       Path of the alarm component.
   --time-out=SECS                        Maximum waiting time when start cluster.
   --enable-perf-config                   Use gs_perfconfig to tune database setup and guc after installation.
+  --dorado-cluster-mode                  Use this parameter when installing dualcluster to indicate the state.
         """
         print(self.usage.__doc__)
 

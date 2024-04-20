@@ -2386,6 +2386,8 @@ class DefaultValue():
             targetString = output.split("Datanode")[1]
             dnPrimary = [x for x in re.split(r"[|\n]", targetString)
                          if flagStr in x or "Main" in x]
+            if logger:
+                logger.debug(f"targetString: {targetString}; dnPrimary: {dnPrimary}")
             primaryList = []
             for dn in dnPrimary:
                 primaryList.append(list(filter(None, dn.split(" ")))[1])

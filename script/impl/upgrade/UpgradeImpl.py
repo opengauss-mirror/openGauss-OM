@@ -4234,7 +4234,7 @@ END;"""
             # turn on enable_ssl for CM
             self.set_enable_ssl("on")
             if self.dropPMKSchema() != 0:
-                raise Exception(ErrorCode.GAUSS_529["GAUSS_52917"])
+                self.context.logger.warn(ErrorCode.GAUSS_529["GAUSS_52917"])
 
             self.clearOtherToolPackage()
             self.cleanInstallPath(const.OLD)

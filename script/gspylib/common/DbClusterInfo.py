@@ -1362,7 +1362,7 @@ class dbClusterInfo():
 
         return global_cls_query_rst
 
-    def queryClsInfo(self, hostName, sshtools, mpprcFile, cmd):
+    def queryClsInfo(self, hostName, sshtools, mpprcFile, cmd, logger=None):
         try:
             clusterState = 'Normal'
             roleStatusArray = []
@@ -1498,6 +1498,8 @@ class dbClusterInfo():
                     outText = outText + "\n"
                     i += 1
             self.__fprintContent(outText, cmd.outputFile)
+            if logger:
+                logger.debug(outText)
         except Exception as e:
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51652"] % str(e))
         

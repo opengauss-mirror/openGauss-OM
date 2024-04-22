@@ -382,7 +382,7 @@ class OmImplOLAP(OmImpl):
         if (self.context.g_opts.outFile != ""):
             cmd.outputFile = self.context.g_opts.outFile
         self.context.clusterInfo.queryClsInfo(hostName, sshtools,
-                                              self.context.mpprcFile, cmd)
+                                              self.context.mpprcFile, cmd, self.logger)
 
     def doRefreshConf(self):
         """

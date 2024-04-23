@@ -51,7 +51,6 @@ from subprocess import PIPE
 from base_utils.common.fast_popen import FastPopen
 from gspylib.common.copy_python_lib import copy_lib
 
-copy_lib()
 DefaultValue.doConfigForParamiko()
 
 try:

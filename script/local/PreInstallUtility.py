@@ -31,6 +31,7 @@ import grp
 import configparser
 import re
 import platform
+from multiprocessing.dummy import Pool as ThreadPool
 
 
 sys.path.append(sys.path[0] + "/../")
@@ -316,6 +317,8 @@ Common options:
                 if not os.path.exists(self.mpprcFile):
                     GaussLog.exitWithError(
                         ErrorCode.GAUSS_502["GAUSS_50201"] % self.mpprcFile)
+        else:
+            self.mpprcFile = os.path.normpath(os.path.join(os.path.expanduser("~%s" % self.user), ".bashrc"))
 
         if self.logFile == "":
             self.logFile = ClusterLog.getOMLogPath(
@@ -628,17 +631,40 @@ Common options:
         input : NA
         output: NA
         """
-        if not self.current_user_root:
-            return
         self.logger.debug("Checking hostname mapping.")
-        try:
+        if os.getuid() == 0:
             self.logger.debug("Change file[/etc/hosts] mode.")
             FileUtil.changeMode(DefaultValue.HOSTS_FILE, "/etc/hosts")
-            OMCommand.checkHostnameMapping(self.clusterInfo)
+        try:
+            node_names = self.clusterInfo.getClusterNodeNames()
+            pool = ThreadPool(DefaultValue.getCpuSet())
+            pool.map(self.check_hostname, node_names)
+            pool.close()
+            pool.join()
         except Exception as e:
             self.logger.logExit(str(e))
 
         self.logger.debug("Successfully checked hostname mapping.")
+
+    def check_hostname(self, node_name):
+        """
+        function: Checking hostname mapping
+        input : NA
+        output: NA
+        """
+        retry = 1
+        cmd = "source %s;pssh -s -H %s hostname" % (self.mpprcFile, node_name)
+        while True:
+            (status, output) = subprocess.getstatusoutput(cmd)
+            self.logger.debug("Checking hostname mapping for node [%s]. output: %s" % (node_name, output))
+            if status == 0 and output.find(node_name) >= 0:
+                break
+            if retry >= 3:
+                raise Exception(ErrorCode.GAUSS_512["GAUSS_51222"]
+                                + " Command: \"%s\". Error: \n%s"
+                                % (cmd, output))
+            retry += 1
+            time.sleep(1)
 
     def checkPasswdIsExpires(self):
         """

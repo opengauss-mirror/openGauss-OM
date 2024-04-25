@@ -213,57 +213,6 @@ class OMCommand():
         return clusterStatus
 
     @staticmethod
-    def checkHostname(nodename):
-        """
-        function: check host name
-        input : NA
-        output: NA
-        """
-        try:
-            retry = 1
-            cmd = "pssh -s -H %s hostname" % (nodename)
-            while True:
-                (status, output) = subprocess.getstatusoutput(cmd)
-                if status == 0 and output.find("%s" % nodename) >= 0:
-                    break
-                if retry >= 3:
-                    raise Exception(ErrorCode.GAUSS_512["GAUSS_51222"]
-                                    + " Command: \"%s\". Error: \n%s"
-                                    % (cmd, output))
-                retry += 1
-                time.sleep(1)
-
-            if os.getuid() == 0:
-                hostnameCmd = "pssh -s -H %s 'cat /etc/hostname'" % (nodename)
-                (status, output) = subprocess.getstatusoutput(hostnameCmd)
-                if status == 0 and output.strip() == nodename:
-                    pass
-                else:
-                    raise Exception(ErrorCode.GAUSS_512["GAUSS_51248"] % nodename
-                                    + " Command: \"%s\". Error: \n%s"
-                                    % (hostnameCmd, output))
-
-        except Exception as e:
-            raise Exception(str(e))
-
-    @staticmethod
-    def checkHostnameMapping(clusterInfo):
-        """
-        function: check host name mapping
-        input: NA
-        output: NA 
-        """
-        nodes = clusterInfo.getClusterNodeNames()
-        if len(nodes) > 0:
-            try:
-                pool = ThreadPool(DefaultValue.getCpuSet())
-                pool.map(OMCommand.checkHostname, nodes)
-                pool.close()
-                pool.join()
-            except Exception as e:
-                raise Exception(str(e))
-
-    @staticmethod
     def wait_for_normal(logger, user, timeout=300, delta=5):
 
         status_file = "/home/%s/gauss_check_status_%d.dat" % (user, os.getpid())

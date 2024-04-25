@@ -673,11 +673,7 @@ class PreinstallImpl:
                 self.context.user,
                 self.context.xmlFile,
                 self.context.localLog)
-            self.context.sshTool.executeCommand(cmd,
-                                                DefaultValue.SUCCESS,
-                                                [],
-                                                self.context.mpprcFile,
-                                                DefaultValue.getCpuSet())
+            subprocess.getstatusoutput(cmd)
         except Exception as e:
             raise Exception(str(e))
 

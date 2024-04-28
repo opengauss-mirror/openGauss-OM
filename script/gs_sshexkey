@@ -53,6 +53,9 @@ from gspylib.common.copy_python_lib import copy_lib
 
 DefaultValue.doConfigForParamiko()
 
+SYSTEM_SSH_ENV = "export LD_LIBRARY_PATH=/usr/lib64"
+
+
 try:
     import paramiko
 except ImportError as ex:
@@ -822,7 +825,7 @@ General options:
         output: True/False, hostname
         """
         bashrc_file = os.path.join(pwd.getpwuid(os.getuid()).pw_dir, ".bashrc")
-        cmd = 'source %s;ssh -n %s %s true' % (bashrc_file,
+        cmd = 'source %s;%s;/usr/bin/ssh -n %s %s true' % (bashrc_file, SYSTEM_SSH_ENV,
                                                DefaultValue.SSH_OPTION, hostname)
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
@@ -843,7 +846,7 @@ General options:
         for(key, value) in list(result.items()):
             hostnameList.append(value)
         for hostname in hostnameList:
-            cmd = 'ssh-keyscan -t ed25519 %s >> %s ' % (hostname, self.known_hosts_fname)
+            cmd = '%s;/usr/bin/ssh-keyscan -t ed25519 %s >> %s ' % (SYSTEM_SSH_ENV, hostname, self.known_hosts_fname)
             cmd += '&& sed -i "$ s/$/ #OM/" %s ' % self.known_hosts_fname
             cmd += "&& chmod %s %s" % (DefaultValue.KEY_FILE_MODE, self.known_hosts_fname)
             (status, output) = subprocess.getstatusoutput(cmd)
@@ -1084,15 +1087,15 @@ General options:
         output: NA
         '''
         bashrc_file = os.path.join(pwd.getpwuid(os.getuid()).pw_dir, ".bashrc")
-        cmd = 'source %s;' %bashrc_file
-        cmd += ('scp -q -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' +
+        cmd = 'source %s;%s;' % (bashrc_file, SYSTEM_SSH_ENV)
+        cmd += ('/usr/bin/scp -q -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' +
                 '%s %s %s:.ssh/' % (self.id_rsa_fname, self.id_rsa_pub_fname, hostname))
         cmd += ''' && temp_auth=$(grep '#OM' %s)''' \
-               ''' && ssh %s "sed -i '/#OM/d' %s; echo '${temp_auth}' >> %s"''' % (
+               ''' && /usr/bin/ssh %s "sed -i '/#OM/d' %s; echo '${temp_auth}' >> %s"''' % (
                     self.authorized_keys_fname, hostname, self.authorized_keys_fname,
                     self.authorized_keys_fname)
         cmd += ''' && temp_auth=$(grep '#OM' %s)''' \
-               ''' && ssh %s "sed -i '/#OM/d' %s; echo '${temp_auth}' >> %s"''' % (
+               ''' && /usr/bin/ssh %s "sed -i '/#OM/d' %s; echo '${temp_auth}' >> %s"''' % (
                     self.known_hosts_fname, hostname, self.known_hosts_fname,
                     self.known_hosts_fname)
         (status, output) = subprocess.getstatusoutput(cmd)
@@ -1205,7 +1208,8 @@ General options:
         self.logger.debug("Creating a remote directory [%s] successfully on node "
                         "[%s]." %(tmp_path, hostname))
         # scp ssh_protect to remote node
-        cmd = 'source %s; scp -q -r -2' % bashrc_file
+        
+        cmd = 'source %s;%s;/usr/bin/scp -q -r -2' % (bashrc_file, SYSTEM_SSH_ENV)
         cmd = '%s -o "BatchMode yes" -o ' % (cmd)
         cmd = '%s "NumberOfPasswordPrompts 0" %s' % (cmd, protect_path)
         cmd = '%s [%s]:%s' % (cmd, hostname, tmp_path)
@@ -1385,8 +1389,8 @@ General options:
 
     def copy_shell_to_remote_node(self, shell_file, hostname):
         # scp ssh_protect to remote node
-        cmd = 'source ~/.bashrc;'
-        cmd += ('scp -q -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' + '%s %s:.ssh/' % (
+        cmd = 'source ~/.bashrc;%s;' % SYSTEM_SSH_ENV
+        cmd += ('/usr/bin/scp -q -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' + '%s %s:.ssh/' % (
                 shell_file, hostname))
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:

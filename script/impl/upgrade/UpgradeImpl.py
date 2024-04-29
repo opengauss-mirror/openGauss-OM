@@ -342,6 +342,8 @@ class UpgradeImpl:
                     if node.cmservers:
                         cm_nodes.append(node.name)
                 self.restore_cm_server_guc(const.GREY_CLUSTER_CMSCONF_FILE, False, cm_nodes)
+            if self.operate_action == const.ACTION_COMMIT_UPGRADE:
+                self.reload_cm_proc()
 
     def commonCheck(self):
         """
@@ -1461,6 +1463,10 @@ class UpgradeImpl:
         cms_conf_file = os.path.join(cm_server_dir, "cm_server.conf")
         cma_conf_file = os.path.join(cm_agent_dir, "cm_agent.conf")
         origin_value = "off" if value == "on" else "on"
+
+        if not os.path.exists(cms_conf_file) or not os.path.exists(cma_conf_file):
+            self.context.logger.debug("CM config file not exists, no need set ssl.")
+            return
 
         cmd = "sed -i 's/enable_ssl = {0}/enable_ssl = {1}/g' {2}".format(origin_value, value, cma_conf_file)
         self.context.sshTool.executeCommand(cmd, hostList=cm_node_names)
@@ -2618,9 +2624,9 @@ class UpgradeImpl:
         if self.isLargeInplaceUpgrade and self.check_upgrade_mode():
             self.drop_table_or_index()
         # 1.unset read-only
+        self.setUpgradeFromParam(const.UPGRADE_UNSET_NUM)
+        self.restart_cm_proc()
         if self.isLargeInplaceUpgrade:
-            self.setUpgradeFromParam(const.UPGRADE_UNSET_NUM)
-            self.reloadCmAgent()
             self.setUpgradeMode(0)
 
         if self.unSetClusterReadOnlyMode() != 0:
@@ -2673,6 +2679,7 @@ class UpgradeImpl:
             self.install_kerberos()
             self.context.logger.log("Clean temp files for upgrade succeeded.", "constant")
             self.context.logger.log("NOTICE: Commit binary upgrade succeeded.")
+            
         # remove global relmap file
         self.cleanTmpGlobalRelampFile()
         self.exitWithRetCode(const.ACTION_INPLACE_UPGRADE, cleanUpSuccess)
@@ -4203,11 +4210,10 @@ END;"""
             self.recordDualClusterStage(self.newCommitId, DualClusterStage.STEP_UPGRADE_COMMIT)
 
             self.setActionFile()
+            if DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo) > 0:
+                self.setUpgradeFromParam(const.UPGRADE_UNSET_NUM)
+                self.restart_cm_proc()
             if self.context.action == const.ACTION_LARGE_UPGRADE:
-                if DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo) > 0:
-                    self.setUpgradeFromParam(const.UPGRADE_UNSET_NUM)
-                    self.reloadCmAgent()
-                    self.reload_cmserver(is_final=True)
                 if "dual-standby" not in self.context.clusterType:
                     self.setUpgradeMode(0)
             time.sleep(10)
@@ -6214,6 +6220,28 @@ END;"""
         self.context.logger.debug("Command for create ca for cm in rolling upgrade: %s" % cmd)
         self.context.sshTool.executeCommand(cmd, hostList=hostList)
         self.context.logger.debug("Successfully create cm ca for rolling upgrade.")
+
+    def restart_cm_proc(self):
+        """kill cm_agent and cm_server process
+        """
+        if not DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) > 0:
+            return
+        time.sleep(5)
+        self.context.logger.debug("Start to restart cmagent and cmserver")
+        kill_cm_proc = "pkill -9 cm_agent -U {user}; " \
+            "pkill -9 cm_server -U {user};".format(user=self.context.user)
+        host_list = copy.deepcopy(self.context.clusterNodes)
+        self.context.logger.debug(f"stopCMProcessesCmd: {kill_cm_proc} on {host_list}")
+        self.context.sshTool.getSshStatusOutput(kill_cm_proc, host_list)
+        self.context.logger.debug("End to restart cmagent and cmserver")
+        
+    def reload_cm_proc(self):
+        if not DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) > 0:
+            return
+        self.context.logger.debug("Start to reload cmagent and cmserver")
+        kill_cm_proc = "cm_ctl reload --param --server;cm_ctl reload --param --agent"
+        _, output = subprocess.getstatusoutput(kill_cm_proc)
+        self.context.logger.debug("End to reload cmagent and cmserver, %s" % output)
 
     def reloadCmAgent(self, is_final=False):
         """

@@ -126,7 +126,7 @@ gs_upgradectl_chose_strategy = ["-t:", "-?", "--help", "-V", "--version",
                                 "-l:"]
 # auto-upgrade parameter lists
 gs_upgradectl_auto_upgrade = ["-t:", "-?", "--help", "-V", "--version", "-l:",
-                              "-X:", "--grey", "-h:", "--continue"]
+                              "-X:", "--grey", "-h:", "--continue", "--inplace-upgrade"]
 # auto-rollback parameter lists
 gs_upgradectl_auto_rollback = ["-t:", "-?", "--help", "-V", "--version",
                                "-l:", "-X:", "--force"]
@@ -380,7 +380,8 @@ class Parameter():
                            "--non-print": "nonPrinting",
                            "--dynamic": "dynamic",
                            "--delete-root-trust": "root_delete_flag",
-                           "--unused-third-party": "unused_third_party"
+                           "--unused-third-party": "unused_third_party",
+                           "--inplace-upgrade": "inplace_upgrade"
                            }
         parameterIsBool_keys = parameterIsBool.keys()
 

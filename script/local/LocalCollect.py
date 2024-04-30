@@ -1141,9 +1141,10 @@ def get_dss_xlog_dir(pri_vgname):
     xlog_dirs = []
     out_list = output.split('\n')
     for out in out_list:
-        dir_name = (out.split())[-1]
-        if 'pg_xlog' in dir_name:
-            xlog_dirs.append(dir_name)
+        data_line = out.split('\n')
+        for item in data_line:
+            if re.findall(r"pg_xlog", item):
+                xlog_dirs.append(item)
     
     return xlog_dirs
 
@@ -1162,8 +1163,9 @@ def get_dss_xlog_file(xlog_path):
     xlog_lists = []
     for line in out_lines:
         data_line = line.split()
-        if 'archive' not in data_line[-1] and 'name' not in data_line[-1] and 'info' not in data_line[-1]:
-            heapq.heappush(xlog_lists, xlog_path + '/' + data_line[-1])
+        for item in data_line:
+            if re.findall(r"\d{24}", item):
+                heapq.heappush(xlog_lists, xlog_path + '/' + item)
     pop_num = len(xlog_lists) - g_opts.file_number
     while pop_num > 0:
         heapq.heappop(xlog_lists)

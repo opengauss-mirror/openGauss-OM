@@ -1006,19 +1006,6 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
                 self.is_rename_tblspc_dir(host, pgxc_node_name, tblspc_path)
         pvalue.value = 1
 
-    def change_user_tblspc(self):
-        """
-        Check tblspc directory with db om user
-        """
-        p_value = Value('i', 0)
-        proc = Process(target=self.check_tblspc_directory, args=(p_value,))
-        proc.start()
-        proc.join()
-        if not p_value.value:
-            sys.exit(1)
-        else:
-            proc.terminate()
-
     def check_new_node_state(self, is_root_user):
         """
         Check new node state.
@@ -1098,7 +1085,6 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
         if DefaultValue.get_cm_server_num_from_static(self.context.clusterInfo) > 0:
             self.logger.debug("Check new host state after restart.")
             return
-        self.change_user_tblspc()
         self.check_new_node_state(False)
 
     def getGUCConfig(self):

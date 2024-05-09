@@ -874,7 +874,7 @@ class PreinstallImpl:
             if not self.context.isSingle:
                 # send the temporary file to all remote nodes
                 try:
-                    self.context.sshTool.scpFiles(tmp_path, "/tmp/", self.context.sshTool.hostNames)
+                    self.context.sshTool.scpFiles(tmp_path, "/tmp/", self.context.sshTool.hostNames, self.context.mpprcFile)
                 except Exception as e:
                     cmd = "rm -rf %s" % tmp_path
                     CmdExecutor.execCommandWithMode(cmd,

@@ -1504,6 +1504,10 @@ Common options:
             # have check its exists when check parameters,
             # so it should exist here
             userProfile = self.mpprcFile
+            if not os.path.exists(userProfile):
+                FileUtil.createFile(userProfile)
+                FileUtil.changeMode(DefaultValue.FILE_MODE, userProfile)
+                FileUtil.changeOwner(self.user, userProfile, True, "shell")
         else:
             # check if os profile exist
             userProfile = ClusterConstants.ETC_PROFILE

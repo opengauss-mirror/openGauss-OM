@@ -754,6 +754,8 @@ class SshTool():
                 GPHOME = gp_path.strip()
             pscppre = "python3 %s/script/gspylib/pssh/bin/pscp" % GPHOME
 
+            if not os.path.exists(GPHOME):
+                raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % ("path " + GPHOME))
             if len(hostList) == 0:
                 ssh_hosts = copy.deepcopy(self.hostNames)
             else:

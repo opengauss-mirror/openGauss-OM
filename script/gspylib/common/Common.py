@@ -719,8 +719,10 @@ class DefaultValue():
             return hostIp
 
         # get local host by os function
-        hostIp = socket.gethostbyname(hostname)
-
+        addr_info = socket.getaddrinfo(hostname, None)
+        for info in addr_info:
+            # Extract IPv4 or IPv6 addresses from address information
+            hostIp = info[NetUtil.ADDRESS_FAMILY_INDEX][NetUtil.IP_ADDRESS_INDEX]
         # due to two loopback address in ubuntu, 127.0.1.1 are choosed by hostname.
         # there is need to choose 127.0.0.1
         version = LinuxDistro.linux_distribution()[1].split('/')[0]
@@ -2556,13 +2558,13 @@ class DefaultValue():
         return instances
 
     @staticmethod
-    def get_local_ips():
+    def get_local_ips(ip_type):
         """
         get local node all ips
         :return:
         """
         # eg "ip_mappings: [('lo', '127.0.0.1'), ('eth1', '10.10.10.10')]"
-        ip_mappings = NetUtil.getIpAddressAndNICList()
+        ip_mappings = NetUtil.getIpAddressAndNICList(ip_type)
         local_ips = []
         for ip_info in ip_mappings:
             local_ips.append(ip_info[1])

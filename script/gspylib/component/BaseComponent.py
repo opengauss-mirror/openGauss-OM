@@ -128,7 +128,7 @@ class BaseComponent(object):
 
         # Verify that the port is occupied
         for ip in ipList:
-            sk = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sk = NetUtil.get_sockects(ip)
             sk.settimeout(TIME_OUT)
 
             # retry  port 4 times

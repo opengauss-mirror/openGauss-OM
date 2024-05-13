@@ -27,7 +27,11 @@ class SecurityChecker(object):
     INJECTION_CHAR_LIST = ["|", ";", "&", "$", "<", ">", "`", "\\", "'", "\"", "{", "}", "(", ")",
                            "[", "]", "~", "*", "?", " ", "!", "\n"]
     PWD_VALIDATION_PATTERN = r'^[A-Za-z0-9~!@#%^*\-_=+?,]+$'
-    IP_PATTERN = r'^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)$'
+    IP_PATTERN = (
+        r'^(?:(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(?:\.(?!$)|$)){4}$|'  # IPv4
+        r'^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|'  # IPv6 full
+        r'^::1$|^::$'  # IPv6 loopback and unspecified
+    )
 
     @staticmethod
     def check_injection_char(check_value):

@@ -473,7 +473,11 @@ def get_localhost_name():
 
 
 def get_localhost_ip():
-    return socket.gethostbyname(get_localhost_name())
+    addr_info = socket.getaddrinfo(get_localhost_name(), None)
+    for info in addr_info:
+        # 从地址信息中提取 IPv4 或 IPv6 地址
+        host_ip = info[NetUtil.ADDRESS_FAMILY_INDEX][NetUtil.IP_ADDRESS_INDEX]
+    return host_ip
 
 
 class PriStandbyIpStatus(TemplateStatus):

@@ -25,6 +25,7 @@ import subprocess
 import sys
 import _thread
 import time
+import ipaddress
 
 from gspylib.common.ErrorCode import ErrorCode
 from base_utils.os.cmd_util import CmdUtil
@@ -84,6 +85,12 @@ g_lock = _thread.allocate_lock()
 
 class NetUtil(object):
     """net util"""
+    ADDRESS_FAMILY_INDEX = 4
+    IP_ADDRESS_INDEX = 0
+    NET_IPV6 = "ipv6"
+    NET_IPV4 = "ipv4"
+    IPV4_SUBMASK_LEN = 32
+    IPV6_SUBMASK_LEN = 128
 
     @staticmethod
     def GetHostIpOrName():
@@ -99,7 +106,11 @@ class NetUtil(object):
         if host_ip is not None and NetUtil.isIpValid(host_ip):
             return host_ip
         try:
-            host_ip = socket.gethostbyname(socket.gethostname())
+            # Obtain the address of the local host
+            addr_info = socket.getaddrinfo(socket.gethostname(), None)
+            for info in addr_info:
+                # Extract IPv4 or IPv6 addresses from address information
+                host_ip = info[NetUtil.ADDRESS_FAMILY_INDEX][NetUtil.IP_ADDRESS_INDEX]
         except Exception as e:
             raise e
         return host_ip
@@ -126,13 +137,39 @@ class NetUtil(object):
         input : String
         output : bool
         """
-        Valid = re.match(r"^(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[1-9][0-9]|"
-                         r"[1-9])\.(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[1-9]["
-                         r"0-9]"
-                         r"|[1-9]|0)\.(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[1-9]"
-                         r"[0-9]|[1-9]|0)\.(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|"
-                         r"[1-9][0-9]|[0-9])$", ip_address)
-        return Valid and Valid.group() == ip_address
+        try:
+            ipaddress.ip_address(ip_address)
+            return True
+        except ValueError:
+            return False
+
+    @staticmethod
+    def get_ip_version(hostname):
+        try:
+            ip = ipaddress.ip_address(hostname)
+            # If hostname is a valid IP address (both IPv4 and IPv6)
+            if(ip.version == 4):
+                return NetUtil.NET_IPV4
+            if(ip.version == 6):
+                return NetUtil.NET_IPV6
+        except ValueError:
+            # hostname may be a hostname or an unvalid ip
+            return ""
+
+    @staticmethod
+    def get_sockects(ip):
+        if NetUtil.get_ip_version(ip) == NetUtil.NET_IPV6:
+            sockets = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        else:
+            sockets = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        return sockets
+
+    @staticmethod
+    def get_submask_len(ip_address):
+        if NetUtil.get_ip_version(ip_address) == NetUtil.NET_IPV6:
+            return NetUtil.IPV6_SUBMASK_LEN
+        else:
+            return NetUtil.IPV4_SUBMASK_LEN
 
     @staticmethod
     def executePingCmd(ip_address):
@@ -163,12 +200,14 @@ class NetUtil(object):
         return g_failed_address_list
 
     @staticmethod
-    def getAllNetworkIp():
+    def getAllNetworkIp(ip_type=NET_IPV4):
         """
         function: get All network ip
         """
+        if ip_type == "":
+            raise ValueError("This is the host name, not an ip")
         network_info_list = []
-        mapping_list = NetUtil.getIpAddressAndNICList()
+        mapping_list = NetUtil.getIpAddressAndNICList(ip_type)
         for onelist in mapping_list:
             data = NetworkInfo()
             # NIC number
@@ -179,7 +218,7 @@ class NetUtil(object):
         return network_info_list
 
     @staticmethod
-    def getIpAddressAndNICList(ip_type="ipv4"):
+    def getIpAddressAndNICList(ip_type=NET_IPV4):
         """
         function: get ip address and nicList
         input:  ip_type
@@ -188,13 +227,13 @@ class NetUtil(object):
         return list(NetUtil.getIpAddressAndNIC(ip_type))
 
     @staticmethod
-    def getIpAddressAndNIC(ip_type="ipv4"):
+    def getIpAddressAndNIC(ip_type=NET_IPV4):
         """
         function: get ip address and nic
         input:  ip_type
         output: NA
         """
-        if ip_type == "ipv4":
+        if ip_type == NetUtil.NET_IPV4:
             key = AF_INET
         else:
             key = AF_INET6
@@ -261,13 +300,13 @@ class NetUtil(object):
         return bond_info
 
     @staticmethod
-    def getNetworkMaskByNICNum(network_card_num, ip_type="ipv4"):
+    def getNetworkMaskByNICNum(network_card_num, ip_type=NET_IPV4):
         """
         function: get Network Mask By NICNum
         input:  network_card_num, ip_type
         output: str
         """
-        if ip_type == "ipv4":
+        if ip_type == NetUtil.NET_IPV4:
             return ifaddresses(network_card_num)[AF_INET][0]["netmask"]
         else:
             return ifaddresses(network_card_num)[AF_INET6][0]["netmask"]
@@ -338,12 +377,14 @@ class NetUtil(object):
         return network_conf_file
 
     @staticmethod
-    def getAllNetworkInfo():
+    def getAllNetworkInfo(ip_type=NET_IPV4):
         """
         function: get all network info
         """
+        if ip_type == "":
+            raise ValueError("This is the host name,not an ip.")
         network_info_list = []
-        mapping_list = NetUtil.getIpAddressAndNICList()
+        mapping_list = NetUtil.getIpAddressAndNICList(ip_type)
         for one_list in mapping_list:
             data = NetworkInfo()
             # NIC number
@@ -361,7 +402,7 @@ class NetUtil(object):
             # network mask
             try:
                 data.networkMask = NetUtil.getNetworkMaskByNICNum(
-                    data.NICNum)
+                    data.NICNum,ip_type)
             except Exception:
                 data.networkMask = ""
 
@@ -425,7 +466,10 @@ class NetUtil(object):
             if host_ip is not None:
                 if NetUtil.isIpValid(host_ip):
                     return host_ip
-            host_ip = socket.gethostbyname(socket.gethostname())
+            addr_info = socket.getaddrinfo(socket.gethostname(), None)
+            for info in addr_info:
+                # 从地址信息中提取 IPv4 或 IPv6 地址
+                host_ip = info[NetUtil.ADDRESS_FAMILY_INDEX][NetUtil.IP_ADDRESS_INDEX]
         except Exception as e:
             raise Exception(str(e))
         return host_ip
@@ -507,10 +551,10 @@ class NetUtil(object):
             net_work_num = ""
             net_work_info = psutil.net_if_addrs()
             for nic_num in list(net_work_info.keys()):
-                net_info = net_work_info[nic_num][0]
-                if net_info.address == ip_address:
-                    net_work_num = nic_num
-                    break
+                for net_info in net_work_info[nic_num]:
+                    if net_info.address == ip_address:
+                        net_work_num = nic_num
+                        break
             if net_work_num == "":
                 raise Exception(ErrorCode.GAUSS_506["GAUSS_50604"] % ip_address)
             return net_work_num

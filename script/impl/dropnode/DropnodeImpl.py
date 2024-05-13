@@ -656,15 +656,22 @@ class OperCommon:
         self.logger.log(
             "[gs_dropnode]Start of set pg_hba config file on %s." % host)
         cmd = 'source %s;' % envProfile
+
         if len(pgHbaValue):
-            if not flagRollback:
-                for i in pgHbaValue[:-1].split('|'):
-                    v = i[0:i.find('/32') + 3]
-                    cmd += "gs_guc set -N %s -I all -h '%s';" % (host, v)
-            if flagRollback:
-                for i in pgHbaValue[:-1].split('|'):
-                    cmd += "gs_guc set -N %s -I all -h '%s';" \
-                           % (host, i.strip())
+            ip_entries = pgHbaValue[:-1].split('|')
+            for entry in ip_entries:
+                entry = entry.strip()
+                if not flagRollback:
+                    if NetUtil.get_ip_version(entry) == NetUtil.NET_IPV4:
+                        v = entry[0:entry.find('/32') + 3]
+                        cmd += "gs_guc set -N %s -I all -h '%s';" % (host, v)
+                    elif NetUtil.get_ip_version(entry) == NetUtil.NET_IPV6:
+                        v = entry[0:entry.find('/128') + 4]
+                        cmd += "gs_guc set -N %s -I all -h '%s';" % (host, v)
+                    elif NetUtil.get_ip_version(entry) == "":
+                        raise ValueError(f"Invalid IP address format: {entry}")
+                else:
+                    cmd += "gs_guc set -N %s -I all -h '%s';" % (host, entry)
             (status, output) = subprocess.getstatusoutput(cmd)
             result_v = re.findall(r'Failed instances: (\d)\.', output)
             if status:

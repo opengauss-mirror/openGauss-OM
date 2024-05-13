@@ -76,26 +76,23 @@ class Network():
     """
     function: Init the Network options
     """
+    NET_IPV6 = "ipv6"
+    NET_IPV4 = "ipv4"
 
     def __init__(self):
         pass
 
-    def isIpValid(self, ipAddress):
+    def isIpValid(self, ip_address):
         """
         function : check if the input ip address is valid
         input : String
         output : bool
         """
-        Valid = re.match("^(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[1-9][0-9]|"
-                         "[1-9])\.(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[1-9]["
-                         "0-9]"
-                         "|[1-9]|0)\.(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[1-9]"
-                         "[0-9]|[1-9]|0)\.(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|"
-                         "[1-9][0-9]|[0-9])$", ipAddress)
-        if (Valid):
-            if (Valid.group() == ipAddress):
-                return True
-        return False
+        try:
+            ipaddress.ip_address(ip_address)
+            return True
+        except ValueError:
+            return False
 
     def executePingCmd(self, ipAddress):
         """
@@ -123,12 +120,14 @@ class Network():
         parallelTool.parallelExecute(self.executePingCmd, ipAddressList)
         return g_failedAddressList
 
-    def getAllNetworkIp(self):
+    def getAllNetworkIp(self,ip_type=NET_IPV4):
         """
         function: get All network ip
         """
+        if ip_type == "":
+            raise ValueError("This is the host name,not an ip.")
         networkInfoList = []
-        mappingList = g_Platform.getIpAddressAndNICList()
+        mappingList = g_Platform.getIpAddressAndNICList(ip_type)
         for onelist in mappingList:
             data = networkInfo()
             # NIC number
@@ -144,12 +143,14 @@ class Network():
         """
         return psutil.net_if_stats()[networkCardNum].mtu
 
-    def getAllNetworkInfo(self):
+    def getAllNetworkInfo(self,ip_type=NET_IPV4):
         """
         function: get all network info
         """
+        if ip_type == "":
+            raise ValueError("This is the host name,not an ip.")
         networkInfoList = []
-        mappingList = g_Platform.getIpAddressAndNICList()
+        mappingList = g_Platform.getIpAddressAndNICList(ip_type)
         for oneList in mappingList:
             data = networkInfo()
             # NIC number
@@ -167,7 +168,7 @@ class Network():
             # network mask
             try:
                 data.networkMask = g_Platform.getNetworkMaskByNICNum(
-                    data.NICNum)
+                    data.NICNum,ip_type)
             except Exception:
                 data.networkMask = ""
 

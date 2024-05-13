@@ -2183,7 +2183,7 @@ Common options:
             for backIp in g_nodeInfo.backIps:
                 # Get backIP subnet mask
                 subnetMask = ""
-                allNetworkInfo = NetUtil.getAllNetworkInfo()
+                allNetworkInfo = NetUtil.getAllNetworkInfo(NetUtil.get_ip_version(backIp))
                 for network in allNetworkInfo:
                     if backIp == network.ipAddress:
                         subnetMask = network.networkMask

@@ -491,6 +491,7 @@ General options:
                                 " Error: \nThe /etc/hosts does not exist.")
             (status, output) = GrepUtil.getGrepValue("-v", " #Gauss.* IP Hosts Mapping",
                                                      '/etc/hosts')
+            result["::1"] = "localhost"
             result["127.0.0.1"] = "localhost"
             FileUtil.createFile(tmpHostIpName)
             FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, tmpHostIpName)
@@ -1049,10 +1050,14 @@ General options:
         input : hostname
         output: NA
         '''
+
         bashrc_file = os.path.join(pwd.getpwuid(os.getuid()).pw_dir, ".bashrc")
         cmd = 'source %s;%s;' % (bashrc_file, SYSTEM_SSH_ENV)
+        hostIp = hostname
+        if NetUtil.get_ip_version(hostname) == NetUtil.NET_IPV6:
+            hostIp = f"[{hostname}]"
         cmd += ('/usr/bin/scp -q -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' +
-                '%s %s %s:.ssh/' % (self.id_rsa_fname, self.id_rsa_pub_fname, hostname))
+                '%s %s %s:.ssh/' % (self.id_rsa_fname, self.id_rsa_pub_fname, hostIp))
         cmd += ''' && temp_auth=$(grep '#OM' %s)''' \
                ''' && /usr/bin/ssh %s "sed -i '/#OM/d' %s; echo '${temp_auth}' >> %s"''' % (
                     self.authorized_keys_fname, hostname, self.authorized_keys_fname,
@@ -1190,8 +1195,9 @@ General options:
         input : hostname
         output: NA
         """
+        ipadds = DefaultValue.get_local_ips(NetUtil.get_ip_version(hostname))
         if (hostname == self.localHost or
-                hostname in DefaultValue.get_local_ips()):
+                hostname in ipadds):
             return
 
         bashrc_file = os.path.join(pwd.getpwuid(os.getuid()).pw_dir, ".bashrc")
@@ -1337,8 +1343,9 @@ General options:
             localDirPath = os.path.dirname(os.path.realpath(__file__))
             shell_file = os.path.join(localDirPath, "./local/ssh-agent.sh")
             for ip in ips:
+                ipadds = DefaultValue.get_local_ips(NetUtil.get_ip_version(ip))
                 if (ip == self.localHost or
-                        ip in DefaultValue.get_local_ips()):
+                        ip in ipadds):
                     continue
                 session = self.get_ssh_session(ip)
                 DefaultValue.register_remote_ssh_agent(session, ip, self.logger)
@@ -1392,9 +1399,13 @@ General options:
 
     def copy_shell_to_remote_node(self, shell_file, hostname):
         # scp ssh_protect to remote node
+
+        if NetUtil.get_ip_version(hostname) == NetUtil.NET_IPV6:
+            hostname = f"[{hostname}]"
         cmd = 'source ~/.bashrc;%s;' % SYSTEM_SSH_ENV
         cmd += ('/usr/bin/scp -q -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' + '%s %s:.ssh/' % (
                 shell_file, hostname))
+
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             raise Exception(

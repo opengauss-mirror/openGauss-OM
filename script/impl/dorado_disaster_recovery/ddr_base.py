@@ -344,9 +344,10 @@ class DoradoDisasterRecoveryBase(StreamingBase):
         remote_ips = self.__get_remote_ips()
 
         for remote_ip in remote_ips:
+            submask_length = NetUtil.get_submask_len(remote_ip)
             cmd = "source %s ; gs_guc set -Z datanode -N all -I all -h " \
-                  "\"host   all   all   %s/32   trust\"" \
-                  % (self.mpp_file, remote_ip)
+                  "\"host   all   all   %s/%s   trust\"" \
+                  % (self.mpp_file, remote_ip, submask_length)
             self.logger.debug("Update pg_hba.conf with cmd: %s" % cmd)
             status, output = CmdUtil.retryGetstatusoutput(cmd)
             if status != 0:

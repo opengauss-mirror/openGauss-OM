@@ -108,7 +108,7 @@ General options:
         """
         try:
             for name in node_names:
-                socket.gethostbyname(name)
+                addr_info = socket.getaddrinfo(name, None)
         except Exception as e:
             GaussLog.printMessage(
                 "[Warning] Name or service not known on node [%s]." % name)

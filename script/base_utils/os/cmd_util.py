@@ -204,7 +204,7 @@ class CmdUtil(object):
         if int(packet_size) != int(56):
             opts = " -s " + str(packet_size)
         return CmdUtil.findCmdInPath('ping') + BLANK_SPACE + host + " -c " + \
-               count + " -i " + interval + opts
+                    count + " -i " + interval + opts
 
     @staticmethod
     def getWcCmd():

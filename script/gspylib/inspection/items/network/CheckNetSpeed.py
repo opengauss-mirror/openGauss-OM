@@ -197,7 +197,8 @@ class CheckNetSpeed(BaseItem):
         global MaxDelayFailFlag
         network_card_num = ""
         serviceIP = SharedFuncs.getIpByHostName(self.host)
-        for network in NetUtil.getAllNetworkInfo():
+        allNetworkInfo = NetUtil.getAllNetworkInfo(NetUtil.get_ip_version(serviceIP))
+        for network in allNetworkInfo:
             if (network.ipAddress == serviceIP):
                 network_card_num = network.NICNum
                 break

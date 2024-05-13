@@ -170,6 +170,7 @@ class PreinstallImpl:
         if self.context.localMode or self.context.isSingle:
             if not self.context.skipHostnameSet:
                 self.writeLocalHosts({"127.0.0.1": "localhost"})
+                self.writeLocalHosts({"::1": "localhost"})
             return
         try:
             # save the sshIps

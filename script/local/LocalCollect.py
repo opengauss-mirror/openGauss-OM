@@ -1141,7 +1141,7 @@ def get_dss_xlog_dir(pri_vgname):
     xlog_dirs = []
     out_list = output.split('\n')
     for out in out_list:
-        data_line = out.split('\n')
+        data_line = out.split()
         for item in data_line:
             if re.findall(r"pg_xlog", item):
                 xlog_dirs.append(item)

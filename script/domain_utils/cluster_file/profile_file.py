@@ -208,4 +208,4 @@ class ProfileFile:
         input : username
         output : NA
         """
-        return ClusterConstants.HOME_USER_BASHRC % username
+        return os.path.join(os.path.expanduser(f"~{username}"), ".bashrc")

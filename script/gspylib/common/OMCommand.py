@@ -215,7 +215,7 @@ class OMCommand():
     @staticmethod
     def wait_for_normal(logger, user, timeout=300, delta=5):
 
-        status_file = "/home/%s/gauss_check_status_%d.dat" % (user, os.getpid())
+        status_file = os.path.join(os.path.expanduser(f"~{user}"), "gauss_check_status_%d.dat" % os.getpid())
 
         try:
             logger.debug("Waiting for cluster status being satisfied.")

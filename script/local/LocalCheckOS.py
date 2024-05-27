@@ -48,7 +48,7 @@ from os_platform.linux_distro import LinuxDistro
 from os_platform.common import SUPPORT_RHEL6X_VERSION_LIST, \
     SUPPORT_RHEL7X_VERSION_LIST, SUPPORT_SUSE12X_VERSION_LIST, \
     SUPPORT_SUSE11X_VERSION_LIST, SUPPORT_RHEL8X_VERSION_LIST, \
-    SUPPORT_RHEL_LEAST_VERSION, SUPPORT_USER_DEFINED_OS_LIST
+    SUPPORT_RHEL_LEAST_VERSION
 
 sys.path.insert(0, localDirPath + "/../../lib")
 import psutil
@@ -1912,9 +1912,6 @@ def CheckPlatformInfo():
         mixed_type = "%s" % data.distname
         platform_str = "%s_%s_%s" % (data.distname, data.version, data.bits)
     elif (data.distname == "debian" or data.version == "buster/sid"):
-        mixed_type = "%s" % data.distname
-        platform_str = "%s_%s_%s" % (data.distname, data.version, data.bits)
-    elif (data.distname in SUPPORT_USER_DEFINED_OS_LIST):
         mixed_type = "%s" % data.distname
         platform_str = "%s_%s_%s" % (data.distname, data.version, data.bits)
     else:

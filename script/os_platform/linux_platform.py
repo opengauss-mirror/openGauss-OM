@@ -26,7 +26,7 @@ from os_platform.common import REDHAT, PAK_REDHAT, BIT_VERSION, \
     CENTOS, UOS, PAK_EULER, PAK_CENTOS, ASIANUX, SUSE, PAK_ASIANUX, \
     EULEROS, OPENEULER, KYLIN, PAK_OPENEULER, SUPPORT_WHOLE_PLATFORM_LIST,\
     BLANK_SPACE, PAK_UBUNTU, DEBIAN, PAK_KYLIN, PAK_UOS, PAK_SUSE, PAK_DEBIAN, \
-    FUSIONOS, PAK_FUSIONOS, SUPPORT_USER_DEFINED_OS_LIST
+    FUSIONOS, PAK_FUSIONOS
 from os_platform.linux_distro import LinuxDistro
 
 
@@ -229,11 +229,6 @@ class LinuxPlatform(object):
         elif distname == FUSIONOS:
             file_name_list = [
                 self.package_file_path(prefix_str, packageVersion, PAK_FUSIONOS, postfix_str)
-                ]
-        
-        elif distname in SUPPORT_USER_DEFINED_OS_LIST:
-            file_name_list = [
-                self.package_file_path(prefix_str, packageVersion, SUPPORT_USER_DEFINED_OS_LIST[0], postfix_str)
                 ]
         
         else:

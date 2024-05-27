@@ -21,7 +21,7 @@
 
 from gspylib.common.ErrorCode import ErrorCode
 from os_platform.common import SUPPORT_WHOLE_PLATFORM_LIST, SUSE, \
-    SUPPORT_RHEL_SERIES_PLATFORM_LIST, SUPPORT_USER_DEFINED_OS_LIST
+    SUPPORT_RHEL_SERIES_PLATFORM_LIST
 from os_platform.linux_distro import LinuxDistro
 from os_platform.rhel_platform import RHELPlatform
 from os_platform.sles_platform import SLESPlatform
@@ -44,8 +44,7 @@ class UserPlatform(object):
         #     Kylin           "10" 64bit
         #     Ubuntu          "18.04" 64bit
         dist_name = LinuxDistro.linux_distribution()[0]
-        if dist_name.lower() not in SUPPORT_WHOLE_PLATFORM_LIST \
-            and dist_name.lower() not in SUPPORT_USER_DEFINED_OS_LIST:
+        if dist_name.lower() not in SUPPORT_WHOLE_PLATFORM_LIST:
             raise Exception(ErrorCode.GAUSS_519["GAUSS_51900"] +
                             "Supported platforms are: %s." % str(
                 SUPPORT_WHOLE_PLATFORM_LIST))

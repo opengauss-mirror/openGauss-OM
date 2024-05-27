@@ -24,8 +24,7 @@ import re
 import select
 import sys
 
-from os_platform.common import _supported_dists,SUPPORT_WHOLE_PLATFORM_LIST,\
-SUPPORT_USER_DEFINED_OS_LIST
+from os_platform.common import _supported_dists,SUPPORT_WHOLE_PLATFORM_LIST
 
 ISCONFIGURETRUE = "# isConfigure = TRUE"
 ISCONFIGUREFALSE = "# isConfigure = FALSE"
@@ -238,7 +237,7 @@ class LinuxDistro(object):
 
         """
         is_flag_osid = False
-        is_flag_oscorrect = False
+        is_flag_oscorrect = True
         try:
             etc_dir = os.listdir('/etc')
         except os.error:
@@ -260,24 +259,24 @@ class LinuxDistro(object):
         if distname == "UnionTech":
             distname = "uos"
         # Read the first line
-        if gFile is not None:
-            with open('/etc/' + gFile, 'r') as f:
-                firstline = f.readline()
-            _distname, _version, _id = LinuxDistro._parse_release_file(firstline)
+        if gFile is None:
+            return distname, version, idNum
+        with open('/etc/' + gFile, 'r') as f:
+            firstline = f.readline()
+        _distname, _version, _id = LinuxDistro._parse_release_file(firstline)
 
-            if _distname and full_distribution_name:
-                distname = _distname
-                for dist in SUPPORT_WHOLE_PLATFORM_LIST:
-                    if dist.lower == _distname.lower:
-                        is_flag_oscorrect = True
-            if _version:
-                version = _version
-            if _id:
-                idNum = _id
-            if is_flag_oscorrect == True:
-                return distname, version, idNum
-
-        if is_flag_oscorrect == False:
+        if _distname and full_distribution_name:
+            distname = _distname
+            for dist in SUPPORT_WHOLE_PLATFORM_LIST:
+                if dist.lower == _distname.lower:
+                    is_flag_oscorrect = True
+        if _version:
+            version = _version
+        if _id:
+            idNum = _id
+        if is_flag_oscorrect == True:
+            return distname, version, idNum
+        elif is_flag_oscorrect == False:
             # Read system information from configuration file
             # Call the function and pass in the filename
             osid_path = os.path.realpath(
@@ -298,8 +297,8 @@ class LinuxDistro(object):
             if is_flag_osid:
                 if selected_data['os']:
                     distname = selected_data['os']
-                    SUPPORT_USER_DEFINED_OS_LIST.append(distname)
-                    SUPPORT_USER_DEFINED_OS_LIST.append(distname.lower())
                 if selected_data['version']:
                     version = selected_data['version']
-        return distname, version, idNum
+                if selected_data['bit']:
+                    idNum = selected_data['bit']
+                return distname, version, idNum

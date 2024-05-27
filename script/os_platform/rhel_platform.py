@@ -27,7 +27,7 @@ from os_platform.common import BIT_VERSION, EULEROS, SUPPORT_EULEROS_VERSION_LIS
     FUSIONOS, SUPPORT_RHEL_SERIES_PLATFORM_LIST, \
     SUPPORT_RHEL_SERIES_VERSION_LIST, OPENEULER, CENTOS, \
     UOS, UNIONTECH, SUPPORT_UOS_VERSION_LIST, \
-    SUPPORT_RHEL7X_VERSION_LIST, DEBIAN, BLANK_SPACE, SUPPORT_USER_DEFINED_OS_LIST
+    SUPPORT_RHEL7X_VERSION_LIST, DEBIAN, BLANK_SPACE
 from os_platform.linux_distro import LinuxDistro
 from os_platform.linux_platform import LinuxPlatform
 
@@ -172,8 +172,7 @@ class RHELPlatform(LinuxPlatform):
                    version[0:3] in SUPPORT_RHEL_SERIES_VERSION_LIST)) or
                  (dist_name.lower() == OPENEULER) or
                  (dist_name.lower() == FUSIONOS) or
-                 (dist_name.lower() == DEBIAN and version == "buster/sid") or
-                 (dist_name.lower() in SUPPORT_USER_DEFINED_OS_LIST)
+                 (dist_name.lower() == DEBIAN and version == "buster/sid")
             )):
                 return dist_name.lower(), version[0:3]
             elif((bits == BIT_VERSION and

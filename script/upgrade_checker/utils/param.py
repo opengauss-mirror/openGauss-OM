@@ -95,6 +95,7 @@ class Param(object):
         -M | --report_mode     报告模式，detail详细，summary摘要，默认summary
         -v | --vmap            指定使用某个地图，不然自己检测数据库版本并下载。默认自己检测
         -d | --debug           开启debug运行模式，将会打印更多的日志。
+        -D | --database        对指定数据库进行导出或校验操作。
 
     更多详细内容参考《README.md》
     """
@@ -111,6 +112,7 @@ class Param(object):
         self.report_mode = self._register(ReportMode.SUMMARY, 'M:', 'report-mode=', Param.assign_report_mode)
         self.vmap = self._register(None, 'v:', 'vmap=', Param.assign_vmap)
         self.debug = self._register(False, 'd', 'debug', Param.assign_debug)
+        self.database = self._register(None, 'D:', 'database=', Param.assign_database)
 
         try:
             self._parse(argv[1:])
@@ -126,7 +128,8 @@ class Param(object):
             'report_format': self.report_format.value,
             'report_mode': self.report_mode.value,
             'vmap': self.vmap.value,
-            'debug': self.debug.value
+            'debug': self.debug.value,
+            'database': self.database
         }) + '\n'
 
     def _register(self, value, shortopt, longopt, assign_func=None):
@@ -222,7 +225,10 @@ class Param(object):
     @staticmethod
     def assign_debug(debug):
         return True
-        
+
+    @staticmethod
+    def assign_database(database):
+        return database
         
 
 if __name__ == "__main__":

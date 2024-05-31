@@ -122,7 +122,7 @@ class ExportProj(Project):
         logger.debug('工程信息：\n' + self.__str__())
 
     def run(self):
-        db_list = Collector.prepare_db_list(self.param.action)
+        db_list = Collector.prepare_db_list(self.param)
         collector = Collector(db_list)
         exporter = Exporter(self.vmap)
 
@@ -175,7 +175,7 @@ class VerifyProj(Project):
         logger.debug('工程信息：\n' + self.__str__())
 
     def run(self):
-        db_list = Collector.prepare_db_list(self.param.action)
+        db_list = Collector.prepare_db_list(self.param)
         collector = Collector(db_list)
         analyzer = Analyzer(self.vmap)
         reporter = Reporter(self.report,

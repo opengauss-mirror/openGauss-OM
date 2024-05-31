@@ -38,11 +38,24 @@ class Collector(object):
     负责数据收集。连接数据库，构造校验规则Rule，并执行Rule进行数据的收集。
     """
     @staticmethod
-    def prepare_db_list(action):
+    def prepare_db_list(param):
+        # 如果参数指明了则使用指明的数据库
+        if param.database.value is not None:
+            logger.info(f'仅操作参数指明的数据库：{param.database.value}')
+            search_db_sql = f"select datname from pg_database " \
+                            f"where datname = '{param.database.value}'"
+
+            qres = og.query(search_db_sql)
+            if qres.row_count() == 0:
+                logger.err(f"未检测到数据库 {param.database.value}")
+
+            return [param.database.value]
+
+        # 否则自动检测所有库，且仅支持A库
         if action == Action.VERIFY:
             search_db_sql = "select datname from pg_database " \
                             "where datname not in ('template0', 'template1') and " \
-                            "      datcompatibility != 'A'"
+                            "      upper(datcompatibility) != 'A'"
             qres = og.query(search_db_sql)
             if qres.row_count() != 0:
                 ignore_list = ','.join([line[0] for line in qres])
@@ -50,19 +63,20 @@ class Collector(object):
             
             search_db_sql = "select datname from pg_database " \
                             "where datname not in ('template0', 'template1') and " \
-                            "      datcompatibility = 'A'"
+                            "      upper(datcompatibility) = 'A'"
             qres = og.query(search_db_sql)
             if qres.row_count() == 0:
-                logger.fatal('没有需要校验的库。')
+                logger.err('没有需要校验的库。')
                 
             return [row[0] for row in qres]
         elif action == Action.EXPORT:
             search_db_sql = "select datname from pg_database " \
-                            "where datname = 'postgres' and datcompatibility = 'A'"
+                            "where datname = 'postgres' and upper(datcompatibility) = 'A'"
             qres = og.query(search_db_sql)
             if qres.row_count() == 0:
-                logger.fatal('暂不支持非A兼容性的postgres库。')
+                logger.err('暂不支持非A兼容性的postgres库。')
             
+            logger.info('使用postgres库生成校验地图。')
             return ['postgres']
         else:
             assert False

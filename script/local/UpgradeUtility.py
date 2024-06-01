@@ -3717,6 +3717,33 @@ def greySyncGuc():
     pool.close()
     pool.join()
 
+def confirm_guc_deleted(insname, config_file):
+    del_guc_names = []
+    if insname in g_deleteGucDict.keys():
+        del_guc_names = g_deleteGucDict[insname]
+    else:
+        return True
+    
+    pattern = re.compile("^\\s*.*=.*$")
+    with open(config_file, 'r') as fd:
+        res_list = fd.readlines()
+        for line in res_list:
+            # skip blank line
+            line = line.strip()
+            if not line:
+                continue
+            # search valid line
+            result = pattern.match(line)
+            if result is None:
+                continue
+            keyname = line.split('=')[0].strip()
+            if keyname.startswith('#'):
+                continue
+            if keyname in del_guc_names:
+                g_logger.log(f"Guc {keyname} still in old config, need delete again")
+                return False
+    g_logger.log("All delete_guc has been removed last time")
+    return True
 
 def greySyncInstanceGuc(dbInstance):
     """
@@ -3747,7 +3774,7 @@ def greySyncInstanceGuc(dbInstance):
     oldFileBak = oldConfig + ".bak.old"
     oldTempFileBak = oldFileBak + ".temp"
     # if reenter the upgrade process, we may have synced
-    if os.path.exists(oldFileBak):
+    if os.path.exists(oldFileBak) and confirm_guc_deleted(instanceName, oldConfig):
         g_logger.log("File %s exists, No need to backup old configure again."
                      % oldFileBak)
         return

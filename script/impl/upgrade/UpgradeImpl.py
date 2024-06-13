@@ -825,29 +825,32 @@ class UpgradeImpl:
             self.context.mpprcFile)
         self.context.logger.log("Successfully started cluster.")
 
-    def set_cm_parameters(self, cm_nodes, cms_para_dict):
+    def set_cm_parameters(self, cm_nodes, para_dict, config_file):
         """
-        function:set cms parameters
+        function:set cm parameters
         """
-        # set cm_server parameters
         for cm_node in cm_nodes:
-            cmserver_file = os.path.join(cm_node.cmservers[0].datadir, "cm_server.conf")
+            if config_file == "cm_server.conf":
+                datadir = cm_node.cmservers[0].datadir
+            if config_file == "cm_agent.conf":
+                datadir = cm_node.cmagents[0].datadir
+            cm_conf_file = os.path.join(datadir, config_file)
             cmd = "echo -e '\n' > /dev/null 2>&1"
-            for para in list(cms_para_dict.keys()):
+            for para in list(para_dict.keys()):
                 cmd += " && sed -i '/\<%s\>/d' '%s' && echo '%s = %s' >> '%s'" % \
-                       (para, cmserver_file, para, cms_para_dict[para], cmserver_file)
-            self.context.logger.debug("Command for setting CMServer parameters: %s." % cmd)
+                       (para, cm_conf_file, para, para_dict[para], cm_conf_file)
+            self.context.logger.debug("Command for setting cm parameters: %s." % cmd)
 
             if self.context.isSingle:
                 (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
                 if status != 0 and not self.context.ignoreInstance:
                     raise Exception(ErrorCode.GAUSS_500["GAUSS_50007"] %
-                                    ",".join(list(cms_para_dict.keys())) + " Error:%s." % output)
+                                    ",".join(list(para_dict.keys())) + " Error:%s." % output)
             else:
                 (status, output) = self.context.sshTool.getSshStatusOutput(cmd, [cm_node.name])
                 if status[cm_node.name] != DefaultValue.SUCCESS:
                     raise Exception(ErrorCode.GAUSS_500["GAUSS_50007"] %
-                                    ",".join(list(cms_para_dict.keys())) + " Error:%s." % output)
+                                    ",".join(list(para_dict.keys())) + " Error:%s." % output)
 
     def save_cm_server_guc(self, cmsParaDict, fileName):
         """
@@ -884,13 +887,22 @@ class UpgradeImpl:
             self.context.logger.debug("no need to do.")
             return
 
-        cmNodes = []
+        cms_nodes = []
+        cma_nodes = []
         # Get all the nodes that contain the CMSERVER instance
         for dbNode in self.context.clusterInfo.dbNodes:
             if len(dbNode.cmservers) > 0:
-                cmNodes.append(dbNode)
-
-        self.set_cm_parameters(cmNodes, cmsParaDict)
+                cms_nodes.append(dbNode)
+            if len(dbNode.cmagents) > 0:
+                cma_nodes.append(dbNode)
+            
+        self.set_cm_parameters(cms_nodes, cmsParaDict, 'cm_server.conf')
+        
+        # Reset unix_socket_directory to PGHOST path
+        unix_dict = {
+            "unix_socket_directory": EnvUtil.getTmpDirFromEnv()
+        }
+        self.set_cm_parameters(cma_nodes, unix_dict, 'cm_agent.conf')
 
         if not needReload:
             return

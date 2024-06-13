@@ -142,7 +142,7 @@ class CM_OLAP(CM):
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51615"] +
                             " Command:%s. Error:\n%s" % (cmd, output))
         log_path = EnvUtil.getEnvironmentParameterValue("GAUSSLOG", user)
-        agent_para_dict = {"unix_socket_directory": os.path.dirname(self.binPath),
+        agent_para_dict = {"unix_socket_directory": EnvUtil.getTmpDirFromEnv(),
                            "log_dir": os.path.realpath(os.path.join(log_path, "cm", "cm_agent"))}
         if self.dss_mode:
             cm_vote_disk = DssConfig.get_value_b64_handler('voting_disk_path',

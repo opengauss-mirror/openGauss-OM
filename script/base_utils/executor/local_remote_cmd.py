@@ -129,16 +129,20 @@ class LocalRemoteCmd(object):
         """get pssh pscp cmd"""
         opts = ""
         trace_id = threading.currentThread().getName()
+        
+        ENV_SOURCE_CMD = "source /etc/profile;source ~/.bashrc;" \
+                     "if [ $MPPDB_ENV_SEPARATE_PATH ]; " \
+                     "then source $MPPDB_ENV_SEPARATE_PATH; fi"
 
         if path_type == "directory":
             opts = "-x -r"
         if copy_to:
-            return "pscp --trace-id %s %s -H %s %s %s " % \
-                   (trace_id, opts.strip(), remote_host, src, dest)
+            return "%s;pscp --trace-id %s %s -H %s %s %s " % \
+                   (ENV_SOURCE_CMD, trace_id, opts.strip(), remote_host, src, dest)
         else:
             localhost = NetUtil.getLocalIp()
             if other_host is not None:
                 localhost = other_host
-            return "pssh --trace-id %s -s -H %s \" pscp --trace-id %s %s -H %s %s %s \" " % \
-                   (trace_id, remote_host, trace_id, opts.strip(), localhost, src, dest)
+            return "%s;pssh --trace-id %s -s -H %s \" pscp %s -H %s %s %s \" " % \
+                   (ENV_SOURCE_CMD, trace_id, remote_host, opts.strip(), localhost, src, dest)
 

@@ -222,7 +222,6 @@ class Dss(BaseComponent):
         '''
         The OM manually starts the DSS server to obtain the socket file.
         '''
-
         Dss.write_dss_context_with_file(exist_so=exist_so)
 
         if kill_server:

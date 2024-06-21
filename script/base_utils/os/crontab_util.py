@@ -70,3 +70,16 @@ class CrontabUtil(object):
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
                             " Error:\n%s" % output)
         return True
+
+    @staticmethod
+    def check_user_crontab_permission():
+        """
+        function : Check user crontab permission
+        input : NA
+        output: True or False
+        """
+        cmd = CmdUtil.getAllCrontabCmd()
+        (_, output) = subprocess.getstatusoutput(cmd)
+        if output.find("not allowed") >= 0:
+            return False
+        return True

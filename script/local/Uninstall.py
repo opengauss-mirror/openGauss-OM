@@ -162,6 +162,9 @@ class Uninstall(LocalBaseOM):
         output: NA
         """
         self.logger.log("Deleting monitor.")
+        if not CrontabUtil.check_user_crontab_permission():
+            self.logger.log("Warning: The user has no permission to delete crontab task.")
+            return
         try:
             # get all content by crontab command
             (status, output) = CrontabUtil.getAllCrontab()

@@ -189,7 +189,7 @@ class ParamsHandler(object):
         parser.add_option('-V', "--version", dest='version_info', action='store_true',
                           help='-V|--version show version info.')
         parser.add_option('-?', "--help", dest='help_info', action='store_true',
-                          help='-?|--help show help message and exist.')
+                          help='-?|--help show help message and exit.')
         parser.add_option('-t', dest='task', type='string',
                           help='Task name. It could be "start", "stop", '
                                '"switchover", "failover", "query"')

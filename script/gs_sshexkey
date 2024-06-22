@@ -371,7 +371,15 @@ General options:
                 for i in range(3):
                     try:
                         KeyboardPassword = getpass.getpass()
-                        PasswordUtil.checkPasswordVaild(KeyboardPassword)
+                        if not PasswordUtil.checkPasswordVaild(KeyboardPassword):
+                            if i < 2:
+                                GaussLog.printMessage("The password can only contain letters, numbers, and symbols, " \
+                                                      "cannot start with a space, and cannot be empty.")
+                                continue
+                            else:
+                                raise Exception("The password can only contain letters, numbers, and symbols, " \
+                                                "cannot start with a space, and cannot be empty.")
+
                         ssh = paramiko.Transport((sshIp, 22))
                         isPasswdOK = self.verifyPasswd(ssh, KeyboardPassword)
                         if isPasswdOK:

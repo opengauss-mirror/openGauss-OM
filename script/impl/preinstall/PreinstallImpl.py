@@ -847,8 +847,14 @@ class PreinstallImpl:
                     while i < 3:
                         self.context.password = self.getUserPasswd(
                             "cluster user")
-                        PasswordUtil.checkPasswordVaild(
-                            self.context.password)
+                        if not PasswordUtil.checkPasswordVaild(self.context.password):
+                            if i < 2:
+                                self.context.logger.printMessage("The password can only contain letters, numbers, and symbols, " \
+                                                      "cannot start with a space, and cannot be empty.")
+                                continue
+                            else:
+                                raise Exception("The password can only contain letters, numbers, and symbols, " \
+                                                "cannot start with a space, and cannot be empty.")
                         self.context.passwordsec = self.getUserPasswd(
                             "cluster user", "again")
 

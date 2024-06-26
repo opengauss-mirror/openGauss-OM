@@ -177,14 +177,13 @@ Option for grey upgrade
         if "logFile" in ParaDict.keys():
             self.logFile = ParaDict.get("logFile")
         if "inplace_upgrade" in ParaDict.keys():
-            self.is_grey_upgrade = False
-            self.is_inplace_upgrade = True
+            print("We no longer maintain inplace-upgrade and use grey upgrade as default.")
         if "nodename" in ParaDict.keys():
             self.nodeNames = ParaDict.get("nodename")
         if "continue" in ParaDict.keys():
             self.upgrade_remain = True
         if "force" in ParaDict.keys():
-            self.forceRollback = True
+            print("We no longer support force rollback. and '--force' is no longer in effect.")
         if "upgrade-package" in ParaDict.keys():
             self.upgrade_package = ParaDict.get("upgrade-package")
         self.tmpDir = EnvUtil.getTmpDirFromEnv()

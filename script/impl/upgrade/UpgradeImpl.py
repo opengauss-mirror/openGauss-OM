@@ -2315,6 +2315,7 @@ class UpgradeImpl:
 
     def doInplaceBinaryUpgrade(self):
         """
+        Notice  : We no longer maintain inplace-upgrade and use grey upgrade as default.
         function: do binary upgrade, which essentially replace the binary files
         input : NA
         output: NA

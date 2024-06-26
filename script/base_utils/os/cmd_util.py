@@ -490,10 +490,12 @@ class CmdUtil(object):
         input  : NA
         output : str
         """
+        env_source_cmd = CmdUtil.get_env_source_cmd()
         if timeout:
-            return "pssh --trace-id %s -s -t %s -H %s" % (
+            return "%s;pssh --trace-id %s -s -t %s -H %s" % (env_source_cmd,
                 threading.currentThread().getName(), str(timeout), address)
-        return "pssh --trace-id %s -s -H %s" % (threading.currentThread().getName(), address)
+        return "%s;pssh --trace-id %s -s -H %s" % (env_source_cmd, 
+                threading.currentThread().getName(), address)
 
     @staticmethod
     def getSshCommand(ip, cmd, timeout=None):

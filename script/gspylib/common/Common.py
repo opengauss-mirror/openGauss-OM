@@ -3853,8 +3853,16 @@ class ClusterCommand():
     @staticmethod
     def aes_cbc_encrypt_with_multi(passwd, dest_path, logger):
 
-        # # check if the password contains illegal characters
-        PasswordUtil.checkPasswordVaild(passwd)
+        for i in range(3):
+            # # check if the password contains illegal characters
+            if not PasswordUtil.checkPasswordVaild(passwd):
+                if i < 2:
+                    logger.log("The password can only contain letters, numbers, and symbols, " \
+                                "cannot start with a space, and cannot be empty.")
+                    continue
+                else:
+                    raise Exception("The password can only contain letters, numbers, and symbols, " \
+                                    "cannot start with a space, and cannot be empty.")
         # encrypt tool path
         encrypt_path = os.path.realpath("%s/../clib" % os.path.dirname(os.path.realpath(__file__)))
         # encrypt ca path

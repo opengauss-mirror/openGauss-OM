@@ -79,6 +79,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         self.new_nodes = list()
         self.app_names = list()
         self._init_global()
+        self.logger = expansion.logger
 
     def _init_global(self):
         """
@@ -88,7 +89,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         self.static_cluster_info.initFromStaticConfig(self.context.user)
         self.xml_cluster_info.initFromXml(self.context.xmlFile)
 
-        self.ssh_tool = SshTool(self.xml_cluster_info.getClusterNodeNames())
+        self.ssh_tool = SshTool(self.xml_cluster_info.getClusterSshIps()[0])
 
         self.new_nodes = [node for node in self.xml_cluster_info.dbNodes
                           for back_ip in node.backIps if back_ip in self.context.newHostList]
@@ -99,6 +100,13 @@ class ExpansionImplWithCm(ExpansionImpl):
         Get node names from db_node_info object
         """
         return [node.name for node in nodes]
+    
+    @staticmethod
+    def get_node_ip(nodes):
+        """
+        Get node names from db_node_info object
+        """
+        return [node.sshIps[0] for node in nodes]
 
     def _change_user_without_root(self):
         """
@@ -108,7 +116,7 @@ class ExpansionImplWithCm(ExpansionImpl):
             return
         self.ssh_tool.clenSshResultFiles()
         self.changeUser()
-        self.ssh_tool = SshTool(self.xml_cluster_info.getClusterNodeNames())
+        self.ssh_tool = SshTool(self.xml_cluster_info.getClusterSshIps()[0])
         self.logger.log("Success to change user to [{0}]".format(self.user))
 
     def send_xml(self):
@@ -144,7 +152,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         self.logger.log("Preinstall command is: {0}".format(cmd))
 
         failed_preinstall_hosts = []
-        for host in ExpansionImplWithCm.get_node_names(self.new_nodes):
+        for host in ExpansionImplWithCm.get_node_ip(self.new_nodes):
             sshTool = SshTool([host], timeout=300)
             result_map, output = sshTool.getSshStatusOutput(cmd, [])
             self.logger.debug(result_map)
@@ -179,7 +187,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         # exec the cmd for install application on all nodes
         result_map, output = \
             self.ssh_tool.getSshStatusOutput(cmd,
-                                             ExpansionImplWithCm.get_node_names(self.new_nodes))
+                                             ExpansionImplWithCm.get_node_ip(self.new_nodes))
         self.logger.log("Install on new node output: {0}".format(output))
         if "Failure" in result_map.values():
             self.logger.debug(ErrorCode.GAUSS_527["GAUSS_52707"] %
@@ -201,7 +209,7 @@ class ExpansionImplWithCm(ExpansionImpl):
 
         self.ssh_tool.scpFiles(ca_file_dir,
                                os.path.dirname(ca_file_dir),
-                               ExpansionImplWithCm.get_node_names(self.new_nodes))
+                               ExpansionImplWithCm.get_node_ip(self.new_nodes))
         self.logger.log("success to send all CA file.")
 
     def _get_local_cm_agent_dir(self):
@@ -222,7 +230,7 @@ class ExpansionImplWithCm(ExpansionImpl):
                                                     DefaultValue.MAX_DIRECTORY_MODE)
         cmd += " && chown -R {0}:{1} {2}".format(self.user, self.group,
                                                  self._get_local_cm_agent_dir())
-        self.ssh_tool.getSshStatusOutput(cmd, ExpansionImplWithCm.get_node_names(self.new_nodes))
+        self.ssh_tool.getSshStatusOutput(cmd, ExpansionImplWithCm.get_node_ip(self.new_nodes))
         self.logger.debug("Success to create CM directory on nodes "
                           "{0}".format(ExpansionImplWithCm.get_node_names(self.new_nodes)))
 
@@ -240,7 +248,7 @@ class ExpansionImplWithCm(ExpansionImpl):
             "Command for set node crontab: %s." % cmd)
         CmdExecutor.execCommandWithMode(
             cmd, self.ssh_tool,
-            host_list=ExpansionImplWithCm.get_node_names(self.new_nodes))
+            host_list=ExpansionImplWithCm.get_node_ip(self.new_nodes))
 
         self.logger.debug("Success to set om_monitor crontab on nodes "
                           "{0}".format(ExpansionImplWithCm.get_node_names(self.new_nodes)))
@@ -284,7 +292,7 @@ class ExpansionImplWithCm(ExpansionImpl):
             "Command for initializing instances: %s" % cmd)
         CmdExecutor.execCommandWithMode(
             cmd, self.ssh_tool,
-            host_list=ExpansionImplWithCm.get_node_names(self.new_nodes))
+            host_list=ExpansionImplWithCm.get_node_ip(self.new_nodes))
         self.logger.log("Success to init instance on nodes "
                         "{0}".format(ExpansionImplWithCm.get_node_names(self.new_nodes)))
 
@@ -316,12 +324,14 @@ class ExpansionImplWithCm(ExpansionImpl):
         Set guc parameter.
         """
         node_name, inst_dir, para_name, para_value = para_list
+        # node_name to node_ip
+        node_ip = self.context.clusterInfoDict[node_name]['backIp']
         guc_path = os.path.join(os.path.realpath(self.static_cluster_info.appPath),
                                 "bin", "gs_guc")
         para_str = " -c \"{0}='{1}'\" ".format(para_name, para_value)
         cmd = "{0} set -D {1} {2}".format(guc_path, inst_dir, para_str)
         self.logger.debug("Set guc parameter command: {0}".format(cmd))
-        self.guc_executor(self.ssh_tool, cmd, node_name)
+        self.guc_executor(self.ssh_tool, cmd, node_ip)
         self.logger.debug("Successfully set guc param [{0}] "
                           "on node [{1}]".format(para_name, node_name))
 
@@ -372,7 +382,7 @@ class ExpansionImplWithCm(ExpansionImpl):
                               "Parameter is: {1}".format(cmd, new_node_line))
 
             CmdExecutor.execCommandWithMode(cmd, self.ssh_tool,
-                                            host_list=self.get_node_names(self.new_nodes))
+                                            host_list=self.get_node_ip(self.new_nodes))
             self.logger.log("Update dcf config on new nodes successfully.")
             old_node_cmd = "source {0}; " \
                   "{1} {2}".format(self.envFile,
@@ -381,7 +391,7 @@ class ExpansionImplWithCm(ExpansionImpl):
                                                                DefaultValue.BASE_ENCODE))
 
             CmdExecutor.execCommandWithMode(old_node_cmd, self.ssh_tool,
-                         host_list=self.get_node_names(self.static_cluster_info.dbNodes))
+                         host_list=self.get_node_ip(self.static_cluster_info.dbNodes))
             self.logger.log("Update dcf config on old nodes successfully.")
         self.logger.debug("Set other guc parameters successfully.")
 
@@ -434,7 +444,7 @@ class ExpansionImplWithCm(ExpansionImpl):
                    (self.xml_cluster_info.float_ips[new_inst.float_ips[0]], submask_length)
         self.logger.log("Ready to perform command on node [{0}]. "
                         "Command is : {1}".format(new_node.name, cmd))
-        CmdExecutor.execCommandWithMode(cmd, self.ssh_tool, host_list=[new_node.name])
+        CmdExecutor.execCommandWithMode(cmd, self.ssh_tool, host_list=[new_node.sshIps[0]])
 
     def _config_pg_hba(self):
         """
@@ -659,8 +669,8 @@ class ExpansionImplWithCm(ExpansionImpl):
         stopCMProcessesCmd = "pkill -9 om_monitor -U {user}; pkill -9 cm_agent -U {user}; " \
             "pkill -9 cm_server -U {user};".format(user=self.user)
         self.logger.debug("stopCMProcessesCmd: " + stopCMProcessesCmd)
-        hostList = [node.name for node in clusterInfo.dbNodes]
-        newNodesList = [node.name for node in self.new_nodes]
+        hostList = [node.sshIps[0] for node in clusterInfo.dbNodes]
+        newNodesList = [node.sshIps[0] for node in self.new_nodes]
         existingHosts = [host for host in hostList if host not in newNodesList]
         gaussHome = EnvUtil.getEnv("GAUSSHOME")
         gaussLog = EnvUtil.getEnv("GAUSSLOG")
@@ -695,11 +705,12 @@ class ExpansionImplWithCm(ExpansionImpl):
         # execute gs_ctl reload
         ctlPath = os.path.join(os.path.realpath(self.static_cluster_info.appPath), "bin", "gs_ctl")
         nodeDict = self.context.clusterInfoDict
-        localHost = socket.gethostname()
+        localHost = NetUtil.getHostName()
+        local_ip = NetUtil.getLocalIp()
         dataPath = nodeDict[localHost]["dataNode"]
         ctlReloadCmd = "source %s; %s reload -N all -D %s" % (self.envFile, ctlPath, dataPath)
         self.logger.debug("ctlReloadCmd: " + ctlReloadCmd)
-        CmdExecutor.execCommandWithMode(ctlReloadCmd, self.ssh_tool, host_list=[localHost])
+        CmdExecutor.execCommandWithMode(ctlReloadCmd, self.ssh_tool, host_list=[local_ip])
 
     def ss_restart_cluster(self):
         """

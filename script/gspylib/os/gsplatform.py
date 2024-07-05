@@ -38,6 +38,7 @@ import select
 
 sys.path.append(sys.path[0] + "/../../")
 from gspylib.common.ErrorCode import ErrorCode
+from base_utils.os.net_util import NetUtil
 
 localDirPath = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, localDirPath + "/../../../lib/netifaces/")
@@ -619,7 +620,20 @@ class GenericPlatform:
         input: NA
         output: str
         """
-        return self.getHostName()
+        try:
+            cmd = "hostname -I | awk '{print $1}'"
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if not status:
+                return output.strip()
+            env_dist = os.environ
+            host_ip = env_dist.get("HOST_IP")
+            if host_ip is not None:
+                if NetUtil.isIpValid(host_ip):
+                    return host_ip
+            host_ip = socket.gethostbyname(socket.gethostname())
+        except Exception as e:
+            raise Exception(str(e))
+        return host_ip
 
     def getScpCmd(self):
         """

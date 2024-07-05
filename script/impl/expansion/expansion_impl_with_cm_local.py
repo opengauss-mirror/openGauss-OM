@@ -62,7 +62,7 @@ class ExpansionImplWithCmLocal(ExpansionImplWithCm):
         gsql_cmd = "source {0} ; gsql -V".format(self.envFile)
         result_map, output_collect = \
             self.ssh_tool.getSshStatusOutput(gsql_cmd,
-                                             hostList=self.get_node_names(self.new_nodes))
+                                             hostList=self.get_node_ip(self.new_nodes))
 
         self.logger.debug("Check remote nodes commit ID , "
                           "result_map is : {0}".format(result_map))
@@ -103,14 +103,14 @@ class ExpansionImplWithCmLocal(ExpansionImplWithCm):
             cm_agent_conf = os.path.realpath(os.path.join(new_node.cmagents[0].datadir,
                                                           "cm_agent.conf"))
             cmd = "ls {0} | wc -l".format(cm_agent_conf)
-            _, output_collect = self.ssh_tool.getSshStatusOutput(cmd, hostList=[new_node.name])
+            _, output_collect = self.ssh_tool.getSshStatusOutput(cmd, hostList=[new_node.sshIps[0]])
             result_dict = self._parse_ssh_tool_output_collect(output_collect)
-            if new_node.name not in result_dict:
+            if new_node.sshIps[0] not in result_dict:
                 self.logger.error("Check remote node [{0}] cm_agent.conf failed. "
                                   "output: {1}".format(new_node.name, result_dict))
                 raise Exception("Check remote node [{0}] cm_agent.conf failed. "
                                   "output: {1}".format(new_node.name, result_dict))
-            if result_dict.get(new_node.name) != '1':
+            if result_dict.get(new_node.sshIps[0]) != '1':
                 self.logger.error("Check remote node [{0}] result failed. "
                                   "output: {1}".format(new_node.name, result_dict))
                 raise Exception("Check remote node [{0}] result failed. "

@@ -20,6 +20,7 @@ import pwd
 import sys
 import re
 import getpass
+import socket
 
 sys.path.append(sys.path[0] + "/../")
 
@@ -39,6 +40,8 @@ from base_utils.os.net_util import NetUtil
 from base_utils.os.env_util import EnvUtil
 from domain_utils.cluster_file.profile_file import ProfileFile
 from domain_utils.cluster_file.version_info import VersionInfo
+from base_utils.executor.local_remote_cmd import LocalRemoteCmd
+from base_utils.os.crontab_util import CrontabUtil
 
 # action name
 # prepare cluster tool package path
@@ -83,6 +86,8 @@ ACTION_CHANGE_TOOL_ENV = "change_tool_env"
 ACTION_CHECK_CONFIG = "check_config"
 # check cpu
 ACTION_CHECK_CPU_INSTRUCTIONS = "check_cpu_instructions"
+# check nofile limit
+ACTION_CHECK_NOFILE_LIMIT = "check_nofile_limit"
 #############################################################################
 # Global variables
 #   self.context.logger: globle logger
@@ -168,7 +173,7 @@ class PreinstallImpl:
         hideninfo:NA
         """
         if self.context.localMode or self.context.isSingle:
-            if not self.context.skipHostnameSet:
+            if not self.context.skipHostnameSet or self.context.current_user_root:
                 self.writeLocalHosts({"127.0.0.1": "localhost"})
                 self.writeLocalHosts({"::1": "localhost"})
             return
@@ -271,8 +276,8 @@ class PreinstallImpl:
         cmd = "%s" + delete_line_cmd + delete_shell_cmd
 
         # get remote node and local node
-        host_list = self.context.clusterInfo.getClusterNodeNames()
-        local_host = NetUtil.GetHostIpOrName()
+        host_list = self.context.clusterInfo.getClusterSshIps()[0]
+        local_host = NetUtil.getLocalIp()
         host_list.remove(local_host)
 
         # delete remote root mutual trust
@@ -353,9 +358,9 @@ class PreinstallImpl:
         self.context.logger.log("Distributing package.", "addStep")
         try:
             # get the all node names in xml file
-            hosts = self.context.clusterInfo.getClusterNodeNames()
+            hosts = self.context.clusterInfo.getClusterSshIps()[0]
             # remove the local node name
-            hosts.remove(NetUtil.GetHostIpOrName())
+            hosts.remove(socket.gethostbyname(socket.gethostname()))
             self.getTopToolPath(self.context.sshTool,
                                 self.context.clusterToolPath, hosts,
                                 self.context.mpprcFile)
@@ -706,10 +711,10 @@ class PreinstallImpl:
         try:
             # the IP for create trust
             allIps = []
-            sshIps = self.context.clusterInfo.getClusterSshIps()
+            # return list
+            sshIps = self.context.clusterInfo.getClusterSshIps()[0]
             # get all IPs
-            for ips in sshIps:
-                allIps.extend(ips)
+            allIps.extend(sshIps)
             # create trust
             self.context.sshTool.createTrust(self.context.user, allIps)
             self.context.user_ssh_agent_flag = True
@@ -770,6 +775,32 @@ class PreinstallImpl:
         except Exception as e:
             self.context.logger.log("Warning: This cluster is missing the rdtscp or avx instruction.")
         self.context.logger.log("Successfully checked cpu instructions.", "constant")
+
+    def check_nofile_limit(self):
+        """
+        function: Check if nofile limit more then 640000
+        input:NA
+        output:NA
+        """
+        if self.context.localMode or self.context.isSingle:
+            return
+        if not self.context.clusterInfo.hasNoCm():
+            self.context.logger.log("Checking nofile limit.", "addStep")
+            try:
+                # Checking OS version
+                cmd = "%s -t %s -u %s -l %s" % (
+                    OMCommand.getLocalScript("Local_PreInstall"),
+                    ACTION_CHECK_NOFILE_LIMIT,
+                    self.context.user,
+                    self.context.localLog)
+                CmdExecutor.execCommandWithMode(
+                    cmd,
+                    self.context.sshTool,
+                    self.context.localMode or self.context.isSingle,
+                    self.context.mpprcFile)
+            except Exception as e:
+                raise Exception(str(e))
+            self.context.logger.log("Successfully checked nofile limit.", "constant")
 
     def createOSUser(self):
         """
@@ -1606,6 +1637,20 @@ class PreinstallImpl:
         package_dir = os.path.join(dir_name, "./../../../")
         return os.path.realpath(package_dir)
 
+    def set_user_ssh_alive(self):
+        """
+        set user ssh alive
+        """
+        gp_home = EnvUtil.getEnv("GPHOME")
+        if os.getuid() == 0:
+                self.set_user_crontab()
+        else:
+            if CrontabUtil.check_user_crontab_permission():
+                self.set_user_crontab()
+            else:
+                self.set_user_ssh_service(gp_home)
+
+
     def set_user_crontab(self):
         """
         :return:
@@ -1632,6 +1677,32 @@ class PreinstallImpl:
                                         self.context.localMode or self.context.isSingle,
                                         self.context.mpprcFile)
         self.context.logger.debug("Successfully to set cron for %s" %self.context.user)
+
+    def set_user_ssh_service(self, gp_home):
+        """
+        set user ssh service
+        """
+        if os.getuid() == 0:
+            return
+        self.logger.log("Start set ssh service for %s" % self.user)
+        # copy self.hostList
+        host_ips = self.context.clusterInfo.getClusterSshIps()[0]
+        host_ip = host_ips[:]
+        host_ip.remove(self.local_ip)
+
+        ssh_service_local_file = os.path.normpath(os.path.join(gp_home, "script/local/create_ssh_service.sh"))
+        ssh_service_file = os.path.normpath(os.path.join(gp_home, "script/local/create_ssh_service.sh"))
+
+        # cp ssh service file to remote 
+        ssh_service_dir = os.path.dirname(ssh_service_file)
+        LocalRemoteCmd.checkRemoteDir(self.context.ssh_tool, ssh_service_dir, host_ip, "")
+        self.context.ssh_tool.scpFiles(ssh_service_file, ssh_service_file, [], "", gp_path=gp_home)
+
+        # execute ssh service file
+        cmd = "sh %s %s %s" % (ssh_service_local_file, self.user, gp_home)
+        self.context.ssh_tool.executeCommand(cmd, DefaultValue.SUCCESS, host_ips)
+
+        self.logger.log("Successfully to set ssh service for %s" % self.user)
 
     def do_perf_config(self):
         """
@@ -1695,6 +1766,8 @@ class PreinstallImpl:
         self.checkOSVersion()
         # check cpu instructions
         self.check_cpu_instructions()
+        # check nofile limit
+        self.check_nofile_limit()
         # create path and set mode
         self.createDirs()
         # set os parameters
@@ -1719,8 +1792,8 @@ class PreinstallImpl:
         self.fixServerPackageOwner()
         # unreg the disk of the dss and about
         self.dss_init()
-        # set user cron
-        self.set_user_crontab()
+        # set user ssh alive: crontab or systemd service
+        self.set_user_ssh_alive()
         # set user env and a flag,
         # indicate that the preinstall.py has been execed succeed
         self.doPreInstallSucceed()

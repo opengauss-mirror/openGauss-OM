@@ -23,6 +23,7 @@ import getopt
 import os
 import sys
 import re
+import subprocess
 
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
@@ -164,7 +165,22 @@ class Uninstall(LocalBaseOM):
         self.logger.log("Deleting monitor.")
         if not CrontabUtil.check_user_crontab_permission():
             self.logger.log("Warning: The user has no permission to delete crontab task.")
-            return
+            self.query_om_monitor_service()
+            self.clean_om_monitor_service()
+        else:
+            self.clean_om_monitor_crontab()
+        # clean om_monitor,cm_agent,cm_server process
+        for progname in ["om_monitor", "cm_agent", "cm_server"]:
+            ProcessUtil.killallProcess(self.user, progname, '9')
+        self.logger.log("Successfully deleted OM Monitor.")
+
+    def clean_om_monitor_crontab(self):
+        """
+        function: clean om_monitor crontab
+        input : NA
+        output: NA
+        """
+        self.logger.log("Deleting om monitor crontab.")
         try:
             # get all content by crontab command
             (status, output) = CrontabUtil.getAllCrontab()
@@ -174,18 +190,43 @@ class Uninstall(LocalBaseOM):
             FileUtil.createFile(crontabFile, True)
             content_CronTabFile = [output]
             FileUtil.writeFile(crontabFile, content_CronTabFile)
-            FileUtil.deleteLine(crontabFile, "\/bin\/om_monitor")
-            CrontabUtil.execCrontab(crontabFile)
-            FileUtil.removeFile(crontabFile)
-
-            # clean om_monitor,cm_agent,cm_server process
-            for progname in ["om_monitor", "cm_agent", "cm_server"]:
-                ProcessUtil.killallProcess(self.user, progname, '9')
         except Exception as e:
-            if os.path.exists(crontabFile):
-                FileUtil.removeFile(crontabFile)
             raise Exception(str(e))
-        self.logger.log("Successfully deleted OMMonitor.")
+        self.logger.log("Successfully deleted om monitor.")
+
+    def clean_om_monitor_service(self):
+        """
+        function: clean om_monitor systemd service
+        input : NA
+        output: NA
+        """
+        self.logger.log("Deleting om monitor service.")
+        cmd = "systemctl --user stop om_monitor; systemctl --user disable om_monitor"
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            self.logger.log("Failed to stop om_monitor service.")
+        clean_systemd_cmd = "ps ux|grep dbus-daemon |grep -v grep | awk '{print $2}'|xargs -r kill -9 \
+            ps ux|grep /usr/lib/systemd/systemd |grep -v grep | awk '{print $2}'|xargs -r kill -9 "
+        (status, output) = subprocess.getstatusoutput(clean_systemd_cmd)
+        if status != 0:
+            self.logger.log("Failed to clean systemd service.")
+        self.logger.log("Deleting om monitor service.")
+
+    def query_om_monitor_service(self):
+        """
+        function: query om_monitor systemd service
+        input : NA
+        output: True False
+        """
+        self.logger.log("Querying om monitor service.")
+        cmd = "systemctl --user status om_monitro"
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if output.find("om_monitor") == -1:
+            self.logger.log("Warning: The om monitor service is not running.")
+            return False
+        self.logger.log("Querying om monitor service succefully.")
+        return True
+        
 
     def checkParameters(self):
         """

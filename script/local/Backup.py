@@ -77,7 +77,7 @@ class LocalBackup(LocalBaseOM):
     def __init__(self, logFile="", user="", tmpBackupDir="", \
                  backupPara=False, backupBin=False, nodeName=""):
         """
-        function: initialize variable
+        function: initialize variable   
         input : user, tmpBackupDir, backupPara,
         backupBin, logFile, nodeName
         output: parameter

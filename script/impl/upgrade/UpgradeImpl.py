@@ -152,7 +152,7 @@ class UpgradeImpl:
         """
         self.context.logger.debug("Init global infos", "addStep")
         self.context.sshTool = SshTool(
-            self.context.clusterNodes, self.context.localLog,
+            self.context.cluster_ip, self.context.localLog,
             DefaultValue.TIMEOUT_PSSH_BINARY_UPGRADE)
         self.initVersionInfo()
         self.initClusterConfig()
@@ -323,7 +323,7 @@ class UpgradeImpl:
             self.context.logger.debug(traceback.format_exc() + str(e))
             if not self.context.sshTool:
                 self.context.sshTool = SshTool(
-                    self.context.clusterNodes, self.context.logger,
+                    self.context.cluster_ip, self.context.logger,
                     DefaultValue.TIMEOUT_PSSH_BINARY_UPGRADE)
             if action == const.ACTION_AUTO_ROLLBACK and \
                     self.checkBakPathNotExists():
@@ -724,7 +724,7 @@ class UpgradeImpl:
                                        const.TMP_DYNAMIC_DN_INFO)
                 self.generateDynamicInfoFile(tmp_file)
             self.context.logger.debug("Cmd for setting parameter: %s." % cmd)
-            host_list = copy.deepcopy(self.context.clusterNodes)
+            host_list = copy.deepcopy(self.context.cluster_ip)
             self.context.execCommandInSpecialNode(cmd, host_list)
             self.context.logger.debug("Successfully set guc value.")
         except Exception as er:
@@ -736,7 +736,7 @@ class UpgradeImpl:
             if os.path.exists(tmp_file):
                 delete_cmd = "(if [ -f '%s' ]; then rm -f '%s'; fi) " % \
                               (tmp_file, tmp_file)
-                host_list = copy.deepcopy(self.context.clusterNodes)
+                host_list = copy.deepcopy(self.context.cluster_ip)
                 self.context.execCommandInSpecialNode(delete_cmd, host_list)
 
     def setClusterReadOnlyMode(self):
@@ -868,7 +868,7 @@ class UpgradeImpl:
 
             if not self.context.isSingle:
                 self.context.sshTool.scpFiles(fileName, os.path.dirname(fileName) + "/",
-                                              hostList=self.context.clusterNodes)
+                                              hostList=self.context.cluster_ip)
             self.context.logger.debug("Successfully written and send file %s. "
                                       "The list context is %s." % (fileName, cmsParaDict))
         except Exception as er:
@@ -989,7 +989,7 @@ class UpgradeImpl:
                                               "Maybe we should keep guc consistent manually "
                                               "if failed")
                     cmd = "%s '%s'" % (CmdUtil.getRemoveCmd("file"), cmsGucFile)
-                    hostList = copy.deepcopy(self.context.clusterNodes)
+                    hostList = copy.deepcopy(self.context.cluster_ip)
                     self.context.execCommandInSpecialNode(cmd, hostList)
                     oldGUCParas = self.getCMServerGUC(OriginalGUCparas)
             else:
@@ -1008,7 +1008,7 @@ class UpgradeImpl:
             self.set_cm_server_guc(closeGUCparas)
 
             cmd = "mv '%s' '%s'" % (cmsGucFile, cmsGucFileSet)
-            hostList = copy.deepcopy(self.context.clusterNodes)
+            hostList = copy.deepcopy(self.context.cluster_ip)
             self.context.execCommandInSpecialNode(cmd, hostList)
 
             # make sure all cm_server child process has been killed. Example: gs_check
@@ -1094,7 +1094,7 @@ class UpgradeImpl:
             cmd += " && {0}".format(g_file.SHELL_CMD_DICT["deleteFile"] % (cms_guc_file, cms_guc_file))
             
             if len(hostList) == 0:
-                hosts = copy.deepcopy(self.context.clusterNodes)
+                hosts = copy.deepcopy(self.context.cluster_ip)
                 self.context.execCommandInSpecialNode(cmd, hosts)
             else:
                 self.context.execCommandInSpecialNode(cmd, copy.deepcopy(hostList))
@@ -1401,7 +1401,7 @@ class UpgradeImpl:
         first_cms_inst = all_cm_server_inst[0]
         server_conf_file = os.path.join(first_cms_inst.datadir, "cm_server.conf")
         remote_cmd = "grep -E '^enable_ssl = ' {0}".format(server_conf_file)
-        ssh_cmd = "pssh -s -H {0} \"{1}\"".format(first_cms_inst.hostname, remote_cmd)
+        ssh_cmd = "pssh -s -H {0} \"{1}\"".format(first_cms_inst.listenIps[0] , remote_cmd)
         status, output = subprocess.getstatusoutput(ssh_cmd)
         if status != 0 or "=" not in output:
             self.context.logger.warn("Get enable_ssl failed. Output:: [{0}]".format(output))
@@ -1423,7 +1423,7 @@ class UpgradeImpl:
         flag_file_name = "enable_ssl_on" if enable_ssl_value == "on" else "enable_ssl_off"
         flag_file_path = os.path.join(EnvUtil.getTmpDirFromEnv(), flag_file_name)
         generate_cmd = "touch {0} && chmod 400 {0}".format(flag_file_path)
-        self.context.sshTool.executeCommand(generate_cmd, hostList=self.context.clusterInfo.getClusterNodeNames())
+        self.context.sshTool.executeCommand(generate_cmd, hostList=self.context.clusterInfo.getClusterSshIps()[0])
         self.context.logger.debug("Generate enable_ssl flag file [{0}] successfully.".format(flag_file_path))
 
     def set_enable_ssl(self, value):
@@ -1445,13 +1445,13 @@ class UpgradeImpl:
                 self.context.logger.debug("Old cluster turn off enable_ssl.")
                 rm_flag_cmd = "rm -f {0}".format(ssl_off_flag)
                 self.context.sshTool.executeCommand(rm_flag_cmd,
-                                                    hostList=self.context.clusterInfo.getClusterNodeNames())
+                                                    hostList=self.context.clusterInfo.getClusterSshIps()[0])
                 return
             if os.path.isfile(ssl_on_flag):
                 self.context.logger.debug("Old cluster turn on enable_ssl [{0}].".format(ssl_on_flag))
                 rm_flag_cmd = "rm -f {0}".format(ssl_on_flag)
                 self.context.sshTool.executeCommand(rm_flag_cmd,
-                                                    hostList=self.context.clusterInfo.getClusterNodeNames())
+                                                    hostList=self.context.clusterInfo.getClusterSshIps()[0])
             else:
                 self.context.logger.debug("Old cluster not set enable_ssl parameter.")
                 return
@@ -1470,7 +1470,7 @@ class UpgradeImpl:
         self.context.sshTool.executeCommand(cmd, hostList=cm_node_names)
 
         cmd = "sed -i 's/enable_ssl = {0}/enable_ssl = {1}/g' {2}".format(origin_value, value, cms_conf_file)
-        self.context.sshTool.executeCommand(cmd, hostList=self.context.clusterInfo.getClusterNodeNames())
+        self.context.sshTool.executeCommand(cmd, hostList=self.context.clusterInfo.getClusterSshIps()[0])
 
         self.reload_cmserver()
         self.context.logger.debug("Turn {0} enable_ssl parameter.".format(value))
@@ -1661,7 +1661,7 @@ class UpgradeImpl:
                         self.prepareSql("upgrade-post")
                         self.execRollbackUpgradedCatalog(scriptType="upgrade-post")
                         self.getLsnInfo()
-                hosts = copy.deepcopy(self.context.clusterNodes)
+                hosts = copy.deepcopy(self.context.cluster_ip)
                 self.recordNodeStep(
                     GreyUpgradeStep.STEP_PRE_COMMIT, nodes=hosts)
                 self.recordDualClusterStage(self.newCommitId, DualClusterStage.STEP_UPGRADE_FINISH)
@@ -1723,7 +1723,7 @@ class UpgradeImpl:
                self.context.upgradeBackupPath,
                self.context.localLog)
         self.context.logger.debug("Command for sync GUC in upgrade: %s" % cmd)
-        hostList = copy.deepcopy(self.context.nodeNames)
+        hostList = copy.deepcopy(self.context.node_ips)
         self.context.sshTool.executeCommand(cmd, hostList=hostList)
         self.context.logger.debug("Successfully sync guc.")
 
@@ -1755,14 +1755,14 @@ class UpgradeImpl:
                    self.context.localLog)
             self.context.logger.debug("Command for syncing config files: %s"
                                       % cmd)
-            hostList = copy.deepcopy(self.context.nodeNames)
+            hostList = copy.deepcopy(self.context.node_ips)
             self.context.sshTool.executeCommand(cmd, hostList=hostList)
 
             # change the owner of application
             cmd = "chown -R %s:%s '%s'" % \
                   (self.context.user, self.context.group,
                    self.context.newClusterAppPath)
-            hostList = copy.deepcopy(self.context.nodeNames)
+            hostList = copy.deepcopy(self.context.node_ips)
             self.context.sshTool.executeCommand(cmd, hostList=hostList)
         except Exception as e:
             raise Exception(str(e) + " Failed to sync configuration.")
@@ -1907,7 +1907,7 @@ class UpgradeImpl:
         if self.need_rolling(is_rollback) or is_rolling:
             cmd += " --rolling"
         self.context.logger.debug("Command for waiting for om_monitor: %s." % cmd)
-        hostList = copy.deepcopy(self.context.nodeNames)
+        hostList = copy.deepcopy(self.context.cluster_ip)
         self.context.sshTool.executeCommand(cmd, hostList=hostList)
         elapsed = timeit.default_timer() - start_time
         self.context.logger.debug("Time to wait for om_monitor: %s." %
@@ -1955,7 +1955,7 @@ class UpgradeImpl:
 
         self.context.logger.debug(
             "Command for switching DN processes: %s." % cmd)
-        hostList = copy.deepcopy(self.context.nodeNames)
+        hostList = copy.deepcopy(self.context.cluster_ip)
         self.context.sshTool.executeCommand(cmd, hostList=hostList)
         start_cluster_time = timeit.default_timer()
         self.greyStartCluster()
@@ -2041,7 +2041,7 @@ class UpgradeImpl:
         try:
             # prepare dynamic cluster info file in every node
             self.getOneDNInst(checkNormal=True)
-            execHosts = [self.dnInst.hostname]
+            execHosts = [self.dnInst.listenIps[0]]
             cmd = "%s -t %s -U %s --upgrade_bak_path=%s -l %s" % \
                   (OMCommand.getLocalScript("Local_Upgrade_Utility"),
                    const.ACTION_GET_LSN_INFO,
@@ -2258,7 +2258,7 @@ class UpgradeImpl:
         """
         cmd = "if [ -d '%s' ]; then echo 'True'; else echo 'False'; fi" %\
               self.context.upgradeBackupPath
-        hostList = copy.deepcopy(self.context.clusterNodes)
+        hostList = copy.deepcopy(self.context.cluster_ip)
         (resultMap, outputCollect) = self.context.sshTool.getSshStatusOutput(
             cmd, hostList)
         self.context.logger.debug(
@@ -2747,7 +2747,7 @@ class UpgradeImpl:
             cmd += "%s -m install -U %s --krb-client " % (
             OMCommand.getLocalScript("Local_Kerberos"), self.context.user)
             self.context.sshTool.executeCommand(
-                cmd, hostList=self.context.clusterNodes)
+                cmd, hostList=self.context.cluster_ip)
             self.context.logger.log("Successfully install Kerberos.")
             cmd = "source %s && gs_om -t start" % self.context.userProfile
             (status, output) = subprocess.getstatusoutput(cmd)
@@ -2895,7 +2895,7 @@ class UpgradeImpl:
             (status, output) = ClusterCommand.remoteSQLCommand(
                 sql,
                 self.context.user,
-                self.dnInst.hostname,
+                self.dnInst.listenIps[0],
                 self.dnInst.port,
                 False,
                 DefaultValue.DEFAULT_DB_NAME,
@@ -2916,7 +2916,7 @@ class UpgradeImpl:
             (status, output) = ClusterCommand.remoteSQLCommand(
                 sql,
                 self.context.user,
-                self.dnInst.hostname,
+                self.dnInst.listenIps[0],
                 self.dnInst.port,
                 False,
                 DefaultValue.DEFAULT_DB_NAME,
@@ -2962,7 +2962,7 @@ class UpgradeImpl:
         if self.context.standbyCluster:
             self.context.logger.debug("no need prepare upgrade sql folder under force upgrade")
             return
-        hosts = self.context.clusterNodes
+        hosts = self.context.cluster_ip
         cmd = "%s -t %s -U %s --upgrade_bak_path=%s -X %s -l %s" % \
               (OMCommand.getLocalScript("Local_Upgrade_Utility"),
                const.ACTION_UPGRADE_SQL_FOLDER,
@@ -3017,7 +3017,7 @@ class UpgradeImpl:
             (status, output) = ClusterCommand.remoteSQLCommand(
                 sql,
                 self.context.user,
-                host.hostname,
+                host.listenIps[0],
                 host.port,
                 False,
                 DefaultValue.DEFAULT_DB_NAME,
@@ -3140,7 +3140,7 @@ class UpgradeImpl:
                 self.context.upgradeBackupPath, "oldClusterDBAndRel")
             cmd = "rm -rf '%s' && mkdir '%s' -m '%s' " % \
                   (backup_path, backup_path, DefaultValue.KEY_DIRECTORY_MODE)
-            hostList = copy.deepcopy(self.context.clusterNodes)
+            hostList = copy.deepcopy(self.context.cluster_ip)
             self.context.sshTool.executeCommand(cmd, hostList=hostList)
             # prepare dynamic cluster info file in every node
             self.generateDynamicInfoFile(tmpFile)
@@ -3169,7 +3169,7 @@ class UpgradeImpl:
             if os.path.exists(tmpFile):
                 deleteCmd = "(if [ -f '%s' ]; then rm -f '%s'; fi) " % \
                             (tmpFile, tmpFile)
-                hostList = copy.deepcopy(self.context.clusterNodes)
+                hostList = copy.deepcopy(self.context.cluster_ip)
                 self.context.sshTool.executeCommand(
                     deleteCmd, hostList=hostList)
 
@@ -3189,7 +3189,7 @@ class UpgradeImpl:
                 raise Exception("Can not genetate dynamic info file")
             self.context.distributeFileToSpecialNode(tmpFile,
                                                      os.path.dirname(tmpFile),
-                                                     self.context.clusterNodes)
+                                                     self.context.cluster_ip)
             self.context.logger.debug(
                 "Success to generate dynamic info file and send to every node.")
         except Exception as er:
@@ -3218,7 +3218,7 @@ class UpgradeImpl:
                     if instance.status == 'Primary':
                         for staticDBNode in self.context.clusterInfo.dbNodes:
                             if staticDBNode.id == instance.nodeId:
-                                cnAndPrimaryDnNodes.append(staticDBNode.name)
+                                cnAndPrimaryDnNodes.append(staticDBNode.sshIps[0])
             result = list(set(cnAndPrimaryDnNodes))
             self.context.logger.debug("Success to get primary dn list from "
                                       "dynamic file: {0}.".format(result))
@@ -3318,7 +3318,7 @@ class UpgradeImpl:
         self.context.logger.debug(
             "Start to update pg_proc in inplace large upgrade ")
         # generate new csv file
-        execHosts = [self.dnInst.hostname]
+        execHosts = [self.dnInst.listenIps[0]]
         # send cmd to all node and exec
         cmd = "%s -t %s -U %s -R '%s' -l %s" % (
             OMCommand.getLocalScript("Local_Upgrade_Utility"),
@@ -3411,7 +3411,7 @@ class UpgradeImpl:
         for eachdb in database_list:
             (status, output) = ClusterCommand.remoteSQLCommand(
                 sql, self.context.user,
-                self.dnInst.hostname, self.dnInst.port, False,
+                self.dnInst.listenIps[0], self.dnInst.port, False,
                 eachdb, IsInplaceUpgrade=True)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
@@ -3432,7 +3432,7 @@ class UpgradeImpl:
         for eachdb in database_list:
             (status, output) = ClusterCommand.remoteSQLCommand(
                 sql, self.context.user,
-                self.dnInst.hostname, self.dnInst.port, False,
+                self.dnInst.listenIps, self.dnInst.port, False,
                 eachdb, IsInplaceUpgrade=True)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
@@ -3448,7 +3448,7 @@ class UpgradeImpl:
         mode = True if "dual-standby" in self.context.clusterType else False
         (status, output) = ClusterCommand.remoteSQLCommand(
             sql, self.context.user,
-            self.dnInst.hostname, self.dnInst.port, False,
+            self.dnInst.listenIps, self.dnInst.port, False,
             DefaultValue.DEFAULT_DB_NAME, IsInplaceUpgrade=True, maintenance_mode=mode)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
@@ -3474,7 +3474,7 @@ class UpgradeImpl:
         for eachdb in database_list:
             (status, output) = ClusterCommand.remoteSQLCommand(
                 sql, self.context.user,
-                self.dnInst.hostname, self.dnInst.port, False,
+                self.dnInst.listenIps[0], self.dnInst.port, False,
                 eachdb, IsInplaceUpgrade=True, maintenance_mode=mode)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
@@ -3512,18 +3512,22 @@ class UpgradeImpl:
                 if (scriptType == "rollback-post"):
                     self.getPrimaryDN(checkNormal=True)
                     dnNodeName = self.primaryDn.hostname
+                    dn_node_ip = self.primaryDn.listenIps[0]
                 else:
                     dnNodeName = self.primaryDn.hostname
+                    dn_node_ip = self.primaryDn.listenIps[0]
                 self.context.logger.debug("Primary dn {0} from cm_ctl query".format(
                                            dnNodeName))
             elif self.operate_action == const.ACTION_AUTO_ROLLBACK and \
                  self.get_cms_num(old_cluster_config_file) > 0 and scriptType == "rollback":
                 self.getPrimaryDN(checkNormal=True)
                 dnNodeName = self.primaryDn.hostname
+                dn_node_ip = self.primaryDn.listenIps[0]
                 self.context.logger.debug("Primary dn {0} from cm_ctl query".format(
                                           dnNodeName))
             else:
                 dnNodeName = self.dnInst.hostname
+                dn_node_ip = self.primaryDn.listenIps[0]
                 self.context.logger.debug("Primary dn {0} from config file".format(
                                           dnNodeName))
                                           
@@ -3544,7 +3548,7 @@ class UpgradeImpl:
                 self.context.logger.debug("Scp {0} file to nodes {1}".format(
                     check_upgrade_sql, dnNodeName))
                 if not self.context.isSingle:
-                    LocalRemoteCmd.scpFile(dnNodeName, check_upgrade_sql,
+                    LocalRemoteCmd.scpFile(dn_node_ip, check_upgrade_sql,
                                     self.context.upgradeBackupPath)
             if not os.path.isfile(maindb_sql):
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50210"] % maindb_sql)
@@ -3552,9 +3556,9 @@ class UpgradeImpl:
                 raise Exception(
                     ErrorCode.GAUSS_502["GAUSS_50210"] % otherdb_sql)
             if (not self.context.isSingle):
-                LocalRemoteCmd.scpFile(dnNodeName, maindb_sql,
+                LocalRemoteCmd.scpFile(dn_node_ip, maindb_sql,
                                 self.context.upgradeBackupPath)
-                LocalRemoteCmd.scpFile(dnNodeName, otherdb_sql,
+                LocalRemoteCmd.scpFile(dn_node_ip, otherdb_sql,
                                 self.context.upgradeBackupPath)
                 self.context.logger.debug(
                     "Scp {0} file and {1} file to nodes {2}".format(
@@ -3573,7 +3577,7 @@ class UpgradeImpl:
                                             self.context.sshTool,
                                             self.context.isSingle,
                                             self.context.userProfile,
-                                            [dnNodeName])
+                                            [dn_node_ip])
             self.context.logger.debug(
                 "Successfully {0} catalog.".format(scriptType))
         except Exception as e:
@@ -3613,7 +3617,7 @@ class UpgradeImpl:
                     sql += "COMMIT;"
                     self.context.logger.debug("Current sql %s." % sql)
                     (status, output) = ClusterCommand.remoteSQLCommand(
-                        sql, self.context.user, dn.hostname, dn.port,
+                        sql, self.context.user, dn.listenIps[0], dn.port,
                         False, DefaultValue.DEFAULT_DB_NAME,
                         IsInplaceUpgrade=True)
                     if status != 0:
@@ -3967,7 +3971,7 @@ END$$;"""
             self.context.logger.debug(f"rebuild_pg_proc_index at database {eachdb}")
             (status, output) = ClusterCommand.remoteSQLCommand(
                 sql, self.context.user,
-                self.dnInst.hostname, self.dnInst.port, False,
+                self.dnInst.listenIps[0], self.dnInst.port, False,
                 eachdb, IsInplaceUpgrade=True)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
@@ -4008,7 +4012,7 @@ END;"""
         for eachdb in database_list:
             (status, output) = ClusterCommand.remoteSQLCommand(
             sql, self.context.user,
-            self.dnInst.hostname, self.dnInst.port, False,
+            self.dnInst.listenIps[0], self.dnInst.port, False,
             eachdb, IsInplaceUpgrade=True)
             if status != 0:
                 self.context.logger.debug("re-create sha2 functoin failed. Error: %s" % str(output))
@@ -4037,7 +4041,7 @@ END;"""
         for eachdb in database_list:
             (status, output) = ClusterCommand.remoteSQLCommand(
                 sql, self.context.user,
-                self.dnInst.hostname, self.dnInst.port, False,
+                self.dnInst.listenIps[0], self.dnInst.port, False,
                 eachdb, IsInplaceUpgrade=True)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
@@ -4055,7 +4059,7 @@ END;"""
             for eachdb in database_list:
                 (status, output) = ClusterCommand.remoteSQLCommand(
                     sql, self.context.user,
-                    self.dnInst.hostname, self.dnInst.port, False,
+                    self.dnInst.listenIps[0], self.dnInst.port, False,
                     eachdb, IsInplaceUpgrade=True)
                 if status != 0:
                     raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
@@ -4136,12 +4140,12 @@ END;"""
                   " else echo 'NoThisFile'; fi" % dirFile
             self.context.logger.debug("Command for checking file: %s" % cmd)
             (status, output) = self.context.sshTool.getSshStatusOutput(
-                cmd, self.context.clusterNodes, self.context.mpprcFile)
+                cmd, self.context.cluster_ip, self.context.mpprcFile)
             outputMap = self.context.sshTool.parseSshOutput(
-                self.context.clusterNodes)
+                self.context.cluster_ip)
             self.context.logger.debug("Output: %s" % output)
             copyNode = ""
-            for node in self.context.clusterNodes:
+            for node in self.context.cluster_ip:
                 if status[node] == DefaultValue.SUCCESS:
                     if 'GetFile' in outputMap[node]:
                         copyNode = node
@@ -4340,7 +4344,7 @@ END;"""
                     if cmNode.name.strip() == NetUtil.GetHostIpOrName():
                         executeCmd = cmd
                     else:
-                        sshCmd = "%s " % CmdUtil.getSshCmd(cmNode.name)
+                        sshCmd = "%s " % CmdUtil.getSshCmd(cmNode.backIps[0])
                         executeCmd = "%s \"%s\"" % (sshCmd, cmd)
                     self.context.logger.debug(
                         "Command for getting CMServer parameters: %s." % executeCmd)
@@ -4385,7 +4389,7 @@ END;"""
                    const.ACTION_CLEAN_CONF_BAK_OLD,
                    self.context.user,
                    self.context.localLog)
-            hostList = copy.deepcopy(self.context.nodeNames)
+            hostList = copy.deepcopy(self.context.node_ips)
             self.context.sshTool.executeCommand(cmd, hostList=hostList)
         except Exception as e:
             raise Exception(str(e))
@@ -4666,7 +4670,7 @@ END;"""
         if self.context.forceRollback:
             cmd += " --force"
         self.context.logger.debug("Command for restoring config: %s" % cmd)
-        rollbackList = copy.deepcopy(self.context.clusterNodes)
+        rollbackList = copy.deepcopy(self.context.cluster_ip)
         self.context.sshTool.executeCommand(cmd, hostList=rollbackList)
         self.context.logger.debug("Successfully restore config.")
 
@@ -4685,7 +4689,7 @@ END;"""
         if self.context.forceRollback:
             cmd += " --force"
         self.context.logger.debug("Command for restoring GUC: %s" % cmd)
-        rollbackList = copy.deepcopy(self.context.clusterNodes)
+        rollbackList = copy.deepcopy(self.context.cluster_ip)
         self.context.sshTool.executeCommand(cmd, hostList=rollbackList)
         self.context.logger.debug("Successfully restore guc.")
 
@@ -4841,7 +4845,7 @@ END;"""
         sql = "select count(*) from pg_class where relname = '%s';" % name
         (status, output) = ClusterCommand.remoteSQLCommand(
             sql, self.context.user,
-            self.dnInst.hostname, self.dnInst.port, False,
+            self.dnInst.listenIps[0], self.dnInst.port, False,
             eachdb, IsInplaceUpgrade=True, maintenance_mode=mode)
         if status != 0 or SqlResult.findErrorInSql(output):
             raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
@@ -4889,7 +4893,7 @@ END;"""
             if self.check_table_or_index_exist(table_name, eachdb):
                 (status, output) = ClusterCommand.remoteSQLCommand(
                     delete_table_sql, self.context.user,
-                    self.dnInst.hostname, self.dnInst.port, False,
+                    self.dnInst.listenIps[0], self.dnInst.port, False,
                     eachdb, IsInplaceUpgrade=True)
                 if status != 0:
                     raise Exception(
@@ -4901,7 +4905,7 @@ END;"""
                           "drop index %s;commit;" % index
                     (status, output) = ClusterCommand.remoteSQLCommand(
                         sql, self.context.user,
-                        self.dnInst.hostname, self.dnInst.port, False,
+                        self.dnInst.listenIps[0], self.dnInst.port, False,
                         eachdb, IsInplaceUpgrade=True)
                     if status != 0:
                         raise Exception(
@@ -5634,8 +5638,11 @@ END;"""
 
         try:
 
-            hosts = self.context.clusterInfo.getClusterNodeNames()
-            hosts.remove(NetUtil.GetHostIpOrName())
+            hosts = self.context.clusterInfo.getClusterSshIps()[0]
+            if NetUtil.getLocalIp() in hosts:
+                hosts.remove(NetUtil.getLocalIp())
+            if "127.0.0.1" in hosts:
+                hosts.remove("127.0.0.1")
 
             # Send xml file to every host
             DefaultValue.distributeXmlConfFile(self.context.sshTool,
@@ -5682,8 +5689,12 @@ END;"""
         """
         self.context.logger.debug("Distribute the file %s" % step_file)
         # send the file to each node
-        hosts = self.context.clusterInfo.getClusterNodeNames()
-        hosts.remove(NetUtil.GetHostIpOrName())
+        hosts = self.context.clusterInfo.getClusterSshIps()
+        if NetUtil.getLocalIp() in hosts:
+            hosts.remove(NetUtil.getLocalIp())
+        if "127.0.0.1" in hosts:
+            hosts.remove("127.0.0.1")
+            
         if not self.context.isSingle:
             stepDir = os.path.normpath(os.path.dirname(step_file))
             self.context.sshTool.scpFiles(step_file, stepDir, hosts)
@@ -5822,7 +5833,7 @@ END;"""
             raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$GAUSSHOME")
         versionFile = os.path.join(gaussHome, "bin/upgrade_version")
         cmd = "sed -n \'3,1p\' %s" % versionFile
-        hostList = copy.deepcopy(self.context.clusterNodes)
+        hostList = copy.deepcopy(self.context.cluster_ip)
         (resultMap, outputCollect) = \
             self.context.sshTool.getSshStatusOutput(cmd, hostList)
         for key, val in resultMap.items():
@@ -6238,7 +6249,7 @@ END;"""
             self.context.logger.debug("No need to create CA for CM.")
             return
 		
-        hostList = copy.deepcopy(self.context.nodeNames)
+        hostList = copy.deepcopy(self.context.node_ips)
 		
         cmd = "%s -t %s -U %s --new_cluster_app_path=%s -l %s" % \
               (OMCommand.getLocalScript("Local_Upgrade_Utility"),
@@ -6259,7 +6270,7 @@ END;"""
         self.context.logger.debug("Start to restart cmagent and cmserver")
         kill_cm_proc = "pkill -9 cm_agent -U {user}; " \
             "pkill -9 cm_server -U {user};".format(user=self.context.user)
-        host_list = copy.deepcopy(self.context.clusterNodes)
+        host_list = copy.deepcopy(self.context.cluster_ip)
         self.context.logger.debug(f"stopCMProcessesCmd: {kill_cm_proc} on {host_list}")
         self.context.sshTool.getSshStatusOutput(kill_cm_proc, host_list)
         self.context.logger.debug("End to restart cmagent and cmserver")
@@ -6290,7 +6301,7 @@ END;"""
                self.context.localLog)
         self.context.logger.debug("reloading all cmagent process: %s" % cmd)
         try:
-            hostList = copy.deepcopy(self.context.clusterNodes)
+            hostList = copy.deepcopy(self.context.cluster_ip)
             self.context.execCommandInSpecialNode(cmd, hostList)
             # wait the cluster be normal
             self.waitClusterNormalDegrade()
@@ -6315,7 +6326,7 @@ END;"""
         # Get all the nodes that contain the CMSERVER instance
         for dbNode in self.context.clusterInfo.dbNodes:
             if len(dbNode.cmservers) > 0:
-                cm_nodes.append(dbNode.name)
+                cm_nodes.append(dbNode.sshIps[0])
         cmd = "%s -t %s -U %s --upgrade_bak_path=%s -l %s" % \
               (OMCommand.getLocalScript("Local_Upgrade_Utility"),
                const.ACTION_RELOAD_CMSERVER,
@@ -6671,9 +6682,9 @@ END;"""
                 output += "\n    Cluster is pausing."
         elif checkPosition == const.OPTION_POSTCHECK:
             if len(self.context.nodeNames) != 0:
-                checknodes = self.context.nodeNames
+                checknodes = self.context.node_ips
             else:
-                checknodes = self.context.clusterInfo.getClusterNodeNames()
+                checknodes = self.context.clusterInfo.getClusterSshIps()
             if self.checkClusterStatus(checkPosition) != 0:
                 output += "\n    Cluster status is Abnormal."
             if not self.checkVersion(
@@ -6864,7 +6875,7 @@ END;"""
                 sql = "SELECT 1;"
                 (status, output) = \
                     ClusterCommand.remoteSQLCommand(
-                        sql, self.context.user, dnInst.hostname, dnInst.port,
+                        sql, self.context.user, dnInst.listenIps[0], dnInst.port,
                         False, DefaultValue.DEFAULT_DB_NAME,
                         IsInplaceUpgrade=True, maintenance_mode=mode)
                 if status != 0 or not output.isdigit():
@@ -7170,7 +7181,7 @@ END;"""
                    const.ACTION_CLEAN_CM,
                    self.context.localLog)
             self.context.logger.debug("Roll back CM install command: {0}".format(cmd))
-            self.context.sshTool.executeCommand(cmd, hostList=self.context.nodeNames)
+            self.context.sshTool.executeCommand(cmd, hostList=self.context.node_ips)
             self.context.logger.debug("Clean cm directory successfully.")
         else:
             self.context.logger.debug("No need clean CM instance directory.")
@@ -7205,7 +7216,7 @@ END;"""
                                                 self.context.sshTool,
                                                 self.context.isSingle,
                                                 self.context.mpprcFile,
-                                                self.context.nodeNames)
+                                                self.context.node_ips)
             else:
                 CmdExecutor.execCommandWithMode(cmd,
                                                 self.context.sshTool,
@@ -7289,11 +7300,11 @@ END;"""
                   "else echo 'NoThisFile'; fi" % packFilePath
             self.context.logger.debug("Command for checking file: %s" % cmd)
             (status, output) = self.context.sshTool.getSshStatusOutput(
-                cmd, self.context.clusterNodes, self.context.mpprcFile)
+                cmd, self.context.cluster_ip, self.context.mpprcFile)
             outputMap = self.context.sshTool.parseSshOutput(
-                self.context.clusterNodes)
+                self.context.cluster_ip)
             self.context.logger.debug("Output: %s" % output)
-            for node in self.context.clusterNodes:
+            for node in self.context.cluster_ip:
                 if status[node] == DefaultValue.SUCCESS:
                     if 'GetFile' in outputMap[node]:
                         copyNode = node
@@ -7301,7 +7312,7 @@ END;"""
             if copyNode:
                 self.context.logger.debug("Copy the file %s from node %s." %
                                           (packFilePath, copyNode))
-                for node in self.context.clusterNodes:
+                for node in self.context.cluster_ip:
                     if status[node] == DefaultValue.SUCCESS:
                         if 'NoThisFile' in outputMap[node]:
                             cmd = LocalRemoteCmd.getRemoteCopyCmd(
@@ -7441,7 +7452,7 @@ END;"""
                 execHost = self.primaryDn
             self.context.logger.debug("Exec sql in dn node {0}".format(execHost.hostname))
             (status, output) = ClusterCommand.remoteSQLCommand(sql, self.context.user,
-                                                               execHost.hostname, execHost.port,
+                                                               execHost.listenIps[0], execHost.port,
                                                                False,
                                                                DefaultValue.DEFAULT_DB_NAME,
                                                                IsInplaceUpgrade=True,
@@ -7763,7 +7774,7 @@ END;"""
 
         self.context.sshTool.scpFiles(self.context.upgradePhaseInfoPath,
                                       self.context.tmpDir,
-                                      hostList=self.context.clusterNodes)
+                                      hostList=self.context.cluster_ip)
 
     def getDisasterRecoveryUser(self):
         """
@@ -7810,7 +7821,7 @@ END;"""
                    self.context.user,
                    self.context.localLog)
             self.context.logger.debug("clean gs_secure_files folder:{0}".format(cmd))
-            host_list = copy.deepcopy(self.context.clusterNodes)
+            host_list = copy.deepcopy(self.context.cluster_ip)
             self.context.execCommandInSpecialNode(cmd, host_list)
         except Exception as er:
             raise Exception(str(er))

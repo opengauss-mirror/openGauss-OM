@@ -61,7 +61,7 @@ class UninstallImpl:
             # Initialize the unstallation.clusterInfo variable
             unstallation.initClusterInfoFromStaticFile(self.user)
             self.clusterInfo = unstallation.clusterInfo
-            nodeNames = self.clusterInfo.getClusterNodeNames()
+            nodeNames = self.clusterInfo.getClusterSshIps()[0]
             # Initialize the self.sshTool variable
             unstallation.initSshTool(nodeNames,
                                      DefaultValue.TIMEOUT_PSSH_UNINSTALL)
@@ -208,7 +208,7 @@ class UninstallImpl:
         """
         try:
             failedNodes = []
-            validNodeName = self.clusterInfo.getClusterNodeNames()
+            validNodeName = self.clusterInfo.getClusterSshIps()[0]
             # the command for killing all process
             cmd_check_kill = DefaultValue.killInstProcessCmd(procFileName,
                                                              True, 9, False)

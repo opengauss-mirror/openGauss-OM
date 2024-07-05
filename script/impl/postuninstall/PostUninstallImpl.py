@@ -157,7 +157,7 @@ class PostUninstallImpl:
         self.logger.log("Checking unpreinstallation.")
         if not self.localMode:
             ProfileFile.checkAllNodesMpprcFile(
-                self.clusterInfo.getClusterNodeNames(), self.mpprcFile)
+                self.clusterInfo.getClusterSshIps()[0], self.mpprcFile)
 
         cmd = "%s -t %s -u %s -l '%s' -X '%s'" % (
             OMCommand.getLocalScript("Local_UnPreInstall"),
@@ -303,7 +303,7 @@ class PostUninstallImpl:
 
         # get other nodes
         hostName = NetUtil.GetHostIpOrName()
-        otherNodes = self.clusterInfo.getClusterNodeNames()
+        otherNodes = self.clusterInfo.getClusterSshIps()[0]
         for otherNode in otherNodes:
             if (otherNode == hostName):
                 otherNodes.remove(otherNode)
@@ -349,7 +349,7 @@ class PostUninstallImpl:
         try:
             # get other nodes
             hostName = NetUtil.GetHostIpOrName()
-            otherNodes = self.clusterInfo.getClusterNodeNames()
+            otherNodes = self.clusterInfo.getClusterSshIps()[0]
             for otherNode in otherNodes:
                 if (otherNode == hostName):
                     otherNodes.remove(otherNode)
@@ -400,7 +400,7 @@ class PostUninstallImpl:
         try:
             # get other nodes
             hostName = NetUtil.GetHostIpOrName()
-            otherNodes = self.clusterInfo.getClusterNodeNames()
+            otherNodes = self.clusterInfo.getClusterSshIps()[0]
             for otherNode in otherNodes:
                 if (otherNode == hostName):
                     otherNodes.remove(otherNode)
@@ -615,7 +615,7 @@ class PostUninstallImpl:
                             % "MPPRC file"
                             + " Command: %s. Error: \n%s" % (baseCmd, output))
                 else:
-                    dbNodeNames = self.clusterInfo.getClusterNodeNames()
+                    dbNodeNames = self.clusterInfo.getClusterSshIps()[0]
                     for dbNodeName in dbNodeNames:
                         cmd = "pssh -s -H %s '%s'" % (dbNodeName, baseCmd)
                         (status, output) = subprocess.getstatusoutput(cmd)
@@ -671,7 +671,7 @@ class PostUninstallImpl:
                 self.sshTool,
                 self.localMode,
                 self.mpprcFile,
-                self.clusterInfo.getClusterNodeNames())
+                self.clusterInfo.getClusterSshIps()[0])
         except Exception as e:
             self.logger.logExit(str(e))
 
@@ -837,10 +837,11 @@ class PostUninstallImpl:
             # get the user name
             username = pwd.getpwuid(os.getuid()).pw_name
             # get the user sshIps
-            sshIps = self.clusterInfo.getClusterSshIps()
+            sshIps = self.clusterInfo.getClusterSshIps()[0]
+            Ips.extend(sshIps)
             # save the sshIps to Ips
-            for ips in sshIps:
-                Ips.extend(ips)
+            # for ips in sshIps:
+            #     Ips.extend(ips)
 
             self.logger.log("Creating SSH trust for the root permission user.")
             # Ask to create trust for root
@@ -909,7 +910,7 @@ class PostUninstallImpl:
         cmd = "%s" + delete_line_cmd + delete_shell_cmd
 
         # get remote node and local node
-        host_list = self.clusterInfo.getClusterNodeNames()
+        host_list = self.clusterInfo.getClusterSshIps()[0]
         host_list.remove(local_host)
 
         # delete remote root mutual trust

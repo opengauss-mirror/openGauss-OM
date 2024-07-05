@@ -69,6 +69,7 @@ class CmdOptions():
         # cluster node names passed by the
         # command line option "-h".
         self.nodeName = ""
+        self.node_ip = ""
         self.time_out = None
         # if action is "express", use this parameter to store whether to
         # show the detail message of cluster
@@ -272,6 +273,11 @@ Install options:
             # init components
             if self.g_opts.action != ACTION_STATUS:
                 self.initComponent()
+
+            # query node ip by node name
+            if self.g_opts.nodeName:
+                node = self.clusterInfo.getDbNodeByName(self.g_opts.nodeName)
+                self.g_opts.node_ip = node.sshIps[0]
         except Exception as e:
             GaussLog.exitWithError(str(e))
 

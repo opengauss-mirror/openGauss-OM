@@ -136,7 +136,7 @@ General options:
             # OLAP
             self.initClusterInfoFromStaticFile(self.user)
             # Initialize the self.sshTool variable
-            self.initSshTool(self.clusterInfo.getClusterNodeNames(),
+            self.initSshTool(self.clusterInfo.getClusterSshIps()[0],
                              DefaultValue.TIMEOUT_PSSH_UNINSTALL)
         except Exception as e:
             self.logger.logExit(str(e))

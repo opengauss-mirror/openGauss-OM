@@ -99,7 +99,7 @@ def initGlobals():
     g_logger.debug("Cluster information: \n%s." % str(g_clusterInfo))
 
     global g_sshTool
-    nodenames = g_clusterInfo.getClusterNodeNames()
+    nodenames = g_clusterInfo.getClusterSshIps()[0]
     g_sshTool = SshTool(nodenames)
 
     try:

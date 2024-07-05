@@ -56,7 +56,7 @@ class BackupImplOLAP(BackupImpl):
         self.context.logger.log("Parsing configuration files.")
         if self.context.isForce and self.context.nodename != "" \
                 and self.context.action == BackupImpl.ACTION_RESTORE:
-            self.context.initSshTool([self.context.nodename],
+            self.context.initSshTool([self.context.node_ip],
                                      DefaultValue.TIMEOUT_PSSH_BACKUP)
             self.context.logger.log(
                 "Successfully init restore nodename: %s."
@@ -65,18 +65,18 @@ class BackupImplOLAP(BackupImpl):
 
         try:
             self.context.initClusterInfoFromStaticFile(self.context.user)
-            nodeNames = self.context.clusterInfo.getClusterNodeNames()
+            host_ip_list = []
             if self.context.nodename == "":
-                self.context.nodename = nodeNames
+                host_ip_list = self.context.clusterInfo.getClusterBackIps()
             else:
                 remoteNode = self.context.clusterInfo.getDbNodeByName(
                     self.context.nodename)
                 if remoteNode is None:
                     raise Exception(ErrorCode.GAUSS_512["GAUSS_51209"] % (
                         "the node", self.context.nodename))
-                self.context.nodename = [self.context.nodename]
+                host_ip_list = [remoteNode.backIps]
 
-            self.context.initSshTool(self.context.nodename,
+            self.context.initSshTool(host_ip_list,
                                      DefaultValue.TIMEOUT_PSSH_BACKUP)
 
         except Exception as e:
@@ -86,7 +86,7 @@ class BackupImplOLAP(BackupImpl):
 
     def doRemoteBackup(self):
         """
-        function: Get user and group
+        function: backup openguass
         input : NA
         output: NA
         """
@@ -157,14 +157,14 @@ class BackupImplOLAP(BackupImpl):
         cmd = g_file.SHELL_CMD_DICT["createDir"] \
               % (self.context.backupDir, self.context.backupDir,
                  DefaultValue.KEY_DIRECTORY_MODE)
-        self._runCmd(cmd, self.context.nodename)
+        self._runCmd(cmd, self.context.node_ip)
         # send backup package to the specified node from the local node
         originalFile = "'%s'/%s.tar" % (tmp_backupDir, flag)
         if flag == "parameter":
             if self.context.nodename != [NetUtil.getHostName()]:
                 self.context.sshTool.scpFiles(
                     originalFile,
-                    self.context.backupDir, self.context.nodename)
+                    self.context.backupDir, self.context.node_ip)
             else:
                 FileUtil.cpFile(originalFile, self.context.backupDir)
         else:

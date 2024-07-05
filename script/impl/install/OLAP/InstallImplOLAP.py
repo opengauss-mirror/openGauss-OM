@@ -353,7 +353,7 @@ class InstallImplOLAP(InstallImpl):
             memCheck = "cat /proc/cpuinfo | grep processor | wc -l"
             coresCheck = "env -u LANGUAGE LC_ALL=C free -g --si | grep 'Mem' | awk -F ' ' '{print \$2}'"
             cmd = "pssh -s -H %s \"%s & %s\"" % (
-                dbNode.name, memCheck, coresCheck)
+                dbNode.sshIps[0], memCheck, coresCheck)
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0 or len(output.strip().split()) != 2:
                 self.context.logger.debug(

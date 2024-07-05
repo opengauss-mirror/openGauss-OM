@@ -67,6 +67,7 @@ class DropnodeImpl():
         self.group = self.context.group
         self.backupFilePrimary = ''
         self.localhostname = NetUtil.GetHostIpOrName()
+        self.local_ip = NetUtil.getLocalIp()
         self.logger = self.context.logger
         self.resultDictOfPrimary = []
         self.replSlot = ''
@@ -112,23 +113,25 @@ class DropnodeImpl():
         check all standby state whether switchover is happening
         """
         for hostNameLoop in self.context.hostMapForExist.keys():
-            sshtool_host = SshTool([hostNameLoop])
+            host_ip = self.context.backIpNameMap[hostNameLoop]
+            sshtool_host = SshTool([host_ip])
             for i in self.context.hostMapForExist[hostNameLoop]['datadir']:
                 # check whether switchover/failover is happening
-                self.commonOper.checkStandbyState(hostNameLoop, i,
+                self.commonOper.checkStandbyState(host_ip, i,
                                                   sshtool_host,
                                                   self.userProfile)
             self.cleanSshToolFile(sshtool_host)
 
         for hostNameLoop in self.context.hostMapForDel.keys():
+            host_ip = self.context.backIpNameMap[hostNameLoop]
             if hostNameLoop not in self.context.failureHosts:
-                sshtool_host = SshTool([hostNameLoop])
+                sshtool_host = SshTool([host_ip])
                 for i in self.context.hostMapForDel[hostNameLoop]['datadir']:
                     # check whether switchover/failover is happening
-                    self.commonOper.checkStandbyState(hostNameLoop, i,
+                    self.commonOper.checkStandbyState(host_ip, i,
                                                       sshtool_host,
                                                       self.userProfile, True)
-                    self.commonOper.stopInstance(hostNameLoop, sshtool_host, i,
+                    self.commonOper.stopInstance(host_ip, sshtool_host, i,
                                                  self.userProfile)
                 self.cleanSshToolFile(sshtool_host)
             else:
@@ -139,11 +142,12 @@ class DropnodeImpl():
         drop the target node on the other host
         """
         for hostNameLoop in self.context.hostMapForExist.keys():
-            sshtool_host = SshTool([hostNameLoop])
+            host_ip = self.context.backIpNameMap[hostNameLoop]
+            sshtool_host = SshTool([host_ip])
             # backup
             backupfile = self.commonOper.backupConf(
-                self.gphomepath, self.user,
-                hostNameLoop, self.userProfile, sshtool_host, self.pghostPath)
+                self.gphomepath, self.user, hostNameLoop,
+                host_ip, self.userProfile, sshtool_host, self.pghostPath)
             self.logger.log(
                 "[gs_dropnode]The backup file of " + hostNameLoop + " is " + backupfile)
             if hostNameLoop == self.localhostname:
@@ -151,13 +155,13 @@ class DropnodeImpl():
             indexForuse = 0
             for i in self.context.hostMapForExist[hostNameLoop]['datadir']:
                 # parse
-                resultDict = self.commonOper.parseConfigFile(hostNameLoop, i,
+                resultDict = self.commonOper.parseConfigFile(host_ip, i,
                                                              self.dnIdForDel,
                                                              self.context.hostIpListForDel,
                                                              sshtool_host,
                                                              self.envFile)
                 resultDictForRollback = self.commonOper.parseBackupFile(
-                    hostNameLoop, backupfile,
+                    hostNameLoop, host_ip, backupfile,
                     self.context.hostMapForExist[hostNameLoop][
                         'dn_id'][indexForuse],
                     resultDict['replStr'], sshtool_host,
@@ -167,7 +171,7 @@ class DropnodeImpl():
                 # try set
                 try:
                     self.commonOper.SetPgsqlConf(resultDict['replStr'],
-                                                 hostNameLoop, i,
+                                                 host_ip, i,
                                                  resultDict['syncStandbyStr'],
                                                  sshtool_host,
                                                  self.userProfile,
@@ -176,7 +180,7 @@ class DropnodeImpl():
                 except ValueError:
                     self.logger.log("[gs_dropnode]Rollback pgsql process.")
                     self.commonOper.SetPgsqlConf(resultDict['replStr'],
-                                                 hostNameLoop, i,
+                                                 host_ip, i,
                                                  resultDict['syncStandbyStr'],
                                                  sshtool_host,
                                                  self.userProfile,
@@ -190,24 +194,26 @@ class DropnodeImpl():
         operation only need to be executed on primary node
         """
         for hostNameLoop in self.context.hostMapForExist.keys():
+            data_dir = self.context.hostMapForExist[hostNameLoop]['datadir']
+            host_ip = self.context.backIpNameMap[hostNameLoop]
             try:
-                self.commonOper.SetPghbaConf(self.userProfile, hostNameLoop,
+                self.commonOper.SetPghbaConf(self.userProfile, host_ip,
                                              self.resultDictOfPrimary[0][
-                                             'pghbaStr'], False)
+                                             'pghbaStr'], data_dir, False)
             except ValueError:
                 self.logger.log("[gs_dropnode]Rollback pghba conf.")
-                self.commonOper.SetPghbaConf(self.userProfile, hostNameLoop,
+                self.commonOper.SetPghbaConf(self.userProfile, host_ip,
                                              self.resultDictOfPrimary[0][
-                                             'pghbaStr'], True)
+                                             'pghbaStr'], data_dir, True)
         indexLoop = 0
         for i in self.context.hostMapForExist[self.localhostname]['datadir']:
             try:
-                self.commonOper.SetReplSlot(self.localhostname, self.gsql_path,
+                self.commonOper.SetReplSlot(self.local_ip, self.gsql_path,
                     self.context.hostMapForExist[self.localhostname]['port'][indexLoop],
                     self.dnIdForDel)
             except ValueError:
                 self.logger.log("[gs_dropnode]Rollback replslot")
-                self.commonOper.SetReplSlot(self.localhostname, self.gsql_path,
+                self.commonOper.SetReplSlot(self.local_ip, self.gsql_path,
                     self.context.hostMapForExist[self.localhostname]['port'][indexLoop],
                     self.dnIdForDel, True)
                 indexLoop += 1
@@ -254,12 +260,13 @@ class DropnodeImpl():
             cmd = "%s/script/gs_om -t refreshconf" % self.gphomepath
             subprocess.getstatusoutput(cmd)
             for hostName in self.context.hostMapForExist.keys():
-                hostSsh = SshTool([hostName])
+                host_ip = self.context.backIpNameMap[hostName]
+                hostSsh = SshTool([host_ip])
                 if hostName != self.localhostname:
                     staticConfigPath_name = "%s/cluster_static_config_%s" % (
                 tmpDir, hostName)
                     hostSsh.scpFiles(staticConfigPath_name, staticConfigPath,
-                                     [hostName], self.envFile)
+                                     [host_ip], self.envFile)
                     try:
                         os.unlink(staticConfigPath_name)
                     except FileNotFoundError:
@@ -346,9 +353,9 @@ class DropnodeImpl():
                        "restart the node.\nDo you want to restart the primary " \
                        "node now (yes/no)? "
             self.context.checkInput(msgPrint)
-            sshTool = SshTool([self.localhostname])
+            sshTool = SshTool([self.local_ip])
             for i in self.context.hostMapForExist[self.localhostname]['datadir']:
-                self.commonOper.stopInstance(self.localhostname, sshTool, i,
+                self.commonOper.stopInstance(self.local_ip, sshTool, i,
                                              self.userProfile)
                 self.commonOper.startInstance(i, self.userProfile)
             self.cleanSshToolFile(sshTool)
@@ -399,7 +406,7 @@ class OperCommon:
             if dbState in ['Promoting', 'Wait', 'Demoting']:
                 GaussLog.exitWithError(ErrorCode.GAUSS_358["GAUSS_35808"] % host)
 
-    def backupConf(self, appPath, user, host, envfile, sshTool, pghostPath):
+    def backupConf(self, appPath, user, host, host_ip, envfile, sshTool, pghostPath):
         """
         backup the configuration file (postgresql.conf and pg_hba.conf)
         The Backup.py can do this
@@ -412,12 +419,12 @@ class OperCommon:
         cmd = "(find %s -type d | grep gs_dropnode_backup | xargs rm -rf;" \
               "if [ ! -d '%s' ]; then mkdir -p '%s' -m %s;fi)" \
               % (pghostPath, tmpPath, tmpPath, DefaultValue.KEY_DIRECTORY_MODE)
-        sshTool.executeCommand(cmd, DefaultValue.SUCCESS, [host], envfile)
+        sshTool.executeCommand(cmd, DefaultValue.SUCCESS, [host_ip], envfile)
         logfile = os.path.join(tmpPath, 'gs_dropnode_call_Backup_py.log')
         cmd = "python3 %s -U %s -P %s -p --nodeName=%s -l %s" \
               % (backupPyPath, user, tmpPath, host, logfile)
-        (statusMap, output) = sshTool.getSshStatusOutput(cmd, [host], envfile)
-        if statusMap[host] != 'Success':
+        (statusMap, output) = sshTool.getSshStatusOutput(cmd, [host_ip], envfile)
+        if statusMap[host_ip] != 'Success':
             self.logger.debug(
                 "[gs_dropnode]Backup parameter config file failed." + output)
             GaussLog.exitWithError(ErrorCode.GAUSS_358["GAUSS_35809"])
@@ -587,7 +594,7 @@ class OperCommon:
         output_result = output_result.replace(output_no, output_new_no, 1)
         return output_result
 
-    def parseBackupFile(self, host, backupfile, dnId, replstr, sshTool,
+    def parseBackupFile(self, host, host_ip, backupfile, dnId, replstr, sshTool,
                         envfile):
         """
         parse the backup file eg.parameter_host.tar to get the value for rollback
@@ -601,8 +608,8 @@ class OperCommon:
               % (
               backupfile, backupdir, backupdir, 'parameter_' + host, dnId[3:],
               backupdir, 'parameter_' + host, dnId[3:])
-        (statusMap, output) = sshTool.getSshStatusOutput(cmd, [host], envfile)
-        if statusMap[host] != 'Success':
+        (statusMap, output) = sshTool.getSshStatusOutput(cmd, [host_ip], envfile)
+        if statusMap[host_ip] != 'Success':
             self.logger.log(
                 "[gs_dropnode]Parse backup parameter config file failed:" + output)
             GaussLog.exitWithError(ErrorCode.GAUSS_358["GAUSS_35809"])
@@ -652,7 +659,7 @@ class OperCommon:
         self.logger.log(
             "[gs_dropnode]End of set openGauss config file on %s." % host)
 
-    def SetPghbaConf(self, envProfile, host, pgHbaValue,
+    def SetPghbaConf(self, envProfile, host, pgHbaValue, data_dir,
                      flagRollback=False):
         """
         Set the value of pg_hba.conf
@@ -660,7 +667,7 @@ class OperCommon:
         self.logger.log(
             "[gs_dropnode]Start of set pg_hba config file on %s." % host)
         cmd = 'source %s;' % envProfile
-
+        ssh_tool = SshTool([host])
         if len(pgHbaValue):
             ip_entries = pgHbaValue[:-1].split('|')
             for entry in ip_entries:
@@ -668,26 +675,16 @@ class OperCommon:
                 if not flagRollback:
                     if NetUtil.get_ip_version(entry) == NetUtil.NET_IPV4:
                         v = entry[0:entry.find('/32') + 3]
-                        cmd += "gs_guc set -N %s -I all -h '%s';" % (host, v)
+                        cmd += "gs_guc set -D %s -h '%s';" % (data_dir[0], v)
                     elif NetUtil.get_ip_version(entry) == NetUtil.NET_IPV6:
                         v = entry[0:entry.find('/128') + 4]
-                        cmd += "gs_guc set -N %s -I all -h '%s';" % (host, v)
+                        cmd += "gs_guc set -D %s -h '%s';" % (data_dir[0], v)
                     elif NetUtil.get_ip_version(entry) == "":
                         raise ValueError(f"Invalid IP address format: {entry}")
                 else:
-                    cmd += "gs_guc set -N %s -I all -h '%s';" % (host, entry)
-            (status, output) = subprocess.getstatusoutput(cmd)
-            result_v = re.findall(r'Failed instances: (\d)\.', output)
-            if status:
-                self.logger.debug(
-                    "[gs_dropnode]Set pg_hba config file failed:" + output)
-                raise ValueError(output)
-            if len(result_v):
-                if result_v[0] != '0':
-                    self.logger.debug(
-                        "[gs_dropnode]Set pg_hba config file failed:" + output)
-                    raise ValueError(output)
-            else:
+                    cmd += "gs_guc set -D %s -h '%s';" % (data_dir[0], entry)
+            (status, output) = ssh_tool.getSshStatusOutput(cmd, [host])
+            if not status[host]:
                 self.logger.debug(
                     "[gs_dropnode]Set pg_hba config file failed:" + output)
                 raise ValueError(output)

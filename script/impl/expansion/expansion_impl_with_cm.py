@@ -45,6 +45,7 @@ from base_utils.executor.cmd_executor import CmdExecutor
 from domain_utils.cluster_file.cluster_dir import ClusterDir
 
 from gspylib.component.CM.CM_OLAP.CM_OLAP import CM_OLAP
+from gspylib.component.DSS.dss_checker import DssConfig
 
 
 # Action type
@@ -244,6 +245,20 @@ class ExpansionImplWithCm(ExpansionImpl):
         self.logger.debug("Success to set om_monitor crontab on nodes "
                           "{0}".format(ExpansionImplWithCm.get_node_names(self.new_nodes)))
 
+    def _reghl_new_nodes(self):
+        """
+        register dss for new nodes
+        """
+        if self.xml_cluster_info.enable_dss != 'on':
+            return
+
+        self.logger.debug("Start reghl dss for new nodes.")
+        cmd = f"source {self.envFile}; dsscmd reghl;"
+        self.logger.log("Command for reghl new nodes: %s" % cmd)
+        CmdExecutor.execCommandWithMode(cmd, self.ssh_tool,
+                                        host_list=ExpansionImplWithCm.get_node_names(self.new_nodes))
+        self.logger.log("Success to register dss on new nodes.")
+
     def _init_instance(self):
         """
         Initial instance
@@ -255,6 +270,16 @@ class ExpansionImplWithCm(ExpansionImpl):
                                          self.context.user, self.context.localLog)
         if self.xml_cluster_info.enable_dcf == "on":
             cmd += " --paxos_mode"
+
+        if self.xml_cluster_info.enable_dss == "on":
+            dss_config = DssConfig.get_value_b64_handler(
+                **{
+                    'dss_nodes_list': self.context.clusterInfo.dss_config,
+                    'share_disk_path': self.context.clusterInfo.cm_share_disk,
+                    'voting_disk_path': self.context.clusterInfo.cm_vote_disk
+                })
+            cmd += f" --dss_mode --dss_config={dss_config}"
+
         self.context.logger.debug(
             "Command for initializing instances: %s" % cmd)
         CmdExecutor.execCommandWithMode(
@@ -463,6 +488,115 @@ class ExpansionImplWithCm(ExpansionImpl):
         self.checkClusterStatus()
         self.validNodeInStandbyList()
 
+    def get_dss_env_root(self, env):
+        """
+        Get dss_home when current user is root.
+        """
+        cmd = f"su - {self.user} -c 'cat {self.envFile} | grep {env}'"
+        sta, out = subprocess.getstatusoutput(cmd)
+        value = out.split('=')[-1]
+        return value
+
+    def update_dss_inst(self, hosts):
+        """
+        Update dss_nodes_list on old nodes.
+        """
+        dss_home = self.get_dss_env_root("DSS_HOME")
+        dss_inst = dss_home + '/cfg/dss_inst.ini'
+        get_list_cmd = f"su - {self.user} -c 'cat {dss_inst} | grep DSS_NODES_LIST'"
+        status, output = subprocess.getstatusoutput(get_list_cmd)
+        if status != 0:
+            self.logger.debug("Failed to get old DSS_NODES_LIST.")
+            raise Exception("Failed to get old DSS_NODES_LIST.")
+        old_list = output.split('=')[1]
+        last_node = old_list.split(',')[-1]
+        last_id = int(last_node.split(':')[0])
+        port = int(last_node.split(':')[-1])
+        new_list = old_list
+        id = 0
+        for node in self.context.newHostList:
+            id += 1
+            new_list += ',%d:%s:%d' % (last_id + id, node, port)
+        update_list_cmd = "sed -i 's/%s/%s/g' %s" % (old_list, new_list, dss_inst)
+        update_list_cmd = f"su - {self.user} -c '{update_list_cmd}'"
+        self.logger.debug("Command for update dss_inst: %s" % update_list_cmd)
+        for host in ExpansionImplWithCm.get_node_names(hosts):
+            sshTool = SshTool([host], timeout=300)
+            result_map, _ = sshTool.getSshStatusOutput(update_list_cmd, [])
+            if result_map[host] == DefaultValue.SUCCESS:
+                self.logger.log("Update dss_inst.ini on %s success." % host)
+            else:
+                self.logger.debug("Failed to update dss_inst.ini on %s" % host)
+                raise Exception("Failed to update dss_inst.ini on %s" % host)
+        self.logger.log("Successfully update dss_inst.ini on old nodes.")
+
+        return new_list
+
+    def update_guc_url(self, node_list, hosts):
+        """
+        Update ss_interconnect_url on old nodes.
+        """
+        pg_port = self.get_dss_env_root("PGPORT")
+        get_url_cmd = 'su - %s -c "source %s; gsql -d postgres -p %s -c \'show ss_interconnect_url;\'"' % (
+            self.user, self.envFile, pg_port)
+        sta, out = subprocess.getstatusoutput(get_url_cmd)
+        url = out.split('\n')[2]
+        url_port = (url.split(',')[0]).split(':')[-1]
+        dss_port = (node_list.split(',')[0]).split(':')[-1]
+        new_url = node_list.replace(dss_port, url_port)
+        pg_data = self.get_dss_env_root("PGDATA=") + '/postgresql.conf'
+
+        guc_cmd = 'su - %s -c "sed -i \'s/%s/%s/g\' %s"' % (self.user, url.strip(), new_url, pg_data)
+        self.logger.debug("Command for update ss_interconnect_url: %s" % guc_cmd)
+        for host in ExpansionImplWithCm.get_node_names(hosts):
+            sshTool = SshTool([host], timeout=300)
+            result_map, _ = sshTool.getSshStatusOutput(guc_cmd, [])
+            if result_map[host] == DefaultValue.SUCCESS:
+                self.logger.log("Update ss_interconnect_url on %s success." % host)
+            else:
+                self.logger.debug("Failed to update ss_interconnect_url on %s" % host)
+                raise Exception("Failed to update ss_interconnect_url on %s" % host)
+        self.logger.log("Successfully update ss_interconnect_url on old nodes.")
+
+    def update_old_cm_res(self):
+        """
+        Update cm_resource.json on old nodes.
+        """
+        old_nodes = list(set(self.xml_cluster_info.dbNodes).difference(set(self.new_nodes)))
+        get_last_cmd = "cm_ctl res --list --res_name='dss' --list_inst | awk 'END{print $5, $7, $9, $10}'"
+        (status, output) = subprocess.getstatusoutput(get_last_cmd)
+        node_id, inst_id, dss_home, dn_home = output.split(' ')
+        res_args = dss_home + ' ' + dn_home
+
+        update_cmd = ''
+        for i in range(len(self.new_nodes)):
+            inst_info = "node_id=%d,res_instance_id=%d,res_args=%s" % (int(node_id)+i+1, int(inst_id)+i+1, res_args)
+            update_cmd += "cm_ctl res --edit --res_name='dss' --add_inst='%s'" % inst_info
+            if i < len(self.new_nodes) - 1:
+                update_cmd += " && "
+        self.logger.debug("Command for update cm_resource.json: %s" % update_cmd)
+        for host in ExpansionImplWithCm.get_node_names(old_nodes):
+            sshTool = SshTool([host], timeout=300)
+            result_map, _ = sshTool.getSshStatusOutput(update_cmd, [])
+            if result_map[host] == DefaultValue.SUCCESS:
+                self.logger.log("Update cm_resource.json on %s success" % host)
+            else:
+                self.logger.debug("Failed to update cm_resource.json on %s" % host)
+                raise Exception("Failed to update cm_resource.json on %s" % host)
+        self.logger.log("Successfully update cm_resource.json on old nodes.")
+
+    def update_old_dss_info(self):
+        """
+        Update new node's dss on old nodes.
+        """
+        if self.xml_cluster_info.enable_dss != 'on':
+            return
+
+        old_nodes = list(set(self.xml_cluster_info.dbNodes).difference(set(self.new_nodes)))
+        node_list = self.update_dss_inst(old_nodes)
+        self.update_guc_url(node_list, old_nodes)
+        self.ss_restart_cluster()
+
     def do_preinstall(self):
         """
         check preinstall on new node
@@ -499,6 +633,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         self._change_user_without_root()
         self._set_om_monitor_cron()
+        self._reghl_new_nodes()
         self._init_instance()
         self._config_instance()
         p_value.value = 1
@@ -509,6 +644,11 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         self.logger.debug("Ready to restart cm_server cluster.")
         self._change_user_without_root()
+        if self.xml_cluster_info.enable_dss == 'on':
+            self.update_old_cm_res()
+            self.ss_restart_cluster()
+            p_value.value = 1
+            return
         # stop CM processes in existed nodes
         clusterInfo = dbClusterInfo()
         clusterInfo.initFromStaticConfig(self.user)
@@ -557,11 +697,27 @@ class ExpansionImplWithCm(ExpansionImpl):
         self.logger.debug("ctlReloadCmd: " + ctlReloadCmd)
         CmdExecutor.execCommandWithMode(ctlReloadCmd, self.ssh_tool, host_list=[localHost])
 
+    def ss_restart_cluster(self):
+        """
+        Restart cluster on dss_mode.
+        """
+        if self.xml_cluster_info.enable_dss != "on":
+            return
+        restart_cmd = f"source {self.envFile}; cm_ctl stop; cm_ctl start;"
+        if os.geteuid() == 0:
+            restart_cmd = f"su - {self.user} -c '{restart_cmd}'"
+        status, _ = subprocess.getstatusoutput(restart_cmd)
+        if status != 0:
+            self.logger.debug("Failed to restart cluster when dss enabled.")
+            raise Exception("Failed to restart cluster when dss enabled.")
+        self.logger.log("Successfully restart cluster when dss enabled.")
+
     def run(self):
         """
         This is class enter.
         """
         self.expansion_check()
+        self.update_old_dss_info()
         self.do_preinstall()
         self.logger.debug("[preinstall end] new nodes success: %s" % self.expansionSuccess)
         self.app_names = self.getIncreaseAppNames(len(self.new_nodes))

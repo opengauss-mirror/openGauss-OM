@@ -230,7 +230,7 @@ class initDbNode(LocalBaseOM):
             # just init dn instance
             components = self.dnCons
         try:
-            # config instance in paralle
+            # config instance in parallel
             if self.dss_cons:
                 parallelTool.parallelExecute(self.initInstance, self.dss_cons)
             parallelTool.parallelExecute(self.initInstance, components)

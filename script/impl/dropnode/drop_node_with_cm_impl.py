@@ -23,6 +23,7 @@ import os
 import re
 import subprocess
 from time import sleep
+import json
 
 sys.path.append(sys.path[0] + "/../../../../")
 from base_utils.os.net_util import NetUtil
@@ -49,6 +50,14 @@ class DropNodeWithCmImpl(DropnodeImpl):
         self.stoped_nodes = list()
         self.cm_component = None
         self.ssh_tool = None
+        self.dss_mode = False
+
+    def check_dss_mode(self):
+        """
+        Check if on dss_mode.
+        """
+        if EnvUtil.getEnv("DSS_HOME"):
+            self.dss_mode = True
 
     def init_global_value(self):
         """
@@ -99,10 +108,42 @@ class DropNodeWithCmImpl(DropnodeImpl):
         if not os.path.isfile(backup_cm_res):
             FileUtil.cpFile(cm_resource, backup_cm_res)
 
+    def get_del_res_info(self, nodeId):
+        """
+        Get res info through nodeId.
+        """
+        cm_res_file = os.path.join(self.instInfo.datadir, "cm_resource.json")
+        with open(cm_res_file, "r") as f:
+            data = json.load(f)
+        
+        res_info = ''
+        instances = data["resources"][-1]["instances"]
+        for ins in instances:
+            if ins["node_id"] == nodeId:
+                res_info = "node_id=%d,res_instance_id=%s,res_args=%s" % (
+                            nodeId, ins["res_instance_id"], ins["res_args"])
+                break
+        return res_info
+
+    def get_update_res_cmd(self, hostName):
+        """
+        Get update cm_resource.json cmd for del host.
+        """
+        get_id_cmd = "cm_ctl query -Cv | grep %s | awk 'NR=1{print $1}'" % hostName
+        status, output = subprocess.getstatusoutput(get_id_cmd)
+        node_id = int(output)
+        res_info = self.get_del_res_info(node_id)
+        update_cmd = "cm_ctl res --edit --res_name='dss' --del_inst='%s'" % res_info
+        return update_cmd
+
     def update_cm_res_json(self):
         """
         Update cm resource json file.
         """
+        if self.dss_mode:
+            self.update_old_cm_res()
+            return
+        
         if not self.commonOper.check_is_vip_mode():
             self.logger.log("The current cluster does not support VIP.")
             return
@@ -112,12 +153,67 @@ class DropNodeWithCmImpl(DropnodeImpl):
         del_hosts = ",".join(self.context.hostMapForDel.keys())
         cmd = "source %s; " % self.userProfile
         cmd += "%s -t %s -U %s -H %s -l '%s' " % (
-               OMCommand.getLocalScript("Local_Config_CM_Res"),
-               ACTION_DROP_NODE, self.user, del_hosts, self.context.localLog)
+                OMCommand.getLocalScript("Local_Config_CM_Res"),
+                ACTION_DROP_NODE, self.user, del_hosts, self.context.localLog)
         self.logger.debug("Command for updating cm resource file: %s" % cmd)
         CmdExecutor.execCommandWithMode(cmd, self.ssh_tool,
                                         host_list=self.context.hostMapForExist.keys())
         self.logger.log("Successfully updated cm resource file.")
+
+    def update_dss_inst(self):
+        """
+        Update dss_inst.ini.
+        """
+        dss_home = EnvUtil.get_dss_home()
+        dss_inst = dss_home + '/cfg/dss_inst.ini'
+        get_list_cmd = "cat %s | grep DSS_NODES_LIST" % dss_inst
+        status, output = subprocess.getstatusoutput(get_list_cmd)
+        old_list = output.split('=')[1]
+        old_nodes = old_list.split(',')
+        del_hosts = [self.context.hostMapForDel[hostName]["ipaddr"] for hostName in self.context.hostMapForDel.keys()]
+        for host in del_hosts:
+            for node in old_nodes:
+                if host in node:
+                    old_nodes.remove(node)
+                    break
+        for i in range(len(old_nodes)):
+            if old_nodes[i][0] != str(i):
+                old_nodes[i] = str(i) + old_nodes[i][1:]
+        new_list = ",".join(old_nodes)
+
+        update_cmd = "sed -i 's/%s/%s/g' %s" % (old_list, new_list, dss_inst)
+        self.logger.debug("Command for update dss_inst.ini: %s" % update_cmd)
+        CmdExecutor.execCommandWithMode(update_cmd, self.ssh_tool, host_list=self.context.hostMapForExist.keys())
+        self.logger.log("Successfully update dss_inst.ini on old nodes.")
+
+        return new_list
+
+    def update_ss_url(self, node_list):
+        """
+        Update ss_interconnect_url on old nodes.
+        """
+        pg_port = EnvUtil.getEnv("PGPORT")
+        get_url_cmd = f"gsql -d postgres -p {pg_port} -c 'show ss_interconnect_url;'"
+        sta, out = subprocess.getstatusoutput(get_url_cmd)
+        url = out.split('\n')[2]
+        url_port = (url.split(',')[0]).split(':')[-1]
+        dss_port = (node_list.split(',')[0]).split(':')[-1]
+        new_url = "ss_interconnect_url='%s'" % node_list.replace(dss_port, url_port)
+
+        update_cmd = 'gs_guc set -N all -I all -c "%s"' % new_url
+        self.logger.debug("Command for update ss_interconnect_url: %s" % update_cmd)
+        CmdExecutor.execCommandLocally(update_cmd)
+        self.logger.log("Successfully reset ss_interconnect_url.")
+
+    def update_dss_info(self):
+        """
+        Delete dss info on existing nodes.
+        """
+        if not self.dss_mode:
+            return
+
+        node_list = self.update_dss_inst()
+        self.update_ss_url(node_list)
 
     def _stop_drop_node(self):
         """
@@ -153,6 +249,10 @@ class DropNodeWithCmImpl(DropnodeImpl):
         """
         Restart cluster
         """
+        if self.dss_mode:
+            self.ss_restart_cluster()
+            return
+
         self.logger.log("Restarting cm_server cluster ...")
         stopCMProcessesCmd = "pkill -9 om_monitor -U {user}; pkill -9 cm_agent -U {user}; " \
             "pkill -9 cm_server -U {user};".format(user=self.user)
@@ -201,6 +301,98 @@ class DropNodeWithCmImpl(DropnodeImpl):
         if os.path.isfile(backup_cm_res):
             FileUtil.cpFile(backup_cm_res, cm_resource)
 
+    def clean_del_dss(self):
+        """
+        Clean del_hosts on dss disk.
+        """
+        if not self.dss_mode:
+            return
+
+        vg_name = EnvUtil.getEnv("VGNAME")
+        dss_home = EnvUtil.get_dss_home()
+        dss_inst = dss_home + '/cfg/dss_inst.ini'
+        get_list_cmd = "cat %s | grep DSS_NODES_LIST" % dss_inst
+        status, output = subprocess.getstatusoutput(get_list_cmd)
+        lists = (output.split('=')[-1]).split(',')
+        res_ids = set()
+        for item in lists:
+            res_ids.add(int(item[0]))
+
+        getXLog_cmd = "dsscmd ls -p +%s | grep pg_xlog | awk '{print $6}'" % vg_name
+        sta, out = subprocess.getstatusoutput(getXLog_cmd)
+        xlog_list = out.split('\n')
+        del_cmd = ""
+        for xlog_n in xlog_list:
+            if int(xlog_n[-1]) not in res_ids:
+                del_cmd += "dsscmd rmdir -p +%s/%s -r; dsscmd rmdir -p +%s/%s -r;" % (vg_name, xlog_n, vg_name, )
+        del_sta, del_out = subprocess.getstatusoutput(del_cmd)
+        if del_sta != 0:
+            self.logger.debug("Failed to delete xlog of del hosts.")
+            raise Exception("Failed to delete xlog of del hosts.")
+        self.logger.debug("Successfully delete xlog of del hosts.")
+
+    def get_res_info(self, nodeId):
+        """
+        Get del id res info.
+        """
+        cm_cmd = "cm_ctl res --list --res_name='dss' --list_inst"
+        _, output = subprocess.getstatusoutput(cm_cmd)
+        cm_res = output.split('\n')
+        if len(cm_res) <= 5:
+            self.logger.debug("cm_res info invalid.")
+            raise Exception("cm_res info invalid.")
+
+        res_id = -1
+        res_args = ""
+        for i in range(5, len(cm_res)):
+            infos = cm_res[i].split('|')
+            if int(infos[2]) == nodeId:
+                res_id, res_args = int(infos[3]), infos[4]
+                break
+        res_info = "node_id=%d,res_instance_id=%d,res_args=%s" % (nodeId, res_id, res_args)
+        return res_info
+
+    def get_del_cm_res(self):
+        """
+        Get cm_res info for del nodes.
+        """
+        res_infos = list()
+        node_ids = list()
+        for node in self.context.hostMapForDel.keys():
+            cmd = "cm_ctl query -Cv | grep %s | awk 'NR==1{print $1}'" % node
+            _, output = subprocess.getstatusoutput(cmd)
+            node_ids.append(int(output))
+
+        for id in node_ids:
+            res_info = self.get_res_info(id)
+            res_infos.append(res_info)
+        return res_infos
+
+    def update_old_cm_res(self):
+        """
+        Update cm res info on old nodes.
+        """
+        res_infos = self.get_del_cm_res()
+        del_cmd = ""
+        for info in res_infos:
+            del_cmd += "cm_ctl res --edit --res_name='dss' --del_inst='%s';" % info
+        self.logger.log("Command for del cm_res on old nodes: %s" % del_cmd)
+        CmdExecutor.execCommandWithMode(del_cmd, self.ssh_tool, host_list=self.context.hostMapForExist.keys())
+        self.logger.log("Successfully del cm_res on old nodes.")
+
+    def ss_restart_cluster(self):
+        """
+        Restart new cluster.
+        """
+        if not self.dss_mode:
+            return
+        restart_cmd = "cm_ctl stop; cm_ctl start;"
+        status, _ = subprocess.getstatusoutput(restart_cmd)
+        if status != 0:
+            self.logger.debug("Failed to restart cluster when dss enabled.")
+            raise Exception("Failed to restart cluster when dss enabled.")
+        self.logger.log("Successfully restart cluster.")
+
     def remove_cm_res_backup(self):
         """
         Remove cm resource backup on primary node
@@ -216,6 +408,7 @@ class DropNodeWithCmImpl(DropnodeImpl):
         start dropnode
         """
         self.logger.log("Drop node with CM node is running.")
+        self.check_dss_mode()
         self.init_global_value()
         self.check_drop_cm_node()
         self.change_user()
@@ -225,9 +418,11 @@ class DropNodeWithCmImpl(DropnodeImpl):
         self.dropNodeOnAllHosts()
         self.operationOnlyOnPrimary()
         self.update_cm_res_json()
+        self.update_dss_info()
         self._stop_drop_node()
         self._generate_flag_file_on_drop_nodes()
         self.modifyStaticConf()
+        self.clean_del_dss()
         self.restart_new_cluster()
         self.remove_cm_res_backup()
         self.logger.log("[gs_dropnode] Success to drop the target nodes.")

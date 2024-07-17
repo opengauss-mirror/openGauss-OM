@@ -324,7 +324,8 @@ class DropNodeWithCmImpl(DropnodeImpl):
         del_cmd = ""
         for xlog_n in xlog_list:
             if int(xlog_n[-1]) not in res_ids:
-                del_cmd += "dsscmd rmdir -p +%s/%s -r; dsscmd rmdir -p +%s/%s -r;" % (vg_name, xlog_n, vg_name, )
+                dw_path = 'pg_doublewrite' + xlog_n[-1]
+                del_cmd += "dsscmd rmdir -p +%s/%s -r; dsscmd rmdir -p +%s/%s -r;" % (vg_name, xlog_n, vg_name, dw_path)
         del_sta, del_out = subprocess.getstatusoutput(del_cmd)
         if del_sta != 0:
             self.logger.debug("Failed to delete xlog of del hosts.")

@@ -546,7 +546,8 @@ class ExpansionImplWithCm(ExpansionImpl):
         new_url = node_list.replace(dss_port, url_port)
         pg_data = self.get_dss_env_root("PGDATA=") + '/postgresql.conf'
 
-        guc_cmd = 'su - %s -c "sed -i \'s/%s/%s/g\' %s"' % (self.user, url.strip(), new_url, pg_data)
+        guc_cmd = "sed -i 's/%s/%s/g' %s" % (url.strip(), new_url, pg_data)
+        guc_cmd = f"su - {self.user} -c '{guc_cmd}'"
         self.logger.debug("Command for update ss_interconnect_url: %s" % guc_cmd)
         for host in ExpansionImplWithCm.get_node_names(hosts):
             sshTool = SshTool([host], timeout=300)

@@ -124,10 +124,10 @@ class PostUninstallImpl:
             self.cleanDirectory()
             # clean other user
             self.cleanRemoteOsUser()
-            # clean other nodes environment software and variable
-            self.cleanOtherNodesEnvSoftware()
             # clean other nodes log
             self.cleanOtherNodesLog()
+            # clean other nodes environment software and variable
+            self.cleanOtherNodesEnvSoftware()
             # clean local node environment software and variable
             self.cleanLocalNodeEnvSoftware()
             # clean local user
@@ -178,8 +178,7 @@ class PostUninstallImpl:
         input : NA
         output: NA
         """
-        self.logger.log("clean cgroup")
-
+        self.logger.log("check and clean cgroup")
         cmd = "%s -t %s -u %s -l '%s' -X '%s'" % (
             OMCommand.getLocalScript("Local_UnPreInstall"),
             ACTION_DELETE_CGROUP,
@@ -426,6 +425,35 @@ class PostUninstallImpl:
                 + " Error: \n%s." % str(e))
         self.logger.log("Successfully deleted logs of other nodes.")
 
+    def cleanOthernodesBackupScript(self):
+        """
+        function: clean othernodes gauss_om script
+        """
+        # check if local mode
+        if self.localMode:
+            return
+        self.logger.log("Deleting gauss_om of other nodes.")
+        try:
+            # get other nodes
+            hostName = NetUtil.GetHostIpOrName()
+            otherNodes = self.clusterInfo.getClusterNodeNames()
+            for otherNode in otherNodes:
+                if (otherNode == hostName):
+                    continue
+                cmd = f"ssh root@%s 'rm -rf %s'" % (otherNode, self.gauss_om_path)
+                (status, output) = subprocess.getstatusoutput(cmd)
+                if status != 0:
+                    self.logger.logExit(
+                        ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
+                        + " Error:\n%s" % output)
+                self.logger.debug(
+                    "Successfully deleted gauss_om of the nodes: %s." % otherNodes)
+        except Exception as e:
+            self.logger.logExit(
+                ErrorCode.GAUSS_502["GAUSS_50207"] % "other nodes gauss_om"
+                + " Error: \n%s." % str(e))
+        self.logger.log("Successfully deleted gauss_om of other nodes.")
+
     def cleanLocalNodeEnvSoftware(self):
         """
         function: clean local node environment software and variable
@@ -476,20 +504,24 @@ class PostUninstallImpl:
             datadir = node_info.datanodes[0].datadir
             datadir_escaped = datadir.replace("/", "\\/")
             basePort = node_info.datanodes[0].port
+            userprofile = ProfileFile.get_user_bashrc(self.user)
             # clean local node environment variable
-            cmd = "(if [ -s '%s' ]; then " % PROFILE_FILE
-            cmd += "sed -i -e '/^export PATH=\$PATH:\/root\/gauss_om\/%s\/" \
-                   "script$/d' %s " % (self.user, PROFILE_FILE)
-            cmd += "-e '/^export PATH=\$PATH:\$GPHOME\/script\/gspylib\/pssh\/bin:" \
-                "\$GPHOME\/script$/d' %s " % PROFILE_FILE
+            cmd = "(if [ -s '%s' ]; then " % userprofile
+            cmd += "sed -i -e '/^export PATH=\/home\/%s\/gauss_om\/" \
+                   "script:\$PATH/d' %s " % (self.user, userprofile)
+            cmd += "-e '/^export PATH=\$GPHOME\/script\/gspylib\/pssh\/bin:" \
+                   "\$GPHOME\/script:\$PATH/d' %s " % PROFILE_FILE
             cmd += "-e '/^export LD_LIBRARY_PATH=\$GPHOME\/script\/gspylib\/clib:" \
-                "\$LD_LIBRARY_PATH$/d' %s " % PROFILE_FILE
+                   "\$LD_LIBRARY_PATH$/d' %s " % userprofile
             cmd += "-e '/^export LD_LIBRARY_PATH=\$GPHOME\/lib:" \
-                "\$LD_LIBRARY_PATH$/d' %s " % PROFILE_FILE
-            cmd += "-e '/^export PGDATABASE=postgres/d' %s " % PROFILE_FILE
-            cmd += "-e '/^export PGPORT=%d/d' %s " %(basePort,PROFILE_FILE)
-            cmd += "-e '/^export PGDATA=%s/d' %s " %(datadir_escaped,PROFILE_FILE)
-            cmd +="-e '/^export PYTHONPATH=\$GPHOME\/lib$/d' %s; fi) " % PROFILE_FILE
+                   "\$LD_LIBRARY_PATH$/d' %s " % userprofile
+            cmd += "-e '/^export PGDATABASE=postgres/d' %s " % userprofile
+            cmd += "-e '/^export PGPORT=%d/d' %s " % (basePort, userprofile)
+            cmd += "-e '/^export UNPACKPATH=/d' %s " % userprofile
+            cmd += "-e '/^export COREPATH=/d' %s " % userprofile
+            cmd += "-e '/^export GPHOME=/d' %s " % userprofile
+            cmd += "-e '/^export PGDATA=%s/d' %s " % (datadir_escaped, userprofile)
+            cmd += "-e '/^export PYTHONPATH=\$GPHOME\/lib$/d' %s; fi) " % userprofile
 
             self.logger.debug(
                 "Command for deleting environment variable: %s" % cmd)
@@ -500,7 +532,7 @@ class PostUninstallImpl:
                                     + " Error: \n%s" % output)
             # check if user profile exist
             user_bashrc = ProfileFile.get_user_bashrc(self.user)
-            if (self.mpprcFile is not None and self.mpprcFile != ""):
+            if (self.mpprcFile is not None and self.mpprcFile != "" and os.path.exists(self.mpprcFile)):
                 userProfile = self.mpprcFile
             else:
                 userProfile = user_bashrc
@@ -896,11 +928,13 @@ class PostUninstallImpl:
         tmp_path = "%s/gaussdb_tmp" % homeDir
 
         # get cmd
-        bashrc_file = os.path.join(pwd.getpwuid(os.getuid()).pw_dir, ".bashrc")
+        bashrc_file = ProfileFile.get_user_bashrc(self.user)
         kill_ssh_agent_cmd = "ps ux | grep 'ssh-agent' | grep -v grep | awk '{print $2}' | " \
                              "xargs kill -9"
-        delete_line_cmd = " && sed -i '/^\\s*export\\s*SSH_AUTH_SOCK=.*$/d' %s" % bashrc_file
-        delete_line_cmd += " && sed -i '/^\\s*export\\s*SSH_AGENT_PID=.*$/d' %s" % bashrc_file
+        delete_line_cmd = ""
+        if os.path.exists(bashrc_file):
+            delete_line_cmd += " && sed -i '/^\\s*export\\s*SSH_AUTH_SOCK=.*$/d' %s" % bashrc_file
+            delete_line_cmd += " && sed -i '/^\\s*export\\s*SSH_AGENT_PID=.*$/d' %s" % bashrc_file
         delete_line_cmd += " && sed -i '/#OM$/d' %s" % DefaultValue.SSH_AUTHORIZED_KEYS
         delete_line_cmd += " && sed -i '/#OM$/d' %s" % DefaultValue.SSH_KNOWN_HOSTS
         delete_shell_cmd = " && rm -rf %s" % tmp_path
@@ -919,13 +953,31 @@ class PostUninstallImpl:
         CmdExecutor.execCommandLocally(cmd % kill_ssh_agent_cmd)
         self.logger.debug("Delete root mutual trust successfully.")
 
+    def cleanLocalBackupScript(self):
+        """
+        function: clean gauss_om script
+        """
+        # clean root script path
+        if os.path.exists(self.gauss_om_path):
+            FileUtil.removeDirectory(self.gauss_om_path)
+            self.logger.log("Successfully cleaned local gauss_om.")
+            self.logger.log("clean over.")
+            return
+        # if /root/gauss_om has no files, delete it.
+        if not os.listdir(self.gauss_om_path):
+            FileUtil.removeDirectory(self.gauss_om_path)
+            self.logger.log("Successfully cleaned local gauss_om.")
+            self.logger.log("clean over.")
+            return
+        self.logger.log("clean over.")
+
     def run(self):
         try:
             self.logger.debug(
                 "gs_postuninstall execution takes %s steps in total"
                 % ClusterCommand.countTotalSteps("gs_postuninstall"))
             local_host = NetUtil.GetHostIpOrName()
-            if (self.mpprcFile is not None and self.mpprcFile != ""):
+            if (self.mpprcFile is not None and self.mpprcFile != "" and os.path.exists(self.mpprcFile)):
                 os_profile = self.mpprcFile
             else:
                 os_profile = ClusterConstants.ETC_PROFILE
@@ -941,8 +993,14 @@ class PostUninstallImpl:
             self.cleanMpprcFile()
             self.cleanScript()
             self.setOrCleanGphomeEnv(setGphomeenv=False)
-            self.delet_root_mutual_trust(local_host, path)
             self.logger.log("Successfully cleaned environment.")
+            if os.path.exists(self.gauss_om_path):
+                self.cleanOthernodesBackupScript()
+                self.delet_root_mutual_trust(local_host, path)
+                self.cleanLocalBackupScript()
+            else:
+                self.delet_root_mutual_trust(local_host, path)
+                self.logger.log("clean over.")
         except Exception as e:
             self.logger.logExit(str(e))
         sys.exit(0)

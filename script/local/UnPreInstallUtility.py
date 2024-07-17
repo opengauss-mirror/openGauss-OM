@@ -135,7 +135,7 @@ class Postuninstall(LocalBaseOM):
         # and get the right profile
         # we can not check mppenvfile exists here
         mppenvFile = EnvUtil.getEnv(DefaultValue.MPPRC_FILE_ENV)
-        if mppenvFile != "" and mppenvFile is not None:
+        if mppenvFile != "" and mppenvFile is not None and os.path.exists(mppenvFile):
             self.userProfile = mppenvFile
         else:
             self.userProfile = ProfileFile.get_user_bashrc(self.user)
@@ -480,17 +480,15 @@ class Postuninstall(LocalBaseOM):
         output: NA
         """
         self.logger.debug("Cleaning user cgroup.")
-        # mkdir gauss_home dir
-        gsom_path = DefaultValue.ROOT_SCRIPTS_PATH
-        root_lib_dir = "%s/%s/lib/" % (gsom_path, self.user)
-        root_bin_dir = "%s/%s/bin/" % (gsom_path, self.user)
-        
+        # mkdir gauss_om dir
+        gaussom_lib_dir = "/home/%s/gauss_om/lib/" % self.user
+        gaussom_bin_dir = "/home/%s/gauss_om/bin/" % self.user
         # delete cgroup
-        cmd = "export LD_LIBRARY_PATH=%s:\$LD_LIBRARY_PATH && %s/gs_cgroup -d -U %s" % (root_lib_dir, root_bin_dir, self.user)
+        cmd = "export LD_LIBRARY_PATH=%s:\$LD_LIBRARY_PATH && %s/gs_cgroup -d -U %s" % (gaussom_lib_dir, gaussom_bin_dir, self.user)
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             self.logger.logExit(
-                "Error: Failed to delete cgroup "
+                "Error: Failed to delete cgroup " 
                 "cmd:%s. Error: \n%s" % (cmd, output))
         self.logger.debug("Successfully cleaned user cgroup.")
 
@@ -543,15 +541,6 @@ class Postuninstall(LocalBaseOM):
         scriptPath = os.path.join(self.clusterToolPath, SCRIPTPATH)
         if os.path.exists(scriptPath):
             FileUtil.removeDirectory(scriptPath)
-
-        # clean root script path
-        root_script_path = os.path.join(DefaultValue.ROOT_SCRIPTS_PATH,
-                                        self.user)
-        if os.path.exists(root_script_path):
-            FileUtil.removeDirectory(root_script_path)
-        # if /root/gauss_om has no files, delete it.
-        if not os.listdir(DefaultValue.ROOT_SCRIPTS_PATH):
-            FileUtil.removeDirectory(DefaultValue.ROOT_SCRIPTS_PATH)
 
         # clean others
         if os.path.exists(self.clusterToolPath):

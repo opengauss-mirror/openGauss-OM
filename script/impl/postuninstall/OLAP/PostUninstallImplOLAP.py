@@ -59,4 +59,5 @@ class PostUninstallImplOLAP(PostUninstallImpl):
         self.rootPasswd = GaussPost.rootPasswd
         self.ips = GaussPost.ips
         self.root_ssh_agent_flag = GaussPost.root_ssh_agent_flag
+        self.gauss_om_path = GaussPost.gauss_om_path
 

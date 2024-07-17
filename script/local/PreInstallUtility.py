@@ -2696,74 +2696,78 @@ Common options:
                             str(no_install_soft_list))
         self.logger.debug("Successfully check OS software.")
 
-    def separate_root_scripts(self):
+    def backup_om_scripts(self):
         """
         fix packgae path permission and owner
         :return:
         """
         package_path = get_package_path()
-        om_root_path = os.path.dirname(package_path)
-        if om_root_path == DefaultValue.ROOT_SCRIPTS_PATH or not self.current_user_root:
+        om_backup_path = os.path.dirname(package_path)
+        check_backup_path = os.path.join("/home", self.user, "gauss_om")
+        if om_backup_path == check_backup_path or not self.current_user_root:
             return
 
-        self.logger.log("Separate om root scripts.")
-        self.logger.debug("Create om root path.")
-        # /root/gauss_om/user_name
-        dest_path = os.path.join(DefaultValue.ROOT_SCRIPTS_PATH, self.user)
+        self.logger.log("Backup om scripts.")
+        self.logger.debug("Create backup_om path.")
+        # /home/user/gauss_om/script
+        dest_path = os.path.join("/home", self.user, "gauss_om")
         if os.path.exists(dest_path):
             shutil.rmtree(dest_path)
         os.makedirs(dest_path)
-        FileUtil.changeOwner("root", dest_path)
+        # Change owner to appropriate user
+        FileUtil.changeOwner(self.user, dest_path)
 
-        # cp cgroup to /root/gauss_om/xxx
-        self.logger.debug("cp cgroup to /root/gauss_om/xxx.")
-        root_lib_dir = os.path.join(dest_path, "lib")
-        root_bin_dir = os.path.join(dest_path, "bin")
-        FileUtil.createDirectory(root_lib_dir, mode=DefaultValue.KEY_DIRECTORY_MODE)
-        FileUtil.createDirectory(root_bin_dir, mode=DefaultValue.KEY_DIRECTORY_MODE)
+        # cp cgroup to /home/user/gauss_om/script
+        self.logger.debug("cp cgroup to /home/user/gauss_om/script.")
+        backup_lib_dir = os.path.join(dest_path, "lib")
+        backup_bin_dir = os.path.join(dest_path, "bin")
+        FileUtil.createDirectory(backup_lib_dir, mode=DefaultValue.KEY_DIRECTORY_MODE)
+        FileUtil.createDirectory(backup_bin_dir, mode=DefaultValue.KEY_DIRECTORY_MODE)
         libcgroup_dir = os.path.realpath("%s/libcgroup/lib/libcgroup.so*" % package_path)
         cgroup_exe_dir = os.path.realpath("%s/libcgroup/bin/gs_cgroup" % package_path)
-        cp_cmd = "cp -rf %s %s; cp -rf %s %s" % (libcgroup_dir, root_lib_dir, cgroup_exe_dir, root_bin_dir)
+        cp_cmd = "cp -rf %s %s; cp -rf %s %s" % (libcgroup_dir, backup_lib_dir, cgroup_exe_dir, backup_bin_dir)
         CmdExecutor.execCommandLocally(cp_cmd)
 
-        # cp $GPHOME script lib to /root/gauss_om/xxx
+        # cp $GPHOME script lib to /home/user/gauss_om/
         cmd = ("cp -rf %s/script %s/lib %s/version.cfg %s"
                % (self.clusterToolPath, self.clusterToolPath,
                   self.clusterToolPath, dest_path))
         CmdExecutor.execCommandLocally(cmd)
-        root_scripts = ["gs_postuninstall", "gs_preinstall",
+
+        backup_scripts = ["gs_postuninstall", "gs_preinstall",
                         "gs_checkos"]
         common_scripts = ["gs_sshexkey", "killall", "gs_checkperf"]
         # the script files are not stored in the env path
         not_in_env_scripts = ["gs_expansion"]
-        root_save_files = root_scripts + common_scripts
-        self.logger.debug("Delete user scripts in om root path.")
-        # delete user scripts in om root path
-        om_root_path = os.path.join(dest_path, "script")
-        root_om_files = os.listdir(om_root_path)
-        for root_file in root_om_files:
-            if root_file.startswith("gs_"):
-                if root_file not in root_save_files:
-                    FileUtil.removeFile("%s/%s" % (om_root_path, root_file))
+        backup_save_files = backup_scripts + common_scripts
+        self.logger.debug("Delete user scripts in om backup_om path.")
+        # delete user scripts in om backup_om path
+        om_backup_path = os.path.join(dest_path, "script")
+        backup_om_files = os.listdir(om_backup_path)
+        for backup_file in backup_om_files:
+            if backup_file.startswith("gs_"):
+                if backup_file not in backup_save_files:
+                    FileUtil.removeFile("%s/%s" % (om_backup_path, backup_file))
         FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE,
-                          dest_path, recursive=True)
+                            dest_path, recursive=True)
+        self.logger.debug("Set user scripts in om user path.")
 
-        self.logger.debug("Delete root scripts in om user path.")
-
-        # set om root script path
+        # set om user script path
         userProfile = self.getUserProfile()
         if userProfile is ClusterConstants.ETC_PROFILE:
-            FileUtil.writeFile(userProfile, ["export PATH=$PATH:%s" % om_root_path])
+            FileUtil.writeFile(userProfile, ["export PATH=$PATH:%s" % dest_path])
         else:
-            FileUtil.writeFile(userProfile, ["export PATH=%s:$PATH" % om_root_path])
-        # delete root scripts in GPHOME
+            FileUtil.writeFile(userProfile, ["export PATH=%s/script:$PATH" % dest_path])
+
+        # delete backup_om scripts in GPHOME
         om_user_path = os.path.join(self.clusterToolPath, "script")
         user_om_files = os.listdir(om_user_path)
         for user_file in user_om_files:
             if user_file.startswith("gs_"):
-                if user_file in root_scripts or user_file in not_in_env_scripts:
+                if user_file in backup_scripts or user_file in not_in_env_scripts:
                     FileUtil.removeFile("%s/%s" % (om_user_path, user_file))
-        self.logger.debug("Delete cluster decompress package in root path.")
+        FileUtil.changeOwner(self.user, dest_path, recursive=True)
+        self.logger.debug("Delete cluster decompress package in user path.")
 
     def fixop_xml_and_mpp_file(self):
         """
@@ -2914,7 +2918,7 @@ Common options:
         :return:
         """
         self.fix_owner_and_permission()
-        self.separate_root_scripts()
+        self.backup_om_scripts()
 
     def dss_init(self):
         '''

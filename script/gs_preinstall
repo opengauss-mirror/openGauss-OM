@@ -106,6 +106,8 @@ class Preinstall(ParallelBaseOM):
         self.enable_perf_config = False
         self.skip_cgroup_set = False
         self.cluster_core_path = ""
+        self.om_version_cfg = None  # structure like {'pkg_prefix': '', 'pgversion': '', 'commit': '', 'mode': ''}
+        self.og_version_cfg = None
 
     def usage(self):
         """
@@ -433,50 +435,83 @@ General options:
             except Exception as e:
                 GaussLog.exitWithError(str(e))
 
-    # decompress version.cfg from bz2
-    def decompressVersioncfg(self):
-        bin_cmd = 'tar -xpf `head -1 version.cfg`*.tar.bz2 ./version.cfg'
-        cm_cmd = 'tar -xpf `head -1 version.cfg`*cm.tar.gz'
-        cmd = self.get_dec_package_cmd(bin_cmd, cm_cmd)
-        status, _ = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            bin_cmd = 'tar -xpf `ls openGauss*.tar.bz2|tail -1` ./version.cfg'
-            cm_cmd = 'tar -xpf `ls openGauss*cm.tar.gz|tail -1`'
-            cmd = self.get_dec_package_cmd(bin_cmd, cm_cmd)
-            status, output = subprocess.getstatusoutput(cmd)
-            if status != 0:
+    # decompress version.cfg from bz2, and read it
+    def readVersioncfg(self):
+        def _parse_version_cfg(_cfg):
+            _cmd = f'cat {_cfg}'
+            _status, _output = subprocess.getstatusoutput(_cmd)
+            if _status != 0:
                 GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"] %
-                                    "version.cfg" + "The cmd is %s. " % cmd +
-                                    "The output is %s." % output)
-
-    def get_dec_package_cmd(self, bin_cmd, cm_cmd):
+                                        "version.cfg" + "The cmd is %s. " % _cmd +
+                                        "The output is %s." % _output)
+            _lines = _output.splitlines()
+            _res = {
+                'pkg_prefix': _lines[0],
+                'pgversion': _lines[1],
+                'commit': _lines[2],
+                'mode': 'release' if len(_lines) < 4 else _lines[3]
+            }
+            return _res
 
         root = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..')
-        clib = os.path.join(root, "script/gspylib/clib")
+        cfg = os.path.join(root, 'version.cfg')
+
+        # read version.cfg of om package
+        self.om_version_cfg = _parse_version_cfg(cfg)
+
+        # upack and read version.cfg of openGauss-server package
+        # the existing om version.cfg will be overwritten
+        cmd = 'cd {} && tar -xpf {}*.tar.bz2 ./version.cfg'.format(root, self.om_version_cfg['pkg_prefix'])
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            cmd = 'cd {} && tar -xpf `ls openGauss*.tar.bz2 | tail -1` ./version.cfg'.format(root)
+            status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"] % "version.cfg" +
+                                   "The cmd is %s. " % cmd +
+                                   "The output is %s." % output)
+        self.og_version_cfg = _parse_version_cfg(cfg)
+
+    def unpackSomeToolsNeeded(self):
+        pkg_prefix = self.om_version_cfg['pkg_prefix']
+
+        # target tools
         bin_files = ['./bin/encrypt']
-        clib_app = os.path.realpath(
-            os.path.join(f'{clib}',
-                         f"dss_app_$(cat {root}/version.cfg | tail -n 1)"))
         dss_files = []
         cm_files = []
+        memcheck_files = []
         if self.clusterInfo.enable_dss == 'on':
             cm_files = ['bin/cm_persist']
-            dss_files = [
-                './bin/perctrl', './bin/dsscmd', './lib/libdssapi.so',
-                './bin/dss_clear.sh'
-            ]
-        else:
-            cm_files = []
-        cmd = 'cd {} && '.format(root)
-        cmd += '{} {} && '.format(bin_cmd, ' '.join(bin_files + dss_files))
-        if cm_files:
-            cmd += '{} {} && '.format(cm_cmd, ' '.join(cm_files))
-            cmd += 'mkdir -p {0} -m u=rwx && '.format(clib_app)
-            cmd += 'mv {} {} && '.format(' '.join(cm_files + dss_files), clib_app)
-        cmd += '\mv {} {} && '.format(' '.join(bin_files), clib)
-        cmd += 'cd {} && rm -rf bin'.format(root)
-        return cmd
+            dss_files = ['./bin/perctrl', './bin/dsscmd', './lib/libdssapi.so', './bin/dss_clear.sh']
+        if self.og_version_cfg['mode'] == 'memcheck':
+            memcheck_files = ['./lib/libasan.so', './lib/libasan.so.6', './lib/libasan.so.6.0.0']
 
+        # target path
+        root = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..')
+        clib = os.path.join(root, "script/gspylib/clib")
+        clib_dss = os.path.realpath(os.path.join(f'{clib}', f"dss_app_{self.og_version_cfg['commit']}"))
+        memcheck_root_lib = ''
+        if self.clusterInfo.enable_dss == 'on' and \
+            self.og_version_cfg['mode'] == 'memcheck' and \
+            not os.access('/usr/lib64/libasan.so.6', os.F_OK):
+            memcheck_root_lib = '/usr/lib64'
+
+        # unpack and move tools into target path
+        cmd = 'cd {} && '.format(root)
+        cmd += 'tar -xpf {}*.tar.bz2  {} && '.format(pkg_prefix, ' '.join(bin_files + dss_files + memcheck_files))
+        if cm_files:
+            cmd += 'tar -xpf {}*cm.tar.gz  {} && '.format(pkg_prefix, ' '.join(cm_files))
+            cmd += 'mkdir -p {0} -m u=rwx && '.format(clib_dss)
+            cmd += 'mv {} {} && '.format(' '.join(cm_files + dss_files), clib_dss)
+        if memcheck_root_lib != '':
+            cmd += 'cp ./lib/libasan.so.6 {} &&'.format(memcheck_root_lib)
+        cmd += '\mv {} {} && '.format(' '.join(bin_files + memcheck_files), clib)
+        cmd += 'cd {} && rm -rf bin'.format(root)
+        status, _ = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"] %
+                                   "version.cfg" + "The cmd is %s. " % cmd +
+                                   "The output is %s." % output)
 
     # init global variables
     def initGlobals(self):
@@ -644,8 +679,11 @@ if __name__ == '__main__':
         preinstall.check_expect()
         # init global variables
         preinstall.initGlobals()
-        # decompress version.cfg
-        preinstall.decompressVersioncfg()
+        # read version.cfg
+        preinstall.readVersioncfg()
+        # unpack some tools needed
+        preinstall.unpackSomeToolsNeeded()
+
         preinstall.change_lib_path()
         impl = PreinstallImplOLAP(preinstall)
         # Perform the whole extand process

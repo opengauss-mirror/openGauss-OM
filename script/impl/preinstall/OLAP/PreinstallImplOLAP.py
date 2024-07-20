@@ -262,6 +262,9 @@ class PreinstallImplOLAP(PreinstallImpl):
             for param in self.context.envParams:
                 cmdParam += " -e \\\"%s\\\"" % param
 
+            if self.context.og_version_cfg['mode'] == 'memcheck':
+                cmdParam += " -e \\\"%s\\\"" % "ASAN_OPTIONS=detect_odr_violation=0:log_path=\$GAUSSLOG/memcheck"
+
             # set the environmental variables on all nodes
             cmd = "%s -t %s -u %s %s -l %s" % (
                 OMCommand.getLocalScript("Local_PreInstall"),

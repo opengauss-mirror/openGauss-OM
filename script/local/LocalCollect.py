@@ -1045,10 +1045,7 @@ def formatTime(filename):
     output : str
     """
     try:
-        if 'dms' or 'dss' in filename:
-            timelist = re.findall(r"\d\d\d\d\d\d\d\d\d\d\d\d\d\d", filename)
-        else:
-            timelist = re.findall(r"\d\d\d\d-\d\d-\d\d_\d\d\d\d\d\d", filename)
+        timelist = re.findall(r"\d\d\d\d-\d\d-\d\d_\d\d\d\d\d\d", filename)
         if not timelist:
             with open(filename, 'r') as f:
                 lines = f.readlines()
@@ -1179,6 +1176,9 @@ def getXlogCmd(Inst):
     output: xlog file
     """
     if check_dss_env():
+        if g_opts.file_number <= 0:
+            g_logger.log("Failed to collect xlog files when enable dss, FileNumber must be greater than 0.")
+            raise Exception("Failed to collect xlog files when enable dss, FileNumber must be greater than 0.")
         dss_home = EnvUtil.getEnv('DSS_HOME')
         inst_id = DssInst.get_dss_id_from_key(dss_home)
         pri_vgname = DssInst.get_private_vgname_by_ini(dss_home, inst_id)
@@ -1611,9 +1611,10 @@ def get_dss_replslot_dir(vgname):
     file_dirs = []
     out_list = output.split('\n')
     for out in out_list:
-        dir_name = (out.split())[-1]
-        if 'name' not in dir_name and 'info' not in dir_name:
-            file_dirs.append(dir_name)
+        data = out.split()
+        for item in data:
+            if re.findall(r"slot", item):
+                file_dirs.append(item)
 
     return file_dirs
 
@@ -1628,8 +1629,9 @@ def get_dss_repslot_files(vgname, slot_path):
     out1_lines = output1.split('\n')
     for line in out1_lines:
         data_line = line.split()
-        if 'name' not in data_line[-1] and 'info' not in data_line[-1]:
-            slot_files.append(slot_path + '/' + data_line[-1])
+        for item in data_line:
+            if re.findall(r"state", item):
+                slot_files.append(slot_path + '/' + item)
     return slot_files
 
 def get_dss_bak_conf(Inst):

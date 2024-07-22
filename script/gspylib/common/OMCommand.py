@@ -100,12 +100,16 @@ class OMCommand():
                 Current_Path + "/../../gs_backup"),
             "Local_CheckOS": os.path.normpath(
                 Current_Path + "/../../local/LocalCheckOS.py"),
+            "Local_CheckSE": os.path.normpath(
+                Current_Path + "/../../local/LocalCheckSE.py"),
             "Local_Check": os.path.normpath(
                 Current_Path + "/../../local/LocalCheck.py"),
             "LOCAL_PERFORMANCE_CHECK": os.path.normpath(
                 Current_Path + "/../../local/LocalPerformanceCheck.py"),
             "Gauss_CheckOS": os.path.normpath(
                 Current_Path + "/../../gs_checkos"),
+            "Gauss_CheckSE": os.path.normpath(
+                Current_Path + "/../../gs_checkse"),
             "Gauss_PreInstall": os.path.normpath(
                 Current_Path + "/../../gs_preinstall"),
             "Gauss_Replace": os.path.normpath(

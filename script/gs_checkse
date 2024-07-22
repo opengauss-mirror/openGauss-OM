@@ -1,0 +1,1114 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+#############################################################################
+# Copyright (c) 2024 Huawei Technologies Co.,Ltd.
+#
+# openGauss is licensed under Mulan PSL v2.
+# You can use this software according to the terms
+# and conditions of the Mulan PSL v2.
+# You may obtain a copy of Mulan PSL v2 at:
+#
+#          http://license.coscl.org.cn/MulanPSL2
+#
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS,
+# WITHOUT WARRANTIES OF ANY KIND,
+# EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+# MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+# See the Mulan PSL v2 for more details.
+# ----------------------------------------------------------------------------
+# Description  : gs_checkse is a tool used to check and set security configurations.
+#############################################################################
+
+import os
+import sys
+import subprocess
+
+sys.path.append(sys.path[0] + '/../lib')
+from gspylib.threads.SshTool import SshTool
+from gspylib.common.GaussLog import GaussLog
+from gspylib.common.Common import DefaultValue
+from gspylib.common.OMCommand import OMCommand
+from gspylib.common.DbClusterInfo import dbClusterInfo
+from gspylib.common.ErrorCode import ErrorCode
+from gspylib.common.ParameterParsecheck import Parameter
+from base_utils.os.file_util import FileUtil
+from base_utils.os.net_util import NetUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from base_utils.common.constantsbase import ConstantsBase
+from base_utils.os.user_util import UserUtil
+from domain_utils.cluster_file.cluster_config_file import ClusterConfigFile
+from base_utils.os.env_util import EnvUtil
+
+#############################################################################
+# Global variables
+#   gs_checkse_version: the gs_checkse verion number
+#   g_opts: globle option
+#   g_logger: globle logger
+#   g_sshTool: globle ssh interface
+#   g_SECheckOpts: options about all checking and setting items
+#   DEFAULT_INTERVAL: default space number
+#   CHECK_ITEMNUMLIST: checking item list
+#   SET_ITEMNUMLIST: setting item list
+#   LOG_DIR: the log directory about gs_checkse
+#############################################################################
+g_opts = None
+g_logger = None
+g_sshTool = None
+host = None
+g_clusterInfo = None
+g_SECheckOpts = {
+    'A1': ['Checking items', '[ Checking Connection configuration ]', 'Normal', 'OK', 'OK'],
+    'A2': ['Checking items', '[ File directory security ]', 'Normal', 'OK', 'OK'],
+    'A3': ['Checking items', '[ Security authentication configuration ]', 'Normal', 'OK', 'OK'],
+    'A4': ['Checking items', '[ Account_password_management ]', 'Normal', 'OK', 'OK'],
+    'A5': ['Checking items', '[ Permission management ]', 'Normal', 'OK', 'OK'],
+    'A6': ['Checking items', '[ Database auditing ]', 'Normal', 'OK', 'OK'],
+    'A7': ['Checking items', '[ Error reporting and logging configuration ]', 'Normal', 'OK', 'OK'],
+    'A8': ['Checking items', '[ Backup configuration ]', 'Normal', 'OK', 'OK'],
+    'A9': ['Checking items', '[ Runtime environment configuration ]', 'Normal', 'OK', 'OK'],
+    'A10': ['Checking items', '[ Other configurations ]', 'Normal', 'OK', 'OK'],
+    'B1': ['Setting items', '[ Set Connection configuration ]', 'Normal', 'OK', 'OK'],
+    'B2': ['Setting items', '[ Set File directory security ]', 'Normal', 'OK', 'OK'],
+    'B3': ['Setting items', '[ Set Security authentication configuration ]', 'Normal', 'OK', 'OK'],
+    'B4': ['Setting items', '[ Set Account password management ]', 'Normal', 'OK', 'OK'],
+    'B5': ['Setting items', '[ Set Permission management ]', 'Normal', 'OK', 'OK'],
+    'B6': ['Setting items', '[ Set Database auditing ]', 'Normal', 'OK', 'OK'],
+    'B7': ['Setting items', '[ Set Error reporting and logging configuration ]', 'Normal', 'OK', 'OK'],
+    'B8': ['Setting items', '[ Set Backup configuration ]', 'Normal', 'OK', 'OK'],
+    'B9': ['Setting items', '[ Set Runtime environment configuration ]', 'Normal', 'OK', 'OK'],
+    'B10': ['Setting items', '[ Set Other configurations ]', 'Normal', 'OK', 'OK']}
+DEFAULT_INTERVAL = 60
+DEFAULT_CONSISTENCY_INTERVAL = 6
+CHECK_ITEMNUMLIST = ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A10']
+SET_ITEMNUMLIST = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9', 'B10']
+LOG_DIR = "/tmp/gs_checkse"
+Local_CheckSe = ""
+Local_Check = ""
+#######################################################
+# action option strings
+ACTION_CHECK_Connection_configuration = "Check_Connection_configuration"
+ACTION_CHECK_File_directory_security = "Check_File_directory_security"
+ACTION_CHECK_Security_authentication_configuration = "Check_Security_authentication_configuration"
+ACTION_CHECK_Account_password_management = "Check_Account_password_management"
+ACTION_CHECK_Permission_management = "Check_Permission_management"
+ACTION_CHECK_Database_auditing = "Check_Database_auditing"
+ACTION_CHECK_Error_reporting_and_logging_configuration = "Check_Error_reporting_and_logging_configuration"
+ACTION_CHECK_Backup_configuration = "Check_Backup_configuration"
+ACTION_CHECK_Runtime_environment_configuration = "Check_Runtime_environment_configuration"
+ACTION_CHECK_Other_configurations = "Check_Other_configurations"
+
+ACTION_SET_Connection_configuration = "Set_Connection_configuration"
+ACTION_SET_File_directory_security = "Set_File_directory_security"
+ACTION_SET_Security_authentication_configuration = "Set_Security_authentication_configuration"
+ACTION_SET_Account_password_management = "Set_Account_password_management"
+ACTION_SET_Permission_management = "Set_Permission_management"
+ACTION_SET_Database_auditing = "Set_Database_auditing"
+ACTION_SET_Error_reporting_and_logging_configuration = "Set_Error_reporting_and_logging_configuration"
+ACTION_SET_Backup_configuration = "Set_Backup_configuration"
+ACTION_SET_Runtime_environment_configuration = "Set_Runtime_environment_configuration"
+ACTION_SET_Other_configurations = "Set_Other_configurations"
+
+
+#######################################################
+class CmdOptions():
+    """
+    init the command options
+    """
+
+    def __init__(self):
+        self.hostnamestr = ""
+        self.itemstr = ""
+        self.hostlistfile = ""
+        self.hostnameList = []
+        self.outputfile = ""
+        self.logFile = ""
+        self.localLog = ""
+        self.set = False
+        self.detail = False
+        self.detail_all = False
+        self.item_detail = []
+        self.confFile = ""
+        self.localMode = False
+        self.skip_cgroup_set = False
+
+    #########################################################
+
+
+# Init global log
+#########################################################
+def initGlobals():
+    """
+    init the global parameter g_logger and g_sshTool
+    """
+    global g_logger
+    global g_sshTool
+    global g_clusterInfo
+    g_logger = GaussLog(g_opts.logFile, "gs_checkse")
+    dirName = os.path.dirname(g_opts.logFile)
+    g_opts.localLog = os.path.join(dirName, ClusterConstants.LOCAL_LOG_FILE)
+    g_sshTool = SshTool(g_opts.hostnameList, g_logger.logFile,
+                        DefaultValue.TIMEOUT_PSSH_CHECK)
+    g_clusterInfo = dbClusterInfo()
+    if (g_opts.confFile != ""):
+        g_clusterInfo.initFromXml(g_opts.confFile)
+
+
+#############################################################################
+# Parse and check parameters
+#############################################################################
+def usage():
+    """
+gs_checkse is a tool used to check and set security configurations.
+
+Usage:
+  gs_checkse -? | --help
+  gs_checkse -V | --version
+  gs_checkse -i ITEM [-f HOSTFILE] [-h HOSTNAME] [-X XMLFILE] [--detail] [-o OUTPUT] [-l LOGFILE]
+
+General options:
+  -i                              Item number. To check all items, enter  "-i A". To set all parameters, enter "-i B".
+                                  To check multiple status, enter the items in the following format: "-i A1,A2,A3".
+  -f                              File listing names of all the hosts to connect to. The host names are separated by line breaks.
+  -h                              Name of the host to connect to.
+  -X                              Configuration file of the cluster.
+     --detail                     Show detailed information.
+  -o                              Save the result to the specified file.
+  -l                              Path of log file.
+  -? --help                       Show help information for this utility, and exit the command line mode.
+  -V --version                    Show version information.
+
+
+Item number description:
+    'A1': [ Checking Connection configuration ]
+    'A2': [ File directory security ]
+    'A3': [ Security authentication configuration ]
+    'A4': [ Account_password_management ]
+    'A5': [ Permission management ]
+    'A6': [ Database auditing ]
+    'A7': [ Error reporting and logging configuration ]
+    'A8': [ Backup configuration ]
+    'A9': [ Runtime environment configuration ]
+    'A10': [ Other configurations ]
+    'B1': [ Set Connection configuration ]
+    'B2': [ Set File directory security ]
+    'B3': [ Set Security authentication configuration ]
+    'B4': [ Set Account password management ]
+    'B5': [ Set Permission management ]
+    'B6': [ Set Database auditing ]
+    'B7': [ Set Error reporting and logging configuration ]
+    'B8': [ Set Backup configuration ]
+    'B9': [ Set Runtime environment configuration ]
+    'B10': [ Set Other configurations ]
+
+    """
+    print(usage.__doc__)
+
+
+def parseHostnameOpts(value):
+    """
+    parse hostnames by value
+    """
+    if (len(value) > 1):
+        for val in value:
+            val = val.strip()
+            if val != "" and val not in g_opts.hostnameList:
+                g_opts.hostnameList.append(val)
+    else:
+        g_opts.hostnameList.append(value[0])
+
+
+def parseItemOpts(itemList):
+    """
+    parse items by value
+    """
+    value = []
+    for val in itemList:
+        if (len(val.split(',')) > 1):
+            for i in val.split(','):
+                value.append(i)
+        else:
+            value.append(val)
+    if (len(value) > 1):
+        for val in value:
+            val = val.strip().upper()
+            if (val in CHECK_ITEMNUMLIST or val.upper() == "A" or
+                    val in SET_ITEMNUMLIST or val.upper() == "B"):
+                if val not in g_opts.item_detail:
+                    g_opts.item_detail.append(val)
+            else:
+                GaussLog.exitWithError(
+                    ErrorCode.GAUSS_500["GAUSS_50004"] % 'i')
+    else:
+        value = value[0].upper()
+        if (value in CHECK_ITEMNUMLIST or value == "A" or
+                value in SET_ITEMNUMLIST or value == "B"):
+            if value not in g_opts.item_detail:
+                g_opts.item_detail.append(value)
+        else:
+            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % 'i')
+
+
+def parseCommandLine():
+    """
+    Parse command line and save to global variable
+    """
+    global g_opts
+    g_opts = CmdOptions()
+
+    ParaObj = Parameter()
+    ParaDict = ParaObj.ParameterCommandLine("checkse")
+    if (ParaDict.__contains__("helpFlag")):
+        usage()
+        sys.exit(0)
+    if (ParaDict.__contains__("logFile")):
+        g_opts.logFile = ParaDict.get("logFile")
+    if (ParaDict.__contains__("confFile")):
+        g_opts.confFile = ParaDict.get("confFile")
+    if (ParaDict.__contains__("nodename")):
+        g_opts.hostnamestr = ParaDict.get("nodename")
+    if (ParaDict.__contains__("hostfile")):
+        g_opts.hostlistfile = ParaDict.get("hostfile")
+    if (ParaDict.__contains__("outFile")):
+        g_opts.outputfile = ParaDict.get("outFile")
+    if (ParaDict.__contains__("itemstr")):
+        g_opts.itemstr = ParaDict.get("itemstr")
+    if (ParaDict.__contains__("show_detail")):
+        g_opts.detail = ParaDict.get("show_detail")
+
+
+def getUserInfo():
+    """
+    function: get user
+    input: NA
+    output: NA
+    """
+    if os.getuid() != 0:
+        user_info = UserUtil.getUserInfo()
+        g_opts.user = user_info.get("name")
+        DefaultValue.checkPathVaild(g_opts.user)
+
+
+def readHostFile(hostfile):
+    """
+    read host file to hostlist
+    """
+    try:
+        with open(hostfile, "r") as fp:
+            for readline in fp:
+                hostname = readline.strip().split("\n")[0]
+                if hostname != "" and hostname not in hostfile:
+                    g_opts.hostnameList.append(hostname)
+    except Exception as e:
+        GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50204"] %
+                               hostfile + " Error: \n%s" % str(e))
+
+
+def checkHostList():
+    """
+    """
+    if (g_opts.hostnamestr == "" and g_opts.hostlistfile == ""):
+        g_opts.hostnameList = [NetUtil.GetHostIpOrName()]
+    elif (g_opts.hostnamestr != "" and g_opts.hostlistfile != ""):
+        GaussLog.exitWithError(
+            ErrorCode.GAUSS_500["GAUSS_50005"] % ('h', 'f'))
+    elif (g_opts.hostnamestr == "" and g_opts.hostlistfile != ""):
+        if (not os.path.isfile(g_opts.hostlistfile)):
+            GaussLog.exitWithError(
+                ErrorCode.GAUSS_502["GAUSS_50201"] % g_opts.hostlistfile)
+        else:
+            readHostFile(g_opts.hostlistfile)
+    else:
+        parseHostnameOpts(g_opts.hostnamestr)
+
+
+def checkConfigFile():
+    """
+    """
+    if (g_opts.confFile != ""):
+        if (not os.path.isfile(g_opts.confFile)):
+            GaussLog.exitWithError(
+                ErrorCode.GAUSS_502["GAUSS_50201"] % g_opts.confFile)
+
+
+def getCheckseLogPath(log_name, xml):
+    """
+    function: get the checkse log path
+    input: log_name, xml
+    output: fullLogPath
+    """
+    try:
+        gs_checkse_log_path = ""
+        # get the log path
+        configedLogPath = ClusterConfigFile.getOneClusterConfigItem("gaussdbLogPath", xml)
+        DefaultValue.checkPathVaild(configedLogPath)
+        # check gaussdbLogPath is not null
+        if configedLogPath == "":
+            gs_checkse_log_path = "%s/%s/om/%s" % (
+                ClusterConstants.GAUSSDB_DIR, g_opts.user, log_name)
+        else:
+            gs_checkse_log_path = "%s/%s/om/%s" % (
+                os.path.normpath(configedLogPath), g_opts.user, log_name)
+        UserUtil.check_path_owner(gs_checkse_log_path)
+        return gs_checkse_log_path
+    except Exception as e:
+        GaussLog.exitWithError(str(e))
+
+
+def createLogFile():
+    cmd = "(if [ ! -d %s ]; then mkdir -p %s -m %s; fi)" % (
+        LOG_DIR, LOG_DIR, DefaultValue.KEY_DIRECTORY_MODE)
+    (status, output) = subprocess.getstatusoutput(cmd)
+    if (status != 0):
+        GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50208"]
+                               % "log of gs_checkse" + " Error: \n%s."
+                               % output + "The cmd is %s" % cmd)
+    g_opts.logFile = os.path.join(LOG_DIR, ClusterConstants.GS_CHECKSE_LOG_FILE)
+
+
+def setLogFile():
+    """
+    """
+    if (g_opts.logFile == ""):
+        if os.getuid() == 0:
+            createLogFile()
+        else:
+            # get gausslog from env
+            gauss_log = EnvUtil.getEnv("GAUSSLOG")
+            if gauss_log:
+                g_opts.logFile = os.path.normpath(
+                    os.path.join(gauss_log, g_opts.user, "om", ClusterConstants.GS_CHECKSE_LOG_FILE))
+            # get gausslog from xml
+            elif g_opts.confFile:
+                g_opts.logFile = getCheckseLogPath(ClusterConstants.GS_CHECKSE_LOG_FILE, g_opts.confFile)
+                if (not os.path.isabs(g_opts.logFile)):
+                    GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"]
+                                           % g_opts.logFile)
+            else:
+                createLogFile()
+
+        UserUtil.check_path_owner(g_opts.logFile)
+
+
+def checkItems():
+    """
+    """
+    if (g_opts.itemstr == ""):
+        GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % "i" + ".")
+
+
+def checkOutputFile():
+    """
+    """
+    try:
+        if (g_opts.outputfile != ""):
+            DefaultValue.checkOutputFile(g_opts.outputfile)
+    except Exception as e:
+        GaussLog.exitWithError(str(e))
+
+
+def checkParameter():
+    """
+    Check parameter from command line
+    """
+    getUserInfo()
+    ############################################
+    # check hostlist info
+    ###########################################
+    checkHostList()
+    # check config file
+    checkConfigFile()
+    if (len(g_opts.hostnameList) == 0):
+        g_opts.hostnameList = [NetUtil.GetHostIpOrName()]
+    g_opts.hostnameList.sort()
+    checkHostnameList()
+    ##########################################
+    # set logfile
+    ############################################
+    setLogFile()
+    ##########################################
+    # set items
+    ############################################
+    checkItems()
+
+    parseItemOpts(g_opts.itemstr)
+    if (("B" in g_opts.item_detail)):
+        g_opts.set = True
+    else:
+        for i in SET_ITEMNUMLIST:
+            for j in g_opts.item_detail:
+                if (j == i):
+                    g_opts.set = True
+                    break
+    if (g_opts.set == True):
+        if ("A" in g_opts.item_detail):
+            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % 'i'
+                                   + " Checking items and setting items"
+                                     " can't be used together.")
+        for i in CHECK_ITEMNUMLIST:
+            for j in g_opts.item_detail:
+                if (j == i):
+                    GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
+                                           % 'i' + " Checking items and "
+                                                   "setting items can't be"
+                                                   " used together.")
+
+    ############################################
+    # check output file
+    ############################################
+    checkOutputFile()
+
+
+def doCheckSE(itemNumber):
+    """
+    do the checing ation by item
+    """
+    if (itemNumber == 'A1'):
+        checkConnectionConfiguration()
+    elif (itemNumber == 'A2'):
+        checkFileSecurity()
+    elif (itemNumber == 'A3'):
+        checkSecurityAuthConf()
+    elif (itemNumber == 'A4'):
+        checkAccountPasswordManagement()
+    elif (itemNumber == 'A5'):
+        checkPermissionManagement()
+    elif (itemNumber == 'A6'):
+        checkDatabaseAuditing()
+    elif (itemNumber == 'A7'):
+        checkErrorReportingAndLoggingConfiguration()
+    elif (itemNumber == 'A8'):
+        checkBackupConfiguration()
+    elif (itemNumber == 'A9'):
+        checkRuntimeEnvironmentConfiguration()
+    elif (itemNumber == 'A10'):
+        checkOtherConfigurations()
+
+
+def doSetSE(itemNumber):
+    """
+    do the setting ation by item
+    """
+    if (itemNumber == 'B1'):
+        setConnectionConfiguration()
+    elif (itemNumber == 'B2'):
+        setFileDirectorySecurity()
+    elif (itemNumber == 'B3'):
+        setSecurityAuthenticationConfiguration()
+    elif (itemNumber == 'B4'):
+        setAccountPasswordManagement()
+    elif (itemNumber == 'B5'):
+        setPermissionManagement()
+    elif (itemNumber == 'B6'):
+        setDatabaseAuditing()
+    elif (itemNumber == 'B7'):
+        setErrorReportingAndLoggingConfiguration()
+    elif (itemNumber == 'B8'):
+        setBackupConfiguration()
+    elif (itemNumber == 'B9'):
+        setRuntimeEnvironmentConfiguration()
+    elif (itemNumber == 'B10'):
+        setOtherConfigurations()
+
+
+def performCheckorSetSE(action_item, flag_str, success_mesg, item_num,
+                        warning_level, configFile="", command="",
+                        parameters=""):
+    """
+    action_item   :     action item
+    flag_str      :     failed flag string
+    success_mesg  :     success message information
+    item_num      :     item number
+    warning_level :     warning level, warning or  Abnormal
+    parameters    :     multiple strings of parameters
+    """
+    try:
+        if command == "":
+            command = Local_CheckSe
+        if (configFile != ""):
+            cmd = "%s -t %s -X '%s' -l '%s' %s" % (
+                command, action_item, configFile, g_opts.localLog, parameters)
+        else:
+            cmd = "%s -t %s -l '%s' %s" % (
+                command, action_item, g_opts.localLog, parameters)
+        (status, output, outputMap) = getCmdOutput(cmd)
+        parRes = ""
+        detail_msg = ""
+        for node in list(status.keys()):
+            if (status[node] != DefaultValue.SUCCESS):
+                g_logger.logExit("        [%s]: \n" % node +
+                                 ErrorCode.GAUSS_516["GAUSS_51632"] % cmd
+                                 + " Error: \n%s" % outputMap[node].strip())
+            if (outputMap[node].find(flag_str) >= 0):
+                g_SECheckOpts[item_num][2] = warning_level
+                parRes += "        [%s]\n%s\n" % (node, outputMap[node])
+            else:
+                detail_msg += "        [%s]\n%s\n" % (node, outputMap[node])
+            if (outputMap[node].find("Warning reason") >= 0
+                    and outputMap[node].find("Abnormal") < 0):
+                if (g_SECheckOpts[item_num][2] != "Abnormal"):
+                    g_SECheckOpts[item_num][2] = "Warning"
+                parRes += "        [%s]\n%s\n" % (node, outputMap[node])
+        if (parRes != ""):
+            raise Exception("%s" % parRes)
+        if (g_SECheckOpts[item_num][2] != warning_level):
+            g_SECheckOpts[item_num][3] = "\n        %s" % success_mesg
+        if g_SECheckOpts[item_num][4] != "OK":
+            g_SECheckOpts[item_num][4] = formatResault(
+                detail_msg, g_SECheckOpts[item_num][4])
+        else:
+            g_SECheckOpts[item_num][4] = "\n%s" % detail_msg
+    except Exception as e:
+        g_logger.debug(str(e))
+        if (g_SECheckOpts[item_num][2] == "Normal"):
+            g_SECheckOpts[item_num][2] = '%s' % warning_level
+        g_SECheckOpts[item_num][3] = "\n%s" % str(e)
+        g_SECheckOpts[item_num][4] = "\n%s" % str(e)
+
+
+def checkConnectionConfiguration():
+    """
+    Checking Monitor IP
+    """
+    g_logger.debug("Checking Connection configuration.")
+    performCheckorSetSE(ACTION_CHECK_Connection_configuration,
+                        "Checking Connection configuration failed.",
+                        "Checking Connection configuration succeeded.",
+                        "A1", "Warning")
+    g_logger.debug("Successfully checked Monitoring Host IP Address.")
+
+
+def checkFileSecurity():
+    """
+    Checking File directory security
+    """
+    g_logger.debug("Checking CHECK File directory security.")
+    performCheckorSetSE(ACTION_CHECK_File_directory_security,
+                        "Checking File directory security failed.",
+                        "Checking File directory security succeeded.", "A2",
+                        "Warning")
+    g_logger.debug("Successfully checked File directory security.")
+
+
+def checkSecurityAuthConf():
+    """
+    Checking Security authentication configuration
+    """
+    g_logger.debug("Checking Security authentication configuration.")
+    performCheckorSetSE(ACTION_CHECK_Security_authentication_configuration,
+                        "Checking Security authentication configuration failed.",
+                        "Checking Security authentication configuration succeeded.",
+                        "A3", "Warning")
+    g_logger.debug("Successfully checked Security authentication configuration.")
+
+
+def checkAccountPasswordManagement():
+    """
+    Checking Account password management
+    """
+    g_logger.debug("Checking Account password management.")
+    performCheckorSetSE(ACTION_CHECK_Account_password_management,
+                        "Checking Account password management failed.",
+                        "Checking Account password management succeeded.",
+                        "A4", "Warning")
+    g_logger.debug("Successfully checked Account password management.")
+
+
+def checkPermissionManagement():
+    """
+    Checking Permission management
+    """
+    g_logger.debug("Checking Permission management")
+    performCheckorSetSE(ACTION_CHECK_Permission_management,
+                        "Checking Permission management failed.",
+                        "Checking Permission management succeeded.",
+                        "A5", "Warning")
+    g_logger.debug("Successfully checked Permission management.")
+
+
+def checkDatabaseAuditing():
+    """
+    Checking Database Auditing
+    """
+    g_logger.debug("Checking Database auditing")
+    performCheckorSetSE(ACTION_CHECK_Database_auditing,
+                        "Checking Database auditing failed.",
+                        "Checking Database auditing succeeded.",
+                        "A6", "Warning")
+    g_logger.debug("Successfully checked Database auditing")
+
+
+def checkErrorReportingAndLoggingConfiguration():
+    """
+    Checking Error Reporting And Logging Configuration
+    """
+    g_logger.debug("Checking Error reporting and logging configuration")
+    performCheckorSetSE(ACTION_CHECK_Error_reporting_and_logging_configuration,
+                        "Checking Error reporting and logging configuration failed.",
+                        "Checking Error reporting and logging configuration succeeded.",
+                        "A7", "Warning")
+    g_logger.debug("Successfully checked Error reporting and logging configuration")
+
+
+def checkBackupConfiguration():
+    """
+    Checking Backup Configuration
+    """
+    g_logger.debug("Checking Backup configuration")
+    performCheckorSetSE(ACTION_CHECK_Backup_configuration,
+                        "Checking Backup configuration failed.",
+                        "Checking Backup configuration succeeded.",
+                        "A8", "Warning")
+    g_logger.debug("Successfully checked Backup configuration")
+
+
+def checkRuntimeEnvironmentConfiguration():
+    """
+    Checking Runtime Environment Configuration
+    """
+    g_logger.debug("Checking Runtime environment configuration")
+    performCheckorSetSE(ACTION_CHECK_Runtime_environment_configuration,
+                        "Checking Runtime environment configuration failed.",
+                        "Checking Runtime environment configuration succeeded.",
+                        "A9", "Warning")
+    g_logger.debug("Successfully checked Runtime environment configuration")
+
+
+def checkOtherConfigurations():
+    """
+    Checking Other Configurations
+    """
+    g_logger.debug("Checking Other configurations")
+    performCheckorSetSE(ACTION_CHECK_Other_configurations,
+                        "Checking Other configurations failed.",
+                        "Checking Other configurations succeeded.",
+                        "A10", "Warning")
+    g_logger.debug("Successfully checked Other configurations")
+
+
+def setConnectionConfiguration():
+    """
+    Setting Connection configuration
+    """
+    g_logger.debug("Setting Connection configuration.")
+    performCheckorSetSE(ACTION_SET_Connection_configuration, "Failed",
+                        "Setting Connection configuration succeed.", "B1",
+                        "Abnormal")
+    g_logger.debug("Successfully setted Connection configuration.")
+
+
+def setFileDirectorySecurity():
+    """
+    Setting File Directory Security
+    """
+    g_logger.debug("Setting File Directory Security.")
+    performCheckorSetSE(ACTION_SET_File_directory_security, "Failed",
+                        "Setting File Directory Security succeed.", "B2",
+                        "Abnormal")
+    g_logger.debug("Successfully setted File Directory Security.")
+
+
+def setSecurityAuthenticationConfiguration():
+    """
+    Setting Security authentication configuration
+    """
+    g_logger.debug("Setting Security authentication configuration.")
+    performCheckorSetSE(ACTION_SET_Security_authentication_configuration, "Failed",
+                        "Setting Security authentication configuration succeed.", "B3",
+                        "Abnormal")
+    g_logger.debug("Successfully setted Security authentication configuration.")
+
+
+def setAccountPasswordManagement():
+    """
+    Setting Account Password Management
+    """
+    g_logger.debug("Setting Account Password Management.")
+    performCheckorSetSE(ACTION_SET_Account_password_management, "Failed",
+                        "Setting Account Password Management succeed.", "B4",
+                        "Abnormal")
+    g_logger.debug("Successfully setted Account Password Management.")
+
+
+def setPermissionManagement():
+    """
+    Setting Permission management
+    """
+    g_logger.debug("Setting Permission management.")
+    performCheckorSetSE(ACTION_SET_Permission_management, "Failed",
+                        "Setting Permission management succeed.", "B5",
+                        "Abnormal")
+    g_logger.debug("Successfully setted Permission management.")
+
+
+def setDatabaseAuditing():
+    """
+    Setting Database auditing
+    """
+    g_logger.debug("Setting Database auditing.")
+    performCheckorSetSE(ACTION_SET_Database_auditing, "Failed",
+                        "Setting Database auditing succeed.", "B6",
+                        "Abnormal")
+    g_logger.debug("Successfully setted Database auditing.")
+
+
+def setErrorReportingAndLoggingConfiguration():
+    """
+    Setting Error reporting and logging configuration
+    """
+    g_logger.debug("Setting Error reporting and logging configuration.")
+    performCheckorSetSE(ACTION_SET_Error_reporting_and_logging_configuration, "Failed",
+                        "Setting Error reporting and logging configuration succeed.", "B7",
+                        "Abnormal")
+    g_logger.debug("Successfully setted Error reporting and logging configuration.")
+
+
+def setBackupConfiguration():
+    """
+    Setting Backup configuration
+    """
+    g_logger.debug("Setting Backup configuration.")
+    performCheckorSetSE(ACTION_SET_Backup_configuration, "Failed",
+                        "Setting Backup configuration succeed.", "B8",
+                        "Abnormal")
+    g_logger.debug("Successfully setted Backup configuration")
+
+
+def setRuntimeEnvironmentConfiguration():
+    """
+    Setting Runtime environmen configuration
+    """
+    g_logger.debug("Setting Runtime environmen configuration.")
+    performCheckorSetSE(ACTION_SET_Runtime_environment_configuration, "Failed",
+                        "Setting Runtime environmen configuration succeed.", "B9",
+                        "Abnormal")
+    g_logger.debug("Successfully setted Runtime environmen configuration")
+
+
+def setOtherConfigurations():
+    """
+    Setting Other configurations
+    """
+    g_logger.debug("Setting Other configurations.")
+    performCheckorSetSE(ACTION_SET_Other_configurations, "Failed",
+                        "Setting Other configurations succeed.", "B10",
+                        "Abnormal")
+    g_logger.debug("Successfully setted Other configurations")
+
+
+def formatResault(result_Str1, result_Str2):
+    """
+    get add result of to dict
+    """
+    result = ""
+    result_list1 = result_Str1.strip("\n").split("\n\n")
+    result_list2 = result_Str2.strip("\n").split("\n\n")
+    for nodeInfo1 in result_list1:
+        result += ("\n" + nodeInfo1.split("\n")[0])
+        result += ("\n" + "\n".join(nodeInfo1.split("\n")[1:]))
+        for nodeInfo2 in result_list2:
+            if nodeInfo1.split("\n")[0].strip() == nodeInfo2.split("\n")[0].strip():
+                result += ("\n" + "\n".join(nodeInfo2.split("\n")[1:]) + "\n")
+    return result
+
+
+def getLocalIPAddr():
+    '''
+    function: get all ips from configuration file
+    input : NA
+    output: Ips
+    '''
+    Ips = ""
+
+    if (g_opts.confFile == ""):
+        localHostIp = DefaultValue.getIpByHostName()
+        Ips = localHostIp
+    else:
+        for node in g_clusterInfo.dbNodes:
+            if (node.name == NetUtil.GetHostIpOrName()):
+                Ips = node.backIps[0]
+    return Ips
+
+
+def DisplayResultInformation(Item, output):
+    """
+    display the result information
+    """
+    if ("A" in g_opts.item_detail) or ("B" in g_opts.item_detail):
+        if (Item in ("A1", "B1")):
+            if (g_opts.detail):
+                print("%s:\n    %s: %s %s" % (
+                    g_SECheckOpts[Item][0],
+                    ("%s%s" %
+                     (("%s." % Item).ljust(4),
+                      g_SECheckOpts[Item][1])).ljust(DEFAULT_INTERVAL),
+                    g_SECheckOpts[Item][2].ljust(10),
+                    g_SECheckOpts[Item][3].ljust(DEFAULT_INTERVAL)),
+                      file=output)
+            elif (g_opts.detail_all):
+                print("%s:\n    %s: %s %s" %
+                      (g_SECheckOpts[Item][0],
+                       ("%s%s" %
+                        (("%s." % Item).ljust(4),
+                         g_SECheckOpts[Item][1])).ljust(DEFAULT_INTERVAL),
+                       g_SECheckOpts[Item][2].ljust(10),
+                       g_SECheckOpts[Item][4].ljust(DEFAULT_INTERVAL)),
+                      file=output)
+            else:
+                print("%s:\n    %s: %s" %
+                      (g_SECheckOpts[Item][0],
+                       ("%s%s" %
+                        (("%s." % Item).ljust(4),
+                         g_SECheckOpts[Item][1])).ljust(DEFAULT_INTERVAL),
+                       g_SECheckOpts[Item][2]), file=output)
+        else:
+            if (g_opts.detail):
+                print("    %s: %s %s" %
+                      (("%s%s" %
+                        (("%s." % Item).ljust(4),
+                         g_SECheckOpts[Item][1])).ljust(DEFAULT_INTERVAL),
+                       g_SECheckOpts[Item][2].ljust(10),
+                       g_SECheckOpts[Item][3].ljust(DEFAULT_INTERVAL)),
+                      file=output)
+            elif (g_opts.detail_all):
+                print("    %s: %s %s" %
+                      (("%s%s" %
+                        (("%s." % Item).ljust(4),
+                         g_SECheckOpts[Item][1])).ljust(DEFAULT_INTERVAL),
+                       g_SECheckOpts[Item][2].ljust(10),
+                       g_SECheckOpts[Item][4].ljust(DEFAULT_INTERVAL)),
+                      file=output)
+            else:
+                print("    %s: %s" %
+                      (("%s%s" %
+                        (("%s." % Item).ljust(4),
+                         g_SECheckOpts[Item][1])).ljust(DEFAULT_INTERVAL),
+                       g_SECheckOpts[Item][2]), file=output)
+    else:
+        orderItems = []
+        for i in [CHECK_ITEMNUMLIST, SET_ITEMNUMLIST]:
+            bb = []
+            for j in g_opts.item_detail:
+                if j in i:
+                    bb.append(j)
+            tmp = sorted(bb)
+            bb = tmp
+            if (bb != []):
+                orderItems.append(bb[0])
+        if (Item in orderItems):
+            if (g_opts.detail):
+                print("%s\n    %s: %s %s" %
+                      (g_SECheckOpts[Item][0],
+                       ("%s%s" %
+                        (("%s." % Item).ljust(4),
+                         g_SECheckOpts[Item][1])).ljust(DEFAULT_INTERVAL),
+                       g_SECheckOpts[Item][2].ljust(10),
+                       g_SECheckOpts[Item][3].ljust(DEFAULT_INTERVAL)),
+                      file=output)
+            elif (g_opts.detail_all):
+                print("%s\n    %s: %s %s" %
+                      (g_SECheckOpts[Item][0],
+                       ("%s%s" %
+                        (("%s." % Item).ljust(4),
+                         g_SECheckOpts[Item][1])).ljust(DEFAULT_INTERVAL),
+                       g_SECheckOpts[Item][2].ljust(10),
+                       g_SECheckOpts[Item][4].ljust(DEFAULT_INTERVAL)),
+                      file=output)
+            else:
+                print("%s\n    %s: %s" %
+                      (g_SECheckOpts[Item][0],
+                       ("%s%s" %
+                        (("%s." % Item).ljust(4),
+                         g_SECheckOpts[Item][1])).ljust(DEFAULT_INTERVAL),
+                       g_SECheckOpts[Item][2]), file=output)
+        else:
+            if (g_opts.detail):
+                print("    %s: %s %s" %
+                      (("%s%s" %
+                        (("%s." % Item).ljust(4),
+                         g_SECheckOpts[Item][1])).ljust(DEFAULT_INTERVAL),
+                       g_SECheckOpts[Item][2].ljust(10),
+                       g_SECheckOpts[Item][3].ljust(DEFAULT_INTERVAL)),
+                      file=output)
+            elif (g_opts.detail_all):
+                print("    %s: %s %s" %
+                      (("%s%s" %
+                        (("%s." % Item).ljust(4),
+                         g_SECheckOpts[Item][1])).ljust(DEFAULT_INTERVAL),
+                       g_SECheckOpts[Item][2].ljust(10),
+                       g_SECheckOpts[Item][4].ljust(DEFAULT_INTERVAL)),
+                      file=output)
+            else:
+                print("    %s: %s" %
+                      (("%s%s" %
+                        (("%s." % Item).ljust(4),
+                         g_SECheckOpts[Item][1])).ljust(DEFAULT_INTERVAL),
+                       g_SECheckOpts[Item][2]), file=output)
+
+
+def cmpItem(item1, item2):
+    """
+    sort item
+    """
+    if (item1[0] < item2[0]):
+        return -1
+    elif (item1[0] > item2[0]):
+        return 1
+    else:
+        if (int(item1[1:]) < int(item2[1:])):
+            return -1
+        elif (int(item1[1:]) > int(item2[1:])):
+            return 1
+        else:
+            return 0
+
+
+def checkHostnameList():
+    """
+    function: check the self.hostnameList is only local hostname
+    input: NA
+    output:NA
+    """
+
+    # get the local hostname
+    global host
+    host = NetUtil.GetHostIpOrName()
+
+    # if g_opts.hostnameList have only one value,
+    # check it whether or not local hostname
+    if (len(g_opts.hostnameList) == 1):
+        if (g_opts.hostnameList[0] == NetUtil.GetHostIpOrName()):
+            g_opts.localMode = True
+            return
+    try:
+        # check the g_opts.hostnameList values are whether or not local IPs
+        # obtain the all local IPs
+        IPlist = NetUtil.getIpAddressList()
+        IPlist.append(host)
+
+        for ip in g_opts.hostnameList:
+            if ip not in IPlist:
+                return
+        g_opts.localMode = True
+
+    except Exception as ex:
+        GaussLog.exitWithError(str(ex))
+
+
+def getCmdOutput(cmd, ssh_conf=""):
+    """
+    function: execute the cmd and get the output
+    input: cmd
+    output:status, output, outputMap
+    """
+
+    if (g_opts.localMode == True):
+        status = {}
+        outputMap = {}
+        outputCollect = []
+        (statusStr, output) = subprocess.getstatusoutput(cmd)
+        if (statusStr != 0):
+            status[host] = "Failure"
+        else:
+            status[host] = "Success"
+        outputMap[host] = output
+    else:
+        gp_path = os.path.dirname(os.path.realpath(__file__))
+        (status, output) = g_sshTool.getSshStatusOutput(cmd, [], "",
+                                                        "%s/../" % gp_path,
+                                                        ssh_config=ssh_conf)
+        outputMap = g_sshTool.parseSshOutput(g_sshTool.hostNames)
+
+    return (status, output, outputMap)
+
+
+def main():
+    """
+    main function
+    """
+
+    global Local_CheckSe
+    global Local_Check
+
+    try:
+        parseCommandLine()
+        checkParameter()
+        initGlobals()
+        gpHome = os.path.dirname(os.path.realpath(__file__))
+        Local_CheckSe = OMCommand.getLocalScript("Local_CheckSE")
+        Local_Check = OMCommand.getLocalScript("Local_Check")
+    except Exception as e:
+        GaussLog.exitWithError(str(e))
+
+    if ("A" in g_opts.item_detail):
+        itemList = CHECK_ITEMNUMLIST
+    elif ("B" in g_opts.item_detail):
+        itemList = SET_ITEMNUMLIST
+    else:
+        sortList = sorted(g_opts.item_detail)
+        itemList = sortList
+
+    fp = None
+    dirName = "%s/gspylib/etc/conf" % os.path.dirname(
+        os.path.realpath(__file__))
+    configFile = "%s/check_list.conf" % dirName
+
+    try:
+        output = sys.stdout
+        if (g_opts.outputfile != ""):
+            basepath = os.path.dirname(g_opts.outputfile)
+            if (not os.path.isdir(basepath)):
+                os.makedirs(basepath, ConstantsBase.KEY_DIRECTORY_PERMISSION)
+            FileUtil.createFileInSafeMode(g_opts.outputfile)
+            fp = open(g_opts.outputfile, "w")
+            output = fp
+            g_logger.log("Performing operation system check/set."
+                         " Output the result to the file %s."
+                         % g_opts.outputfile)
+
+        for item in itemList:
+            if (g_opts.set):
+                doSetSE(item)
+            else:
+                doCheckSE(item)
+            DisplayResultInformation(item, output)
+
+        if (fp):
+            fp.flush()
+            fp.close()
+        if g_opts.outputfile != "":
+            os.chmod(g_opts.outputfile, ConstantsBase.KEY_FILE_PERMISSION)
+            g_logger.log("Operation system check/set is completed.")
+    except Exception as ex:
+        if fp:
+            fp.flush()
+            fp.close()
+        g_logger.logExit(ErrorCode.GAUSS_502["GAUSS_50205"] %
+                         g_opts.outputfile + "Error: %s" % str(ex))
+
+    totalNum = 0
+    abnormalNum = 0
+    warningNum = 0
+    for key in itemList:
+        totalNum += 1
+        if (g_SECheckOpts[key][2] == "Abnormal"):
+            abnormalNum += 1
+        elif (g_SECheckOpts[key][2] == "Warning"):
+            warningNum += 1
+    if (g_opts.set):
+        g_logger.log("NOTICE: Port value and some warning items can NOT be set."
+                     " Please do it manually.")
+    g_logger.log("Total numbers:%d. Abnormal numbers:%d. Warning numbers:%d."
+                 % (totalNum, abnormalNum, warningNum))
+    if (abnormalNum > 0):
+        if (g_opts.set == False):
+            g_logger.log("Do checking operation finished. Result: Abnormal.")
+        else:
+            g_logger.log("Do setting operation finished. Result: Abnormal.")
+
+    g_logger.closeLog()
+    sys.exit(0)
+
+
+# the main entry for this script
+if __name__ == '__main__':
+    main()

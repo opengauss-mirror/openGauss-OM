@@ -420,7 +420,7 @@ class DefaultValue():
         "Gtm": "GTM",
         # Log check config
         "ClusterManager": "cm,om,bin",
-        "DSS": "DSS,DMS",
+        "DSS": "dss,dms",
         # Core Dump check
         "gaussdb": "gaussdb",
         "gs_gtm": "gs_gtm",
@@ -509,7 +509,7 @@ class DefaultValue():
                     "StartupProcess,StatCollector,Stream,SysLogger,"
                     "ThdPoolListener,TwoPhaseCleaner,WalRcvWriter,WalReceiver,"
                     "WalSender,WalWriter,WDRSnapshot,WlmArbiter,WlmCollector,"
-                    "WlmMonitor",
+                    "WlmMonitor,dssserver",
         "Trace": "Dump",
         "Plan": "*"
     }

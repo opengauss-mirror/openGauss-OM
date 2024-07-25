@@ -834,24 +834,33 @@ def find_log():
         g_logger.debug("There is no log files.")
     return logs
 
+def find_create_dssdir(logs):
+    """
+    find dirs needed to create according logs.
+    """
+    dss_dirs = set()
+    dss_home = EnvUtil.getEnv("DSS_HOME")
+    dss_str = [('rlog', 'run'), ('dlog', 'debug'), ('olog', 'oper'), ('blog', 'blackbox')]
+    dss_log = collections.defaultdict(str)
+    for k, v in dss_str:
+        dss_log[k] = v
+    for log in logs:
+        log_str = log.split('.')[-1] if log.split('.')[-1] in dss_log else log.split('.')[-2]
+        if dss_home in log:
+            dss_dirs.add('DSSLog/%s' % dss_log[log_str])
+        if "pg_log/DSS" in log or "pg_log/DMS" in log:
+            dir_prefix = "pg_log/DSS" if "DSS" in log else "pg_log/DMS"
+            dss_dirs.add("%s/%s" % (dir_prefix, dss_log[log_str]))
+    return dss_dirs
+
 def make_log_dir(log_files, deleteCmd):
     cmd = "cd $GAUSSLOG && mkdir -p -m %s tmp_gs_collector" % \
            DefaultValue.DIRECTORY_MODE
     if check_dss_env():
-        cmd = "%s && cd $GAUSSLOG && mkdir -p -m %s tmp_gs_collector/pg_log/DMS/run && " \
-              "mkdir -p -m %s tmp_gs_collector/pg_log/DMS/debug && mkdir -p -m %s tmp_gs_collector/pg_log/DMS/oper" \
-              " && mkdir -p -m %s tmp_gs_collector/pg_log/DMS/blackbox && " \
-              "mkdir -p -m %s tmp_gs_collector/pg_log/DSS/run && mkdir -p -m %s tmp_gs_collector/pg_log/DSS/debug" \
-              " && mkdir -p -m %s tmp_gs_collector/pg_log/DSS/oper && " \
-              "mkdir -p -m %s tmp_gs_collector/pg_log/DSS/blackbox && mkdir -p -m %s tmp_gs_collector/DSSLog" % (
-              cmd, DefaultValue.DIRECTORY_MODE, DefaultValue.DIRECTORY_MODE, DefaultValue.DIRECTORY_MODE,
-              DefaultValue.DIRECTORY_MODE, DefaultValue.DIRECTORY_MODE, DefaultValue.DIRECTORY_MODE,
-              DefaultValue.DIRECTORY_MODE, DefaultValue.DIRECTORY_MODE, DefaultValue.DIRECTORY_MODE)
-        cmd = "%s && mkdir -p -m %s tmp_gs_collector/DSSLog/run &&" \
-              "mkdir -p -m %s tmp_gs_collector/DSSLog/debug && mkdir -p -m %s tmp_gs_collector/DSSLog/oper &&" \
-              "mkdir -p -m %s tmp_gs_collector/DSSLog/blackbox" % (
-              cmd, DefaultValue.DIRECTORY_MODE, DefaultValue.DIRECTORY_MODE,
-              DefaultValue.DIRECTORY_MODE, DefaultValue.DIRECTORY_MODE)
+        dss_dirs = find_create_dssdir(log_files)
+        cmd = "%s && cd $GAUSSLOG" % cmd
+        for dss_dir in dss_dirs:
+            cmd = "%s && mkdir -p -m %s tmp_gs_collector/%s" % (cmd, DefaultValue.DIRECTORY_MODE, dss_dir)
     (status, output) = subprocess.getstatusoutput(cmd)
     directorys = []
     for log in log_files:
@@ -946,8 +955,7 @@ def find_zip_log():
 
 def log_keywords(log_files, keyword_result):
     if log_files:
-        g_opts.key = g_opts.key.replace('$', '\$')
-        g_opts.key = g_opts.key.replace('\"', '\\\"')
+        g_opts.key = str(g_opts.key, encoding='gbk')
         cmd = "cd $GAUSSLOG/tmp_gs_collector && "
         cmd = "%s grep \"%s\" -r * > %s/logfiles/%s" % (
         cmd, g_opts.key, g_resultdir, keyword_result)

@@ -176,9 +176,6 @@ class DropNodeWithCmImpl(DropnodeImpl):
                 if host in node:
                     old_nodes.remove(node)
                     break
-        for i in range(len(old_nodes)):
-            if old_nodes[i][0] != str(i):
-                old_nodes[i] = str(i) + old_nodes[i][1:]
         new_list = ",".join(old_nodes)
 
         update_cmd = "sed -i 's/%s/%s/g' %s" % (old_list, new_list, dss_inst)
@@ -251,7 +248,6 @@ class DropNodeWithCmImpl(DropnodeImpl):
         """
         if self.dss_mode:
             self.ss_restart_cluster()
-            return
 
         self.logger.log("Restarting cm_server cluster ...")
         stopCMProcessesCmd = "pkill -9 om_monitor -U {user}; pkill -9 cm_agent -U {user}; " \

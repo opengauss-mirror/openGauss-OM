@@ -250,6 +250,55 @@ class UpgradeImpl:
             self.context.sshTool.scpFiles(filePath, self.context.tmpDir)
         self.context.logger.debug("Successfully write file %s." % filePath)
 
+    def doShowUpgradeStep(self):
+        self.context.logger.log("doShowUpgradeStep in UpgradeImpl")
+
+        self.context.logger.log("Cluster Nodes are %s. " % (self.context.clusterNodes))
+
+        gsversion = os.popen("gs_ssh -c \"gsql -V\"")
+
+        self.context.logger.log(gsversion.read())
+        sql = "show {0};".format("upgrade_mode")
+        (status, output) = self.execSqlCommandInPrimaryDN(sql)
+
+        stepFile = os.path.join(self.context.upgradeBackupPath,
+                                const.GREY_UPGRADE_STEP_FILE)
+
+        if status == 0:
+            if output == '0':
+               self.context.logger.log("Cluster Not in Upgrading or have been run `upgrade-commit`.")
+            else:
+              if output == '1':
+                 self.context.logger.log("Upgrade mode is `inplace upgrade`.")
+              elif output == '2':
+                 self.context.logger.log("Upgrade mode is `grey upgrade`.")
+                 with open(stepFile,'r') as csvfile:
+                     reader = csv.DictReader(csvfile)
+                     for row in reader:
+                         self.context.logger.log("step of Node [%s] is :%s" %(row['node_host'], row['step']))
+                         if row['step'] == "0":
+                             self.context.logger.log("make sure the cluster is Normal and the database could be connected")
+                         elif row['step'] == "1":
+                             self.context.logger.log("upgrade catalog")
+                         elif row['step'] == "2":
+                             self.context.logger.log("switch new bin")
+                         elif row['step'] == "3":
+                             self.context.logger.log("upgrade process")
+                         elif row['step'] == "4":
+                             self.context.logger.log("Upgrade post catalog")
+                         elif row['step'] == "5":
+                             self.context.logger.log("pre-commit")
+                         elif row['step'] == "6":
+                             self.context.logger.log("begin commit")
+                         else:
+                             self.context.logger.log("unknown step")
+                 self.check_option_grey()
+              else:
+                 self.context.logger.log("Get an Unkown Upgrade mode: %s." % (output))
+              self.context.logger.log("You have Not run `upgrade-commit` yet.")
+        else:
+            raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql)
+
     def run(self):
         """
         function: Do upgrade
@@ -266,6 +315,9 @@ class UpgradeImpl:
             raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$PGHOST")
         self.context.upgradeBackupPath = \
             "%s/%s" % (self.context.tmpDir, "binary_upgrade")
+        if self.context.action == const.ACTION_SHOW_STEP:
+            self.doShowUpgradeStep()
+            return
         try:
             self.initGlobalInfos()
             self.removeOmRollbackProgressFile()

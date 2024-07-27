@@ -1617,7 +1617,7 @@ Common options:
 
         # parse env user inputed
         for param in self.envParams:
-            keyValue = param.split("=")
+            keyValue = param.split("=", 1)
             if len(keyValue) != 2:
                 self.logger.logExit(ErrorCode.GAUSS_500["GAUSS_50000"] % param)
             envConfig[keyValue[0].strip()] = keyValue[1].strip()

@@ -43,4 +43,5 @@ class ClusterConstants:
     RESIZE_LOG_FILE = "gs_resize.log"
     HOTPATCH_LOG_FILE = "gs_hotpatch.log"
     GS_CHECKOS_LOG_FILE = "gs_checkos.log"
+    GS_CHECKSE_LOG_FILE = "gs_checkse.log"
 

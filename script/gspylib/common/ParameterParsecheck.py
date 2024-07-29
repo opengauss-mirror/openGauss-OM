@@ -97,6 +97,9 @@ gs_ssh = ["-?", "--help", "-V", "--version", "-c:"]
 gs_checkos = ["-?", "--help", "-V", "--version", "-h:", "-f:", "-o:",
               "-i:", "--detail",
               "-l:", "-X:"]
+gs_checkse = ["-?", "--help", "-V", "--version", "-h:", "-f:", "-o:",
+              "-i:", "--detail",
+              "-l:", "-X:"]
 gs_expansion = ["-?", "--help", "-V", "--version", "-U:", "-G:", "-L", 
             "-X:", "-h:", "--sep-env-file=", "--time-out="]
 gs_dropnode = ["-?", "--help", "-V", "--version", "-U:", "-G:",
@@ -144,6 +147,7 @@ ParameterDict = {"preinstall": gs_preinstall,
                  "install": gs_install,
                  "uninstall": gs_uninstall,
                  "checkos": gs_checkos,
+                 "checkse": gs_checkse,
                  "checkperf": gs_checkperf,
                  "check": gs_check,
                  "auto_upgrade": gs_upgradectl_auto_upgrade,

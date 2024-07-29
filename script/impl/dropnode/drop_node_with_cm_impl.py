@@ -37,6 +37,7 @@ from gspylib.threads.SshTool import SshTool
 from gspylib.os.gsfile import g_file
 from impl.dropnode.DropnodeImpl import DropnodeImpl
 from base_utils.os.file_util import FileUtil
+from gspylib.component.DSS.dss_comp import Dss, DssInst
 
 
 # Action type
@@ -321,7 +322,9 @@ class DropNodeWithCmImpl(DropnodeImpl):
         for xlog_n in xlog_list:
             if int(xlog_n[-1]) not in res_ids:
                 dw_path = 'pg_doublewrite' + xlog_n[-1]
-                del_cmd += "dsscmd rmdir -p +%s/%s -r; dsscmd rmdir -p +%s/%s -r;" % (vg_name, xlog_n, vg_name, dw_path)
+                pri_vgname = DssInst.get_private_vgname_by_ini(dss_home, int(xlog_n[-1]))
+                del_cmd += "dsscmd unlink -p +%s/%s; dsscmd rmdir -p +%s/%s -r; dsscmd rmdir -p +%s/%s -r;" % (
+                    vg_name, xlog_n, pri_vgname, xlog_n, vg_name, dw_path)
         del_sta, del_out = subprocess.getstatusoutput(del_cmd)
         if del_sta != 0:
             self.logger.debug("Failed to delete xlog of del hosts.")

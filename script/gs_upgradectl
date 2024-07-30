@@ -132,6 +132,7 @@ Usage:
   gs_upgradectl -t auto-rollback -X XMLFILE [-l LOGFILE] [--force]
   gs_upgradectl -t commit-upgrade -X XMLFILE [-l LOGFILE]
   gs_upgradectl -t upgrade-cm --upgrade-package PACKAGE_PATH
+  gs_upgradectl -S show-step
 
 General options:
   -?, --help                      Show help information for this utility,
@@ -234,7 +235,7 @@ Option for grey upgrade
             raise Exception(ErrorCode.GAUSS_500["GAUSS_50001"] % "t" + ".")
         # when we do auto-upgrade, auto-rollback or commit-upgrade,
         # we must incoming '-X' and make sure  the xml file exists.
-        if self.action not in [Const.ACTION_CHOSE_STRATEGY, Const.ACTION_UPGRADE_CM]:
+        if self.action not in [Const.ACTION_CHOSE_STRATEGY, Const.ACTION_UPGRADE_CM, Const.ACTION_SHOW_STEP]:
             if self.xmlFile == "":
                 raise Exception(ErrorCode.GAUSS_500["GAUSS_50001"] % 'X' + ".")
             if not os.path.exists(self.xmlFile):

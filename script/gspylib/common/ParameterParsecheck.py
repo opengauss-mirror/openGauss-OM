@@ -41,7 +41,7 @@ cm_server_guc_param = []
 NODE_NAME = []
 
 # Add parameter: the logic cluster name
-PARA_CHECK_LIST = ["-t", "-h", "-m", "--mode",
+PARA_CHECK_LIST = ["-t", "-h", "-m", "--mode", "-S"
                    "-i", "-j", "-U", "-u", "-G", "-g", "--alarm-type",
                    "-n", "-g",
                    "-N", "--time-out", "--alarm-component",
@@ -137,6 +137,9 @@ gs_upgradectl_auto_upgrade = ["-t:", "-?", "--help", "-V", "--version", "-l:",
 # auto-rollback parameter lists
 gs_upgradectl_auto_rollback = ["-t:", "-?", "--help", "-V", "--version",
                                "-l:", "-X:", "--force"]
+# show-step parameter lists
+gs_upgradectl_show_upgrade_step = ["-S:", "-?", "--help", "-V", "--version", "-l:"]
+
 # commit-upgrade parameter lists
 gs_upgradectl_commit = ["-t:", "-?", "--help", "-V", "--version", "-l:", "-X:"]
 
@@ -153,6 +156,7 @@ ParameterDict = {"preinstall": gs_preinstall,
                  "auto_upgrade": gs_upgradectl_auto_upgrade,
                  "chose_strategy": gs_upgradectl_chose_strategy,
                  "commit_upgrade": gs_upgradectl_commit,
+                 "show-step": gs_upgradectl_show_upgrade_step,
                  "upgrade-cm": gs_upgradectl_upgrade_cm,
                  "auto_rollback": gs_upgradectl_auto_rollback,
                  "start": gs_om_start,
@@ -183,7 +187,7 @@ special_list = ["gs_om", "backup", "upgradectl"]
 action_om = ["start", "stop", "status", "restart", "generateconf", "kerberos",
              "cert", "view", "query", "refreshconf", "killmonitor", "generate_xml"]
 action_upgradectl = ["chose-strategy", "auto-upgrade", "auto-rollback",
-                     "commit-upgrade", "upgrade-cm"]
+                     "commit-upgrade", "upgrade-cm", "show-step"]
 
 
 class Parameter():
@@ -290,6 +294,7 @@ class Parameter():
         opts = self.ParseParameterValue(module)
 
         parameterNeedValue = {"-t": "action",
+                              "-S": "action",
                               "-c": "cmd",
                               "-m": "Mode",
                               "--mode": "Mode",
@@ -606,7 +611,7 @@ class Parameter():
                                        "t" + " option -t requires argument.")
 
             for n, value in enumerate(sys.argv[1:]):
-                if sys.argv[1:][n - 1] == "-t":
+                if sys.argv[1:][n - 1] in ["-t", "-S"]:
                     actions.append(value)
                     if len(actions) != 1:
                         GaussLog.exitWithError(
@@ -615,13 +620,16 @@ class Parameter():
 
             if self.action == "":
                 GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"]
-                                       % "t" + ".")
+                                       % "t' or '-S" + ".")
 
             if ((module == "gsom" and not self.action in action_om)
                     or (module == "upgradectl"
                         and not self.action in action_upgradectl)):
+                if (self.action == "-S"):
+                    GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
+                                           % "S")
                 GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
-                                       % "t")
+                                       % "-t' or 'S")
 
     def createOutputDir(self, path):
         """
@@ -704,6 +712,8 @@ class Parameter():
                 ParameterList = ParameterDict.get("commit_upgrade")
             elif self.action == "upgrade-cm":
                 ParameterList = ParameterDict.get("upgrade-cm")
+            elif (self.action == "show-step"):
+                ParameterList = ParameterDict.get("show-step")
             else:
                 GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
                                        % "t")

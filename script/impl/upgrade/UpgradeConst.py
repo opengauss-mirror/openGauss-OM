@@ -37,6 +37,7 @@ ACTION_LARGE_UPGRADE = "large-binary-upgrade"
 ACTION_AUTO_UPGRADE = "auto-upgrade"
 ACTION_AUTO_ROLLBACK = "auto-rollback"
 ACTION_COMMIT_UPGRADE = "commit-upgrade"
+ACTION_SHOW_STEP = "show-step"
 
 ############################################################
 # function key

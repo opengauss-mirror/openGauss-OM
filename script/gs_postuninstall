@@ -78,6 +78,7 @@ class Postuninstall(ParallelBaseOM):
         self.rootPasswd = ""
         self.ips = []
         self.root_ssh_agent_flag = False
+        self.gauss_om_path = ""
 
     def usage(self):
         """
@@ -223,7 +224,7 @@ General options:
             self.mpprcFile = ""
         # if MpprcFile is not null
         if (self.mpprcFile != ""):
-            # if no MpprcFile
+            # if no MpprcFile, It has no environment separation, the environment variables are in the.bashrc.
             if (not os.path.exists(self.mpprcFile)):
                 GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50201"]
                                        % "MPPRC file" + " %s."
@@ -276,7 +277,7 @@ General options:
             gaussEnv = output.strip()
         else:
             # check if has mpprcFile
-            if (self.mpprcFile != ""):
+            if (self.mpprcFile != "" and os.path.exists(self.mpprcFile)):
                 userprofile = self.mpprcFile
             else:
                 userprofile = ProfileFile.get_user_bashrc(self.user)
@@ -361,6 +362,7 @@ General options:
         dirName = os.path.dirname(self.logFile)
         self.localLog = os.path.join(dirName, ClusterConstants.LOCAL_LOG_FILE)
         self.userHome = DefaultValue.getUserHome(self.user)
+        self.gauss_om_path = "/home/%s/gauss_om" % self.user
 
 if __name__ == '__main__':
     """

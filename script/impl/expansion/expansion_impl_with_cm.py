@@ -506,7 +506,10 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         dss_home = self.get_dss_env_root("DSS_HOME")
         dss_inst = dss_home + '/cfg/dss_inst.ini'
-        get_list_cmd = f"su - {self.user} -c 'cat {dss_inst} | grep DSS_NODES_LIST'"
+        if os.getuid() == 0:
+            get_list_cmd = f"su - {self.user} -c 'cat {dss_inst} | grep DSS_NODES_LIST'"
+        else:
+            get_list_cmd = f'cat {dss_inst} | grep DSS_NODES_LIST'
         status, output = subprocess.getstatusoutput(get_list_cmd)
         if status != 0:
             self.logger.debug("Failed to get old DSS_NODES_LIST.")
@@ -521,7 +524,8 @@ class ExpansionImplWithCm(ExpansionImpl):
             id += 1
             new_list += ',%d:%s:%d' % (last_id + id, node, port)
         update_list_cmd = "sed -i 's/%s/%s/g' %s" % (old_list, new_list, dss_inst)
-        update_list_cmd = f"su - {self.user} -c '{update_list_cmd}'"
+        if os.getuid() == 0:
+            update_list_cmd = f"su - {self.user} -c '{update_list_cmd}'"
         self.logger.debug("Command for update dss_inst: %s" % update_list_cmd)
         for host in ExpansionImplWithCm.get_node_names(hosts):
             sshTool = SshTool([host], timeout=300)
@@ -540,8 +544,11 @@ class ExpansionImplWithCm(ExpansionImpl):
         Update ss_interconnect_url on old nodes.
         """
         pg_port = self.get_dss_env_root("PGPORT")
-        get_url_cmd = 'su - %s -c "source %s; gsql -d postgres -p %s -c \'show ss_interconnect_url;\'"' % (
-            self.user, self.envFile, pg_port)
+        if os.getuid() == 0:
+            get_url_cmd = 'su - %s -c "source %s; gsql -d postgres -p %s -c \'show ss_interconnect_url;\'"' % (
+                self.user, self.envFile, pg_port)
+        else:
+            get_url_cmd = "source %s; gsql -d postgres -p %s -c 'show ss_interconnect_url;'" % (self.envFile, pg_port)
         sta, out = subprocess.getstatusoutput(get_url_cmd)
         url = out.split('\n')[2]
         url_port = (url.split(',')[0]).split(':')[-1]
@@ -550,7 +557,8 @@ class ExpansionImplWithCm(ExpansionImpl):
         pg_data = self.get_dss_env_root("PGDATA=") + '/postgresql.conf'
 
         guc_cmd = "sed -i 's/%s/%s/g' %s" % (url.strip(), new_url, pg_data)
-        guc_cmd = f"su - {self.user} -c '{guc_cmd}'"
+        if os.getuid() == 0:
+            guc_cmd = f"su - {self.user} -c '{guc_cmd}'"
         self.logger.debug("Command for update ss_interconnect_url: %s" % guc_cmd)
         for host in ExpansionImplWithCm.get_node_names(hosts):
             sshTool = SshTool([host], timeout=300)

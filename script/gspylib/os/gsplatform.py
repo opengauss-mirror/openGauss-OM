@@ -46,6 +46,8 @@ from netifaces import interfaces, ifaddresses, AF_INET, AF_INET6
 ISCONFIGURETRUE = "# isConfigure = TRUE"
 ISCONFIGUREFALSE = "# isConfigure = FALSE"
 SESSIONTIMEOUT = 300
+NET_IPV6 = "ipv6"
+NET_IPV4 = "ipv4"
 
 # ---------------platforms--------------------
 # global variable for our platform
@@ -687,7 +689,7 @@ class GenericPlatform:
         if int(packetSize) != int(56):
             opts = " -s " + str(packetSize)
         return findCmdInPath('ping') + BLANK_SPACE + host + " -c " + \
-               count + " -i " + interval + opts
+                count + " -i " + interval + opts
 
     def getWcCmd(self):
         """
@@ -1361,13 +1363,13 @@ class LinuxPlatform(GenericPlatform):
         else:
             return True
 
-    def getIpAddressAndNIC(self, ipType="ipv4"):
+    def getIpAddressAndNIC(self, ipType=NET_IPV4):
         """
         function: get ip address and nic
         input:  ipType
         output: NA
         """
-        if ipType == "ipv4":
+        if ipType == NET_IPV4:
             key = AF_INET
         else:
             key = AF_INET6
@@ -1377,7 +1379,7 @@ class LinuxPlatform(GenericPlatform):
                 ipAddress = ifaddresses(iface)[key][0]['addr']
                 yield (iface, ipAddress)
 
-    def getIpAddressAndNICList(self, ipType="ipv4"):
+    def getIpAddressAndNICList(self, ipType=NET_IPV4):
         """
         function: get ip address and nicList
         input:  ipType
@@ -1385,7 +1387,7 @@ class LinuxPlatform(GenericPlatform):
         """
         return list(self.getIpAddressAndNIC(ipType))
 
-    def getNetworkNumByIPAddr(self, ipAddress, ipType="ipv4"):
+    def getNetworkNumByIPAddr(self, ipAddress, ipType=NET_IPV4):
         """
         function: get netWork num by IP addr
         input:  ipAddress, ipType
@@ -1482,13 +1484,13 @@ class LinuxPlatform(GenericPlatform):
             bondInfo = "BondMode Null"
         return bondInfo
 
-    def getNetworkMaskByNICNum(self, networkCardNum, ipType="ipv4"):
+    def getNetworkMaskByNICNum(self, networkCardNum, ipType=NET_IPV4):
         """
         function: get Network Mask By NICNum
         input:  networkCardNum, ipType
         output: str
         """
-        if ipType == "ipv4":
+        if ipType == NET_IPV4:
             return ifaddresses(networkCardNum)[AF_INET][0]["netmask"]
         else:
             return ifaddresses(networkCardNum)[AF_INET6][0]["netmask"]

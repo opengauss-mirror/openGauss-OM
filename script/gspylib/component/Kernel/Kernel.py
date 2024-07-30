@@ -32,6 +32,7 @@ from base_utils.os.env_util import EnvUtil
 from base_utils.os.file_util import FileUtil
 from base_utils.security.security_checker import SecurityChecker
 from domain_utils.cluster_os.cluster_user import ClusterUser
+from base_utils.os.net_util import NetUtil
 
 MAX_PARA_NUMBER = 1000
 
@@ -531,8 +532,9 @@ class Kernel(BaseComponent):
         pg_user = ClusterUser.get_pg_user()
         for ipAddress in ipAddressList:
             i += 1
-            GUCParasStr += " -h \"host    all    all    %s/32\"" % (ipAddress)
-            GUCParasStr += " -h \"host    all    %s    %s/32\"" % (pg_user, ipAddress)
+            submask_length = NetUtil.get_submask_len(ipAddress)
+            GUCParasStr += " -h \"host    all    all    %s/%s\"" % (ipAddress, submask_length)
+            GUCParasStr += " -h \"host    all    %s    %s/%s\"" % (pg_user, ipAddress, submask_length)
             if i * 2 % MAX_PARA_NUMBER == 0:
                 GUCParasStrList.append(GUCParasStr)
                 i = 0

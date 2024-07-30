@@ -34,10 +34,15 @@ from domain_utils.cluster_os.cluster_user import ClusterUser
 from base_utils.os.grep_util import GrepUtil
 from base_utils.os.user_util import UserUtil
 from gspylib.component.DSS.dss_checker import DssConfig
+from base_utils.os.net_util import NetUtil
 
 
 METHOD_TRUST = "trust"
 METHOD_SHA = "sha256"
+# IPv4 subnet mask length
+IPv4_SUBNET_MASK_LENGTH = 32
+# IPv6 subnet mask length
+IPv6_SUBNET_MASK_LENGTH = 128
 MAX_PARA_NUMBER = 1000
 INSTANCE_TYPE_UNDEFINED = -1
 MASTER_INSTANCE = 0
@@ -495,25 +500,26 @@ class DN_OLAP(Kernel):
         pg_user = ClusterUser.get_pg_user()
         for ip_address in clusterAllIpList:
             i += 1
+            subnet_length = NetUtil.get_submask_len(ip_address)
             # Set the initial user and initial database access permissions
             if principal is None:
                 if ip_address.startswith("floatIp"):
-                    guc_paras_str += "-h \"host    all    all    %s/32    %s\" " % \
-                                     (float_ips[ip_address], METHOD_SHA)
+                    guc_paras_str += "-h \"host    all    all    %s/%s    %s\" " % \
+                                     (float_ips[ip_address], subnet_length, METHOD_SHA)
                 else:
-                    guc_paras_str += "-h \"host    all    %s    %s/32    %s\" " % \
-                                     (pg_user, ip_address, METHOD_TRUST)
-                    guc_paras_str += "-h \"host    all    all    %s/32    %s\" " % \
-                                     (ip_address, METHOD_SHA)
+                    guc_paras_str += "-h \"host    all    %s    %s/%s    %s\" " % \
+                                     (pg_user, ip_address, subnet_length, METHOD_TRUST)
+                    guc_paras_str += "-h \"host    all    all    %s/%s    %s\" " % \
+                                     (ip_address, subnet_length, METHOD_SHA)
             else:
                 if ip_address.startswith("floatIp"):
-                    guc_paras_str += "-h \"host    all    all    %s/32    %s\" " % \
-                                     (float_ips[ip_address], METHOD_SHA)
+                    guc_paras_str += "-h \"host    all    all    %s/%s    %s\" " % \
+                                     (float_ips[ip_address], subnet_length, METHOD_SHA)
                 else:
-                    guc_paras_str += "-h \"host    all    %s    %s/32    gss    include_realm=1 " \
-                                     "   krb_realm=%s\" " % (pg_user, ip_address, principal)
-                    guc_paras_str += "-h \"host    all    all    %s/32    %s\" " % \
-                                     (ip_address, METHOD_SHA)
+                    guc_paras_str += "-h \"host    all    %s    %s/%s    gss    include_realm=1 " \
+                                     "   krb_realm=%s\" " % (pg_user, ip_address, subnet_length, principal)
+                    guc_paras_str += "-h \"host    all    all    %s/%s    %s\" " % \
+                                     (ip_address, subnet_length, METHOD_SHA)
             if (i % MAX_PARA_NUMBER == 0):
                 GUCParasStrList.append(guc_paras_str)
                 i = 0
@@ -522,10 +528,11 @@ class DN_OLAP(Kernel):
         streaming_dn_ips = self.get_streaming_relate_dn_ips(self.instInfo)
         if streaming_dn_ips:
             for dn_ip in streaming_dn_ips:
-                guc_paras_str += "-h \"host    all    %s    %s/32    %s\" " \
-                               % (pg_user, dn_ip, METHOD_TRUST)
-                guc_paras_str += "-h \"host    all    all    %s/32    %s\" " \
-                               % (dn_ip, METHOD_SHA)
+                subnet_length = NetUtil.get_submask_len(ip_address)
+                guc_paras_str += "-h \"host    all    %s    %s/%s    %s\" " \
+                                 % (pg_user, dn_ip, subnet_length, METHOD_TRUST)
+                guc_paras_str += "-h \"host    all    all    %s/%s    %s\" " \
+                                 % (dn_ip, subnet_length, METHOD_SHA)
                 ip_segment = '.'.join(dn_ip.split('.')[:2]) + ".0.0/16"
                 guc_paras_str += "-h \"host    replication    all    %s    sha256\" " % ip_segment
 

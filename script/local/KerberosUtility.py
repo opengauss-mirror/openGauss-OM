@@ -457,27 +457,28 @@ class Kerberos():
                     self.__allIps += inst.haIps
                     self.__allIps += inst.listenIps
             # set local ip 127.0.0.1
-            self.__allIps += ['127.0.0.1']
+            self.__allIps += ['127.0.0.1', '::1']
             # get all ips. Remove the duplicates ips
             self.__allIps = DefaultValue.Deduplication(self.__allIps)
             # build ip string list
-            #set Kerberos ip
+            # set Kerberos ip
             principals = g_opts.principal.split("/")
             principals = principals[1].split("@")
             # Every 1000 records merged into one"
             ipstring = ""
             for ip in self.__allIps:
                 if not isUninstall:
+                    submask_length = NetUtil.get_submask_len(ip)
                     ipstring += " -h 'host    all             all       " \
-                                "      %s/32        gss         " \
+                                "      %s/%s        gss         " \
                                 "include_realm=1        krb_realm=%s'" % \
-                                (ip, principals[1])
+                                (ip, submask_length, principals[1])
                 else:
                     ipstring += " -h 'host    all             all       " \
-                                "      %s/32       %s'" % (ip, METHOD_TRUST)
+                                "      %s/%s       %s'" % (ip, submask_length, METHOD_TRUST)
             if ipstring != "":
                 self.__IpStringList.append(ipstring)
-            #write config hba
+            # write config hba
             self.__writeConfigHba()
         except Exception as e:
             raise Exception(ErrorCode.GAUSS_530["GAUSS_53024"]

@@ -20,6 +20,8 @@ import socket
 import time
 import sys
 
+from base_utils.os.net_util import NetUtil
+
 listen_ip = "localhost"
 listen_port = 31111
 run_mode = 0  # 0:connect, 1:send, 2:recv
@@ -29,7 +31,7 @@ def send_main():
         global listen_ip
         global listen_port
         buf = "this is a test !" * 512 # buf  8192  block
-        sockets = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sockets = NetUtil.get_sockects(listen_ip)
         sockets.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         print(listen_ip+":"+listen_port)
         while(sockets.connect_ex((listen_ip, int(listen_port))) != 0):
@@ -52,7 +54,7 @@ def recv_main():
     try:
         global listen_ip
         global listen_port
-        sockets = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sockets = NetUtil.get_sockects(listen_ip)
         sockets.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
         sockets.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         sockets.bind((listen_ip, int(listen_port)))
@@ -69,9 +71,8 @@ def recv_main():
                     break
     except Exception as e:
         print(str(e))
-        
 def connect_main():
-    sockets = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sockets = NetUtil.get_sockects(listen_ip)
     sockets.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
     if sockets.connect_ex((listen_ip, int(listen_port))) != 0:
         print("Failed to connect %s:%d on %s mode:%m.\n",

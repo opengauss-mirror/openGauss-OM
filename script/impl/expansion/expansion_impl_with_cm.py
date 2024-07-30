@@ -421,14 +421,17 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         Config pg_hba.conf on new nodes
         """
+
         new_node = self._get_new_node_by_back_ip(host_ip)
         new_inst = new_node.datanodes[0]
         cmd = "source {0};gs_guc set -D {1}".format(self.envFile, new_inst.datadir)
-        cmd += " -h 'host    all    %s    %s/32    trust'" % (self.user, host_ip)
-        cmd += " -h 'host    all    all    %s/32    sha256'" % host_ip
+        submask_length = NetUtil.get_submask_len(host_ip)
+        cmd += " -h 'host    all    %s    %s/%s    trust'" % (self.user, host_ip, submask_length)
+        cmd += " -h 'host    all    all    %s/%s    sha256'" % (host_ip, submask_length)
         if self.xml_cluster_info.float_ips:
-            cmd += " -h 'host    all    all    %s/32    sha256'" % \
-                   self.xml_cluster_info.float_ips[new_inst.float_ips[0]]
+            submask_length = NetUtil.get_submask_len(self.xml_cluster_info.float_ips[new_inst.float_ips[0]])
+            cmd += " -h 'host    all    all    %s/%s    sha256'" % \
+                   (self.xml_cluster_info.float_ips[new_inst.float_ips[0]], submask_length)
         self.logger.log("Ready to perform command on node [{0}]. "
                         "Command is : {1}".format(new_node.name, cmd))
         CmdExecutor.execCommandWithMode(cmd, self.ssh_tool, host_list=[new_node.name])

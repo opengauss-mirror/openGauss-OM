@@ -48,6 +48,7 @@ from domain_utils.cluster_file.cluster_dir import ClusterDir
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.cmd_util import CmdUtil
 from domain_utils.cluster_file.version_info import VersionInfo
+from base_utils.os.net_util import NetUtil
 
 #boot/build mode
 MODE_PRIMARY = "primary"
@@ -566,9 +567,9 @@ class ExpansionImpl():
             GaussLog.exitWithError(ErrorCode.GAUSS_516["GAUSS_51600"])
         instances = re.split('(?:\|)|(?:\n)', outputCollect)
         self.existingHosts = []
-        pattern = re.compile('(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*')
+        pattern_ip = re.compile(r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b|\b(?:[0-9a-fA-F]{0,4}(?::[0-9a-fA-F]{0,4}){7})\b')
         for inst in instances:
-            existing_hosts_ip = pattern.findall(inst)
+            existing_hosts_ip = pattern_ip.findall(inst)
             if len(existing_hosts_ip) != 0:
                 self.existingHosts.append(existing_hosts_ip[0])
         self.existingHosts = list(set(self.existingHosts))
@@ -585,11 +586,11 @@ class ExpansionImpl():
         primaryHost = self.getPrimaryHostName()
         result = self.commonGsCtl.queryOmCluster(primaryHost, self.envFile)
         instances = re.split('(?:\|)|(?:\n)', result)
-        pattern = re.compile('(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*')
+        pattern_ip = re.compile(r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b|\b(?:[0-9a-fA-F]{0,4}(?::[0-9a-fA-F]{0,4}){7})\b')
         host_ip = []
         for ins in instances:
             if re.findall('Primary', ins):
-                host_ip = pattern.findall(ins)
+                host_ip = pattern_ip.findall(ins)
                 break
         # update xml config node info
         primary_host_ip = "".join(host_ip)
@@ -670,8 +671,10 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
         node = self.context.clusterInfo.getDbNodeByName(name)
         for inst in node.datanodes:
             for float_ip in inst.float_ips:
-                cmd += " -h 'host    all    all    %s/32    sha256'" % \
-                       self.context.clusterInfo.float_ips[float_ip]
+                ip_address = self.context.clusterInfo.float_ips[float_ip]
+                # Check whether the IP address is ipv4 or ipv6 and obtain the corresponding mask length
+                submask_length = NetUtil.get_submask_len(ip_address)
+                cmd += " -h 'host    all    all    %s/%s    sha256'" % (ip_address, submask_length)
         return cmd
 
     def addTrust(self):
@@ -690,12 +693,14 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             cmd = "source %s;gs_guc set -D %s" % (self.envFile, dataNode)
             if hostExec in self.existingHosts:
                 for hostParam in self.context.newHostList:
-                    cmd += " -h 'host    all    %s    %s/32    trust'" % (self.user, hostParam)
+                    submask_length = NetUtil.get_submask_len(hostParam)
+                    cmd += " -h 'host    all    %s    %s/%s    trust'" % (self.user, hostParam, submask_length)
                     cmd += self.get_add_float_ip_cmd(hostParam)
             else:
                 for hostParam in allHosts:
                     if hostExec != hostParam:
-                        cmd += " -h 'host    all    %s    %s/32    trust'" % (self.user, hostParam)
+                        submask_length = NetUtil.get_submask_len(hostParam)
+                        cmd += " -h 'host    all    %s    %s/%s    trust'" % (self.user, hostParam, submask_length)
                         cmd += self.get_add_float_ip_cmd(hostParam)
             self.logger.debug("[%s] trustCmd:%s" % (hostExec, cmd))
             sshTool = SshTool([hostExec])
@@ -1391,8 +1396,12 @@ remoteservice={remoteservice}'"\
         """
         backips = self.context.newHostList
         for backip in backips:
-            ck_net_delay = "ping -s 8192 -c 5 -i 0.3 %s | "\
-                "awk -F / '{print $5}'| awk '{print $1}'" % backip
+            if NetUtil.get_ip_version(backip) == NetUtil.NET_IPV6:
+                ck_net_delay = "ping6 -s 8192 -c 5 -i 0.3 %s | " \
+                               "awk -F / '{print $5}'| awk '{print $1}'" % backip
+            else:
+                ck_net_delay = "ping -s 8192 -c 5 -i 0.3 %s | "\
+                    "awk -F / '{print $5}'| awk '{print $1}'" % backip
             (status, output) = subprocess.getstatusoutput(ck_net_delay)
             if status == 0:
                 try:
@@ -1467,7 +1476,7 @@ remoteservice={remoteservice}'"\
         nodeStates = re.split('(?:\|)|(?:\n)', allNodesState)
         dataNodes = {}
         for nodeState in nodeStates:
-            pattern = re.compile("[ ]+[^ ]+[ ]+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})[ ]+[^ ]+[ ]+[^ ]+[ ]+([^ ]+)[ ]+")
+            pattern = re.compile(r"[ ]+[^ ]+[ ]+((?:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})|(?:[0-9a-fA-F:]+))[ ]+[^ ]+[ ]+[^ ]+[ ]+([^ ]+)[ ]+")
             result = pattern.findall(nodeState)
             if len(result) != 0:
                 result = result[0]

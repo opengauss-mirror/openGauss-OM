@@ -451,6 +451,8 @@ def sendFile(fileName, host, user, path, passwd=None):
                 t.close()
     else:
         if "HOST_IP" not in list(os.environ.keys()):
+            if NetUtil.get_ip_version(host) == NetUtil.NET_IPV6:
+                host = "[" + host + "]"
             host = "%s@%s" % (user, host)
         cmd = "pscp -H %s '%s' %s" % (host, fileName, path)
         if (os.getuid() == 0):
@@ -581,7 +583,7 @@ def is_local_node(host):
     """
     if (host == NetUtil.GetHostIpOrName()):
         return True
-    allNetworkInfo = NetUtil.getAllNetworkIp()
+    allNetworkInfo = NetUtil.getAllNetworkIp(NetUtil.get_ip_version(host))
     for network in allNetworkInfo:
         if (host == network.ipAddress):
             return True

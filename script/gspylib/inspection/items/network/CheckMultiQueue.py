@@ -48,7 +48,7 @@ class CheckMultiQueue(BaseItem):
         else:
             backIP = SharedFuncs.getIpByHostName(self.host)
         # Get the network card number
-        allNetworkInfo = NetUtil.getAllNetworkInfo()
+        allNetworkInfo = NetUtil.getAllNetworkInfo(NetUtil.get_ip_version(backIP))
         for network in allNetworkInfo:
             if network.ipAddress == backIP:
                 networkNum = network.NICNum

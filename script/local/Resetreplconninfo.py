@@ -162,7 +162,7 @@ class Resetreplconninfo():
         """
         output_list = self.__getStatusByOM()
         output_num = 0
-        pattern = re.compile("(\d+) (.*) (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}) (.*)")
+        pattern = re.compile(r'(\d+) (.*) ((?:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})|(?:[0-9a-fA-F]{0,4}(?::[0-9a-fA-F]{0,4})*::?(?:[0-9a-fA-F]{0,4})?)) (.*)')
         has_cm_component = True if [i for i in output_list if "CMServer State" in i] else False
         if has_cm_component:
             output_list = [i for i in output_list if i]

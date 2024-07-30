@@ -41,7 +41,7 @@ class CheckBond(BaseItem):
             serviceIP = self.ipAddr
         else:
             serviceIP = SharedFuncs.getIpByHostName(self.host)
-        networkCards = NetUtil.getAllNetworkInfo()
+        networkCards = NetUtil.getAllNetworkInfo(NetUtil.get_ip_version(serviceIP))
         for network in networkCards:
             if (network.ipAddress == serviceIP):
                 networkCardNum = network.NICNum

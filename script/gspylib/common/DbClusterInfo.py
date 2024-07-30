@@ -29,7 +29,7 @@ import pwd
 import copy
 import socket
 import json
-
+import ipaddress
 
 sys.path.append(os.path.split(os.path.realpath(__file__))[0] + "/../../")
 from gspylib.common.ErrorCode import ErrorCode
@@ -2950,7 +2950,7 @@ class dbClusterInfo():
                             ipConfigItem, ipCheckMap[ipConfigItem])
                     raise Exception(ErrorCode.GAUSS_512["GAUSS_51220"] % (
                         "with cm and etcd") + errMsg)
-            # create a dictionary 
+            # create a dictionary
             nodeipport[dbNode.name] = [nodeips, nodeports]
             # check port and ip
             self.__checkPortandIP(nodeips, nodeports, dbNode.name)
@@ -3951,19 +3951,10 @@ class dbClusterInfo():
         input : String
         output : NA
         """
-        IpValid = re.match(
-            "^(25[0-5]|2[0-4][0-9]|[0-1]{1}[0-9]{2}|[1-9]{1}[0-9]{1}|["
-            "1-9])\.(25[0-5]|2[0-4][0-9]|[0-1]{1}[0-9]{2}|[1-9]{1}[0-9]{1}|["
-            "1-9]|0)\.(25[0-5]|2[0-4][0-9]|[0-1]{1}[0-9]{2}|[1-9]{1}[0-9]{"
-            "1}|[1-9]|0)\.(25[0-5]|2[0-4][0-9]|[0-1]{1}[0-9]{2}|[1-9]{1}["
-            "0-9]{1}|[0-9])$",
-            ip)
-        if IpValid:
-            if (IpValid.group() == ip):
-                return True
-            else:
-                return False
-        else:
+        try:
+            ipaddress.ip_address(ip)
+            return True
+        except ValueError:
             return False
 
     def __isPortValid(self, port):
@@ -4639,7 +4630,8 @@ class dbClusterInfo():
                                 "The cmd is %s" % cmd)
         output_list = self.__getStatusByOM(user)
         output_num = 0
-        pattern = re.compile("(\d+) (.*) (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}) (.*)")
+        # The purpose of this regular expression is to match text lines containing IPv4 or IPv6 addresses.
+        pattern = re.compile(r'(\d+) (.*) ((?:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})|(?:[0-9a-fA-F]{0,4}(?::[0-9a-fA-F]{0,4})*::?(?:[0-9a-fA-F]{0,4})?)) (.*)')
         if not self.hasNoCm():
             output_list = [i for i in output_list if i]
             output_list = output_list[-1].split('|')

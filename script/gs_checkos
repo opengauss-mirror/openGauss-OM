@@ -23,6 +23,7 @@ import os
 import sys
 import time
 import subprocess
+import pwd
 from datetime import datetime, timedelta
 
 sys.path.append(sys.path[0] + '/../lib')
@@ -148,6 +149,7 @@ class CmdOptions():
         self.itemstr = ""
         self.hostlistfile = ""
         self.hostnameList = []
+        self.host_ip_list = []
         self.outputfile = ""
         self.logFile = ""
         self.localLog = ""
@@ -165,19 +167,26 @@ class CmdOptions():
 #########################################################
 def initGlobals():
     """
-    init the global parameter g_logger and g_sshTool
+    init the global parameter g_logger and g_sshTool and g_clusterInfo
     """
     global g_logger
-    global g_sshTool
-    global g_clusterInfo
     g_logger = GaussLog(g_opts.logFile, "gs_checkos")
     dirName = os.path.dirname(g_opts.logFile)
     g_opts.localLog = os.path.join(dirName, ClusterConstants.LOCAL_LOG_FILE)
-    g_sshTool = SshTool(g_opts.hostnameList, g_logger.logFile,
-                        DefaultValue.TIMEOUT_PSSH_CHECK)
+
+    global g_clusterInfo
     g_clusterInfo = dbClusterInfo()
     if (g_opts.confFile != ""):
         g_clusterInfo.initFromXml(g_opts.confFile)
+
+    if not g_opts.localMode:
+        for name in g_opts.hostnameList:
+            node = g_clusterInfo.getDbNodeByName(name)
+            g_opts.host_ip_list.append(node.sshIps[0])
+
+        global g_sshTool
+        g_sshTool = SshTool(g_opts.host_ip_list, g_logger.logFile,
+                            DefaultValue.TIMEOUT_PSSH_CHECK)
 
 
 #############################################################################
@@ -304,15 +313,15 @@ def parseCommandLine():
         g_opts.detail = ParaDict.get("show_detail")
 
 def get_user_info():
-        """
-        function: get user
-        input: NA
-        output: NA
-        """
-        if os.getuid() != 0:
-            user_info = UserUtil.getUserInfo()
-            g_opts.user = user_info.get("name")
-            DefaultValue.checkPathVaild(g_opts.user)
+    """
+    function: get user
+    input: NA
+    output: NA
+    """
+    if os.getuid() != 0:
+        user_info = UserUtil.getUserInfo()
+        g_opts.user = user_info.get("name")
+        DefaultValue.checkPathVaild(g_opts.user)
 
 def readHostFile(hostfile):
     """
@@ -334,6 +343,7 @@ def checkHostList():
     """
     if (g_opts.hostnamestr == "" and g_opts.hostlistfile == ""):
         g_opts.hostnameList = [NetUtil.GetHostIpOrName()]
+        g_opts.localMode = True
     elif (g_opts.hostnamestr != "" and g_opts.hostlistfile != ""):
         GaussLog.exitWithError(
             ErrorCode.GAUSS_500["GAUSS_50005"] % ('h', 'f'))
@@ -345,7 +355,8 @@ def checkHostList():
             readHostFile(g_opts.hostlistfile)
     else:
         parseHostnameOpts(g_opts.hostnamestr)
-
+        if g_opts.localMode and not g_opts.confFile:
+            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % "X")        
 
 def checkConfigFile():
     """
@@ -408,7 +419,7 @@ def setLogFile():
             else:
                 create_log_file()
 
-        UserUtil.check_path_owner(g_opts.logFile)
+            UserUtil.check_path_owner(g_opts.logFile)
 
 def checkItems():
     """
@@ -426,6 +437,12 @@ def checkOutputFile():
     except Exception as e:
         GaussLog.exitWithError(str(e))
 
+def check_config_file():
+    """
+    check parameters
+    """
+    if not g_opts.localMode and not g_opts.confFile:
+        raise Exception(ErrorCode.GAUSS_500["GAUSS_50001"] % "X")
 
 def checkParameter():
     """
@@ -442,6 +459,7 @@ def checkParameter():
         g_opts.hostnameList = [NetUtil.GetHostIpOrName()]
     g_opts.hostnameList.sort()
     checkHostnameList()
+    check_config_file()
     ##########################################
     # set logfile
     ############################################
@@ -969,7 +987,7 @@ def getLocalIPAddr():
     Ips = ""
 
     if (g_opts.confFile == ""):
-        localHostIp = DefaultValue.getIpByHostName()
+        localHostIp = NetUtil.getLocalIp()
         Ips = localHostIp
     else:
         for node in g_clusterInfo.dbNodes:
@@ -1542,7 +1560,8 @@ def main():
         parseCommandLine()
         checkParameter()
         initGlobals()
-        gpHome = os.path.dirname(os.path.realpath(__file__))
+        gpHome = os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), ".."))
+        os.environ['GPHOME'] = gpHome
         Local_CheckOs = OMCommand.getLocalScript("Local_CheckOS")
         Local_Check = OMCommand.getLocalScript("Local_Check")
     except Exception as e:
@@ -1568,7 +1587,7 @@ def main():
         if ((g_opts.localMode != True) and
                 DefaultValue.checkInList(['A6', 'A7', 'A11', 'B1', 'B2', 'B5'],
                                          itemList)):
-            g_sshTool.scpFiles(configFile, dirName, [], "", "%s/../" % gpHome)
+            g_sshTool.scpFiles(configFile, dirName, [], "", gpHome)
     except Exception as ex:
         g_logger.logExit(str(ex))
 

@@ -350,7 +350,7 @@ General options:
             self.initClusterInfo()
             os.environ[ClusterConstants.TOOL_PATH_ENV] = self.clusterToolPath
             # Initialize the self.sshTool variable
-            self.initSshTool(self.clusterInfo.getClusterNodeNames(),
+            self.initSshTool(self.clusterInfo.getClusterSshIps()[0],
                              DefaultValue.TIMEOUT_PSSH_POSTPREINSTALL)
             self.logger.debug("The cluster's information:\n%s."
                               % str(self.clusterInfo))

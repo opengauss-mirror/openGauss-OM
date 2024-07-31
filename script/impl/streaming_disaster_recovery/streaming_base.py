@@ -1644,7 +1644,7 @@ class StreamingBase(object):
         cmd = g_file.SHELL_CMD_DICT["deleteDir"] % (self.streaming_file_dir,
                                                     self.streaming_file_dir)
         try:
-            self.ssh_tool.executeCommand(cmd, hostList=self.cluster_info.getClusterNodeNames())
+            self.ssh_tool.executeCommand(cmd, hostList=self.cluster_info.getClusterSshIps()[0])
         except Exception as error:
             self.logger.debug(
                 "Failed to remove streaming dir with error:%s" % error)
@@ -1972,7 +1972,7 @@ class StreamingBase(object):
                                          StreamingConstants.STREAMING_CLUSTER_CONF_RECORD)
         cmd = g_file.SHELL_CMD_DICT["deleteFile"] % (cluster_info_file, cluster_info_file)
         try:
-            self.ssh_tool.executeCommand(cmd, hostList=self.cluster_info.getClusterNodeNames())
+            self.ssh_tool.executeCommand(cmd, hostList=self.cluster_info.getClusterSshIps()[0])
         except Exception as error:
             self.logger.debug(
                 "Failed to remove cluster file with error:%s" % error)
@@ -2502,8 +2502,8 @@ class StreamingBase(object):
 
         if node_list:
             p_node_list = " -H ".join(node_list)
-        elif self.cluster_info.getClusterNodeNames():
-            p_node_list = " -H ".join(self.cluster_info.getClusterNodeNames())
+        elif self.cluster_info.getClusterSshIps()[0]:
+            p_node_list = " -H ".join(self.cluster_info.getClusterSshIps()[0])
         else:
             raise Exception("Failed to delivery file: %s, node information does not exits"
                             % file_name)

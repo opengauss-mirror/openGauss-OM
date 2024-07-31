@@ -611,9 +611,9 @@ def checkuser():
             return
 
         # Check cluster user trust
-        dbNameList = g_opts.cluster.getClusterNodeNames()
+        dbNameList = g_opts.cluster.getClusterSshIps()[0]
         if (len(dbNameList) == 1 and
-                dbNameList[0] == NetUtil.GetHostIpOrName()):
+                dbNameList[0] == NetUtil.getLocalIp()):
             return
         appPath = EnvUtil.getEnv('GPHOME', g_opts.cluster.appPath)
         psshPath = os.path.join(appPath, 'script/gspylib/pssh/bin/pssh')

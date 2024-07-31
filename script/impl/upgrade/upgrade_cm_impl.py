@@ -57,7 +57,7 @@ class UpgradeCmImpl(UpgradeImpl):
         Initialize global value
         """
         self.upgrade_context.initClusterInfoFromStaticFile(self.upgrade_context.user)
-        self.upgrade_context.initSshTool(self.upgrade_context.clusterInfo.getClusterNodeNames(),
+        self.upgrade_context.initSshTool(self.upgrade_context.clusterInfo.getClusterBackIps()[0],
                                          timeout=300)
         self.cluster_info = self.upgrade_context.clusterInfo
         self.ssh_tool = self.upgrade_context.sshTool

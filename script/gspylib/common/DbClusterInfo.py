@@ -1334,14 +1334,17 @@ class dbClusterInfo():
                 elif querytype == "port":
                     querycmd = "gs_guc check -D %s -c port" % dnInst.datadir
                 dbName = dbNode.name
+                db_ssh_ip = dbNode.sshIps[0]
                 dbInfoList.append({
                     "name": dbName,
+                    "ip": db_ssh_ip,
                     "command": querycmd,
                     "sshtool": sshtool
                 })
 
         def queryInstance(dbInfo):
             dnName = dbInfo["name"]
+            dn_ssh_ip = dbInfo["ip"]
             command = dbInfo["command"]
             sshtool = dbInfo["sshtool"]
             status = 0
@@ -1349,13 +1352,13 @@ class dbClusterInfo():
 
             if dnName != hostName:
                 (statusMap, output) = sshtool.getSshStatusOutput(
-                    command, [dnName], mpprcFile)
-                if statusMap[dnName] != 'Success':
+                    command, [dn_ssh_ip], mpprcFile)
+                if statusMap[dn_ssh_ip] != 'Success':
                     status = -1
             else:
                 (status, output) = subprocess.getstatusoutput(command)
 
-            global_cls_query_rst[dnName+command.split()[-1]] = [status, output]
+            global_cls_query_rst[dn_ssh_ip+command.split()[-1]] = [status, output]
 
         global global_cls_query_rst
         parallelTool.parallelExecute(queryInstance, dbInfoList)
@@ -1382,7 +1385,7 @@ class dbClusterInfo():
 
             for dbNode in self.dbNodes:
                 for dnInst in dbNode.datanodes:
-                    (status, output) = queryClsResult.get(dbNode.name + dnInst.datadir)
+                    (status, output) = queryClsResult.get(dbNode.sshIps[0] + dnInst.datadir)
                     if status != 0 or output.find("exc_sql failed") > 0:
                         if output.find(
                                 "could not connect to the local server") \
@@ -1552,8 +1555,8 @@ class dbClusterInfo():
                               "%s -A -t -c \"%s\"" % \
                               (dnInst.port, sql_get)
                         (statusMap, output) = sshtool.getSshStatusOutput(cmd, [
-                            dbNode.name])
-                        if statusMap[dbNode.name] != 'Success' or output.find(
+                            dbNode.sshIps[0]])
+                        if statusMap[dbNode.sshIps[0]] != 'Success' or output.find(
                                 "failed to connect") >= 0:
                             continue
                         else:
@@ -1582,8 +1585,8 @@ class dbClusterInfo():
                               "%s -A -t -c \"%s\"" % \
                               (dnInst.port, subsql)
                         (statusMap, cascadeOutput) = sshtool.getSshStatusOutput(cmd, [
-                            dbNode.name])
-                        if statusMap[dbNode.name] != 'Success' or cascadeOutput.find(
+                            dbNode.sshIps[0]])
+                        if statusMap[dbNode.sshIps[0]] != 'Success' or cascadeOutput.find(
                                 "failed to connect") >= 0:
                             continue
                         else:
@@ -1630,9 +1633,9 @@ class dbClusterInfo():
                   "\"%s\"" % (
                       dnInst.port, sql)
             (statusMap, output) = sshtool.getSshStatusOutput(cmd,
-                                                             [dbNode.name])
+                                                             [dbNode.sshIps[0]])
             dnDown = output.find("failed to connect") >= 0
-            if statusMap[dbNode.name] != 'Success' or dnDown:
+            if statusMap[dbNode.sshIps[0]] != 'Success' or dnDown:
                 dnInst.localRole = "Down" if dnDown else "Unknown"
                 dnInst.staticConnections = 0
                 dnInst.state = "Manually stopped" if dnDown else "Unknown"
@@ -4614,7 +4617,7 @@ class dbClusterInfo():
                                             dynamicConfigFile)
         except Exception as e:
             cmd = "rm -f %s" % dynamicConfigFile
-            sshtool.getSshStatusOutput(cmd, self.getClusterNodeNames())
+            sshtool.getSshStatusOutput(cmd, self.getClusterSshIps()[0])
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50205"] % \
                             "dynamic configuration file" +
                             " Error: \n%s" % str(e))
@@ -4663,7 +4666,7 @@ class dbClusterInfo():
                                             simpleDNConfig)
         except Exception as e:
             cmd = "rm -f %s" % simpleDNConfig
-            sshtool.getSshStatusOutput(cmd, self.getClusterNodeNames())
+            sshtool.getSshStatusOutput(cmd, self.getClusterSshIps()[0])
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50205"] %
                             "dynamic configuration file" +
                             " Error: \n%s" % str(e))
@@ -4674,7 +4677,7 @@ class dbClusterInfo():
                        + '/../../local/Resetreplconninfo.py'
         cmd = "python3 %s -U %s -t reset" % (local_script, user)
         sshtool.setTimeOut(120)
-        for node in self.getClusterNodeNames():
+        for node in self.getClusterSshIps()[0]:
             (status, output) = sshtool.getSshStatusOutput(cmd, [node])
             if status[node] != 'Success':
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"]
@@ -4788,7 +4791,7 @@ class dbClusterInfo():
                                       % (gaussHome, dbNode.name)
             if dbNode.name != localHostName:
                 cmd = "export LD_LIBRARY_PATH=/usr/lib64;/usr/bin/scp %s:%s %s" % (
-                    dbNode.name, dynamicConfigFile, remoteDynamicConfigFile)
+                    dbNode.sshIps[0], dynamicConfigFile, remoteDynamicConfigFile)
                 status, output = subprocess.getstatusoutput(cmd)
                 if status:
                     if output.find("No such file or directory") >= 0:
@@ -4828,7 +4831,7 @@ class dbClusterInfo():
                     cmd = "cp -f  %s %s" % (sourceFile, targetFile)
                     status, output = subprocess.getstatusoutput(cmd)
             else:
-                cmd = "export LD_LIBRARY_PATH=/usr/lib64;/usr/bin/scp %s %s:%s" % (sourceFile, dbNode.name, targetFile)
+                cmd = "export LD_LIBRARY_PATH=/usr/lib64;/usr/bin/scp %s %s:%s" % (sourceFile, dbNode.sshIps[0], targetFile)
                 status, output = subprocess.getstatusoutput(cmd)
             if status:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +

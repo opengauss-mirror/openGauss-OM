@@ -1786,7 +1786,7 @@ class GaussStat():
                     f.writelines(output)
                     if (f):
                         f.close()
-                tmp_sshTool = SshTool(g_clusterInfo.getClusterNodeNames(),
+                tmp_sshTool = SshTool(g_clusterInfo.getClusterSshIps()[0],
                                       self.logger.logFile)
                 tmp_sshTool.scpFiles(databaseSizeFile, binPath)
             else:
@@ -1809,7 +1809,7 @@ class GaussStat():
                     f.writelines(output)
                     if (f):
                         f.close()
-                tmp_sshTool = SshTool(g_clusterInfo.getClusterNodeNames(),
+                tmp_sshTool = SshTool(g_clusterInfo.getClusterSshIps()[0],
                                       self.logger.logFile)
                 tmp_sshTool.scpFiles(databaseSizeFile, binPath)
         except Exception as e:

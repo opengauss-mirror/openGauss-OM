@@ -224,11 +224,11 @@ class OmImplOLAP(OmImpl):
         # get the newest dynaminc config and send to other node
         self.clusterInfo.checkClusterDynamicConfig(self.context.user, hostName)
         if self.context.g_opts.nodeName == "":
-            hostList = self.clusterInfo.getClusterNodeNames()
+            hostList = self.clusterInfo.getClusterSshIps()[0]
         else:
             hostList = []
-            hostList.append(self.context.g_opts.nodeName)
-        self.sshTool = SshTool(self.clusterInfo.getClusterNodeNames(), None,
+            hostList.append(self.context.g_opts.node_ip)
+        self.sshTool = SshTool(self.clusterInfo.getClusterSshIps()[0], None,
                                DefaultValue.TIMEOUT_CLUSTER_START)
         if self.time_out is None:
             time_out = DefaultValue.TIMEOUT_CLUSTER_START
@@ -329,11 +329,11 @@ class OmImplOLAP(OmImpl):
         self.logger.log("Stopping %s." % stop_type)
         self.logger.log("=========================================")
         if self.context.g_opts.nodeName == "":
-            host_list = self.clusterInfo.getClusterNodeNames()
+            host_list = self.clusterInfo.getClusterSshIps()[0]
         else:
             host_list = []
-            host_list.append(self.context.g_opts.nodeName)
-        self.sshTool = SshTool(self.clusterInfo.getClusterNodeNames(), None,
+            host_list.append(self.context.g_opts.node_ip)
+        self.sshTool = SshTool(self.clusterInfo.getClusterSshIps()[0], None,
                                DefaultValue.TIMEOUT_CLUSTER_START)
         if self.time_out is None:
             time_out = DefaultValue.TIMEOUT_CLUSTER_STOP
@@ -400,7 +400,7 @@ class OmImplOLAP(OmImpl):
             return
         self.logger.log("Generating dynamic configuration file for all nodes.")
         hostname = NetUtil.GetHostIpOrName()
-        sshtool = SshTool(self.context.clusterInfo.getClusterNodeNames())
+        sshtool = SshTool(self.context.clusterInfo.getClusterSshIps()[0])
         self.context.clusterInfo.doRefreshConf(self.context.user, hostname,
                                                sshtool)
 

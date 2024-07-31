@@ -89,6 +89,7 @@ ACTION_SET_CGROUP = "set_cgroup"
 ACTION_CHECK_CONFIG = "check_config"
 ACTION_DSS_NIT = "dss_init"
 ACTION_CHECK_CPU_INSTRUCTIONS = "check_cpu_instructions"
+ACTION_CHECK_NOFILE_LIMIT = "check_nofile_limit"
 
 g_nodeInfo = None
 envConfig = {}
@@ -280,7 +281,8 @@ Common options:
                           ACTION_SET_ARM_OPTIMIZATION,
                           ACTION_CHECK_DISK_SPACE, ACTION_SET_WHITELIST,
                           ACTION_FIX_SERVER_PACKAGE_OWNER, ACTION_DSS_NIT,
-                          ACTION_CHANGE_TOOL_ENV, ACTION_CHECK_CONFIG, ACTION_CHECK_CPU_INSTRUCTIONS]
+                          ACTION_CHANGE_TOOL_ENV, ACTION_CHECK_CONFIG, ACTION_CHECK_CPU_INSTRUCTIONS,
+                          ACTION_CHECK_NOFILE_LIMIT]
         if self.action == "":
             GaussLog.exitWithError(
                 ErrorCode.GAUSS_500["GAUSS_50001"] % 't' + ".")
@@ -636,7 +638,7 @@ Common options:
             self.logger.debug("Change file[/etc/hosts] mode.")
             FileUtil.changeMode(DefaultValue.HOSTS_FILE, "/etc/hosts")
         try:
-            node_names = self.clusterInfo.getClusterNodeNames()
+            node_names = self.clusterInfo.getClusterSshIps()[0]
             pool = ThreadPool(DefaultValue.getCpuSet())
             pool.map(self.check_hostname, node_names)
             pool.close()
@@ -2018,6 +2020,25 @@ Common options:
             self.logger.debug(cpu_mission)
             raise Exception(cpu_mission)
 
+    def check_nofile_limit(self):
+        """
+        function: Check nofile limit
+        input:NA
+        output:NA
+        """
+        self.logger.debug("Checking nofile limit.")
+        if os.getuid() == 0:
+            cmd = "su - %s -c \'ulimit -n\'" % self.user
+        else:
+            cmd = "ulimit -n"
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error: \n%s" % output)
+        ulimit_value = int(output.strip())
+        if ulimit_value < DefaultValue.NOFILE_LIMIT:
+            raise Exception("Deploy cm, the number of file handles for %s user must be greater than %s" % (self.user, DefaultValue.NOFILE_LIMIT))
+        self.logger.debug("Successfully checked nofile limit.")
+
     def checkPlatformArm(self):
         """
         function: Setting ARM Optimization
@@ -2793,7 +2814,7 @@ Common options:
         toolPath = self.clusterToolPath
         self.logger.log("change '%s' files permission and owner." % toolPath)
         FileUtil.changeOwner(self.user, toolPath, recursive=True, link=True)
-        FileUtil.changeMode(DefaultValue.MAX_DIRECTORY_MODE,
+        FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE,
                           toolPath, recursive=True)
         FileUtil.changeMode(DefaultValue.SPE_FILE_MODE,
                           "%s/script/gs_*" % toolPath)
@@ -3149,6 +3170,8 @@ Common options:
                 self.check_config()
             elif self.action == ACTION_CHECK_CPU_INSTRUCTIONS:
                 self.check_cpu_instructions()
+            elif self.action == ACTION_CHECK_NOFILE_LIMIT:
+                self.check_nofile_limit()
             else:
                 self.logger.logExit(ErrorCode.GAUSS_500["GAUSS_50000"]
                                     % self.action)

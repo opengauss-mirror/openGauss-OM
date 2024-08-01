@@ -52,6 +52,7 @@ from domain_utils.cluster_file.version_info import VersionInfo
 from domain_utils.cluster_file.package_info import PackageInfo
 from base_utils.os.net_util import NetUtil
 from base_diff.comm_constants import CommConstants
+from base_utils.os.file_util import FileUtil
 
 #boot/build mode
 MODE_PRIMARY = "primary"
@@ -1703,8 +1704,23 @@ remoteservice={remoteservice}'"\
         self.checkGaussdbAndGsomVersionOfStandby()
         self.logger.log("Start to establish the relationship.")
         self.buildStandbyRelation()
+        self.write_hosts_file()
         # process success
         pvalue.value = 1
+
+    def write_hosts_file(self):
+        cluster_info = dbClusterInfo()
+        cluster_info.initFromStaticConfig(self.context.user)
+        cluster_hostname_ip_map = {}
+        for name in cluster_info.getClusterNodeNames():
+            node = cluster_info.getDbNodeByName(name)
+            ip = node.sshIps[0]
+            cluster_hostname_ip_map[ip] = name
+
+        hosts_file = FileUtil.get_hosts_file()
+        if os.path.exists(hosts_file):
+            FileUtil.removeFile(hosts_file)
+        FileUtil.write_hosts_file(hosts_file, cluster_hostname_ip_map)
 
     def rollback(self):
         """
@@ -1777,6 +1793,22 @@ remoteservice={remoteservice}'"\
         parse_result = dict(zip(key_list, value_list))
         self.logger.debug("Parse result is: {0}".format(parse_result))
         return parse_result
+
+    def rewrite_hosts_file(self):
+        """
+        Rewrite hosts file
+        """
+        gp_home = EnvUtil.getEnv("GPHOME")
+        hosts_file = os.path.join(gp_home, "hosts")
+        if os.path.isfile(hosts_file):
+            os.remove(hosts_file)
+        hosts_content = {}
+        for name in self.context.clusterInfo.getClusterNodeNames:
+            node = self.context.clusterInfo.getDbNodeByName(name)
+            node_ip = node.sshIps[0]
+            hosts_content[node_ip] = name
+
+        FileUtil.write_hosts_file(hosts_file, hosts_content)
 
     def run(self):
         """

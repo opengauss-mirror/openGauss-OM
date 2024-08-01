@@ -105,7 +105,7 @@ class ExpansionImplWithCmLocal(ExpansionImplWithCm):
             cmd = "ls {0} | wc -l".format(cm_agent_conf)
             _, output_collect = self.ssh_tool.getSshStatusOutput(cmd, hostList=[new_node.name])
             result_dict = self._parse_ssh_tool_output_collect(output_collect)
-            if new_node.name not in result_dict:
+            if new_node.name not in result_dict.keys():
                 self.logger.error("Check remote node [{0}] cm_agent.conf failed. "
                                   "output: {1}".format(new_node.name, result_dict))
                 raise Exception("Check remote node [{0}] cm_agent.conf failed. "

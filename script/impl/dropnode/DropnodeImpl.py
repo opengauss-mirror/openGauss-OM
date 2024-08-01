@@ -37,6 +37,8 @@ from gspylib.common.OMCommand import OMCommand
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.net_util import NetUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
+from base_utils.os.file_util import FileUtil
+from gspylib.common.DbClusterInfo import dbClusterInfo
 
 
 # master 
@@ -190,15 +192,16 @@ class DropnodeImpl():
         operation only need to be executed on primary node
         """
         for hostNameLoop in self.context.hostMapForExist.keys():
+            data_dir = self.context.hostMapForExist[hostNameLoop]['datadir']
             try:
                 self.commonOper.SetPghbaConf(self.userProfile, hostNameLoop,
                                              self.resultDictOfPrimary[0][
-                                             'pghbaStr'], False)
+                                             'pghbaStr'], data_dir, False)
             except ValueError:
                 self.logger.log("[gs_dropnode]Rollback pghba conf.")
                 self.commonOper.SetPghbaConf(self.userProfile, hostNameLoop,
                                              self.resultDictOfPrimary[0][
-                                             'pghbaStr'], True)
+                                             'pghbaStr'], data_dir, True)
         indexLoop = 0
         for i in self.context.hostMapForExist[self.localhostname]['datadir']:
             try:
@@ -355,6 +358,23 @@ class DropnodeImpl():
         else:
             pass
 
+    def rewrite_hosts_file(self):
+        """
+        Rewrite hosts file
+        """
+        cluster_info = dbClusterInfo()
+        cluster_info.initFromStaticConfig(self.context.user)
+        cluster_hostname_ip_map = {}
+        for name in cluster_info.getClusterNodeNames():
+            node = cluster_info.getDbNodeByName(name)
+            ip = node.sshIps[0]
+            cluster_hostname_ip_map[ip] = name
+
+        hosts_file = FileUtil.get_hosts_file()
+        if os.path.exists(hosts_file):
+            FileUtil.removeFile(hosts_file)
+        FileUtil.write_hosts_file(hosts_file, cluster_hostname_ip_map)
+
     def run(self):
         """
         start dropnode
@@ -366,6 +386,7 @@ class DropnodeImpl():
         self.operationOnlyOnPrimary()
         self.modifyStaticConf()
         self.restartInstance()
+        self.rewrite_hosts_file()
         self.logger.log("[gs_dropnode]Success to drop the target nodes.")
 
 
@@ -652,7 +673,7 @@ class OperCommon:
         self.logger.log(
             "[gs_dropnode]End of set openGauss config file on %s." % host)
 
-    def SetPghbaConf(self, envProfile, host, pgHbaValue,
+    def SetPghbaConf(self, envProfile, host, pgHbaValue, data_dir,
                      flagRollback=False):
         """
         Set the value of pg_hba.conf
@@ -660,34 +681,18 @@ class OperCommon:
         self.logger.log(
             "[gs_dropnode]Start of set pg_hba config file on %s." % host)
         cmd = 'source %s;' % envProfile
-
+        ssh_tool = SshTool([host])
         if len(pgHbaValue):
             ip_entries = pgHbaValue[:-1].split('|')
             for entry in ip_entries:
                 entry = entry.strip()
+                v = entry[0:len(entry) - 9]
                 if not flagRollback:
-                    if NetUtil.get_ip_version(entry) == NetUtil.NET_IPV4:
-                        v = entry[0:entry.find('/32') + 3]
-                        cmd += "gs_guc set -N %s -I all -h '%s';" % (host, v)
-                    elif NetUtil.get_ip_version(entry) == NetUtil.NET_IPV6:
-                        v = entry[0:entry.find('/128') + 4]
-                        cmd += "gs_guc set -N %s -I all -h '%s';" % (host, v)
-                    elif NetUtil.get_ip_version(entry) == "":
-                        raise ValueError(f"Invalid IP address format: {entry}")
+                    cmd += "gs_guc set -D %s -h '%s';" % (data_dir[0], v)
                 else:
-                    cmd += "gs_guc set -N %s -I all -h '%s';" % (host, entry)
-            (status, output) = subprocess.getstatusoutput(cmd)
-            result_v = re.findall(r'Failed instances: (\d)\.', output)
-            if status:
-                self.logger.debug(
-                    "[gs_dropnode]Set pg_hba config file failed:" + output)
-                raise ValueError(output)
-            if len(result_v):
-                if result_v[0] != '0':
-                    self.logger.debug(
-                        "[gs_dropnode]Set pg_hba config file failed:" + output)
-                    raise ValueError(output)
-            else:
+                    cmd += "gs_guc set -D %s -h '%s';" % (data_dir[0], v)
+            (status, output) = ssh_tool.getSshStatusOutput(cmd, [host])
+            if status[host] != DefaultValue.SUCCESS:
                 self.logger.debug(
                     "[gs_dropnode]Set pg_hba config file failed:" + output)
                 raise ValueError(output)

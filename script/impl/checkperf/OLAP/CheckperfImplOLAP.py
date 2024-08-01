@@ -32,6 +32,8 @@ from base_utils.os.file_util import FileUtil
 from domain_utils.sql_handler.sql_executor import SqlExecutor
 from base_utils.os.net_util import NetUtil
 from base_utils.os.cmd_util import CmdUtil
+from base_utils.security.security_checker import SecurityChecker
+from base_utils.os.hosts_util import HostsUtil
 
 # Database size inspection interval
 DB_SIZE_CHECK_INTERVAL = 21600
@@ -1250,6 +1252,8 @@ class CheckperfImplOLAP(CheckperfImpl):
                 return
 
         # launch asyn collection for database size
+        if not SecurityChecker.check_is_ip(host):
+            host = HostsUtil.hostname_to_ip(host)
         cmd = "pssh -s -H %s \'" % (str(host))
 
         if (self.opts.mpprcFile != ""):

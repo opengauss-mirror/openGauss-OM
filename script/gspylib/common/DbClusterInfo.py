@@ -4828,7 +4828,9 @@ class dbClusterInfo():
                     cmd = "cp -f  %s %s" % (sourceFile, targetFile)
                     status, output = subprocess.getstatusoutput(cmd)
             else:
-                cmd = "export LD_LIBRARY_PATH=/usr/lib64;/usr/bin/scp %s %s:%s" % (sourceFile, dbNode.name, targetFile)
+                node = self.getDbNodeByName(dbNode.name)
+                node_ip = node.sshIps[0]
+                cmd = "export LD_LIBRARY_PATH=/usr/lib64;/usr/bin/scp %s %s:%s" % (sourceFile, node_ip, targetFile)
                 status, output = subprocess.getstatusoutput(cmd)
             if status:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +

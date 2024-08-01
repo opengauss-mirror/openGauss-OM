@@ -188,7 +188,7 @@ class CheckperfImplOLAP(CheckperfImpl):
             self.logger.debug(
                 "Successfully collected statistics on all hosts.")
 
-    def getMetaData(self, hostName, host, port):
+    def getMetaData(self, hostName, port):
         """
         function: get meta data of PMK(curr_collect_start_time,
         last_collect_start_time, last_snapshot_id)
@@ -221,10 +221,10 @@ class CheckperfImplOLAP(CheckperfImpl):
                     filepath = os.path.join(tmpDir, outputfile)
                     # execute SQL on remote host
                     ClusterCommand.executeSQLOnRemoteHost(
-                        host, port, querySql, filepath)
+                        hostName, port, querySql, filepath)
                     # get sql result from outputfile
                     (status, result, error_output) = \
-                        SqlExecutor.getSQLResult(host, outputfile)
+                        SqlExecutor.getSQLResult(hostName, outputfile)
 
                 if (status != 2 or error_output != ""):
                     raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] \
@@ -249,7 +249,7 @@ class CheckperfImplOLAP(CheckperfImpl):
             else:
                 (status, output) = ClusterCommand.remoteSQLCommand(
                     querySql, self.opts.user,
-                    host, port, False, DefaultValue.DEFAULT_DB_NAME)
+                    hostName, port, False, DefaultValue.DEFAULT_DB_NAME)
                 if (status != 0):
                     raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"]
                                     % querySql + " Error: \n%s" % str(output))
@@ -271,7 +271,7 @@ class CheckperfImplOLAP(CheckperfImpl):
         except Exception as e:
             raise Exception(str(e))
 
-    def deleteExpiredSnapShots(self, hostName, host, port):
+    def deleteExpiredSnapShots(self, hostName, port):
         """
         function: delete expired snapshots records
         input : hostName, port
@@ -298,10 +298,10 @@ class CheckperfImplOLAP(CheckperfImpl):
                     filepath = os.path.join(tmpDir, outputfile)
                     # execute SQL on remote host
                     ClusterCommand.executeSQLOnRemoteHost( \
-                        host, port, querySql, filepath)
+                        hostName, port, querySql, filepath)
                     # get sql result from outputfile
                     (status, result, error_output) = \
-                        SqlExecutor.getSQLResult(host, outputfile)
+                        SqlExecutor.getSQLResult(hostName, outputfile)
                 if (status != 2):
                     raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] \
                                     % querySql \
@@ -313,7 +313,7 @@ class CheckperfImplOLAP(CheckperfImpl):
                 querySql = "SELECT * FROM pmk.delete_expired_snapshots();"
                 (status, output) = ClusterCommand.remoteSQLCommand(
                     querySql, self.opts.user,
-                    host, port, False, DefaultValue.DEFAULT_DB_NAME)
+                    hostName, port, False, DefaultValue.DEFAULT_DB_NAME)
                 if (status != 0):
                     raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] \
                                     % querySql \
@@ -430,8 +430,6 @@ class CheckperfImplOLAP(CheckperfImpl):
             hostNames = self.clusterInfo.getClusterNodeNames()
             # traversing host name
             for hostName in hostNames:
-                node = self.clusterInfo.getDbNodeByName(hostName)
-                node_ip = node.sshIps[0]
                 recordTempFile = os.path.join(
                     EnvUtil.getTmpDirFromEnv(self.opts.user),
                     "recordTempFile_%d_%s" % (os.getpid(), hostName))
@@ -442,9 +440,9 @@ class CheckperfImplOLAP(CheckperfImpl):
                 else:
                     if (self.clusterInfo.isSingleInstCluster()):
                         continue
-                    if (hostName != NetUtil.getHostName()):
+                    if (hostName != NetUtil.GetHostIpOrName()):
                         scpcmd = "pssh -s -H %s 'pscp -H %s %s %s' " \
-                                 % (node_ip, NetUtil.getHostName(),
+                                 % (hostName, NetUtil.GetHostIpOrName(),
                                     recordTempFile, recordTempFile)
                         (status, output) = subprocess.getstatusoutput(scpcmd)
                         if (status != 0):
@@ -648,7 +646,7 @@ class CheckperfImplOLAP(CheckperfImpl):
                 FileUtil.removeFile(tempFile)
             raise Exception(str(e))
 
-    def getAllHostsPrevNodeStat(self, hostName, host, port, snapshotId):
+    def getAllHostsPrevNodeStat(self, hostName, port, snapshotId):
         """
         function: get prev node stat of all hosts
         input : hostName, port, snapshotId
@@ -698,9 +696,9 @@ class CheckperfImplOLAP(CheckperfImpl):
                         filepath = os.path.join(tmpDir, outputfile)
                         # execute SQL on remote host
                         ClusterCommand.executeSQLOnRemoteHost(
-                            host, port, querySql, filepath, snapshotId)
+                            hostName, port, querySql, filepath, snapshotId)
                         (status, result, error_output) = \
-                            SqlExecutor.getSQLResult(host, outputfile)
+                            SqlExecutor.getSQLResult(hostName, outputfile)
                     if (status != 2):
                         raise Exception(
                             ErrorCode.GAUSS_513["GAUSS_51300"] \
@@ -750,9 +748,9 @@ class CheckperfImplOLAP(CheckperfImpl):
                         tmpDir = EnvUtil.getTmpDirFromEnv(self.opts.user)
                         filepath = os.path.join(tmpDir, outputfile)
                         ClusterCommand.executeSQLOnRemoteHost(
-                            host, port, querySql, filepath, snapshotId)
+                            hostName, port, querySql, filepath, snapshotId)
                         (status, result, error_output) = \
-                            SqlExecutor.getSQLResult(host, outputfile)
+                            SqlExecutor.getSQLResult(hostName, outputfile)
                     if (status != 2):
                         raise Exception(
                             ErrorCode.GAUSS_513["GAUSS_51300"] \
@@ -1031,7 +1029,7 @@ class CheckperfImplOLAP(CheckperfImpl):
         except Exception as e:
             raise Exception(str(e))
 
-    def handleSessionCpuStat(self, hostname, host):
+    def handleSessionCpuStat(self, hostname):
         """
         function: handle session cpu stat of all hosts
         input : hostname
@@ -1078,7 +1076,7 @@ class CheckperfImplOLAP(CheckperfImpl):
                     self.sshTool.scpFiles(
                         sessionCpuTempResult,
                         EnvUtil.getTmpDirFromEnv(self.opts.user) \
-                        + "/", [host])
+                        + "/", [hostname])
 
                     FileUtil.removeFile(sessionCpuTempResult)
             else:
@@ -1090,7 +1088,7 @@ class CheckperfImplOLAP(CheckperfImpl):
             FileUtil.removeFile(sessionCpuTempResult)
             raise Exception(str(e))
 
-    def handleSessionMemoryStat(self, hostname, host):
+    def handleSessionMemoryStat(self, hostname):
         """
         function: handle session memory stat of all hosts
         input : hostname
@@ -1139,7 +1137,7 @@ class CheckperfImplOLAP(CheckperfImpl):
                     self.sshTool.scpFiles(
                         sessionMemTempResult,
                         EnvUtil.getTmpDirFromEnv(self.opts.user) \
-                        + "/", [host])
+                        + "/", [hostname])
 
                     FileUtil.removeFile(sessionMemTempResult)
             else:
@@ -1151,7 +1149,7 @@ class CheckperfImplOLAP(CheckperfImpl):
             FileUtil.removeFile(sessionMemTempResult)
             raise Exception(str(e))
 
-    def handleSessionIOStat(self, hostname, host):
+    def handleSessionIOStat(self, hostname):
         """
         function: handle session IO stat of all hosts
         input : hostname
@@ -1198,7 +1196,7 @@ class CheckperfImplOLAP(CheckperfImpl):
                     self.sshTool.scpFiles(
                         sessionIOTempResult,
                         EnvUtil.getTmpDirFromEnv(self.opts.user) \
-                        + "/", [host])
+                        + "/", [hostname])
 
                     # close and remove temporary file
                     FileUtil.removeFile(sessionIOTempResult)
@@ -1306,7 +1304,7 @@ class CheckperfImplOLAP(CheckperfImpl):
             "The total database size is [%s]." \
             % str(self.opts.databaseSize))
 
-    def insertNodeStat(self, hostName, host, port, currTime, lastTime, snapshotId):
+    def insertNodeStat(self, hostName, port, currTime, lastTime, snapshotId):
         """
         function: insert the node stat of all hosts into the cluster
         input : hostname, port, currTime, lastTime, snapshotId
@@ -1405,27 +1403,27 @@ class CheckperfImplOLAP(CheckperfImpl):
                             hostName, pid, currentTime)
                         tmpDir = EnvUtil.getTmpDirFromEnv()
                         filepath = os.path.join(tmpDir, outputfile)
-                        ClusterCommand.executeSQLOnRemoteHost(dnInst.listenIps[0],
+                        ClusterCommand.executeSQLOnRemoteHost(dnInst.hostname,
                                                               dnInst.port,
                                                               tempSql,
                                                               filepath)
                         (status, result,
                          error_output1) = SqlExecutor.getSQLResult(
-                            dnInst.listenIps[0], outputfile)
-                        ClusterCommand.executeSQLOnRemoteHost(dnInst.listenIps[0],
+                            dnInst.hostname, outputfile)
+                        ClusterCommand.executeSQLOnRemoteHost(dnInst.hostname,
                                                               dnInst.port,
                                                               insertSql,
                                                               filepath)
                         (status, result,
                          error_output2) = SqlExecutor.getSQLResult(
-                            dnInst.listenIps[0], outputfile)
-                        ClusterCommand.executeSQLOnRemoteHost(dnInst.listenIps[0],
+                            dnInst.hostname, outputfile)
+                        ClusterCommand.executeSQLOnRemoteHost(dnInst.hostname,
                                                               dnInst.port,
                                                               updateSql,
                                                               filepath)
                         (status, result,
                          error_output3) = SqlExecutor.getSQLResult(
-                            dnInst.listenIps[0], outputfile)
+                            dnInst.hostname, outputfile)
                     if error_output1 != "":
                         self.logger.debug(
                             "Failed to execute SQL: %s" % startSql
@@ -1455,7 +1453,7 @@ class CheckperfImplOLAP(CheckperfImpl):
                           + updateSql + commitSql
                     (status, output) = ClusterCommand.remoteSQLCommand(
                         sql, self.opts.user,
-                        host, port, False, DefaultValue.DEFAULT_DB_NAME)
+                        hostName, port, False, DefaultValue.DEFAULT_DB_NAME)
                     if status != 0:
                         self.logger.debug(
                             "Failed to execute SQL: %s" % sql
@@ -1503,7 +1501,7 @@ class CheckperfImplOLAP(CheckperfImpl):
             if (self.opts.mpprcFile != ""):
                 cmd = "source %s; %s" % (self.opts.mpprcFile, cmd)
 
-            if (host != NetUtil.getLocalIp()):
+            if (host != NetUtil.GetHostIpOrName()):
                 cmd = "pssh -s -H %s \'%s\'" % (str(host), cmd)
 
             if (os.getuid() == 0):
@@ -1530,7 +1528,7 @@ class CheckperfImplOLAP(CheckperfImpl):
         """
         try:
             querySql = "DROP SCHEMA IF EXISTS pmk CASCADE;"
-            local_host = NetUtil.getLocalIp()
+            local_host = NetUtil.GetHostIpOrName()
             if (self.DWS_mode):
                 if (host == local_host):
                     (status, result,
@@ -1574,7 +1572,7 @@ class CheckperfImplOLAP(CheckperfImpl):
             querySql = "SELECT * FROM pmk.pmk_meta_data " \
                        "WHERE last_snapshot_collect_time >= " \
                        "date_trunc('second', current_timestamp);"
-            local_host = NetUtil.getLocalIp()
+            local_host = NetUtil.GetHostIpOrName()
             if (self.DWS_mode):
                 if (host == local_host):
                     (status, result, error_output) = \
@@ -1743,7 +1741,6 @@ class CheckperfImplOLAP(CheckperfImpl):
             self.checkClusterStatus()
 
             nodeNames = self.clusterInfo.getClusterNodeNames()
-            node_ips = self.clusterInfo.getClusterSshIps()[0]
             tmpDir = EnvUtil.getTmpDirFromEnv(self.opts.user)
             pid = os.getpid()
             for nodeName in nodeNames:
@@ -1773,10 +1770,9 @@ class CheckperfImplOLAP(CheckperfImpl):
 
             normalDNs = self.getNormalDatanodes()
             hostname = normalDNs[0].hostname
-            host = normalDNs[0].listenIps[0]
             data_dir = normalDNs[0].datadir
             port = normalDNs[0].port
-            dn_ip = NetUtil.getLocalIp()
+            dn_ip = NetUtil.GetHostIpOrName()
             if self.check_enable_dcf(dn_ip, data_dir):
                 paxos_logger_role_ip = self.get_paxos_role(dn_ip, data_dir)
                 self.logger.debug("the paxos logger role ip is %s" % paxos_logger_role_ip)
@@ -1784,25 +1780,24 @@ class CheckperfImplOLAP(CheckperfImpl):
                     for logger_ip in paxos_logger_role_ip:
                         logger_hostname = self.clusterInfo.getNodeNameByBackIp(logger_ip)
                         nodeNames.remove(logger_hostname)
-                        node_ips.remove(logger_ip)
             # install pmk schema
-            self.installPMKSchema(dn_ip, port)
+            self.installPMKSchema(hostname, port)
 
             # check pmk_meta_data
-            self.checkPMKMetaData(dn_ip, port)
+            self.checkPMKMetaData(hostname, port)
 
             # get pmk meta data
             (pmk_curr_collect_start_time,
              pmk_last_collect_start_time, last_snapshot_id) = \
-                self.getMetaData(hostname, host, port)
-            self.deleteExpiredSnapShots(hostname, host, port)
+                self.getMetaData(hostname, port)
+            self.deleteExpiredSnapShots(hostname, port)
             # collect pmk stat
             self.collectPMKData(pmk_curr_collect_start_time,
                                 pmk_last_collect_start_time,
-                                last_snapshot_id, port, node_ips)
+                                last_snapshot_id, port, nodeNames)
 
             # launch asynchronous collection
-            self.launchAsynCollection(host, port)
+            self.launchAsynCollection(hostname, port)
 
             # get database size from previous collection
             self.getPreviousDbSize()
@@ -1815,20 +1810,20 @@ class CheckperfImplOLAP(CheckperfImpl):
                 # get memory stat of all sessions
                 self.getAllSessionMemoryStat()
                 # handle session cpu stat of all hosts
-                self.handleSessionCpuStat(str(hostname), host)
+                self.handleSessionCpuStat(str(hostname))
                 # Handle session IO stat of all hosts
-                self.handleSessionIOStat(str(hostname), host)
+                self.handleSessionIOStat(str(hostname))
                 # handle session memory stat of all hosts
-                self.handleSessionMemoryStat(str(hostname), host)
+                self.handleSessionMemoryStat(str(hostname))
 
             # get node stat of all hosts
             self.getAllHostsNodeStat()
             # get prev node stat of all hosts
-            self.getAllHostsPrevNodeStat(hostname, host, port, last_snapshot_id)
+            self.getAllHostsPrevNodeStat(hostname, port, last_snapshot_id)
             # handle the node stat of all hosts
             self.handleNodeStat()
             # insert the node stat of all hosts into the cluster
-            self.insertNodeStat(hostname, host, port,
+            self.insertNodeStat(hostname, port,
                                  pmk_curr_collect_start_time,
                                  pmk_last_collect_start_time, last_snapshot_id)
 
@@ -1858,7 +1853,7 @@ class CheckperfImplOLAP(CheckperfImpl):
             cmd += " --database-size=%s" % str(self.opts.databaseSize)
 
             if (str(hostname) != NetUtil.GetHostIpOrName()):
-                cmd = "pssh -s -H %s \'%s\'" % (str(host), cmd)
+                cmd = "pssh -s -H %s \'%s\'" % (str(hostname), cmd)
 
             if (os.getuid() == 0):
                 cmd = """su - %s -c "%s" """ % (self.opts.user, cmd)

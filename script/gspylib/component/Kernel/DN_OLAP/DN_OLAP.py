@@ -436,10 +436,6 @@ class DN_OLAP(Kernel):
             dynamicDict = {}
             dynamicDict = DefaultValue.dynamicGuc("dn", tmpGucFile,
                                                   gucXml)
-            # get os remain sem
-            remain_sem = DefaultValue.get_remain_kernel_sem()
-            # calc max_connections for remain sem
-            self.calc_max_connections_for_sems(remain_sem, dynamicDict)
             if gucXml:
                 dynamicDict["log_line_prefix"] = "'%s'" % \
                                                  dynamicDict["log_line_prefix"]
@@ -479,18 +475,6 @@ class DN_OLAP(Kernel):
 
 
         self.modifyDummpyStandbyConfigItem()
-
-    def calc_max_connections_for_sems(self, remaining_sems, guc_dict):
-        """
-        calc max connetions for remain sem
-        """
-        if int(remaining_sems) >= DefaultValue.MAX_REMAIN_SEM:
-            return
-        elif int(remaining_sems) < DefaultValue.MIN_REMAIN_SEM:
-            raise Exception("Error: The remaining signal quantity of the current system is less than %s" % DefaultValue.MIN_REMAIN_SEM)
-        else:
-            # Number of connections with 1w semaphore=200
-            guc_dict["max_connections"] = int((600 / 30000 * int(remaining_sems)))
 
     def setPghbaConfig(self, clusterAllIpList, try_reload=False, float_ips=None):
         """

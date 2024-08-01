@@ -78,7 +78,7 @@ def initGlobals():
     g_clusterInfo = dbClusterInfo()
     g_clusterInfo.initFromStaticConfig(g_clusterUser)
     # Init sshtool
-    g_sshTool = SshTool(g_clusterInfo.getClusterSshIps()[0], g_logger.logFile)
+    g_sshTool = SshTool(g_clusterInfo.getClusterNodeNames(), g_logger.logFile)
 
 
 def checkSrcFile(srcFile):
@@ -133,11 +133,11 @@ def parseCommandLine():
 def scpFileToAllHost(srcFile, drcpath):
     try:
         g_logger.log("Transfer C function file to all hosts.")
-        g_sshTool.scpFiles(srcFile, drcpath, g_clusterInfo.getClusterSshIps()[0])
+        g_sshTool.scpFiles(srcFile, drcpath, g_clusterInfo.getClusterNodeNames())
         cmd = "chmod 600 '%s'" % drcpath
         g_sshTool.executeCommand(cmd,
                                  DefaultValue.SUCCESS,
-                                 g_clusterInfo.getClusterSshIps()[0])
+                                 g_clusterInfo.getClusterNodeNames())
     except Exception as e:
         raise Exception(ErrorCode.GAUSS_536["GAUSS_53611"] % str(e))
 

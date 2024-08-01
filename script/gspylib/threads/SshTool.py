@@ -444,7 +444,7 @@ class SshTool():
 
             # single cluster or execute only in local node.
             if (len(hostList) == 1 and
-                    (hostList[0] == "127.0.0.1" or hostList[0] == NetUtil.getLocalIp())
+                    hostList[0] == NetUtil.GetHostIpOrName()
                     and cmd.find(" --lock-cluster ") < 0):
                 localMode = True
                 if os.getuid() == 0 and (mpprcFile == "" or not mpprcFile):
@@ -610,7 +610,7 @@ class SshTool():
 
             # single cluster or execute only in local node.
             if (len(hostList) == 1 and
-                    (hostList[0] == "127.0.0.1" or hostList[0] == NetUtil.getLocalIp())):
+                    hostList[0] == NetUtil.GetHostIpOrName()):
                 localMode = True
                 if os.getuid() == 0 and (mpprcFile == "" or not mpprcFile):
                     sshCmd = "source %s ; %s 2>&1" % (osProfile, cmd)
@@ -766,28 +766,23 @@ class SshTool():
                     sshHosts.append("[" + host + "]")
                 else:
                     sshHosts.append(host)
-            if len(sshHosts) == 1 and (sshHosts[0] == NetUtil.getLocalIp() or sshHosts[0] == "127.0.0.1") and \
+            if len(sshHosts) == 1 and sshHosts[0] == socket.gethostname() and \
                 srcFile != targetDir and \
                 srcFile != os.path.join(targetDir, os.path.split(srcFile)[1]):
                 localMode = True
                 scpCmd = "cp -r %s %s" % (srcFile, targetDir)
             else:
                 # cp file on local node
-                if NetUtil.getLocalIp() in sshHosts or "127.0.0.1" in sshHosts:
-                    if NetUtil.getLocalIp() in sshHosts:
-                        localhost_idx = sshHosts.index(NetUtil.getLocalIp())
-                        local_host = NetUtil.getLocalIp()
-                    if "127.0.0.1" in sshHosts:
-                        localhost_idx = sshHosts.index("127.0.0.1")
-                        local_host = "127.0.0.1"
+                if socket.gethostname() in sshHosts:
+                    localhost_idx = sshHosts.index(socket.gethostname())
                     sshHosts.pop(localhost_idx)
                     cpcmd = "cp -r %s %s" % (srcFile, targetDir)
                     if srcFile != targetDir and srcFile != os.path.join(targetDir, os.path.basename(srcFile)):
                         (status, output) = subprocess.getstatusoutput(cpcmd)
                         if status == 0:
-                            resultMap[local_host] = DefaultValue.SUCCESS
+                            resultMap[socket.gethostname()] = DefaultValue.SUCCESS
                         else:
-                            resultMap[local_host] = DefaultValue.FAILURE
+                            resultMap[socket.gethostname()] = DefaultValue.FAILURE
                 if not sshHosts:
                     return
                 scpCmd = "%s -r -v -t %s -p %s -H %s -o %s -e %s %s %s" \

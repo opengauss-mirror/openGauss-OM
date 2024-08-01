@@ -1054,10 +1054,7 @@ def formatTime(filename):
     output : str
     """
     try:
-        if 'dms' in filename or 'dss' in filename:
-            timelist = re.findall(r"\d\d\d\d\d\d\d\d\d\d\d\d\d\d", filename)
-        else:
-            timelist = re.findall(r"\d\d\d\d-\d\d-\d\d_\d\d\d\d\d\d", filename)
+        timelist = re.findall(r"\d\d\d\d-\d\d-\d\d_\d\d\d\d\d\d", filename)
         if not timelist:
             with open(filename, 'r') as f:
                 lines = f.readlines()

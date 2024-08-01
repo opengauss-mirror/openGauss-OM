@@ -18,7 +18,6 @@ import subprocess
 import os
 import sys
 import time
-import socket
 
 sys.path.append(sys.path[0] + "/../../")
 
@@ -572,11 +571,8 @@ class PreinstallImplOLAP(PreinstallImpl):
         if not self.context.is_new_root_path:
             current_path = self.get_package_path()
             script = os.path.join(current_path, "script")
-            hostList = self.context.clusterInfo.getClusterSshIps()[0]
-            if NetUtil.getLocalIp() in hostList:
-                hostList.remove(NetUtil.getLocalIp())
-            if "127.0.0.1" in hostList:
-                hostList.remove("127.0.0.1")
+            hostList = self.context.clusterInfo.getClusterNodeNames()
+            hostList.remove(NetUtil.GetHostIpOrName())
             if not self.context.localMode and hostList:
                 cmd = "rm -f %s/gs_*" % script
                 self.context.sshTool.executeCommand(cmd,
@@ -610,7 +606,7 @@ class PreinstallImplOLAP(PreinstallImpl):
             # exec the cmd
             CmdExecutor.execCommandWithMode(cmd,
                                             self.context.sshTool,
-                                            self.context.localMode or self.context.isSingle,
+                                            self.context.localMode,
                                             self.context.mpprcFile)
 
             self.del_remote_pkgpath()

@@ -144,10 +144,9 @@ class ExpansionImpl():
         rollback primary's wal_keep_segments, when current user is root
         """
         self.logger.debug("Start to rollback primary's wal_keep_segments")
-        primaryHostName = self.getPrimaryHostName()
-        primary_host_ip = self.context.clusterInfoDict[primaryHostName]["backIp"]
-        primaryDataNode = self.context.clusterInfoDict[primaryHostName]["dataNode"]
-        status = self.commonGsCtl.setGucPara(primary_host_ip, self.envFile, primaryDataNode,
+        primary = self.getPrimaryHostName()
+        primaryDataNode = self.context.clusterInfoDict[primary]["dataNode"]
+        status = self.commonGsCtl.setGucPara(primary, self.envFile, primaryDataNode,
             "wal_keep_segments", self.walKeepSegments, self.user)
         if status != DefaultValue.SUCCESS:
             self.logger.log("Failed to rollback wal_keep_segments, please manually "
@@ -501,7 +500,8 @@ class ExpansionImpl():
         if EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH"):
             preinstallCmd += " --sep-env-file={envFile}".format(envFile = self.envFile)
         if not os.listdir(os.path.join(EnvUtil.getEnv("GPHOME"),"lib")):
-            preinstallCmd += " --unused-third-party 2>&1"
+            preinstallCmd += " --unused-third-party"
+        preinstallCmd += " --skip-hostname-set 2>&1"
 
         failedPreinstallHosts = []
         for host in self.context.newHostList:
@@ -548,7 +548,6 @@ class ExpansionImpl():
         """
         self.logger.debug("Get the existing hosts.")
         primaryHost = self.getPrimaryHostName()
-        primary_host_ip = self.context.clusterInfoDict[primaryHost]["sshIp"]
         command = ""
         if EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH"):
             command = "source %s;gs_om -t status --detail" % self.envFile
@@ -558,13 +557,13 @@ class ExpansionImpl():
         if isRootUser and self.context.current_user_root:
             command = "su - %s -c '%s'" % (self.user, command)
         self.logger.debug(command)
-        sshTool = SshTool([primary_host_ip])
+        sshTool = SshTool([primaryHost])
         resultMap, outputCollect = sshTool.getSshStatusOutput(command,
-            [primary_host_ip], self.envFile)
+            [primaryHost], self.envFile)
         self.cleanSshToolFile(sshTool)
         self.logger.debug("Expansion cluster status result:{0}".format(resultMap))
         self.logger.debug("Expansion cluster status output:{0}".format(outputCollect))
-        if resultMap[primary_host_ip] != DefaultValue.SUCCESS:
+        if resultMap[primaryHost] != DefaultValue.SUCCESS:
             GaussLog.exitWithError(ErrorCode.GAUSS_516["GAUSS_51600"])
         instances = re.split('(?:\|)|(?:\n)', outputCollect)
         self.existingHosts = []
@@ -585,8 +584,7 @@ class ExpansionImpl():
         nodeNames = self.context.nodeNameList
         # get gs_om node info
         primaryHost = self.getPrimaryHostName()
-        pri_host_ip = self.context.clusterInfoDict[primaryHost]["sshIp"]
-        result = self.commonGsCtl.queryOmCluster(pri_host_ip, self.envFile)
+        result = self.commonGsCtl.queryOmCluster(primaryHost, self.envFile)
         instances = re.split('(?:\|)|(?:\n)', result)
         pattern_ip = re.compile(r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b|\b(?:[0-9a-fA-F]{0,4}(?::[0-9a-fA-F]{0,4}){7})\b')
         host_ip = []
@@ -614,8 +612,6 @@ class ExpansionImpl():
             if self.expansionSuccess[host]:
                 hostIpList.append(host)
 
-        self.logger.debug("hostIpList=%s" % hostIpList)
-        self.logger.debug("self.expansionSuccess=%s" % self.expansionSuccess)
         nodeDict = self.context.clusterInfoDict
         backIpNameMap = self.context.backIpNameMap
         hostAzNameMap = self.context.hostAzNameMap
@@ -717,13 +713,12 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
         generate GRPC cert for single node
         """
         primaryHost = self.getPrimaryHostName()
-        primary_host_ip = self.context.clusterInfoDict[primaryHost]["sshIp"]
         dataNode = self.context.clusterInfoDict[primaryHost]["dataNode"]
         needGRPCHosts = []
         for host in self.expansionSuccess:
             if self.expansionSuccess[host]:
                 needGRPCHosts.append(host)
-        insType, _ = self.commonGsCtl.queryInstanceStatus(primary_host_ip,
+        insType, _ = self.commonGsCtl.queryInstanceStatus(primaryHost,
             dataNode,self.envFile)
         if insType != MODE_PRIMARY:
             primaryHostIp = self.context.clusterInfoDict[primaryHost]["backIp"]
@@ -770,11 +765,10 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
         primaryHost = self.getPrimaryHostName()
         dataNode = self.context.clusterInfoDict[primaryHost]["dataNode"]
         command = "source %s; gs_ctl reload -D %s " % (self.envFile, dataNode)
-        primary_host_ip = self.context.clusterInfoDict[primaryHost]["sshIp"]
-        sshTool = SshTool([primary_host_ip])
+        sshTool = SshTool([primaryHost])
         self.logger.debug(command)
         resultMap, outputCollect = sshTool.getSshStatusOutput(command,
-            [primary_host_ip], self.envFile)
+            [primaryHost], self.envFile)
         self.logger.debug(outputCollect)
         self.cleanSshToolFile(sshTool)
 
@@ -852,20 +846,21 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             # reset current standby's application name before started
             self.resetStandbyAppName(hostName=hostName, sshIp=host)
             # start new host as standby mode
-            self.commonGsCtl.stopInstance(host, dataNode, self.envFile)
+            self.commonGsCtl.stopInstance(hostName, dataNode, self.envFile)
             result, output = self.commonGsCtl.startInstanceWithMode(host,
                 dataNode, MODE_STANDBY, self.envFile)
             if result[host] != DefaultValue.SUCCESS:
                 if "Uncompleted build is detected" not in output:
                     self.expansionSuccess[host] = False
                     self.logger.log("Failed to start %s as standby "
-                        "before building. Error: %s" % (host, output))
+                        "before building." % host)
                     continue
                 else:
-                    self.logger.debug("Uncompleted build is detected on %s. Error: %s" % (host, output))
+                    self.logger.debug("Uncompleted build is detected on %s." %
+                        host)
             else:
                 insType, dbState = self.commonGsCtl.queryInstanceStatus(
-                    host, dataNode, self.envFile)
+                    hostName, dataNode, self.envFile)
                 if insType != ROLE_STANDBY:
                     self.logger.log("Build %s failed." % host)
                     self.expansionSuccess[host] = False
@@ -921,12 +916,12 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
                     print("\rThe program is running {}".format(waitChars[index]), end="")
                     time.sleep(timeFlush)
                 insType, dbState = self.commonGsCtl.queryInstanceStatus(
-                    host, dataNode, self.envFile)
+                    hostName, dataNode, self.envFile)
                 if dbState not in [STATE_STARTING, STATE_CATCHUP]:
                     self.logger.debug("%s starting and catchup complete." % host)
                     break
             insType, dbState = self.commonGsCtl.queryInstanceStatus(
-                host, dataNode, self.envFile)
+                hostName, dataNode, self.envFile)
             if insType == hostRole and dbState == STATE_NORMAL:
                 if self.context.newHostCasRoleMap[host] == "off":
                     existingStandbys.append(host)
@@ -1035,8 +1030,7 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
         self.logger.log("Start to generate and send cluster static file.")
 
         primaryHost = self.getPrimaryHostName()
-        primary_host_ip = self.context.clusterInfoDict[primaryHost]["sshIp"]
-        result = self.commonGsCtl.queryOmCluster(primary_host_ip, self.envFile)
+        result = self.commonGsCtl.queryOmCluster(primaryHost, self.envFile)
         for nodeName in self.context.nodeNameList:
             nodeInfo = self.context.clusterInfoDict[nodeName]
             nodeIp = nodeInfo["backIp"]
@@ -1064,7 +1058,6 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
 
         for dbNode in self.context.clusterInfo.dbNodes:
             hostName = dbNode.name
-            host_ip = dbNode.sshIps[0]
             staticConfigPath = "%s/script/static_config_files/cluster_static_config_%s" % \
                 (toolPath, hostName)
             self.context.clusterInfo.saveToStaticConfig(staticConfigPath, dbNode.id)
@@ -1083,9 +1076,9 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
                     (dynamic_file, dynamic_file)
                         
             if hostName != socket.gethostname():
-                hostSsh = SshTool([host_ip], timeout=300)
-                hostSsh.scpFiles(srcFile, targetFile, [host_ip], self.envFile)
-                hostSsh.getSshStatusOutput(dynamic_opt_cmd, [host_ip], self.envFile)
+                hostSsh = SshTool([hostName], timeout=300)
+                hostSsh.scpFiles(srcFile, targetFile, [hostName], self.envFile)
+                hostSsh.getSshStatusOutput(dynamic_opt_cmd, [hostName], self.envFile)
                 self.cleanSshToolFile(hostSsh)
             else:
                 scpcmd = "cp %s %s" % (srcFile, targetFile)
@@ -1216,13 +1209,12 @@ remoteservice={remoteservice}'"\
         gaussdbVersionPattern = re.compile("gaussdb \((.*)\) .*")
         gsomVersionPattern = re.compile("gs_om \(.*\) .*")
         primaryHostName = self.getPrimaryHostName()
-        primary_host_ip = self.context.clusterInfoDict[primaryHostName]["sshIp"]
-        sshPrimary = SshTool([primary_host_ip])
+        sshPrimary = SshTool([primaryHostName])
         resultMap, outputCollect = sshPrimary.getSshStatusOutput(
             getGaussdbVersionCmd, [], envFile)
         self.logger.debug(resultMap)
         self.logger.debug(outputCollect)
-        if resultMap[primary_host_ip] != DefaultValue.SUCCESS:
+        if resultMap[primaryHostName] != DefaultValue.SUCCESS:
             GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35707"] %
                 ("gaussdb", "primary"))
         primaryGaussdbVersion = gaussdbVersionPattern.findall(outputCollect)[0]
@@ -1230,7 +1222,7 @@ remoteservice={remoteservice}'"\
             getGsomVersionCmd, [], envFile)
         self.logger.debug(resultMap)
         self.logger.debug(outputCollect)
-        if resultMap[primary_host_ip] != DefaultValue.SUCCESS:
+        if resultMap[primaryHostName] != DefaultValue.SUCCESS:
             GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35707"] %
                 ("gs_om", "primary"))
         primaryGsomVersion = gsomVersionPattern.findall(outputCollect)[0]
@@ -1240,9 +1232,10 @@ remoteservice={remoteservice}'"\
         failCheckGsomVersionHosts = []
         wrongGaussdbVersionHosts = []
         wrongGsomVersionHosts = []
-        for host in standbyHosts:
-            if not self.expansionSuccess[host]:
+        for backIp in standbyHosts:
+            if not self.expansionSuccess[backIp]:
                 continue
+            host = self.context.backIpNameMap[backIp]
             sshTool = SshTool([host])
             # get gaussdb version
             resultMap, outputCollect = sshTool.getSshStatusOutput(
@@ -1362,7 +1355,7 @@ remoteservice={remoteservice}'"\
                 fo.close()
 
             # send guc command bashfile to each host and execute it.
-            if NetUtil.getLocalIp() != host_name:
+            if socket.gethostname() != host_name:
                 ssh_tool.scpFiles("%s" % temp_sh_file, "%s" % temp_sh_file, [host_name],
                                        self.envFile)
                 result_map, output_collect = \
@@ -1467,15 +1460,14 @@ remoteservice={remoteservice}'"\
         """
         self.logger.debug("Checking the consistence of datanodes.")
         primaryName = self.getPrimaryHostName()
-        primary_host_ip = self.context.clusterInfoDict[primaryName]["sshIp"]
         cmd = "source %s;gs_om -t status --detail" % (self.envFile)
         cmd = CmdUtil.get_user_exec_cmd(self.context.current_user_root, self.user, cmd)
-        sshTool = SshTool([primary_host_ip])
+        sshTool = SshTool([primaryName])
         resultMap, outputCollect = sshTool.getSshStatusOutput(cmd,
-            [primary_host_ip], self.envFile)
+            [primaryName], self.envFile)
         self.logger.debug(resultMap)
         self.logger.debug(outputCollect)
-        if resultMap[primary_host_ip] != DefaultValue.SUCCESS:
+        if resultMap[primaryName] != DefaultValue.SUCCESS:
             GaussLog.exitWithError(ErrorCode.GAUSS_516["GAUSS_51600"])
         self.cleanSshToolFile(sshTool)
         pos = outputCollect.rfind("-----")
@@ -1539,17 +1531,16 @@ remoteservice={remoteservice}'"\
         """
         self.logger.debug("Start to check cluster status.")
 
-        # curHostName = socket.gethostname()
+        curHostName = socket.gethostname()
         command = "source %s; gs_om -t status --detail" % (self.envFile)
         command = CmdUtil.get_user_exec_cmd(self.context.current_user_root, self.user, command)
-        (status, output) = subprocess.getstatusoutput(command)
-        # sshTool = SshTool([curHostName])
-        # resultMap, outputCollect = sshTool.getSshStatusOutput(command,
-        #     [curHostName], self.envFile)
-        # self.logger.debug(resultMap)
-        # self.logger.debug(outputCollect)
-        # self.cleanSshToolFile(sshTool)
-        if output.find("Primary Normal") == -1:
+        sshTool = SshTool([curHostName])
+        resultMap, outputCollect = sshTool.getSshStatusOutput(command,
+            [curHostName], self.envFile)
+        self.logger.debug(resultMap)
+        self.logger.debug(outputCollect)
+        self.cleanSshToolFile(sshTool)
+        if outputCollect.find("Primary Normal") == -1:
             GaussLog.exitWithError((ErrorCode.GAUSS_357["GAUSS_35709"] %
                 ("status", "primary", "Normal")) + "\nExpansion failed.")
 
@@ -1809,8 +1800,9 @@ class GsCtlCommon:
         """
         """
         command = "source %s ; gs_ctl query -D %s" % (env, datanode)
-        sshTool = SshTool([host])
-        resultMap, outputCollect = sshTool.getSshStatusOutput(command, [host], env)
+        sshTool = SshTool([datanode])
+        resultMap, outputCollect = sshTool.getSshStatusOutput(command,
+        [host], env)
         self.logger.debug(outputCollect)
         localRole = re.findall(r"local_role.*: (.*?)\n", outputCollect)
         db_state = re.findall(r"db_state.*: (.*?)\n", outputCollect)

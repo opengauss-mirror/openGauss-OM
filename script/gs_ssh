@@ -127,8 +127,12 @@ General options:
             self.clusterInfo = dbClusterInfo()
             self.clusterInfo.initFromStaticConfig(self.user)
 
-            nodeSshIps = self.clusterInfo.getClusterSshIps()[0]
-            self.sshTool = SshTool(nodeSshIps)
+            nodeNames = self.clusterInfo.getClusterNodeNames()
+            if self.check_nodename_recognized(nodeNames):
+                self.sshTool = SshTool(nodeNames)
+            else:
+                nodeSshIps = self.clusterInfo.getClusterSshIps()[0]
+                self.sshTool = SshTool(nodeSshIps)
             
         except Exception as e:
             GaussLog.exitWithError(str(e))

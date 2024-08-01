@@ -51,9 +51,6 @@ from subprocess import PIPE
 from base_utils.common.fast_popen import FastPopen
 from gspylib.common.copy_python_lib import copy_lib
 from base_utils.os.user_util import UserUtil
-from base_utils.executor.local_remote_cmd import LocalRemoteCmd
-from domain_utils.cluster_file.profile_file import ProfileFile
-from base_utils.os.crontab_util import CrontabUtil
 
 copy_lib()
 DefaultValue.doConfigForParamiko()
@@ -153,7 +150,6 @@ class GaussCreateTrust():
         self.hosts_paswd_list = []
         self.logFile = ""
         self.localHost = ""
-        self.local_ip = ""
         self.flag = False
         self.localID = ""
         self.user = pwd.getpwuid(os.getuid()).pw_name
@@ -658,7 +654,6 @@ General options:
         self.parseCommandLine()
         self.checkParameter()
         self.localHost = socket.gethostname()
-        self.local_ip = socket.gethostbyname(self.localHost)
         self.init_sshtool()
         self.initLogger()
         global tmp_files
@@ -688,115 +683,33 @@ General options:
             self.synchronizationLicenseFile(result)
             self.retry_register_other_ssh_agent()
             self.verifyTrust()
-            self.init_global()
-            self.set_user_ssh_alive(result)
+            self.set_user_crontab(result)
             self.logger.log("Successfully created SSH trust.")
         except Exception as e:
             self.logger.logExit(str(e))
         finally:
             self.passwd = []
 
-    def set_user_ssh_alive(self, hostname_ips):
-        """
-        set user ssh alive
-        """
-        package_path = os.path.dirname(os.path.realpath(__file__))
-        gp_home = os.path.join(package_path, '../')
-        if EnvUtil.getEnv("GPHOME"):
-            gp_home = EnvUtil.getEnv("GPHOME")
-        else:
-            os.environ['GPHOME'] = gp_home
-        if os.getuid() == 0:
-            self.set_user_crontab(hostname_ips)
-        else:
-            if CrontabUtil.check_user_crontab_permission():
-                self.set_user_crontab(hostname_ips)
-            else:
-                self.set_user_ssh_service(gp_home)
-    
-    def init_global(self):
-        """
-        init ssh tools
-        """
-        self.ssh_tool = SshTool(self.hostList)
-    
-    def getUserProfile(self):
-        """
-        function: set env into /etc/profile
-        input : OSEnvConfig
-        output: NA
-        """
-        if self.mpprcFile != "":
-            # have check its exists when check parameters,
-            # so it should exist here
-            user_profile = self.mpprcFile
-            if not os.path.exists(user_profile):
-                FileUtil.createFile(user_profile)
-                FileUtil.changeMode(DefaultValue.DIRECTORY_MODE, user_profile)
-            FileUtil.changeOwner(self.user, user_profile)
-        else:
-            # check if os profile exist
-            user_profile = ProfileFile.get_user_bashrc(self.user)
-            if not os.path.exists(user_profile):
-                self.logger.debug(
-                    "Profile does not exist. Please create %s." % user_profile)
-                FileUtil.createFile(user_profile)
-                FileUtil.changeMode(DefaultValue.DIRECTORY_MODE, user_profile)
-        return user_profile
-
-    def set_user_ssh_service(self, gp_home):
-        """
-        set user ssh service
-        """
+    def set_user_crontab(self, hostnames_ips):
         if os.getuid() == 0:
             return
-        self.logger.log("Start set ssh service for %s" % self.user)
-        # copy self.hostList
-        host_ip = self.hostList[:]
-        host_ip.remove(self.local_ip)
-
-        package_path = os.path.dirname(os.path.realpath(__file__))
-        gp_home = os.path.join(package_path, '../')
-        ssh_service_local_file = os.path.normpath(os.path.join(gp_home, "script/local/create_ssh_service.sh"))
-        ssh_service_file = os.path.normpath(os.path.join(gp_home, "script/local/create_ssh_service.sh"))
-
-        # cp ssh service file to remote 
-        ssh_service_dir = os.path.dirname(ssh_service_file)
-        LocalRemoteCmd.checkRemoteDir(self.ssh_tool, ssh_service_dir, host_ip, "")
-        self.ssh_tool.scpFiles(ssh_service_file, ssh_service_file, [], "", gp_path=gp_home)
-
-        # execute ssh service file
-        cmd = "sh %s %s %s" % (ssh_service_local_file, self.user, gp_home)
-        self.ssh_tool.executeCommand(cmd, DefaultValue.SUCCESS, self.hostList)
-
-        self.logger.log("Successfully to set ssh service for %s" % self.user)
-
-    def set_user_crontab(self, hostnames_ips):
+        hostnames = list(hostnames_ips.values())
         self.logger.log("Start set cron for %s" % self.user)
-        # hostnames_ips  key is ip; value is hostname
-        ips = list(hostnames_ips.keys())
         package_path = os.path.dirname(os.path.realpath(__file__))
         gp_home = os.path.join(package_path, '../')
         check_cron = True
-
-         # create cron tmp file
-        cron_file = "/tmp/gauss_cron_%s" % self.user
-        if os.getuid() == 0:
-            set_cron_cmd = "crontab -u %s -l > %s && " % (self.user, cron_file)
-        else:
-            set_cron_cmd = "crontab -l > %s && " % cron_file
-        set_cron_cmd += "sed -i '/CheckSshAgent.py/d' %s;" % cron_file
-        set_cron_cmd += "echo '*/1 * * * * source ~/.bashrc;python3 %s/script/local/CheckSshAgent.py >>/dev/null 2>&1 &' >> %s" % \
-                            (gp_home, cron_file)
-        if os.getuid() == 0:
-            set_cron_cmd += "crontab -u %s %s ;" % (self.user, cron_file)
-        else:
-            set_cron_cmd += "crontab %s ;" % cron_file
-        set_cron_cmd += "rm -f '%s';" % cron_file
         try:
-            ssh_tool = SshTool(ips)
-            os.environ['GPHOME'] = gp_home
+            # create cron tmp file
+            cron_file = "/tmp/gauss_cron_%s" % self.user
+            set_cron_cmd = "crontab -l > %s && " % cron_file
+            set_cron_cmd += "sed -i '/CheckSshAgent.py/d' %s;" % cron_file
+            set_cron_cmd += "echo '*/1 * * * * source ~/.bashrc;python3 %s/script/local/CheckSshAgent.py >>/dev/null 2>&1 &' >> %s" % \
+                            (gp_home, cron_file)
+            set_cron_cmd += "&& crontab %s" % cron_file
+            set_cron_cmd += "&& rm -f '%s';" % cron_file
             self.logger.debug("Command for setting CRON: %s" % set_cron_cmd)
+            ssh_tool = SshTool(hostnames)
+            os.environ['GPHOME'] = gp_home
             ssh_tool.executeCommand(set_cron_cmd, DefaultValue.SUCCESS, '', '')
             ssh_tool.clenSshResultFiles()
         except Exception as e:
@@ -905,13 +818,20 @@ General options:
         output: NA
         """
         self._log("Updating the known_hosts file.", "addStep")
-        for ip in self.hostList:
-            cmd = '%s;/usr/bin/ssh-keyscan -t ed25519 %s >> %s ' % (SYSTEM_SSH_ENV, ip, self.known_hosts_fname)
+        hostnameList = []
+        hostnameList.extend(self.hostList)
+        for(key, value) in list(result.items()):
+            hostnameList.append(value)
+        for hostname in hostnameList:
+            cmd = '%s;/usr/bin/ssh-keyscan -t ed25519 %s >> %s ' % (SYSTEM_SSH_ENV, hostname, self.known_hosts_fname)
             cmd += '&& sed -i "$ s/$/ #OM/" %s ' % self.known_hosts_fname
             cmd += "&& chmod %s %s" % (DefaultValue.KEY_FILE_MODE, self.known_hosts_fname)
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0 or "Name or service not known".lower() in output.lower():
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error:\n%s" % output)
+        (status, output) = self.checkAuthentication(self.localHost)
+        if not status:
+            raise Exception(ErrorCode.GAUSS_511["GAUSS_51100"] % self.localHost)
         self._log("Successfully updated the known_hosts file.", "constant")
 
     def tryParamikoConnect(self, hostname, client, pswd = None, silence = False):
@@ -954,23 +874,23 @@ General options:
             self.logger.logExit(ErrorCode.GAUSS_511["GAUSS_51111"] + " Error:%s." % str(e))
         self._log("Successfully appended authorized_key on all remote node.", "constant")
 
-    def sendRemoteAuthorization(self, ip): 
+    def sendRemoteAuthorization(self, hostname): 
         """
         function: send remote authorization
         input : hostname
         output: NA
         """
-        if ip != self.localHost:
+        if hostname != self.localHost:
             p = None
             cin = cout = cerr = None
             try:
                 #ssh Remote Connection other node
                 p = paramiko.SSHClient()
                 p.load_system_host_keys()               
-                ok = self.tryParamikoConnect(ip, p, self.correct_passwd_map[ip], silence = True)
+                ok = self.tryParamikoConnect(hostname, p, self.correct_passwd_map[hostname], silence = True)
                 if not ok:
                     self.incorrectPasswdInfo += "Without this node[%s] of the correct password.\n"\
-                                                % ip
+                                                % hostname
                     return
                 # Create .ssh directory and ensure content meets permission requirements 
                 # for password-less SSH
@@ -1010,12 +930,12 @@ General options:
                 if line.find("ok ok ok") < 0:
                     self.failedToAppendInfo += "...send to %s\nFailed to append local ID to " \
                                                "authorized_keys on remote node %s.\n" % \
-                                               (ip, ip)
+                                               (hostname, hostname)
                     return
                 cout.close()
                 cerr.close()
                 self.logger.debug("Send to %s\nSuccessfully appended authorized_key on"
-                                  " remote node %s." % (ip, ip))
+                                  " remote node %s." % (hostname, hostname))
             finally:
                 if cin:
                     cin.close()
@@ -1175,10 +1095,9 @@ General options:
                     continue
 
                 max_try_times = 3
-                status = -1
+                status, output, cmd = self.send_trust_file(hostip)
                 
                 while status != 0 and max_try_times > 0:
-                    status, output, cmd = self.send_trust_file(hostip)
                     self.logger.debug(f"send_trust_file failed, countdown {max_try_times}, retry again.")
                     self.logger.debug("errorinfo: hostip: %s, status: %d, output: %s, "
                                       % (hostip, status, output))
@@ -1188,6 +1107,7 @@ General options:
                     ))
                     time.sleep(10)
                     max_try_times -= 1
+                    status, output, cmd = self.send_trust_file(hostip)
                 
                 if status != 0 and max_try_times == 0:
                     raise Exception(ErrorCode.GAUSS_502["GAUSS_50223"] %"the authentication"
@@ -1365,7 +1285,7 @@ General options:
                                                         "gspylib",
                                                         "clib"))
         encrypt_path = os.path.join(encrypt_dir_path, "encrypt")
-        if (not os.path.exists(encrypt_path)):
+        if (not os.path.exists(encrypt_path)) :
             root = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..')
             clib = os.path.join(root, "script/gspylib/clib")
             bin_files = ['./bin/encrypt']

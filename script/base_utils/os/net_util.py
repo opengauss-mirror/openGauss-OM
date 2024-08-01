@@ -458,11 +458,10 @@ class NetUtil(object):
         output: str
         """
         try:
-            cmd = "hostname -I | awk '{print $1}'"
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if not status:
-                return output.strip()
             env_dist = os.environ
+            if "HOST_IP" not in list(env_dist.keys()):
+                host_name = NetUtil.getHostName()
+                return host_name
             host_ip = env_dist.get("HOST_IP")
             if host_ip is not None:
                 if NetUtil.isIpValid(host_ip):

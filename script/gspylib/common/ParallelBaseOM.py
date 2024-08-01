@@ -335,11 +335,11 @@ class ParallelBaseOM(object):
         self.logger.debug("Distributing files.")
         try:
             # get the all nodes
-            hosts = self.clusterInfo.getClusterSshIps()[0]
-            if NetUtil.getLocalIp() not in hosts:
+            hosts = self.clusterInfo.getClusterNodeNames()
+            if NetUtil.GetHostIpOrName() not in hosts:
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51619"] %
-                                NetUtil.getLocalIp())
-            hosts.remove(NetUtil.getLocalIp())
+                                NetUtil.GetHostIpOrName())
+            hosts.remove(NetUtil.GetHostIpOrName())
             # Send xml file to every host
             DefaultValue.distributeXmlConfFile(self.sshTool, self.xmlFile,
                                                hosts, self.mpprcFile)
@@ -432,7 +432,7 @@ class ParallelBaseOM(object):
         killSnapshotSQL = "select * from kill_snapshot();"
 
         (status, output) = ClusterCommand.remoteSQLCommand(
-            killSnapshotSQL, self.user, dnInst.listenIps[0], dnInst.port,
+            killSnapshotSQL, self.user, dnInst.hostname, dnInst.port,
             False, DefaultValue.DEFAULT_DB_NAME)
         if (status != 0):
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
@@ -454,7 +454,7 @@ class ParallelBaseOM(object):
         self.logger.debug("The ca file dir is: %s." % caPath)
         if (len(hostList) == 0):
             for dbNode in self.clusterInfo.dbNodes:
-                hostList.append(dbNode.sshIps[0])
+                hostList.append(dbNode.name)
         # Create CA dir and prepare files for using.
         self.logger.debug("Create CA file directory.")
         try:
@@ -492,7 +492,7 @@ class ParallelBaseOM(object):
         self.logger.debug("The ca file dir is: %s." % caPath)
         if (len(hostList) == 0):
             for dbNode in self.clusterInfo.dbNodes:
-                hostList.append(dbNode.sshIps[0])
+                hostList.append(dbNode.name)
         # Create CA dir and prepare files for using.
         self.logger.debug("Create CA file directory.")
         try:
@@ -514,7 +514,7 @@ class ParallelBaseOM(object):
                 FileUtil.removeFile(certFile)
             DefaultValue.cleanCaDir(caPath)
             raise Exception(str(e))
-        if len(hostList) == 1 and hostList[0] == NetUtil.getLocalIp():
+        if len(hostList) == 1 and hostList[0] == socket.gethostname():
             self.logger.debug("Local host database, no need transform files.")
         else:
             for certFile in DefaultValue.GRPC_CERT_LIST:
@@ -568,7 +568,7 @@ class ParallelBaseOM(object):
                           "'%s'/server.key.rand" % binPath)
         if len(hostList) == 0:
             for dbNode in self.clusterInfo.dbNodes:
-                hostList.append(dbNode.sshIps[0])
+                hostList.append(dbNode.name)
         if not self.isSingle:
             # localhost no need scp files
             for certFile in DefaultValue.BIN_CERT_LIST:

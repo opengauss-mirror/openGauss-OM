@@ -574,7 +574,7 @@ class InstallImpl:
             DefaultValue.enableWhiteList(
                 self.context.sshTool,
                 self.context.mpprcFile,
-                self.context.clusterInfo.getClusterSshIps()[0],
+                self.context.clusterInfo.getClusterNodeNames(),
                 self.context.logger)
         except Exception as e:
             # failed to clear the backup directory

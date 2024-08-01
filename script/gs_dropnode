@@ -281,7 +281,7 @@ General options:
         self.failureHosts = '.'.join(re.findall(r"\[FAILURE\] .*:.*\n",
                                                 outputCollect))
         for host in list(self.hostMapForExist.keys()):
-            if self.hostMapForExist[host]['ipaddr'] in self.failureHosts:
+            if host in self.failureHosts:
                 GaussLog.exitWithError(
                     ErrorCode.GAUSS_358["GAUSS_35807"] % host)
 
@@ -342,7 +342,7 @@ if __name__ == "__main__":
     DefaultValue.check_is_streaming_dr_cluster()
     dropNode.check_repeat_process()
     dropNode.checkParameters()
-    dropNode.checkConnection(list(dropNode.backIpNameMap.values()),
+    dropNode.checkConnection(list(dropNode.backIpNameMap.keys()),
                              dropNode.envFile)
     dropNode.check_cluster_status()
     dropNode.flagForOnlyPrimaryLeft()

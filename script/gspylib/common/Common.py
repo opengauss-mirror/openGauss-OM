@@ -529,11 +529,6 @@ class DefaultValue():
     SSH_AUTHORIZED_KEYS = os.path.expanduser("~/.ssh/authorized_keys")
     SSH_KNOWN_HOSTS = os.path.expanduser("~/.ssh/known_hosts")
 
-    # os parameter
-    MAX_REMAIN_SEM = 240000
-    MIN_REMAIN_SEM = 10000
-    NOFILE_LIMIT = 640000
-
     @staticmethod
     def encodeParaline(cmd, keyword):
         """
@@ -1954,12 +1949,12 @@ class DefaultValue():
                             cooInst.hostname, pid, currentTime)
                         tmpDir = EnvUtil.getTmpDirFromEnv()
                         filepath = os.path.join(tmpDir, outputfile)
-                        ClusterCommand.executeSQLOnRemoteHost(cooInst.listenIps[0],
+                        ClusterCommand.executeSQLOnRemoteHost(cooInst.hostname,
                                                               cooInst.port,
                                                               sql,
                                                               filepath)
                         (status, result, error_output) = \
-                            SqlExecutor.getSQLResult(cooInst.listenIps[0],
+                            SqlExecutor.getSQLResult(cooInst.hostname,
                                                         outputfile)
                         if (status != 2):
                             return 1, "[%s]: Error: %s result: %s status: " \
@@ -1971,7 +1966,7 @@ class DefaultValue():
             else:
                 for cooInst in cnList:
                     (status, output) = ClusterCommand.remoteSQLCommand(
-                        sql, user, cooInst.listenIps[0], cooInst.port)
+                        sql, user, cooInst.hostname, cooInst.port)
                     resList = output.split('\n')
                     if (status != 0 or len(resList) < 1):
                         return 1, "[%s]: %s" % (cooInst.hostname, output)
@@ -2998,7 +2993,7 @@ class DefaultValue():
             rm_dynamic_cmd = g_file.SHELL_CMD_DICT["deleteFile"] % (cluster_dynamic_config,
                                                                     cluster_dynamic_config)
             perform_cmd = "{0} && {1}".format(rm_dynamic_cmd, rm_meta_data_cmd)
-            CmdExecutor.execCommandWithMode(perform_cmd, ssh_tool, host_list=[node.backIps[0]])
+            CmdExecutor.execCommandWithMode(perform_cmd, ssh_tool, host_list=[node.name])
             logger.debug("Remove dynamic_config_file and CM metadata directory "
                          "on node [{0}] successfully.".format(node.name))
         logger.log("Remove dynamic_config_file and CM metadata directory on all nodes.")
@@ -3042,11 +3037,11 @@ class DefaultValue():
             raise Exception(ErrorCode.GAUSS_514['GAUSS_51400'] % cmd + "Error:\n%s" % stderr)
         cm_agent_conf_file = stdout.strip() + "/cm_agent/cm_agent.conf"
         if not os.path.isfile(cm_agent_conf_file):
-            host_list = clusterinfo.getClusterSshIps()[0]
+            host_list = clusterinfo.getClusterNodeNames()
             cm_agent_conf_temp_file = os.path.join(EnvUtil.getTmpDirFromEnv(), "cm_agent_tmp.conf")
             for host_ip in host_list:
                 get_file_cmd = g_file.SHELL_CMD_DICT["scpFileFromRemote"] % \
-                  (host_ip, NetUtil.getLocalIp(), cm_agent_conf_file, cm_agent_conf_temp_file)
+                  (host_ip, NetUtil.GetHostIpOrName(), cm_agent_conf_file, cm_agent_conf_temp_file)
                 proc = FastPopen(get_file_cmd, stdout=PIPE, stderr=PIPE)
                 stdout, stderr = proc.communicate()
                 if not os.path.isfile(cm_agent_conf_temp_file):
@@ -3136,7 +3131,7 @@ class DefaultValue():
         for inst in instances:
             logger.debug("Obtain hadr user info string on node:%s with port:%s."
                          % (inst.hostname, inst.port))
-            status, output = ClusterCommand.remoteSQLCommand(sql, db_user, inst.listenIps[0],
+            status, output = ClusterCommand.remoteSQLCommand(sql, db_user, inst.hostname,
                                                              inst.port, maintenance_mode=mode)
             if status == 0 and output:
                 logger.debug("Successfully obtain hadr user info string.")
@@ -3181,7 +3176,7 @@ class DefaultValue():
         for inst in instances:
             logger.debug("Decrypt hadr user info on node:%s with port:%s."
                          % (inst.hostname, inst.port))
-            status, output = ClusterCommand.remoteSQLCommand(sql, db_user, inst.listenIps[0],
+            status, output = ClusterCommand.remoteSQLCommand(sql, db_user, inst.hostname,
                                                              inst.port, maintenance_mode=mode)
             if status == 0 and output and "|" in output and len(output.split("|")) == 2:
                 logger.debug("Successfully decrypt hadr user info string.")
@@ -3335,35 +3330,6 @@ class DefaultValue():
             # failed to read the upgrade_step.csv in isgreyUpgradeNodeSpecify
             logger.logExit(str(e))
 
-    @staticmethod
-    def get_remain_kernel_sem():
-        """
-        get remain kernel sem
-        """
-        # get total sem
-        cmd = "cat /proc/sys/kernel/sem"
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status:
-            raise Exception(ErrorCode.GAUSS_501["GAUSS_50110"] % cmd)
-        parts = output.split()
-        semmns = int(parts[1])
-
-        # get used sem
-        cmd = "ipcs -s"
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status:
-            raise Exception(ErrorCode.GAUSS_501["GAUSS_50110"] % cmd)
-        current_sems_lines = output.split('\n')
-        # skip the first three lines and process the remaining lines
-        current_sems = [int(line.split()[3]) for line in current_sems_lines[3:] if line.strip()]
-
-        # Calculate the number of semaphores currently in use
-        used_sems = sum(current_sems)
-
-        # Calculate the number of remaining semaphores
-        remaining_sems = semmns - used_sems
-        return remaining_sems
-    
 class ClusterCommand():
     '''
     Common for cluster command
@@ -3671,8 +3637,8 @@ class ClusterCommand():
             LocalRemoteCmd.cleanFile(sqlFile)
             return (1, str(e))
         # send new sql file to remote node if needed
-        localHost = NetUtil.getLocalIp()
-        if str(localHost) != str(host) and str(host) != "127.0.0.1":
+        localHost = NetUtil.GetHostIpOrName()
+        if str(localHost) != str(host):
             cmd = LocalRemoteCmd.getRemoteCopyCmd(sqlFile, sqlFile, host)
             if os.getuid() == 0 and user != "":
                 cmd = "su - %s \"%s\"" % (user, cmd)
@@ -3691,7 +3657,7 @@ class ClusterCommand():
                                                  user_pwd=user_pwd)
         if maintenance_mode:
             gsql_cmd += " -m "
-        if str(localHost) != str(host) and str(host) != "127.0.0.1":
+        if str(localHost) != str(host):
             sshCmd = CmdUtil.getSshCmd(host)
             if os.getuid() == 0 and user != "":
                 cmd = " %s 'su - %s -c \"" % (sshCmd, user)
@@ -3774,7 +3740,7 @@ class ClusterCommand():
             if (status1 != 0):
                 LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile))
                 return (status1, output1)
-        if (str(localHost) != str(host) and str(host) != "127.0.0.1"):
+        if (str(localHost) != str(host)):
             remoteCmd = LocalRemoteCmd.getRemoteCopyCmd(
                 queryResultFile,
                 EnvUtil.getTmpDirFromEnv(user) + "/", str(localHost))
@@ -3792,14 +3758,14 @@ class ClusterCommand():
                 rowList = fp.readlines()
         except Exception as e:
             LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile))
-            if (str(localHost) != str(host) and str(host) != "127.0.0.1"):
+            if (str(localHost) != str(host)):
                 LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile),
                                        host)
             return (1, str(e))
         # remove local sqlFile
         LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile))
         # remove remote sqlFile
-        if (str(localHost) != str(host) and str(host) != "127.0.0.1"):
+        if (str(localHost) != str(host)):
             LocalRemoteCmd.cleanFile("%s,%s" % (queryResultFile, sqlFile), host)
         return (0, "".join(rowList)[:-1])
 

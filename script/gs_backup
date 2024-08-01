@@ -31,7 +31,6 @@ from impl.backup.OLAP.BackupImplOLAP import BackupImplOLAP
 from domain_utils.cluster_file.cluster_log import ClusterLog
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from domain_utils.cluster_os.cluster_user import ClusterUser
-from gspylib.threads.SshTool import SshTool
 
 ACTION_BACKUP = "backup"
 ACTION_RESTORE = "restore"
@@ -56,7 +55,6 @@ class Backup(ParallelBaseOM):
         self.isParameter = False
         self.isBinary = False
         self.isForce = False
-        self.node_ip = ""
 
     ####################################################################################
     # Help context. U:R:oC:v: 
@@ -211,16 +209,6 @@ General options:
                                   " Only parameter files will be backed up.")
             self.isParameter = True
 
-    def init_globals(self):
-        """
-        init cluster info from static file
-        """
-        # init the log file
-        self.initLogger(self.action)
-        # init the cluster info
-        self.initClusterInfoFromStaticFile(self.user)
-        if self.nodename:
-            self.node_ip = self.clusterInfo.getDbNodeByName(self.nodename)
 
 
 if __name__ == '__main__':
@@ -240,8 +228,6 @@ if __name__ == '__main__':
 
         # check the parameters is not OK
         backupObj.checkParameter()
-        # init globals
-        backupObj.init_globals()
 
         # set action flag file
         DefaultValue.setActionFlagFile("gs_backup")

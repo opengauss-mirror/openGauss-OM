@@ -67,7 +67,7 @@ class DropNodeWithCmImpl(DropnodeImpl):
         self.drop_nodes = [node for node in self.context.clusterInfo.dbNodes
                            for drop_ip in self.context.hostIpListForDel
                            if drop_ip in node.backIps]
-        self.ssh_tool = SshTool([node.backIps[0] for node in self.context.clusterInfo.dbNodes])
+        self.ssh_tool = SshTool([node.name for node in self.context.clusterInfo.dbNodes])
 
         self.cm_component = CM_OLAP()
         self.cm_component.binPath = os.path.realpath(os.path.join(
@@ -157,10 +157,8 @@ class DropNodeWithCmImpl(DropnodeImpl):
                 OMCommand.getLocalScript("Local_Config_CM_Res"),
                 ACTION_DROP_NODE, self.user, del_hosts, self.context.localLog)
         self.logger.debug("Command for updating cm resource file: %s" % cmd)
-        for name in self.context.hostMapForExist.keys():
-            host_ip = self.backIpNameMap[name] 
         CmdExecutor.execCommandWithMode(cmd, self.ssh_tool,
-                                        host_list=host_ip)
+                                        host_list=self.context.hostMapForExist.keys())
         self.logger.log("Successfully updated cm resource file.")
 
     def update_dss_inst(self):
@@ -240,7 +238,7 @@ class DropNodeWithCmImpl(DropnodeImpl):
                                                       "bin", "drop_node_flag"))
             cmd = g_file.SHELL_CMD_DICT["createFile"] % (flag_file,
                                                          DefaultValue.FILE_MODE, flag_file)
-            CmdExecutor.execCommandWithMode(cmd, self.ssh_tool, host_list=[drop_node.backIps[0]])
+            CmdExecutor.execCommandWithMode(cmd, self.ssh_tool, host_list=[drop_node.name])
 
             self.logger.log("Generate drop flag file on "
                             "drop node {0} successfully.".format(drop_node.name))
@@ -258,7 +256,7 @@ class DropNodeWithCmImpl(DropnodeImpl):
         self.logger.debug("stopCMProcessesCmd: " + stopCMProcessesCmd)
         gaussHome = EnvUtil.getEnv("GAUSSHOME")
         gaussLog = EnvUtil.getEnv("GAUSSLOG")
-        hostList = [node.backIps[0] for node in self.context.clusterInfo.dbNodes]
+        hostList = [node.name for node in self.context.clusterInfo.dbNodes]
         CmdExecutor.execCommandWithMode(stopCMProcessesCmd, self.ssh_tool, host_list=hostList)
         # for flush dcc configuration
         DefaultValue.remove_metadata_and_dynamic_config_file(self.user, self.ssh_tool, self.logger)
@@ -266,7 +264,7 @@ class DropNodeWithCmImpl(DropnodeImpl):
         dataPath = self.context.hostMapForExist[self.localhostname]['datadir'][0]
         gsctlReloadCmd = "source %s; gs_ctl reload -N all -D %s" % (self.envFile, dataPath)
         self.logger.debug("gsctlReloadCmd: " + gsctlReloadCmd)
-        CmdExecutor.execCommandWithMode(gsctlReloadCmd, self.ssh_tool, host_list=[self.local_ip])
+        CmdExecutor.execCommandWithMode(gsctlReloadCmd, self.ssh_tool, host_list=[self.localhostname])
         # start CM processes
         startCMProcessedCmd = "source %s; nohup %s/bin/om_monitor -L %s/cm/om_monitor >> /dev/null 2>&1 &" % \
             (self.envFile, gaussHome, gaussLog)

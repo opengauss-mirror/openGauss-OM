@@ -246,7 +246,7 @@ General options:
                                 % ("local install path[" +
                                    self.clusterInfo.appPath + "]"))
             # initialize sshTool
-            g_sshTool = SshTool(self.clusterInfo.getClusterSshIps()[0],
+            g_sshTool = SshTool(self.clusterInfo.getClusterNodeNames(),
                                 g_logger.logFile,
                                 DefaultValue.TIMEOUT_PSSH_CHECK)
 

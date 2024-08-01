@@ -507,7 +507,7 @@ General options:
             cmd += 'cp ./lib/libasan.so.6 {} &&'.format(memcheck_root_lib)
         cmd += '\mv {} {} && '.format(' '.join(bin_files + memcheck_files), clib)
         cmd += 'cd {} && rm -rf bin'.format(root)
-        status, output = subprocess.getstatusoutput(cmd)
+        status, _ = subprocess.getstatusoutput(cmd)
         if status != 0:
             GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"] %
                                    "version.cfg" + "The cmd is %s. " % cmd +
@@ -534,7 +534,7 @@ General options:
         self.logger.log("Parsing the configuration file.", "addStep")
         try:
             # parse the configuration file
-            self.sshTool = SshTool(self.clusterInfo.getClusterSshIps()[0],
+            self.sshTool = SshTool(self.clusterInfo.getClusterNodeNames(),
                                    self.logFile,
                                    DefaultValue.TIMEOUT_PSSH_PREINSTALL)
 

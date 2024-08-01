@@ -73,7 +73,6 @@ class OmImpl:
         self.clusterInfo = OperationManager.clusterInfo
         self.dataDir = OperationManager.g_opts.dataDir
         self.sshTool = None
-        self.node_ip = OperationManager.g_opts.node_ip
 
     def doStopCluster(self):
         """
@@ -246,7 +245,7 @@ class OmImpl:
         output:NA
         """
         host_name = NetUtil.GetHostIpOrName()
-        sshtool = SshTool(self.context.clusterInfo.getClusterSshIps()[0], timeout=self.time_out)
+        sshtool = SshTool(self.context.clusterInfo.getClusterNodeNames(), timeout=self.time_out)
         node_id = 0
         if self.context.g_opts.nodeName != "":
             for db_node in self.context.clusterInfo.dbNodes:
@@ -410,7 +409,7 @@ class OmImpl:
             self.context.clusterInfo.initFromStaticConfig(
                 UserUtil.getPathOwner(self.context.g_opts.certFile)[0])
             self.sshTool = SshTool(
-                self.context.clusterInfo.getClusterSshIps()[0],
+                self.context.clusterInfo.getClusterNodeNames(),
                 self.logger.logFile)
         except Exception as e:
             raise Exception(str(e))
@@ -733,7 +732,7 @@ class OmImpl:
         self.context.clusterInfo = dbClusterInfo()
         self.context.clusterInfo.initFromStaticConfig(
             pwd.getpwuid(os.getuid()).pw_name)
-        self.sshTool = SshTool(self.context.clusterInfo.getClusterSshIps()[0],
+        self.sshTool = SshTool(self.context.clusterInfo.getClusterNodeNames(),
                                self.logger.logFile)
         backupList = DefaultValue.CERT_FILES_LIST[:]
 
@@ -1244,7 +1243,7 @@ class OmImpl:
         output:dictionary
         """
         existNodes = []
-        for nodeName in self.context.clusterInfo.getClusterSshIps()[0]:
+        for nodeName in self.context.clusterInfo.getClusterNodeNames():
             if (nodeName == NetUtil.GetHostIpOrName()):
                 continue
             if (self.sshTool.checkRemoteFileExist(nodeName, filepath, "")):

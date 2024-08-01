@@ -52,7 +52,7 @@ class Collector(object):
             return [param.database.value]
 
         # 否则自动检测所有库，且仅支持A库
-        if param.action == Action.VERIFY:
+        if action == Action.VERIFY:
             search_db_sql = "select datname from pg_database " \
                             "where datname not in ('template0', 'template1') and " \
                             "      upper(datcompatibility) != 'A'"
@@ -69,7 +69,7 @@ class Collector(object):
                 logger.err('没有需要校验的库。')
                 
             return [row[0] for row in qres]
-        elif param.action == Action.EXPORT:
+        elif action == Action.EXPORT:
             search_db_sql = "select datname from pg_database " \
                             "where datname = 'postgres' and upper(datcompatibility) = 'A'"
             qres = og.query(search_db_sql)

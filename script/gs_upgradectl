@@ -95,11 +95,8 @@ class Upgrade(ParallelBaseOM):
         self.newClusterAppPath = ""
         self.oldClusterAppPath = ""
         self.clusterNodes = []
-        self.cluster_ip = []
-        self.cluster_hostname_ip_map = {} 
         self.nodesNum = -1
         self.nodeNames = []
-        self.node_ips = []
         ##static parameter
         self.binTarName = "binary_%s.tar" % NetUtil.GetHostIpOrName()
         self.rollback = False
@@ -275,7 +272,7 @@ Option for grey upgrade
 
     def execCommandInSpecialNode(self, cmd, hosts, retry_times=2, time_out=0):
         if not hosts:
-            host_list = copy.deepcopy(self.cluster_hostname_ip_map.values())
+            host_list = copy.deepcopy(self.clusterNodes)
         else:
             host_list = copy.deepcopy(hosts)
         self.logger.debug("Commanded: exec cmd in the hosts {0}".format(host_list))
@@ -328,8 +325,6 @@ Option for grey upgrade
         # init clusterNodes
         for dbNode in self.clusterInfo.dbNodes:
             self.clusterNodes.append(dbNode.name)
-            self.cluster_ip.append(dbNode.backIps[0])
-            self.cluster_hostname_ip_map[dbNode.name] = dbNode.backIps[0]
         if len(self.clusterNodes) == 0:
             raise Exception(ErrorCode.GAUSS_512["GAUSS_51201"])
 
@@ -340,8 +335,6 @@ Option for grey upgrade
         for nodeName in self.nodeNames:
             if nodeName not in self.clusterNodes:
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51619"] % nodeName)
-            node = self.clusterInfo.getDbNodeByName(nodeName)
-            self.node_ips = node.sshIps[0]
         self.logger.debug("Successfully init global infos")
 
         # If it is a dual-cluster, initialize the related information of the dual-cluster
@@ -416,14 +409,11 @@ Option for grey upgrade
         :return:
         """
         if not hostList:
-            hostList = copy.deepcopy(self.cluster_ip)
+            hostList = copy.deepcopy(self.clusterNodes)
         else:
             hostList = copy.deepcopy(hostList)
-        local_ip = NetUtil.getLocalIp()
-        if local_ip in hostList:
-            hostList.remove(local_ip)
-        if "127.0.0.1" in hostList:
-            hostList.remove("127.0.0.1")
+        if NetUtil.GetHostIpOrName() in hostList:
+            hostList.remove(NetUtil.GetHostIpOrName())
 
         self.logger.debug("Start copy file:{0} to hosts:{1}.".format(
             file, hostList))
@@ -485,7 +475,7 @@ if __name__ == '__main__':
         impl.run()
     except Exception as e:
         if REPEAT:
-            upgrade.sshTool = SshTool(upgrade.cluster_ip,
+            upgrade.sshTool = SshTool(upgrade.clusterNodes,
                                       DefaultValue.TIMEOUT_PSSH_COMMON)
         GaussLog.exitWithError(str(e))
     finally:

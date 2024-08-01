@@ -73,17 +73,12 @@ class CollectImplOLAP(CollectImpl):
                 if not self.context.clusterInfo.getDbNodeByName(nodename):
                     self.context.logger.logExit(
                         ErrorCode.GAUSS_516["GAUSS_51619"] % nodename)
-                else:
-                    node = self.context.clusterInfo.getDbNodeByName(nodename)
-                    node_ip = node.sshIps[0]
-                    self.context.node_ips.append(node_ip)
 
             if (len(self.context.nodeName) == 0):
                 self.context.nodeName = \
                     self.context.clusterInfo.getClusterNodeNames()
-                self.context.node_ips = self.context.clusterInfo.getClusterSshIps()[0]
 
-            self.context.initSshTool(self.context.node_ips,
+            self.context.initSshTool(self.context.nodeName,
                                      DefaultValue.TIMEOUT_PSSH_COLLECTOR)
             if (len(self.context.nodeName) == 1 and self.context.nodeName[
                 0] == NetUtil.GetHostIpOrName()):
@@ -154,10 +149,10 @@ class CollectImplOLAP(CollectImpl):
                     (self.context.nodeName[0], output))
         else:
             (status, output) = self.context.sshTool.getSshStatusOutput(
-                cmd, self.context.node_ips)
-            self.context.sshTool.parseSshOutput(self.context.node_ips)
+                cmd, self.context.nodeName)
+            self.context.sshTool.parseSshOutput(self.context.nodeName)
             # Gets the execution result
-            for node in self.context.node_ips:
+            for node in self.context.nodeName:
                 if (status[node] != DefaultValue.SUCCESS):
                     flag = 1
                     failedNodeList.append(node)
@@ -224,11 +219,11 @@ class CollectImplOLAP(CollectImpl):
         else:
             (status, output) = self.context.sshTool.getSshStatusOutput(
                 cmd,
-                self.context.node_ips)
+                self.context.nodeName)
             outputMap = self.context.sshTool.parseSshOutput(
-                self.context.node_ips)
+                self.context.nodeName)
             # Gets the execution result
-            for node in self.context.node_ips:
+            for node in self.context.nodeName:
                 if (status[node] != DefaultValue.SUCCESS):
                     flag = 1
                     self.context.logger.log(
@@ -405,13 +400,13 @@ class CollectImplOLAP(CollectImpl):
             if self.context.isSingle or self.context.localMode:
                 if len(json.loads(output)["failedTask"]) > 0:
                     isFailed = 1
-                    failedNodeList.append(self.context.node_ips[0])
+                    failedNodeList.append(self.context.nodeName[0])
                 else:
-                    successNodeList.append(self.context.node_ips[0])
-                self.generalDetailInfo(self.context.node_ips[0], output)
+                    successNodeList.append(self.context.nodeName[0])
+                self.generalDetailInfo(self.context.nodeName[0], output)
                 jobName = json.loads(output)["jobName"]
             else:
-                for node in self.context.node_ips:
+                for node in self.context.nodeName:
                     if len(json.loads(str(output[node]))["failedTask"]) > 0:
                         isFailed = 1
                         failedNodeList.append(node)
@@ -438,14 +433,14 @@ class CollectImplOLAP(CollectImpl):
             if self.context.isSingle or self.context.localMode:
                 if len(json.loads(output)["failedTask"]) == 0:
                     isFailed = 0
-                    successNodeList.append(self.context.node_ips[0])
+                    successNodeList.append(self.context.nodeName[0])
                 else:
-                    failedNodeList.append(self.context.node_ips[0])
+                    failedNodeList.append(self.context.nodeName[0])
 
-                self.generalDetailInfo(self.context.node_ips[0], output)
+                self.generalDetailInfo(self.context.nodeName[0], output)
                 jobName = json.loads(output)["jobName"]
             else:
-                for node in self.context.node_ips:
+                for node in self.context.nodeName:
                     if len(json.loads(str(output[node]))["failedTask"]) == 0:
                         isFailed = 0
                         successNodeList.append(node)
@@ -482,9 +477,9 @@ class CollectImplOLAP(CollectImpl):
         else:
             self.context.sshTool.getSshStatusOutput(
                 cmd,
-                self.context.node_ips)
+                self.context.nodeName)
             outputMap = self.context.sshTool.parseSshOutput(
-                self.context.node_ips)
+                self.context.nodeName)
             # Gets the execution result
             flag = self.resultCheck(outputMap)
         if (flag == 0):
@@ -513,9 +508,9 @@ class CollectImplOLAP(CollectImpl):
         else:
             self.context.sshTool.getSshStatusOutput(
                 cmd,
-                self.context.node_ips)
+                self.context.nodeName)
             outputMap = self.context.sshTool.parseSshOutput(
-                self.context.node_ips)
+                self.context.nodeName)
             # Gets the execution result
             flag = self.resultCheck(outputMap)
         if (flag == 0):
@@ -621,9 +616,9 @@ class CollectImplOLAP(CollectImpl):
                 "Collection will be timeout in %ds." % timeout)
             self.context.sshTool.getSshStatusOutput(
                 cmd,
-                self.context.node_ips)
+                self.context.nodeName)
             outputMap = self.context.sshTool.parseSshOutput(
-                self.context.node_ips)
+                self.context.nodeName)
             # Gets the execution result
             flag = self.resultCheck(outputMap)
         if (flag == 0):
@@ -655,9 +650,9 @@ class CollectImplOLAP(CollectImpl):
         else:
             self.context.sshTool.getSshStatusOutput(
                 cmd,
-                self.context.node_ips)
+                self.context.nodeName)
             output_map = self.context.sshTool.parseSshOutput(
-                self.context.node_ips)
+                self.context.nodeName)
             # Gets the execution result
             flag = self.resultCheck(output_map)
         if (flag == 0):
@@ -688,9 +683,9 @@ class CollectImplOLAP(CollectImpl):
         else:
             (status, output) = self.context.sshTool.getSshStatusOutput(
                 cmd,
-                self.context.node_ips)
+                self.context.nodeName)
             outputMap = self.context.sshTool.parseSshOutput(
-                self.context.node_ips)
+                self.context.nodeName)
             # Gets the execution result
             flag = self.planResultCheck(outputMap)
         if (flag == 0):
@@ -706,9 +701,9 @@ class CollectImplOLAP(CollectImpl):
         else:
             self.context.sshTool.getSshStatusOutput(
                 cmd,
-                self.context.node_ips)
+                self.context.nodeName)
             outputMap = self.context.sshTool.parseSshOutput(
-                self.context.node_ips)
+                self.context.nodeName)
             # Gets the execution result
             flag = self.resultCheck(outputMap)
         if (flag == 0):
@@ -773,12 +768,12 @@ class CollectImplOLAP(CollectImpl):
                 "Copy logs will be timeout in %ds." % timeout)
             (status, output) = self.context.sshTool.getSshStatusOutput(
                 cmd,
-                self.context.node_ips,
+                self.context.nodeName,
                 parallel_num=parallelNum)
             self.context.sshTool.parseSshOutput(
-                self.context.node_ips)
+                self.context.nodeName)
             # Gets the execution result
-            for node in self.context.node_ips:
+            for node in self.context.nodeName:
                 if (status[node] == DefaultValue.SUCCESS):
                     flag = 1
 

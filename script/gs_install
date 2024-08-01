@@ -114,7 +114,7 @@ General options:
             self.initClusterInfo(refreshCN=False)
             self.initComponent()
             # Initialize self.sshTool
-            self.initSshTool(self.clusterInfo.getClusterSshIps()[0],
+            self.initSshTool(self.clusterInfo.getClusterNodeNames(),
                              DefaultValue.TIMEOUT_PSSH_INSTALL)
             if (len(self.clusterInfo.getClusterNodeNames()) == 1 and
                     self.clusterInfo.getClusterNodeNames()[0]

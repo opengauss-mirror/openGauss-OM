@@ -70,7 +70,6 @@ class Collect(ParallelBaseOM):
         self.inFile = ""
         self.outFile = ""
         self.nodeName = []
-        self.node_ips = []
         self.config = {}
         self.appPath = ""
 

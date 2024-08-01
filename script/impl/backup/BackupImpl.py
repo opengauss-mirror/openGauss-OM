@@ -45,6 +45,11 @@ class BackupImpl:
         input : NA
         output: NA
         '''
+        try:
+            self.context.initLogger(self.context.action)
+        except Exception as e:
+            self.context.logger.closeLog()
+            raise Exception(str(e))
 
         try:
             self.parseConfigFile()

@@ -20,6 +20,8 @@
 
 import os
 import subprocess
+import sys
+import time
 
 from gspylib.common.ErrorCode import ErrorCode
 from base_utils.os.cmd_util import CmdUtil
@@ -83,3 +85,38 @@ class CrontabUtil(object):
         if output.find("not allowed") >= 0:
             return False
         return True
+    
+    @staticmethod
+    def user_custom_cron_task(cmd, pid_file):
+        """
+        function : Check user custom cron task
+        input : NA
+        output: True or False
+        """
+        CrontabUtil.deamonize(cmd, pid_file)
+
+    @staticmethod
+    def job(cmd):
+        """
+        custem user cron
+        """
+        subprocess.run(cmd, shell=True)
+
+    @staticmethod
+    def run_timer(cmd):
+        while True:
+            CrontabUtil.job(cmd)
+            time.sleep(1)
+
+    @staticmethod
+    def deamonize(cmd, pid_file):
+        import daemon
+        from daemon import pidfile
+        with daemon.DaemonContext(
+            working_directory='.',
+            umask=0o002,
+            pidfile=pidfile.TimeoutPIDLockFile(pid_file),
+            stdout=sys.stdout,
+            stderr=sys.stderr
+        ):
+            CrontabUtil.run_timer(cmd)

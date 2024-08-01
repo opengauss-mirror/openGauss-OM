@@ -221,11 +221,19 @@ class PreinstallImplOLAP(PreinstallImpl):
             Current_Path = os.path.dirname(os.path.realpath(__file__))
             DefaultValue.checkPathVaild(os.path.normpath(Current_Path))
 
+            # cp hosts file to tool dir
+            self.cp_host_file_to_tool_dir(packageDir)
+
         except Exception as e:
             raise Exception(str(e))
 
         self.context.logger.log(
             "Successfully installed the tools on the local node.", "constant")
+        
+    def cp_host_file_to_tool_dir(self, package_dir):
+        hosts_file = os.path.normpath(os.path.join(package_dir, "hosts"))
+        target_hosts_file = os.path.normpath(os.path.join(self.context.clusterToolPath, "hosts"))
+        FileUtil.cpFile(hosts_file, target_hosts_file)
 
     def checkDiskSpace(self):
         """
@@ -606,7 +614,7 @@ class PreinstallImplOLAP(PreinstallImpl):
             # exec the cmd
             CmdExecutor.execCommandWithMode(cmd,
                                             self.context.sshTool,
-                                            self.context.localMode,
+                                            self.context.localMode or self.context.isSingle,
                                             self.context.mpprcFile)
 
             self.del_remote_pkgpath()

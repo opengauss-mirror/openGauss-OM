@@ -523,6 +523,11 @@ General options:
         # init the log file
         self.initLogger("gs_preinstall")
 
+        
+        current_path = os.path.dirname(os.path.realpath(__file__))
+        package_dir = os.path.normpath(os.path.join(current_path, "../"))
+        self.write_host_file(package_dir)
+
         # get the clusterToolPath
         self.clusterToolPath = ClusterDir.getPreClusterToolPath(self.xmlFile)
         temp_nodes = ClusterConfigFile.getOneClusterConfigItem("nodeNames", self.xmlFile)
@@ -532,6 +537,7 @@ General options:
         self.cluster_core_path = self.clusterInfo.readClustercorePath(self.xmlFile)
 
         self.logger.log("Parsing the configuration file.", "addStep")
+        
         try:
             # parse the configuration file
             self.sshTool = SshTool(self.clusterInfo.getClusterNodeNames(),
@@ -548,6 +554,23 @@ General options:
                                 % NetUtil.GetHostIpOrName())
         self.logger.log("Successfully parsed the configuration file.",
                         "constant")
+
+    def write_host_file(self, package_dir):
+        hosts_file = os.path.normpath(os.path.join(package_dir, "hosts"))
+        if os.path.exists(hosts_file):
+            FileUtil.removeFile(hosts_file)
+        FileUtil.createFile(hosts_file)
+        
+        # hosts contents
+        contents = {}
+        hostname_list = self.clusterInfo.getClusterNodeNames()
+        for hostname in hostname_list:
+            node = self.clusterInfo.getDbNodeByName(hostname)
+            ip = node.sshIps[0]
+            contents[ip] = hostname
+
+        FileUtil.write_hosts_file(hosts_file, contents)
+        FileUtil.changeMode(DefaultValue.FILE_MODE, hosts_file, cmd_type="shell")
 
     # check expect for cm/create trust
     def check_expect(self):

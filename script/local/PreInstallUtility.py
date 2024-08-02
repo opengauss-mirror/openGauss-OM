@@ -2789,7 +2789,7 @@ Common options:
         toolPath = self.clusterToolPath
         self.logger.log("change '%s' files permission and owner." % toolPath)
         FileUtil.changeOwner(self.user, toolPath, recursive=True, link=True)
-        FileUtil.changeMode(DefaultValue.MAX_DIRECTORY_MODE,
+        FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE,
                           toolPath, recursive=True)
         FileUtil.changeMode(DefaultValue.SPE_FILE_MODE,
                           "%s/script/gs_*" % toolPath)

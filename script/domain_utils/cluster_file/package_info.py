@@ -36,7 +36,7 @@ class PackageInfo(object):
     This file is for Gauss package things.
     """
     @staticmethod
-    def getPackageFile(fileType="tarFile"):
+    def getPackageFile(fileType):
         """
         function : Get the path of binary file version.
         input : NA
@@ -53,7 +53,7 @@ class PackageInfo(object):
         input : NA
         output : str
         """
-        return PackageInfo.getPackageFile("sha256File")
+        return PackageInfo.getPackageFile(CommConstants.PKG_SHA256)
 
     @staticmethod
     def get_package_file_path():
@@ -62,7 +62,7 @@ class PackageInfo(object):
         input : NA
         output : str
         """
-        return PackageInfo.getPackageFile(CommConstants.PACKAGE_TYPE)
+        return PackageInfo.getPackageFile(CommConstants.PKG_SERVER)
 
     @staticmethod
     def getFileSHA256Info():
@@ -153,12 +153,10 @@ class PackageInfo(object):
         """
         # init bin file name, integrity file name and tar list names
         package_path = os.path.normpath(package_path)
-        bz2_file_name = PackageInfo.getPackageFile("bz2File")
+        server_file_name = PackageInfo.getPackageFile(CommConstants.PKG_SERVER)
         integrity_file_name = PackageInfo.getSHA256FilePath()
-        cm_package = "%s-cm.tar.gz" % PackageInfo.getPackageFile(
-            "bz2File").replace(".tar.bz2", "")
-        om_package = "%s-om.tar.gz" % PackageInfo.getPackageFile(
-            "bz2File").replace(".tar.bz2", "")
+        cm_package = server_file_name.replace("Server", "CM")
+        om_package = server_file_name.replace("Server", "OM")
 
         tar_lists = SingleInstDiff.get_package_tar_lists(is_single_inst,
                                                          os.path.normpath(package_path))
@@ -173,7 +171,7 @@ class PackageInfo(object):
             # do not tar *.log files
             cmd += CompressUtil.getCompressFilesCmd(PackageInfo.get_package_back_name(),
                                                     tar_lists)
-            cmd += " %s %s %s " % (os.path.basename(bz2_file_name),
+            cmd += " %s %s %s " % (os.path.basename(server_file_name),
                                 os.path.basename(integrity_file_name), os.path.basename(om_package))
             # add CM package to bak package
             if os.path.isfile(os.path.realpath(os.path.join(package_path, cm_package))):

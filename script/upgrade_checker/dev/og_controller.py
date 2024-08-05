@@ -35,13 +35,13 @@ class OGController(object):
 
     @staticmethod
     def is_support_package(pkg):
-        # openGauss bz2：openGauss-5.0.0-openEuler-64bit.tar.gz
+        # openGauss server：openGauss-Server-6.0.0-openEuler20.03-64bit.tar.gz
         parts = os.path.basename(pkg).split('-')
 
-        if len(parts) < 4 or parts[0] != 'openGauss' or parts[3] != '64bit.tar.bz2':
-            return False, '非openGauss bz2压缩安装包：' + pkg
+        if len(parts) < 5 or parts[0] != 'openGauss' or parts[1] != 'Server':
+            return False, '非openGauss server压缩安装包：' + pkg
         
-        if not is_support_version(parts[1]):
+        if not is_support_version(parts[2]):
             return False, '工具不支持的OG版本：' + parts[1]
         
         return True, ''
@@ -120,7 +120,7 @@ class OGController(object):
         Shell.run(cmd, print_desc='卸载数据库', check=True)
         
 if __name__ == "__main__":
-    og = OGController('/data/pkg/openGauss-5.0.0-openEuler-64bit.tar.gz')
+    og = OGController('/data/pkg/openGauss-Server-6.0.0-openEuler20.03-64bit.tar.gz')
     og.install()
     og.initdb()
     og.start(16666)

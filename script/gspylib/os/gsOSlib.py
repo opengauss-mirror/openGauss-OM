@@ -483,14 +483,6 @@ class PlatformCommand():
         """
         return self.getPackageFile("bz2File")
 
-    def getBinFilePath(self):
-        """
-        function : Get the path of binary file version..
-        input : NA
-        output : str
-        """
-        return self.getPackageFile("binFile")
-
     def getSHA256FilePath(self):
         """
         function : Get the path of sha256 file version..
@@ -498,26 +490,6 @@ class PlatformCommand():
         output : str
         """
         return self.getPackageFile("sha256File")
-
-    def getFileSHA256Info(self):
-        """
-        function: get file sha256 info
-        input:  NA
-        output: str, str
-        """
-        try:
-            bz2Path = self.getBz2FilePath()
-            sha256Path = self.getSHA256FilePath()
-
-            fileSHA256 = g_file.getFileSHA256(bz2Path)
-            valueList = g_file.readFile(sha256Path)
-            if len(valueList) != 1:
-                raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] %
-                                sha256Path)
-            sha256Value = valueList[0].strip()
-            return fileSHA256, sha256Value
-        except Exception as e:
-            raise Exception(str(e))
 
     def checkLink(self, filePath):
         """

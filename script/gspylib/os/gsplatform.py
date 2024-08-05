@@ -1625,7 +1625,7 @@ class LinuxPlatform(GenericPlatform):
             raise Exception(str(e))
 
     def getPackageFile(self, distName, version, packageVersion,
-                       productVersion, fileType="tarFile"):
+                       productVersion, fileType):
         """
         function : Get the path of binary file version.
         input : distName, version, packageVersion,

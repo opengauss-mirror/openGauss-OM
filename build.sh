@@ -2,7 +2,7 @@
 
 declare binarylib_dir='None'
 declare gcc_version='10.3'
-declare module_name="openGauss"
+declare module_name="openGauss-OM"
 declare version_number='6.0.0'
 declare version_Kernel='92.298'
 ROOT_DIR=$(cd $(dirname "${BASH_SOURCE[0]}") && pwd)
@@ -85,8 +85,10 @@ else
     echo "Kernel is $kernel"
     exit 1
 fi
+os_version=$(cat /etc/os-release | grep -w VERSION_ID | awk -F '"' '{print $2}')
 
-declare package_pre_name="${version_string}-${dist_version}-${PLATFORM}bit-om"
+PLATFORM_ARCH=$(uname -p)
+declare package_pre_name="${version_string}-${dist_version}${os_version}-${PLATFORM_ARCH}"
 declare package_name="${package_pre_name}.tar.gz"
 declare sha256_name="${package_pre_name}.sha256"
 

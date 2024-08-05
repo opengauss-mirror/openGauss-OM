@@ -39,16 +39,19 @@ from gspylib.threads.SshTool import SshTool
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.Common import DefaultValue
 from gspylib.common.GaussLog import GaussLog
-from gspylib.os.gsOSlib import g_OSlib
+# from gspylib.os.gsOSlib import g_OSlib
 import impl.upgrade.UpgradeConst as Const
 from gspylib.common.OMCommand import OMCommand
 from gspylib.os.gsfile import g_file
+
 
 from domain_utils.cluster_file.cluster_dir import ClusterDir
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.cmd_util import CmdUtil
 from domain_utils.cluster_file.version_info import VersionInfo
+from domain_utils.cluster_file.package_info import PackageInfo
 from base_utils.os.net_util import NetUtil
+from base_diff.comm_constants import CommConstants
 
 #boot/build mode
 MODE_PRIMARY = "primary"
@@ -197,18 +200,18 @@ class ExpansionImpl():
         self.logger.log("End to send soft to each standby nodes.")
     
     def generatePackages(self, pkgdir):
-        bz2_file = g_OSlib.getBz2FilePath()
-        bz2_sha_file = g_OSlib.getSHA256FilePath()
+        server_file = PackageInfo.getPackageFile(CommConstants.PKG_SERVER)
+        sha_file = PackageInfo.getPackageFile(CommConstants.PKG_SHA256)
         upgrade_sql_file = os.path.join(pkgdir,
                                              Const.UPGRADE_SQL_FILE)
         upgrade_sha_file = os.path.join(pkgdir,
                                              Const.UPGRADE_SQL_SHA)
-        om_file = bz2_sha_file.replace(".sha256", "-om.tar.gz")
+        om_file = server_file.replace("Server", "OM")
         cm_file = []
         if self.context.check_cm_component():
-            cm_file = [bz2_sha_file.replace(".sha256", "-cm.tar.gz")]
+            cm_file = [server_file.replace("Server", "CM")]
 
-        return [om_file, bz2_file, bz2_sha_file, upgrade_sql_file,
+        return [om_file, server_file, sha_file, upgrade_sql_file,
              upgrade_sha_file] + cm_file
 
     def generateAndSendXmlFile(self):

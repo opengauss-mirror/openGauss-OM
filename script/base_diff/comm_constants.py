@@ -22,6 +22,11 @@ class CommConstants:
     PACKAGE_TYPE = "bz2File"
     VERSION_PATTERN = r'[0-9]+\.[0-9]+\.[0-9]+'
     VERSION_EXAMPLE = "openGauss-1.0"
+    
+    PKG_SERVER = "Server"
+    PKG_OM = "OM"
+    PKG_CM = "CM"
+    PKG_SHA256 = "sha256"
 
     # upgrade sql sha file and sql file
     UPGRADE_SQL_SHA = "upgrade_sql.sha256"

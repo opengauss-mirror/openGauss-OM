@@ -203,6 +203,20 @@ class DropNodeWithCmImpl(DropnodeImpl):
         CmdExecutor.execCommandLocally(update_cmd)
         self.logger.log("Successfully reset ss_interconnect_url.")
 
+    def update_hba_conf(self):
+        """
+        Delete 'host all all xxx/32 trust' on existing nodes.
+        """
+        del_hosts = [self.context.hostMapForDel[hostName]["ipaddr"] for hostName in self.context.hostMapForDel.keys()]
+        del_cmd = ""
+        pgdata_path = EnvUtil.getEnv("PGDATA")
+        hba_file = pgdata_path + os.sep + 'pg_hba.conf'
+        for host in del_hosts:
+            del_cmd += "sed -i '/%s/d' %s; " % (host, hba_file)
+        self.logger.debug("Command for update pg_hba.conf: %s" % del_cmd)
+        CmdExecutor.execCommandWithMode(del_cmd, self.ssh_tool, host_list=self.context.hostMapForExist.keys())
+        self.logger.log("Successfully update pg_hba.conf on old nodes.")
+
     def update_dss_info(self):
         """
         Delete dss info on existing nodes.
@@ -212,6 +226,7 @@ class DropNodeWithCmImpl(DropnodeImpl):
 
         node_list = self.update_dss_inst()
         self.update_ss_url(node_list)
+        self.update_hba_conf()
 
     def _stop_drop_node(self):
         """
@@ -249,6 +264,7 @@ class DropNodeWithCmImpl(DropnodeImpl):
         """
         if self.dss_mode:
             self.ss_restart_cluster()
+            return
 
         self.logger.log("Restarting cm_server cluster ...")
         stopCMProcessesCmd = "pkill -9 om_monitor -U {user}; pkill -9 cm_agent -U {user}; " \
@@ -386,6 +402,7 @@ class DropNodeWithCmImpl(DropnodeImpl):
         """
         if not self.dss_mode:
             return
+        DefaultValue.remove_metadata_and_dynamic_config_file(self.user, self.ssh_tool, self.logger)
         restart_cmd = "cm_ctl stop; cm_ctl start;"
         status, _ = subprocess.getstatusoutput(restart_cmd)
         if status != 0:

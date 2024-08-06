@@ -428,6 +428,11 @@ class ExpansionImplWithCm(ExpansionImpl):
         submask_length = NetUtil.get_submask_len(host_ip)
         cmd += " -h 'host    all    %s    %s/%s    trust'" % (self.user, host_ip, submask_length)
         cmd += " -h 'host    all    all    %s/%s    sha256'" % (host_ip, submask_length)
+        if self.xml_cluster_info.enable_dss == 'on':
+            old_nodes = list(set(self.xml_cluster_info.dbNodes).difference(set(self.new_nodes)))
+            node_ips = [node.backIps[0] for node in old_nodes]
+            for ip in node_ips:
+                cmd += " -h 'host    all    all    %s/%s    sha256'" % (ip, submask_length)
         if self.xml_cluster_info.float_ips:
             submask_length = NetUtil.get_submask_len(self.xml_cluster_info.float_ips[new_inst.float_ips[0]])
             cmd += " -h 'host    all    all    %s/%s    sha256'" % \

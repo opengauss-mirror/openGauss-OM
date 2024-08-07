@@ -35,6 +35,7 @@ from gspylib.common.ErrorCode import ErrorCode
 from domain_utils.cluster_file.version_info import VersionInfo
 from base_utils.os.net_util import NetUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
+from datetime import datetime, timedelta
 
 sys.path.insert(0, localDirPath + "/../../lib")
 import pwd
@@ -423,9 +424,12 @@ def collectMD5Host():
     output : Instantion
     """
     data = Md5Host()
-    cmd = f"grep -P '^[^#]*host(ssl|nossl)?\\s+.+(?:MD5|md5)\\s*$' {os.getenv('GAUSSDATA')}/pg_hba.conf"
-    result = subprocess.run(cmd, shell=True, text=True, capture_output=True)
-    data.output = result.stdout
+    cmd = f"grep -P '^[^#]*host(ssl|nossl)?\\s+.+(?:MD5|md5)\\s*$' {os.getenv('PGDATA')}/pg_hba.conf"
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if result.returncode == 0:
+        data.output = result.stdout
+    else:
+        data.errormsg = result.stderr
     return data
 
 
@@ -454,9 +458,12 @@ def collectHostnossl():
     output : Instantion
     """
     data = Hostnossl()
-    cmd = "grep -P '^[^#]*hostnossl' ${GAUSSDATA}/pg_hba.conf"
-    result = subprocess.run(cmd, shell=True, text=True, capture_output=True)
-    data.output = result.stdout
+    cmd = "grep -P '^[^#]*hostnossl' ${PGDATA}/pg_hba.conf"
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if result.returncode == 0:
+        data.output = result.stdout
+    else:
+        data.errormsg = result.stderr
     return data
 
 
@@ -485,9 +492,12 @@ def collectHostnoall():
     output : Instantion
     """
     data = Hostnoall()
-    cmd = "grep -P '^[^#]*host(ssl|nossl)?\s+[Aa][Ll][Ll]' ${GAUSSDATA}/pg_hba.conf"
-    result = subprocess.run(cmd, shell=True, text=True, capture_output=True)
-    data.output = result.stdout
+    cmd = "grep -P '^[^#]*host(ssl|nossl)?\s+[Aa][Ll][Ll]' ${PGDATA}/pg_hba.conf"
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if result.returncode == 0:
+        data.output = result.stdout
+    else:
+        data.errormsg = result.stderr
     return data
 
 
@@ -516,9 +526,12 @@ def collectHostAddressno0():
     output : Instantion
     """
     data = HostAddressno0()
-    cmd = "grep '0.0.0.0/0' ${GAUSSDATA}/pg_hba.conf"
-    result = subprocess.run(cmd, shell=True, text=True, capture_output=True)
-    data.output = result.stdout
+    cmd = "grep '0.0.0.0/0' ${PGDATA}/pg_hba.conf"
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if result.returncode == 0:
+        data.output = result.stdout
+    else:
+        data.errormsg = result.stderr
     return data
 
 
@@ -581,8 +594,11 @@ def collectMinHome():
     GAUSSUSER = user.username
     GAUSSGROUP = user.groupname
     cmd = f"find -L {os.getenv('GAUSSHOME')} -prune \( ! -user {GAUSSUSER} -o ! -group {GAUSSGROUP} -o -perm /g=rwx,o=rwx \)"
-    result = subprocess.run(cmd, shell=True, text=True, capture_output=True)
-    data.output = result.stdout
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if result.returncode == 0:
+        data.output = result.stdout
+    else:
+        data.errormsg = result.stderr
     return data
 
 
@@ -612,8 +628,11 @@ def collectMinShare():
     """
     data = MinShare()
     cmd = "find ${GAUSSHOME}/share -prune -type d \( -perm -g=w -o -perm -o=w \) -exec ls -ld {} \;"
-    result = subprocess.run(cmd, shell=True, text=True, capture_output=True)
-    data.output = result.stdout
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if result.returncode == 0:
+        data.output = result.stdout
+    else:
+        data.errormsg = result.stderr
     return data
 
 
@@ -643,8 +662,11 @@ def collectMinBin():
     """
     data = MinBin()
     cmd = "find ${GAUSSHOME}/bin -prune -perm /g=rwx,o=rwx"
-    result = subprocess.run(cmd, shell=True, text=True, capture_output=True)
-    data.output = result.stdout
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if result.returncode == 0:
+        data.output = result.stdout
+    else:
+        data.errormsg = result.stderr
     return data
 
 
@@ -676,9 +698,12 @@ def collectMinData():
     user = getUserInfo()
     GAUSSUSER = user.username
     GAUSSGROUP = user.groupname
-    cmd = f"find {os.getenv('GAUSSDATA')} -prune \( ! -user {GAUSSUSER} -o ! -group {GAUSSGROUP} -o -perm /g=rwx,o=rwx \)"
-    result = subprocess.run(cmd, shell=True, text=True, capture_output=True)
-    data.output = result.stdout
+    cmd = f"find {os.getenv('PGDATA')} -prune \( ! -user {GAUSSUSER} -o ! -group {GAUSSGROUP} -o -perm /g=rwx,o=rwx \)"
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if result.returncode == 0:
+        data.output = result.stdout
+    else:
+        data.errormsg = result.stderr
     return data
 
 
@@ -711,8 +736,11 @@ def collectMinArchive():
     GAUSSUSER = user.username
     GAUSSGROUP = user.groupname
     cmd = f"find {os.getenv('GAUSSHOME')}/archive -prune \( ! -user {GAUSSUSER} -o ! -group {GAUSSGROUP} -o -perm /g=rwx,o=rwx \)"
-    result = subprocess.run(cmd, shell=True, text=True, capture_output=True)
-    data.output = result.stdout
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if result.returncode == 0:
+        data.output = result.stdout
+    else:
+        data.errormsg = result.stderr
     return data
 
 
@@ -744,9 +772,12 @@ def collectMinPGConf():
     user = getUserInfo()
     GAUSSUSER = user.username
     GAUSSGROUP = user.groupname
-    cmd = f"find {os.getenv('GAUSSDATA')}/postgresql.conf \( ! -user {GAUSSUSER} -o ! -group {GAUSSGROUP} -o -perm /u=x,g=rwx,o=rwx \)"
-    result = subprocess.run(cmd, shell=True, text=True, capture_output=True)
-    data.output = result.stdout
+    cmd = f"find {os.getenv('PGDATA')}/postgresql.conf \( ! -user {GAUSSUSER} -o ! -group {GAUSSGROUP} -o -perm /u=x,g=rwx,o=rwx \)"
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if result.returncode == 0:
+        data.output = result.stdout
+    else:
+        data.errormsg = result.stderr
     return data
 
 
@@ -778,9 +809,12 @@ def collectMinPGHbaConf():
     user = getUserInfo()
     GAUSSUSER = user.username
     GAUSSGROUP = user.groupname
-    cmd = f"find {os.getenv('GAUSSDATA')}/pg_hba.conf \( ! -user {GAUSSUSER} -o ! -group {GAUSSGROUP} -o -perm /u=x,g=rwx,o=rwx \)"
-    result = subprocess.run(cmd, shell=True, text=True, capture_output=True)
-    data.output = result.stdout
+    cmd = f"find {os.getenv('PGDATA')}/pg_hba.conf \( ! -user {GAUSSUSER} -o ! -group {GAUSSGROUP} -o -perm /u=x,g=rwx,o=rwx \)"
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if result.returncode == 0:
+        data.output = result.stdout
+    else:
+        data.errormsg = result.stderr
     return data
 
 
@@ -812,9 +846,12 @@ def collectMinPGLog():
     user = getUserInfo()
     GAUSSUSER = user.username
     GAUSSGROUP = user.groupname
-    cmd = f"find {os.getenv('GAUSSDATA')}/pg_log -prune \( ! -user {GAUSSUSER} -o ! -group {GAUSSGROUP} -o -perm /g=rwx,o=rwx \)"
-    result = subprocess.run(cmd, shell=True, text=True, capture_output=True)
-    data.output = result.stdout
+    cmd = f"find {os.getenv('GAUSSHOME')}/log/{GAUSSUSER} -prune \( ! -user {GAUSSUSER} -o ! -group {GAUSSGROUP} -o -perm /g=rwx,o=rwx \)"
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if result.returncode == 0:
+        data.output = result.stdout
+    else:
+        data.errormsg = result.stderr
     return data
 
 
@@ -2356,8 +2393,11 @@ def collectUmask():
     """
     data = Umask()
     cmd = "umask"
-    result = subprocess.run(cmd, shell=True, text=True, capture_output=True)
-    data.output = result.stdout
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if result.returncode == 0:
+        data.output = result.stdout
+    else:
+        data.errormsg = result.stderr
     return data
 
 
@@ -2388,8 +2428,11 @@ def collectHidepid():
     """
     data = Hidepid()
     cmd = 'mount | grep "proc on /proc" | grep hidepid'
-    result = subprocess.run(cmd, shell=True, text=True, capture_output=True)
-    data.output = result.stdout
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if result.returncode == 0:
+        data.output = result.stdout
+    else:
+        data.errormsg = result.stderr
     return data
 
 
@@ -2420,8 +2463,11 @@ def collectNtpd():
     """
     data = Ntpd()
     cmd = 'service ntpd status 2>&1 | grep Active'
-    result = subprocess.run(cmd, shell=True, text=True, capture_output=True)
-    data.output = result.stdout
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if result.returncode == 0:
+        data.output = result.stdout
+    else:
+        data.errormsg = result.stderr
     return data
 
 
@@ -2582,7 +2628,7 @@ def checkUserConnection(isSetting):
     output : NA
     """
     data = collectUserConnection()
-    if not (data.output == 0):
+    if not (data.output == 1):
         if not isSetting:
             g_logger.log("        Warning reason:Ensure the maximum connection settings for users are configured correctly.When the actual number of connections for the current user exceeds the user's maximum connection limit, no new connections can be established.Limiting the maximum number of connections for different users based on business requirements can prevent a single user from monopolizing all connections.")
         else:
@@ -2680,11 +2726,11 @@ def setMonitorIP(data):
     """
     try:
         cmd_set = "gs_guc set -D %s -c \"listen_addresses='localhost'\"" %(os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!',result.stdout):
             g_logger.log("Failed to set Monitor IP")
         cmd_restart = "gs_ctl restart -D %s" %(os.getenv('PGDATA'))
-        subprocess.run(cmd_restart, shell=True, text=True, capture_output=True)
+        subprocess.run(cmd_restart, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     except Exception as e:
         data.errormsg = e.__str__()
 
@@ -2696,11 +2742,11 @@ def setConnectionConfiguration(data):
     """
     try:
         cmd_set = "gs_guc set -D %s -c \"max_connections=5000\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
-            g_logger.log("Failed to set Connection Configuration")
+            g_logger.log("Failed to set Connection Configuration.")
         cmd_restart = "gs_ctl restart -D %s" % (os.getenv('PGDATA'))
-        subprocess.run(cmd_restart, shell=True, text=True, capture_output=True)
+        subprocess.run(cmd_restart, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     except Exception as e:
         data.errormsg = e.__str__()
 
@@ -2727,11 +2773,11 @@ def setAdminConnection(data):
     """
     try:
         cmd_set = "gs_guc set -D %s -c \"sysadmin_reserved_connections=3\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Admin Connection")
         cmd_restart = "gs_ctl restart -D %s" % (os.getenv('PGDATA'))
-        subprocess.run(cmd_restart, shell=True, text=True, capture_output=True)
+        subprocess.run(cmd_restart, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     except Exception as e:
         data.errormsg = e.__str__()
 
@@ -2758,11 +2804,11 @@ def setUnixsocket(data):
     """
     try:
         cmd_set = "gs_guc set -D %s -c \"unix_socket_permissions=0700\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Unix socket")
         cmd_restart = "gs_ctl restart -D %s" % (os.getenv('PGDATA'))
-        subprocess.run(cmd_restart, shell=True, text=True, capture_output=True)
+        subprocess.run(cmd_restart, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     except Exception as e:
         data.errormsg = e.__str__()
 
@@ -2774,11 +2820,11 @@ def setSSLConnection(data):
     """
     try:
         cmd_set = "gs_guc set -D %s -c \"ssl=on\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set SSL Connection")
         cmd_restart = "gs_ctl restart -D %s" % (os.getenv('PGDATA'))
-        subprocess.run(cmd_restart, shell=True, text=True, capture_output=True)
+        subprocess.run(cmd_restart, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     except Exception as e:
         data.errormsg = e.__str__()
 
@@ -2930,7 +2976,7 @@ def setMinHome(data):
     """
     try:
         cmd_set = "chmod 0700 %s" % (os.getenv('GAUSSHOME'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     except Exception as e:
         g_logger.log("Failed to set Min Home")
         data.errormsg = e.__str__()
@@ -2943,7 +2989,7 @@ def setMinShare(data):
     """
     try:
         cmd_set = "chmod 0700 %s/share" % (os.getenv('GAUSSHOME'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     except Exception as e:
         g_logger.log("Failed to set Min Share")
         data.errormsg = e.__str__()
@@ -2956,7 +3002,7 @@ def setMinBin(data):
     """
     try:
         cmd_set = "chmod 0700 %s/bin" % (os.getenv('GAUSSHOME'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     except Exception as e:
         g_logger.log("Failed to set Min Bin")
         data.errormsg = e.__str__()
@@ -2969,7 +3015,7 @@ def setMinData(data):
     """
     try:
         cmd_set = "chmod 0700 %s" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     except Exception as e:
         g_logger.log("Failed to set Min Data")
         data.errormsg = e.__str__()
@@ -2982,7 +3028,7 @@ def setMinArchive(data):
     """
     try:
         cmd_set = "chmod 0700 %s/archive" % (os.getenv('GAUSSHOME'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     except Exception as e:
         g_logger.log("Failed to set Min Archive")
         data.errormsg = e.__str__()
@@ -2995,7 +3041,7 @@ def setMinPGConf(data):
     """
     try:
         cmd_set = "chmod 0600 %s/postgresql.conf" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     except Exception as e:
         g_logger.log("Failed to set Min Data")
         data.errormsg = e.__str__()
@@ -3008,7 +3054,7 @@ def setMinPGHbaConf(data):
     """
     try:
         cmd_set = "chmod 0600 %s/pg_hba.conf" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     except Exception as e:
         g_logger.log("Failed to set Min Data")
         data.errormsg = e.__str__()
@@ -3021,7 +3067,7 @@ def setMinPGLog(data):
     """
     try:
         cmd_set = "chmod 0700 %s/pg_log" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     except Exception as e:
         g_logger.log("Failed to set Min Data")
         data.errormsg = e.__str__()
@@ -3099,7 +3145,7 @@ def setClientAuthTime(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"authentication_timeout=1min\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Client AuthTime")
     except Exception as e:
@@ -3113,7 +3159,7 @@ def setAuthEncriptionCount(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"auth_iteration_count=10000\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set AuthEncription Count")
     except Exception as e:
@@ -3127,7 +3173,7 @@ def setFailedLoginCount(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"failed_login_attempts=10\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set FailedLogin Count")
     except Exception as e:
@@ -3183,7 +3229,7 @@ def checkPasswordReuseTime(isSetting):
     output : NA
     """
     data = collectPasswordReuseTime()
-    if not int(data.db[0]) == 60:
+    if int(data.db[0]) == 0:
         if not isSetting:
             g_logger.log("        Warning reason: Ensure correct configuration of password reuse days.Avoid users repeatedly using the same password, as it may lead to the password being cracked.")
         else:
@@ -3196,7 +3242,7 @@ def checkPasswordLockTime(isSetting):
     output : NA
     """
     data = collectPasswordLockTime()
-    if not data.db[0].strip() == "1d":
+    if data.db[0].strip() == "0":
         if not isSetting:
             g_logger.log("        Warning reason: Ensure correct configuration of account automatic unlock time.To prevent passwords from being attempted to be cracked by brute force, this parameter must be set to a non-zero value.")
         else:
@@ -3232,7 +3278,7 @@ def checkPasswordEffectTime(isSetting):
     output : NA
     """
     data = collectPasswordEffectTime()
-    if not data.db[0].strip() == "90":
+    if data.db[0].strip() == "0":
         if not isSetting:
             g_logger.log("        Warning reason: Ensure configuration of password expiration periods.Once the password reaches its expiration reminder time, the system will prompt the user to change the password when logging into the database. It is recommended that users regularly update their passwords to enhance the security of password usage.")
         else:
@@ -3262,7 +3308,7 @@ def setPasswordComplexityValidation(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"password_policy=1\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Password Complexity Validation")
     except Exception as e:
@@ -3276,7 +3322,7 @@ def setPasswordEncryptionType(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"password_encryption_type=2\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Password Encryption Type")
     except Exception as e:
@@ -3290,7 +3336,7 @@ def setPasswordReuseTime(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"password_reuse_time=60\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Password Encryption Type")
     except Exception as e:
@@ -3304,7 +3350,7 @@ def setPasswordLockTime(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"password_lock_time=1\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Password Lock Time")
     except Exception as e:
@@ -3319,8 +3365,12 @@ def setRolValid(data):
     result = collectRolValid()
     result.db = []
     try:
+        now = datetime.now()
+        one_year_later = now + timedelta(days=365)
+        start_date_str = now.strftime('%Y-%m-%d')
+        end_date_str = one_year_later.strftime('%Y-%m-%d')
         for item in data.db:
-            sql_query = """ALTER ROLE %s VALID BEGIN '2024-01-01' VALID UNTIL '2025-12-31';""" %(item.split("|")[0].strip())
+            sql_query = """ALTER ROLE %s VALID BEGIN '%s' VALID UNTIL '%s';""" %(item.split("|")[0].strip(), start_date_str, end_date_str)
             getDatabaseInfo(result, sql_query)
     except Exception as e:
         data.errormsg = e.__str__()
@@ -3333,7 +3383,7 @@ def setPasswordEffectTime(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"password_effect_time=90\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Password Effect Time")
     except Exception as e:
@@ -3541,11 +3591,11 @@ def setEnableSeparationOfDuty(data):
     """
     try:
         cmd_set = "gs_guc set -D %s -c \"enableSeparationOfDuty = on\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Enable Separation Of Duty")
         cmd_restart = "gs_ctl restart -D %s" % (os.getenv('PGDATA'))
-        subprocess.run(cmd_restart, shell=True, text=True, capture_output=True)
+        subprocess.run(cmd_restart, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     except Exception as e:
         data.errormsg = e.__str__()
 
@@ -3557,7 +3607,7 @@ def setEnableCopyServerFiles(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"enable_copy_server_files=off\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Enable Copy Server Files")
     except Exception as e:
@@ -3662,7 +3712,7 @@ def checkAuditSystemObject(isSetting):
     output : NA
     """
     data = collectAuditSystemObject()
-    if int(data.db[0].strip()) < 12295:
+    if int(data.db[0].strip()) < 67121195:
         if not isSetting:
             g_logger.log(
                 "        Warning reason:Ensure auditing of database object creation, deletion, and modification is enabled.The parameter 'audit_system_object' determines whether to record audit logs for CREATE, DROP, and ALTER operations on database objects.")
@@ -3746,7 +3796,7 @@ def checkAuditFileRemainThreshold(isSetting):
     output : NA
     """
     data = collectAuditFileRemainThreshold()
-    if data.db[0].strip() != "1024":
+    if data.db[0].strip() != "1048576":
         if not isSetting:
             g_logger.log(
                 "        Warning reason:Ensure correct configuration of maximum number of audit log files.Setting the parameter value too high will increase disk space usage. Setting it too low will result in a shorter recordable period for audit logs, which may lead to the loss of important log information. Arbitrarily adjusting this parameter may affect the effectiveness of the 'audit_resource_policy' parameter.")
@@ -3782,7 +3832,7 @@ def setAuditEnabled(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"audit_enabled = on\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Audit Enabled")
     except Exception as e:
@@ -3796,7 +3846,7 @@ def setAuditLoginLogout(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"audit_login_logout = 7\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Audit Login Logout")
     except Exception as e:
@@ -3810,7 +3860,7 @@ def setAuditDatabaseProcess(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"audit_database_process = 1\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Audit Database Process")
     except Exception as e:
@@ -3824,7 +3874,7 @@ def setAuditUserLocked(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"audit_user_locked = 1\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Audit User Locked")
     except Exception as e:
@@ -3838,7 +3888,7 @@ def setAuditGrantRevoke(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"audit_grant_revoke = 1\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Audit Grant Revoke")
     except Exception as e:
@@ -3851,8 +3901,8 @@ def setAuditSystemObject(data):
     output : NA
     """
     try:
-        cmd_set = "gs_guc reload -D %s -c \"audit_system_object = 12295\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        cmd_set = "gs_guc reload -D %s -c \"audit_system_object = 67121195\"" % (os.getenv('PGDATA'))
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Audit System Object")
     except Exception as e:
@@ -3866,7 +3916,7 @@ def setAuditDmlStateSelect(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"audit_dml_state_select = 1\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Audit Dml State Select")
     except Exception as e:
@@ -3880,7 +3930,7 @@ def setAuditResourcePolicy(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"audit_resource_policy = on\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Audit Resource Policy")
     except Exception as e:
@@ -3894,7 +3944,7 @@ def setAuditRotationInterval(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"audit_rotation_interval = 1440\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Audit Rotation Interval")
     except Exception as e:
@@ -3908,7 +3958,7 @@ def setAuditRotationSize(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"audit_rotation_size = 10MB\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Audit Rotation Size")
     except Exception as e:
@@ -3922,7 +3972,7 @@ def setAuditSpaceLimit(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"audit_space_limit = 1GB\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Audit Space Limit")
     except Exception as e:
@@ -3935,8 +3985,8 @@ def setAuditFileRemainThreshold(data):
     output : NA
     """
     try:
-        cmd_set = "gs_guc reload -D %s -c \"audit_file_remain_threshold = 1024\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        cmd_set = "gs_guc reload -D %s -c \"audit_file_remain_threshold = 1048576\"" % (os.getenv('PGDATA'))
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Audit File Remain Threshold")
     except Exception as e:
@@ -4059,7 +4109,7 @@ def checkClientMinMessages(isSetting):
     output : NA
     """
     data = collectClientMinMessages()
-    if data.db[0].strip() != "notice":
+    if data.db[0].strip().startswith("debug"):
         if not isSetting:
             g_logger.log(
                 "        Warning reason:Ensure correct client log level configuration.Log levels debug1 to debug5 are primarily used for debugging and are not recommended for use in production environments, as they can increase the amount of logs sent to clients. It is advised to keep the default value of 'notice'.")
@@ -4073,7 +4123,7 @@ def checkLogMinMessages(isSetting):
     output : NA
     """
     data = collectLogMinMessages()
-    if data.db[0].strip() != "warning":
+    if data.db[0].strip().startswith("debug"):
         if not isSetting:
             g_logger.log(
                 "        Warning reason:Ensure server log level configuration is correct.Log levels debug1 to debug5 are primarily used for debugging and are not recommended for use in production environments, as they can increase the amount of logs written to the server. It is advised to keep the default value of 'warning'.")
@@ -4226,11 +4276,11 @@ def setLoggingCollector(data):
     """
     try:
         cmd_set = "gs_guc set -D %s -c \"logging_collector=on\"" %(os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!',result.stdout):
             g_logger.log("Failed to set Logging Collector")
         cmd_restart = "gs_ctl restart -D %s" %(os.getenv('PGDATA'))
-        subprocess.run(cmd_restart, shell=True, text=True, capture_output=True)
+        subprocess.run(cmd_restart, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     except Exception as e:
         data.errormsg = e.__str__()
 
@@ -4242,7 +4292,7 @@ def setLogFilename(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Log Filename")
     except Exception as e:
@@ -4256,7 +4306,7 @@ def setLogFileMode(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"log_file_mode=0600\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Log File Mode")
     except Exception as e:
@@ -4270,7 +4320,7 @@ def setLogTruncateOnRotation(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"log_truncate_on_rotation=off\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Log Truncate On Rotation")
     except Exception as e:
@@ -4284,7 +4334,7 @@ def setLogRotationAge(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"log_rotation_age=1d\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Log Rotation Age")
     except Exception as e:
@@ -4298,7 +4348,7 @@ def setLogRotationSize(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"log_rotation_size=20MB\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Log Rotation Size")
     except Exception as e:
@@ -4312,7 +4362,7 @@ def setClientMinMessages(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"client_min_messages=notice\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Client Min Messages")
     except Exception as e:
@@ -4326,7 +4376,7 @@ def setLogMinMessages(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"log_min_messages=warning\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Log Min Messages")
     except Exception as e:
@@ -4340,7 +4390,7 @@ def setLogMinErrorStatement(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"log_min_error_statement=error\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Log Min Error Statement")
     except Exception as e:
@@ -4354,7 +4404,7 @@ def setLogConnections(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"log_connections=on\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Log Connections")
     except Exception as e:
@@ -4368,7 +4418,7 @@ def setLogDisconnections(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"log_disconnections=on\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Log Disconnections")
     except Exception as e:
@@ -4382,7 +4432,7 @@ def setLogErrorVerbosity(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"log_error_verbosity=default\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Log Error Verbosity")
     except Exception as e:
@@ -4396,7 +4446,7 @@ def setLogHostname(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"log_hostname=off\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Log Hostname")
     except Exception as e:
@@ -4410,7 +4460,7 @@ def setDebugPrintParse(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"debug_print_parse=off\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Debug Print Parse")
     except Exception as e:
@@ -4424,7 +4474,7 @@ def setDebugPrintPlan(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"debug_print_plan=off\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Debug Print Plan")
     except Exception as e:
@@ -4438,7 +4488,7 @@ def setDebugPrintRewritten(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"debug_print_rewritten=off\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Debug Print Rewritten")
     except Exception as e:
@@ -4504,11 +4554,11 @@ def setWalLevel(data):
     """
     try:
         cmd_set = "gs_guc set -D %s -c \"wal_level=hot_standby\"" %(os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!',result.stdout):
             g_logger.log("Failed to set Wal Level")
         cmd_restart = "gs_ctl restart -D %s" %(os.getenv('PGDATA'))
-        subprocess.run(cmd_restart, shell=True, text=True, capture_output=True)
+        subprocess.run(cmd_restart, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     except Exception as e:
         data.errormsg = e.__str__()
 
@@ -4520,11 +4570,11 @@ def setArchiveMode(data):
     """
     try:
         cmd_set_archive_mode = "gs_guc reload -D %s -c \"archive_mode=on\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set_archive_mode, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set_archive_mode, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Archive Mode")
         cmd_set_archive_command = "gs_guc reload -D %s -c \"archive_command='cp --remove-destination %p /mnt/server/archive/%f'\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set_archive_command, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set_archive_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Archive Mode")
     except Exception as e:
@@ -4681,7 +4731,7 @@ def setBackslashQuote(data):
     """
     try:
         cmd_set = "gs_guc reload -D %s -c \"backslash_quote=safe_encoding\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Backslash Quote")
     except Exception as e:
@@ -4695,11 +4745,11 @@ def setAllowSystemTableMods(data):
     """
     try:
         cmd_set = "gs_guc set -D %s -c \"allow_system_table_mods=off\"" %(os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set, shell=True, text=True, capture_output=True)
+        result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!',result.stdout):
             g_logger.log("Failed to set Allow System Table Mods")
         cmd_restart = "gs_ctl restart -D %s" %(os.getenv('PGDATA'))
-        subprocess.run(cmd_restart, shell=True, text=True, capture_output=True)
+        subprocess.run(cmd_restart, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     except Exception as e:
         data.errormsg = e.__str__()
 

@@ -25,6 +25,7 @@ import datetime
 import subprocess
 import stat
 import socket
+import collections
 
 from multiprocessing import Process, Value
 from time import sleep
@@ -78,6 +79,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         self.ssh_tool = None
         self.new_nodes = list()
         self.app_names = list()
+        self.node_name_map = collections.defaultdict(str)
         self._init_global()
 
     def _init_global(self):
@@ -92,6 +94,11 @@ class ExpansionImplWithCm(ExpansionImpl):
 
         self.new_nodes = [node for node in self.xml_cluster_info.dbNodes
                           for back_ip in node.backIps if back_ip in self.context.newHostList]
+        
+        back_ips = self.xml_cluster_info.getClusterBackIps()
+        for i, ip in enumerate(back_ips):
+            host = self.xml_cluster_info.getNodeNameByBackIp(ip)
+            self.node_name_map[host] = (i, ip)
 
     @staticmethod
     def get_node_names(nodes):
@@ -505,6 +512,17 @@ class ExpansionImplWithCm(ExpansionImpl):
         value = out.split('=')[-1]
         return value
 
+    def check_nodes_list(self, old_list, hosts):
+        """
+        Check dss_nodes_list and change it if invalied.
+        """
+        port = old_list.split(':')[-1]
+        cur_lists = list()
+        for host in hosts:
+            cur_lists.append(str(self.node_name_map[host][0]) + ":" + self.node_name_map[host][1] + ":" + port)
+        cur_list = ','.join(cur_lists)
+        return cur_list
+
     def update_dss_inst(self, hosts):
         """
         Update dss_nodes_list on old nodes.
@@ -520,19 +538,19 @@ class ExpansionImplWithCm(ExpansionImpl):
             self.logger.debug("Failed to get old DSS_NODES_LIST.")
             raise Exception("Failed to get old DSS_NODES_LIST.")
         old_list = output.split('=')[1]
-        last_node = old_list.split(',')[-1]
-        last_id = int(last_node.split(':')[0])
-        port = int(last_node.split(':')[-1])
-        new_list = old_list
-        id = 0
+        new_list = self.check_nodes_list(old_list, hosts)
+        port = int(old_list.split(':')[-1])
         for node in self.context.newHostList:
-            id += 1
-            new_list += ',%d:%s:%d' % (last_id + id, node, port)
-        update_list_cmd = "sed -i 's/%s/%s/g' %s" % (old_list, new_list, dss_inst)
+            name = self.xml_cluster_info.getNodeNameByBackIp(node)
+            id_num = self.node_name_map[name][0]
+            new_list += ',%d:%s:%d' % (id_num, node, port)
+
+        new_list = 'DSS_NODES_LIST=' + new_list
+        update_list_cmd = "sed -i 's/^.*DSS_NODES_LIST.*$/%s/' %s" % (new_list, dss_inst)
         if os.getuid() == 0:
             update_list_cmd = f"su - {self.user} -c '{update_list_cmd}'"
         self.logger.debug("Command for update dss_inst: %s" % update_list_cmd)
-        for host in ExpansionImplWithCm.get_node_names(hosts):
+        for host in hosts:
             sshTool = SshTool([host], timeout=300)
             result_map, _ = sshTool.getSshStatusOutput(update_list_cmd, [])
             if result_map[host] == DefaultValue.SUCCESS:
@@ -559,20 +577,18 @@ class ExpansionImplWithCm(ExpansionImpl):
         url_port = (url.split(',')[0]).split(':')[-1]
         dss_port = (node_list.split(',')[0]).split(':')[-1]
         new_url = node_list.replace(dss_port, url_port)
-        pg_data = self.get_dss_env_root("PGDATA=") + '/postgresql.conf'
+        new_url = 'ss_interconnect_url=%s' % new_url
+        pgdata_path = EnvUtil.getEnv("PGDATA")
+        conf_file = pgdata_path + os.sep + 'postgresql.conf'
 
-        guc_cmd = "sed -i 's/%s/%s/g' %s" % (url.strip(), new_url, pg_data)
+        guc_cmd = 'sed -i "s/^.*ss_interconnect_url.*$/%s/" %s' % (new_url, conf_file)
         if os.getuid() == 0:
             guc_cmd = f"su - {self.user} -c '{guc_cmd}'"
         self.logger.debug("Command for update ss_interconnect_url: %s" % guc_cmd)
-        for host in ExpansionImplWithCm.get_node_names(hosts):
-            sshTool = SshTool([host], timeout=300)
-            result_map, _ = sshTool.getSshStatusOutput(guc_cmd, [])
-            if result_map[host] == DefaultValue.SUCCESS:
-                self.logger.log("Update ss_interconnect_url on %s success." % host)
-            else:
-                self.logger.debug("Failed to update ss_interconnect_url on %s" % host)
-                raise Exception("Failed to update ss_interconnect_url on %s" % host)
+        status, _ = subprocess.getstatusoutput(guc_cmd)
+        if status != 0:
+            self.logger.debug("Failed to update ss_interconnect_url.")
+            raise Exception("Failed to update ss_interconnect_url.")
         self.logger.log("Successfully update ss_interconnect_url on old nodes.")
 
     def update_old_cm_res(self):
@@ -602,6 +618,27 @@ class ExpansionImplWithCm(ExpansionImpl):
                 raise Exception("Failed to update cm_resource.json on %s" % host)
         self.logger.log("Successfully update cm_resource.json on old nodes.")
 
+    def get_cluster_nodes(self):
+        """
+        Get nodes in current cluster.
+        """
+        cmd = "source %s; cm_ctl query -Cv | awk 'END{print}'" % self.envFile
+        if os.getuid() == 0:
+            cmd = f"su - {self.user} -c '{cmd}'"
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            self.logger.debug("Failed to get nodes in current cluster.")
+            raise Exception("Failed to get nodes in current cluster.")
+        cur_nodes = output.split('|')
+        old_names = list()
+        for node in cur_nodes:
+            if node == ' ':
+                continue
+            tmp_list = list(filter(None, node.split(' ')))
+            old_names.append(tmp_list[1])
+
+        return old_names
+
     def update_old_dss_info(self):
         """
         Update new node's dss on old nodes.
@@ -609,10 +646,9 @@ class ExpansionImplWithCm(ExpansionImpl):
         if self.xml_cluster_info.enable_dss != 'on':
             return
 
-        old_nodes = list(set(self.xml_cluster_info.dbNodes).difference(set(self.new_nodes)))
-        node_list = self.update_dss_inst(old_nodes)
-        self.update_guc_url(node_list, old_nodes)
-        self.ss_restart_cluster()
+        old_names = self.get_cluster_nodes()
+        node_list = self.update_dss_inst(old_names)
+        self.update_guc_url(node_list, old_names)
 
     def do_preinstall(self):
         """
@@ -714,15 +750,36 @@ class ExpansionImplWithCm(ExpansionImpl):
         self.logger.debug("ctlReloadCmd: " + ctlReloadCmd)
         CmdExecutor.execCommandWithMode(ctlReloadCmd, self.ssh_tool, host_list=[localHost])
 
+    def check_processes(self):
+        """
+        Check processes exist or not before restart cluster.
+        """
+        check_cmd = ""
+        processes = {"om_monitor", "cm_agent", "cm_server", "dssserver"}
+        node_names = self.get_cluster_nodes()
+        for process in processes:
+            check_cmd = f"ps ux | grep {process} | grep -v grep | wc -l"
+            for node in node_names:
+                ssh_tool = SshTool([node])
+                result_map, output_map = ssh_tool.getSshStatusOutput(check_cmd, [])
+                if result_map[node] != DefaultValue.SUCCESS:
+                    self.logger.debug(f"Failed to check process on node {node}.")
+                    raise Exception(f"Failed to check process on node {node}.")
+                proc_num = int(output_map.split('\n')[1])
+                if proc_num < 1:
+                    self.logger.debuf(f"No {process} on {node}.")
+                    raise Exception(f"No {process} on {node}.")
+        self.logger.log("Successfully check processes on cluster nodes.")
+
     def ss_restart_cluster(self):
         """
         Restart cluster on dss_mode.
         """
         if self.xml_cluster_info.enable_dss != "on":
             return
+        DefaultValue.remove_metadata_and_dynamic_config_file(self.user, self.ssh_tool, self.logger)
+        self.check_processes()
         restart_cmd = f"source {self.envFile}; cm_ctl stop; cm_ctl start;"
-        if os.geteuid() == 0:
-            restart_cmd = f"su - {self.user} -c '{restart_cmd}'"
         status, _ = subprocess.getstatusoutput(restart_cmd)
         if status != 0:
             self.logger.debug("Failed to restart cluster when dss enabled.")

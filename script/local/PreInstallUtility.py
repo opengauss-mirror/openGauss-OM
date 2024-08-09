@@ -2799,8 +2799,6 @@ Common options:
                           "%s/script/gs_*" % toolPath)
         FileUtil.changeMode(DefaultValue.BIN_FILE_MODE, "%s/*.sha256" % toolPath)
         FileUtil.changeMode(DefaultValue.BIN_FILE_MODE, "%s/*.tar.gz" % toolPath)
-        FileUtil.changeMode(DefaultValue.BIN_FILE_MODE, "%s/*.tar.bz2" %
-                          toolPath)
         FileUtil.changeMode(DefaultValue.BIN_FILE_MODE, "%s/version.cfg" %
                           toolPath)
 
@@ -2821,8 +2819,6 @@ Common options:
             FileUtil.changeMode(DefaultValue.BIN_FILE_MODE, "%s/*.sha256" %
                               package_path)
             FileUtil.changeMode(DefaultValue.BIN_FILE_MODE, "%s/*.tar.gz" %
-                              package_path)
-            FileUtil.changeMode(DefaultValue.BIN_FILE_MODE, "%s/*.tar.bz2" %
                               package_path)
             FileUtil.changeMode(DefaultValue.BIN_FILE_MODE, "%s/version.cfg" %
                               package_path)

@@ -435,7 +435,7 @@ General options:
             except Exception as e:
                 GaussLog.exitWithError(str(e))
 
-    # decompress version.cfg from bz2, and read it
+    # decompress version.cfg from Server, and read it
     def readVersioncfg(self):
         def _parse_version_cfg(_cfg):
             _cmd = f'cat {_cfg}'
@@ -446,7 +446,7 @@ General options:
                                         "The output is %s." % _output)
             _lines = _output.splitlines()
             _res = {
-                'pkg_prefix': _lines[0],
+                'pkg_prefix': _lines[0].replace("OM", "Server"),
                 'pgversion': _lines[1],
                 'commit': _lines[2],
                 'mode': 'release' if len(_lines) < 4 else _lines[3]
@@ -461,10 +461,10 @@ General options:
 
         # upack and read version.cfg of openGauss-server package
         # the existing om version.cfg will be overwritten
-        cmd = 'cd {} && tar -xpf {}*.tar.bz2 ./version.cfg'.format(root, self.om_version_cfg['pkg_prefix'])
+        cmd = 'cd {} && tar -xpf {}*.tar.gz ./version.cfg'.format(root, self.om_version_cfg['pkg_prefix'])
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
-            cmd = 'cd {} && tar -xpf `ls openGauss*.tar.bz2 | tail -1` ./version.cfg'.format(root)
+            cmd = 'cd {} && tar -xpf `ls openGauss-Server*.tar.gz | tail -1` ./version.cfg'.format(root)
             status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"] % "version.cfg" +
@@ -498,7 +498,7 @@ General options:
 
         # unpack and move tools into target path
         cmd = 'cd {} && '.format(root)
-        cmd += 'tar -xpf {}*.tar.bz2  {} && '.format(pkg_prefix, ' '.join(bin_files + dss_files + memcheck_files))
+        cmd += 'tar -xpf {}*.tar.gz  {} && '.format(pkg_prefix, ' '.join(bin_files + dss_files + memcheck_files))
         if cm_files:
             cmd += 'tar -xpf {}*cm.tar.gz  {} && '.format(pkg_prefix, ' '.join(cm_files))
             cmd += 'mkdir -p {0} -m u=rwx && '.format(clib_dss)
@@ -507,7 +507,7 @@ General options:
             cmd += 'cp ./lib/libasan.so.6 {} &&'.format(memcheck_root_lib)
         cmd += '\mv {} {} && '.format(' '.join(bin_files + memcheck_files), clib)
         cmd += 'cd {} && rm -rf bin'.format(root)
-        status, _ = subprocess.getstatusoutput(cmd)
+        status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"] %
                                    "version.cfg" + "The cmd is %s. " % cmd +

@@ -20,6 +20,8 @@
 #############################################################################
 
 import os
+import platform
+import re
 
 from gspylib.common.ErrorCode import ErrorCode
 from os_platform.common import REDHAT, PAK_REDHAT, BIT_VERSION, \
@@ -128,12 +130,20 @@ class LinuxPlatform(object):
 
     def package_file_path(self, prefix_str, packageVersion, distro, postfix_str):
         dir_name = os.path.dirname(os.path.realpath(__file__))
-        return os.path.join(dir_name, "./../../", "%s-%s-%s-%s.%s" % (
+        arch = platform.machine()
+        fuzzynamestr = os.path.join(dir_name, "./../../", "%s-%s-%s.*-%s.%s" % (
                                     prefix_str, packageVersion, distro,
-                                    BIT_VERSION, postfix_str))
+                                    arch, postfix_str))
+        dirname = os.path.dirname(fuzzynamestr)
+        fuzzname = os.path.basename(fuzzynamestr)
+        partten = re.compile(fuzzname)
+        filenames = [file for file in os.listdir(dirname) if partten.match(file)]
+        if len(filenames) > 0:
+            return os.path.join(dirname, filenames[0])
+        return fuzzynamestr
 
 
-    def getPackageFile(self, packageVersion, productVersion, fileType="tarFile"):
+    def getPackageFile(self, packageVersion, productVersion, fileType="Server"):
         """
         function : Get the path of binary file version.
         input : packageVersion, productVersion, fileType
@@ -143,14 +153,18 @@ class LinuxPlatform(object):
         distname = distname.lower()
         dir_name = os.path.dirname(os.path.realpath(__file__))
         prefix_str = productVersion
-        if fileType == "tarFile":
+        if fileType == "Server":
+            prefix_str = f"{productVersion}-Server"
             postfix_str = "tar.gz"
-        elif fileType == "binFile":
-            postfix_str = "bin"
-        elif fileType == "sha256File":
+        elif fileType == "OM":
+            prefix_str = f"{productVersion}-OM"
+            postfix_str = "tar.gz"
+        elif fileType == "CM":
+            prefix_str = f"{productVersion}-CM"
+            postfix_str = "tar.gz"
+        elif fileType == "sha256":
+            prefix_str = f"{productVersion}-Server"
             postfix_str = "sha256"
-        elif fileType == "bz2File":
-            postfix_str = "tar.bz2"
         else:
             raise Exception(ErrorCode.GAUSS_500["GAUSS_50024"] % "fileType")
 
@@ -244,36 +258,7 @@ class LinuxPlatform(object):
             if os.path.exists(file_name) and os.path.isfile(file_name):
                 return file_name
         
-        for file_name in file_name_list:
-            try:
-                directory_to_search = os.path.join(dir_name, "./../../../")
-                matched_files = self.compare_files_in_directory(directory_to_search, file_name)
-                
-                if len(matched_files) == 1:
-                    return matched_files[0]
-                elif len(matched_files) > 1:
-                    print("Multiple matching files found,"
-                                      "please select one:")
-                    
-                    for i, file in enumerate(matched_files, 1):
-                        print(f"{i}. {file}")
-                        
-                    while True:
-                        try:
-                            choice = int(input("Please enter the serial number"
-                                               "of the option:"))
-                            if 1 <= choice <= len(matched_files):
-                                return matched_files[choice - 1]
-                            else:
-                                print("Invalid input: Please re-enter")
-                        except ValueError:
-                            print("Invalid input: Please re-enter")
-                else:
-                    raise Exception("No matching files found in the directory.")
-            except Exception as e:
-                raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % file_name)
-                
-        raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % package_name_list)
+        return file_name_list[0]
         
     def compare_files_in_directory(directory, file_to_compare):
         """

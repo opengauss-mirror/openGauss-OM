@@ -1289,7 +1289,7 @@ General options:
             root = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..')
             clib = os.path.join(root, "script/gspylib/clib")
             bin_files = ['./bin/encrypt']
-            bin_cmd = 'tar -xpf `ls openGauss*.tar.bz2`'
+            bin_cmd = 'tar -xpf `ls openGauss-Server*.tar.gz`'
             cmd = 'cd {} && '.format(root)
             cmd += '{} {} && '.format(bin_cmd, ''.join(' '.join(bin_files)))
             cmd += '\mv {} {} && '.format(' '.join(bin_files), clib)

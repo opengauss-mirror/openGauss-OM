@@ -41,6 +41,7 @@ from domain_utils.cluster_file.profile_file import ProfileFile
 from domain_utils.cluster_file.version_info import VersionInfo
 from base_utils.os.net_util import NetUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
+from base_diff.comm_constants import CommConstants
 
 #################################################################
 ACTION_INSTALL_CLUSTER = "install_cluster"
@@ -398,8 +399,8 @@ class Install(LocalBaseOM):
         Decompress CM package
         """
         cm_package = os.path.join(EnvUtil.getEnvironmentParameterValue(
-            "GPHOME", self.user), "%s-cm.tar.gz" % PackageInfo.getPackageFile(
-            "bz2File").replace(".tar.bz2", ""))
+            "GPHOME", self.user), PackageInfo.getPackageFile(
+            "CM"))
         if DefaultValue.get_cm_server_num_from_static(self.clusterInfo) == 0 and \
                 not os.path.isfile(cm_package):
             self.logger.log("No need to decompress cm package.")
@@ -440,7 +441,7 @@ class Install(LocalBaseOM):
         output: NA
         """
         self.logger.log("Decompressing bin file.")
-        tar_file = PackageInfo.getPackageFile("bz2File")
+        tar_file = PackageInfo.getPackageFile(CommConstants.PKG_SERVER)
         # let bin executable
         FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, tar_file)
 

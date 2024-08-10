@@ -461,10 +461,10 @@ General options:
 
         # upack and read version.cfg of openGauss-server package
         # the existing om version.cfg will be overwritten
-        cmd = 'cd {} && tar -xpf {}*.tar.gz ./version.cfg'.format(root, self.om_version_cfg['pkg_prefix'])
+        cmd = 'cd {} && tar -xpf {}*.tar.bz2 ./version.cfg'.format(root, self.om_version_cfg['pkg_prefix'])
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
-            cmd = 'cd {} && tar -xpf `ls openGauss-Server*.tar.gz | tail -1` ./version.cfg'.format(root)
+            cmd = 'cd {} && tar -xpf `ls openGauss-Server*.tar.bz2 | tail -1` ./version.cfg'.format(root)
             status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"] % "version.cfg" +
@@ -498,7 +498,7 @@ General options:
 
         # unpack and move tools into target path
         cmd = 'cd {} && '.format(root)
-        cmd += 'tar -xpf {}*.tar.gz  {} && '.format(pkg_prefix, ' '.join(bin_files + dss_files + memcheck_files))
+        cmd += 'tar -xpf {}*.tar.bz2  {} && '.format(pkg_prefix, ' '.join(bin_files + dss_files + memcheck_files))
         if cm_files:
             cmd += 'tar -xpf {}*cm.tar.gz  {} && '.format(pkg_prefix, ' '.join(cm_files))
             cmd += 'mkdir -p {0} -m u=rwx && '.format(clib_dss)

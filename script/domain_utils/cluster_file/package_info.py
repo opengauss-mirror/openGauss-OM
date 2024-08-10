@@ -155,8 +155,8 @@ class PackageInfo(object):
         package_path = os.path.normpath(package_path)
         server_file_name = PackageInfo.getPackageFile(CommConstants.PKG_SERVER)
         integrity_file_name = PackageInfo.getSHA256FilePath()
-        cm_package = server_file_name.replace("Server", "CM")
-        om_package = server_file_name.replace("Server", "OM")
+        cm_package = server_file_name.replace("Server", "CM").replace("tar.bz2", 'tar.gz')
+        om_package = server_file_name.replace("Server", "OM").replace("tar.bz2", 'tar.gz')
 
         tar_lists = SingleInstDiff.get_package_tar_lists(is_single_inst,
                                                          os.path.normpath(package_path))

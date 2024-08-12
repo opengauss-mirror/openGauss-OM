@@ -155,7 +155,7 @@ class LinuxPlatform(object):
         prefix_str = productVersion
         if fileType == "Server":
             prefix_str = f"{productVersion}-Server"
-            postfix_str = "tar.gz"
+            postfix_str = "tar.bz2"
         elif fileType == "OM":
             prefix_str = f"{productVersion}-OM"
             postfix_str = "tar.gz"

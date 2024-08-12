@@ -206,10 +206,10 @@ class ExpansionImpl():
                                              Const.UPGRADE_SQL_FILE)
         upgrade_sha_file = os.path.join(pkgdir,
                                              Const.UPGRADE_SQL_SHA)
-        om_file = server_file.replace("Server", "OM")
+        om_file = server_file.replace("Server", "OM").replace("tar.bz2", 'tar.gz')
         cm_file = []
         if self.context.check_cm_component():
-            cm_file = [server_file.replace("Server", "CM")]
+            cm_file = [server_file.replace("Server", "CM").replace("tar.bz2", 'tar.gz')]
 
         return [om_file, server_file, sha_file, upgrade_sql_file,
              upgrade_sha_file] + cm_file

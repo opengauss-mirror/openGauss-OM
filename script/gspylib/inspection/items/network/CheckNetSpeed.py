@@ -28,6 +28,8 @@ from gspylib.inspection.common.CheckResult import ResultStatus
 from gspylib.common.ErrorCode import ErrorCode
 from base_utils.os.net_util import NetUtil
 
+PING_CMD_IPV4 = "ping"
+PING_CMD_IPV6 = "ping6"
 DEFAULT_PARALLEL_NUM = 12
 DEFAULT_LISTEN_PORT = 20000
 DEFINE_DELAY_WARNING = 1000
@@ -108,8 +110,13 @@ class CheckNetSpeed(BaseItem):
         global MaxDelayFailFlag
         global errorMsg
         global serviceIP
-        cmd = "ping -s 8192 -c 10 -i 0.3 %s|awk -F / '{print $7}'|" \
-              "awk '{print $1}'" % ip
+        global pingCmd
+        if NetUtil.get_ip_version(ip) == NetUtil.NET_IPV6:
+            pingCmd = PING_CMD_IPV6
+        else:
+            pingCmd = PING_CMD_IPV4
+        cmd = "%s -s 8192 -c 10 -i 0.3 %s|awk -F / '{print $7}'|" \
+              "awk '{print $1}'" % (pingCmd, ip)
         output = SharedFuncs.runShellCmd(cmd)
         if (output.strip() != ""):
             try:
@@ -122,8 +129,8 @@ class CheckNetSpeed(BaseItem):
             return
         if (max_delay > DEFINE_DELAY_WARNING):
             g_lock.acquire()
-            string = "%s ping %s max delay is %.3fms" % (
-                serviceIP, ip, max_delay)
+            string = "%s %s %s max delay is %.3fms" % (
+                serviceIP, pingCmd, ip, max_delay)
             errorMsg.append(string)
             g_lock.release()
 

@@ -467,8 +467,8 @@ class Kerberos():
             # Every 1000 records merged into one"
             ipstring = ""
             for ip in self.__allIps:
+                submask_length = NetUtil.get_submask_len(ip)
                 if not isUninstall:
-                    submask_length = NetUtil.get_submask_len(ip)
                     ipstring += " -h 'host    all             all       " \
                                 "      %s/%s        gss         " \
                                 "include_realm=1        krb_realm=%s'" % \

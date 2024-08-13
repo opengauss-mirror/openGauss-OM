@@ -567,22 +567,22 @@ class ExpansionImplWithCm(ExpansionImpl):
         conf_file = pgdata_path + os.sep + 'postgresql.conf'
         get_url_cmd = "grep -n 'ss_interconnect_url' %s" % conf_file
         sta, out = subprocess.getstatusoutput(get_url_cmd)
-        url = out.split('\n')[2]
+        url = eval(out.split('=')[-1].strip())
         url_port = (url.split(',')[0]).split(':')[-1]
         dss_port = (node_list.split(',')[0]).split(':')[-1]
         new_url = node_list.replace(dss_port, url_port)
-        new_url = 'ss_interconnect_url=%s' % new_url
-        pgdata_path = EnvUtil.getEnv("PGDATA")
-        conf_file = pgdata_path + os.sep + 'postgresql.conf'
 
-        guc_cmd = 'sed -i "s/^.*ss_interconnect_url.*$/%s/" %s' % (new_url, conf_file)
-        if os.getuid() == 0:
-            guc_cmd = f"su - {self.user} -c '{guc_cmd}'"
+        guc_cmd = "grep -n 'ss_interconnect_url' %s | cut -f1 -d: | xargs -I {} sed -i {}\'s/%s/%s/g' %s" % (
+                  conf_file, url, new_url, conf_file)
         self.logger.debug("Command for update ss_interconnect_url: %s" % guc_cmd)
-        status, _ = subprocess.getstatusoutput(guc_cmd)
-        if status != 0:
-            self.logger.debug("Failed to update ss_interconnect_url.")
-            raise Exception("Failed to update ss_interconnect_url.")
+        for host in hosts:
+            ssh_tool = SshTool([host], timeout=300)
+            result_map, _ = ssh_tool.getSshStatusOutput(guc_cmd, [])
+            if result_map[host] == DefaultValue.SUCCESS:
+                self.logger.log("Update ss_interconnect_url on %s success." % host)
+            else:
+                self.logger.debug("Failed to update ss_interconnect_url on %s" % host)
+                raise Exception("Failed to update ss_interconnect_url on %s" % host)
         self.logger.log("Successfully update ss_interconnect_url on old nodes.")
 
     def update_old_cm_res(self):
@@ -877,6 +877,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         self.recover_static_conf()
         DefaultValue.remove_metadata_and_dynamic_config_file(self.user, self.ssh_tool, self.logger)
         self.logger.log("Successfully recover cluster.")
+        self.check_new_node_state(False)
         sys.exit(1)
 
     def check_processes(self):

@@ -1698,7 +1698,7 @@ def get_dss_bak_conf(Inst):
             cmd = "%s && mkdir -p %s/%s" % (cmd, create_path, sdir)
             slot_files = get_dss_repslot_files(vgname, sdir)
             slots.extend(slot_files)
-    if slot:
+    if slots:
         for slot in slots: 
             cmd = "%s && dsscmd cp -s +%s/pg_replslot/%s -d %s/%s" % \
                   (cmd, vgname, slot, create_path, slot)

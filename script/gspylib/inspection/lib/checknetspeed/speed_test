@@ -19,19 +19,32 @@
 import socket
 import time
 import sys
-
-from base_utils.os.net_util import NetUtil
+import ipaddress
 
 listen_ip = "localhost"
 listen_port = 31111
 run_mode = 0  # 0:connect, 1:send, 2:recv
+NET_IPV4 = "ipv4"
+NET_IPV6 = "ipv6"
+
+def get_sockects(ip_address):
+    try:
+        ip = ipaddress.ip_address(ip_address)
+        if ip.version == 6:
+            sockets = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+            return sockets
+        else:
+            sockets = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            return sockets
+    except ValueError:
+        print("ip_address:%s is unvalid ip.")
 
 def send_main():
     try:
         global listen_ip
         global listen_port
         buf = "this is a test !" * 512 # buf  8192  block
-        sockets = NetUtil.get_sockects(listen_ip)
+        sockets = get_sockects(listen_ip)
         sockets.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         print(listen_ip+":"+listen_port)
         while(sockets.connect_ex((listen_ip, int(listen_port))) != 0):
@@ -54,7 +67,7 @@ def recv_main():
     try:
         global listen_ip
         global listen_port
-        sockets = NetUtil.get_sockects(listen_ip)
+        sockets = get_sockects(listen_ip)
         sockets.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
         sockets.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         sockets.bind((listen_ip, int(listen_port)))
@@ -72,7 +85,7 @@ def recv_main():
     except Exception as e:
         print(str(e))
 def connect_main():
-    sockets = NetUtil.get_sockects(listen_ip)
+    sockets = get_sockects(listen_ip)
     sockets.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
     if sockets.connect_ex((listen_ip, int(listen_port))) != 0:
         print("Failed to connect %s:%d on %s mode:%m.\n",

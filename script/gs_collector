@@ -298,9 +298,12 @@ General options:
                     for it in value:
                         d_c = ""
                         u_c = ""
-                        if it["TypeName"] == "XLog" and self.enable_dss and "FileNumber" not in it:
-                            GaussLog.exitWithError(
-                                "ERROR: FileNumber must be in gs_collector config file when dss enabled.")
+                        if it["TypeName"] == "XLog" and self.enable_dss:
+                            if "FileNumber" not in it:
+                                GaussLog.exitWithError(
+                                    "ERROR: FileNumber must be in gs_collector config file when dss enabled.")
+                            if it["FileNumber"] <= "0":
+                                GaussLog.exitWithError("ERROR: FileNumber must be more than 0.")
                         for k, v in it.items():
                             if k not in DefaultValue.COLLECT_CONF_JSON_KEY_LIST:
                                 GaussLog.exitWithError(

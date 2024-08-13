@@ -1504,7 +1504,7 @@ def getCmdOutput(cmd, ssh_conf=""):
         (status, output) = g_sshTool.getSshStatusOutput(cmd, [], "",
                                                         "%s/../" % gp_path,
                                                         ssh_config=ssh_conf)
-        outputMap = g_sshTool.parseSshOutput(g_sshTool.hostNames)
+        outputMap = g_sshTool.parseSshOutput(g_opts.hostnameList)
 
     return (status, output, outputMap)
 

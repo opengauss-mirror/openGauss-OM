@@ -39,6 +39,7 @@ from base_utils.os.net_util import NetUtil
 from base_utils.os.env_util import EnvUtil
 from domain_utils.cluster_file.profile_file import ProfileFile
 from domain_utils.cluster_file.version_info import VersionInfo
+from base_utils.os.crontab_util import CrontabUtil
 
 # action name
 # prepare cluster tool package path
@@ -83,6 +84,8 @@ ACTION_CHANGE_TOOL_ENV = "change_tool_env"
 ACTION_CHECK_CONFIG = "check_config"
 # check cpu
 ACTION_CHECK_CPU_INSTRUCTIONS = "check_cpu_instructions"
+# check nofile limit
+ACTION_CHECK_NOFILE_LIMIT = "check_nofile_limit"
 #############################################################################
 # Global variables
 #   self.context.logger: globle logger
@@ -427,7 +430,7 @@ class PreinstallImpl:
                     "Successfully distribute package to package path.")
                 break
             # 3.distribute xml file
-            DefaultValue.distributeXmlConfFile(self.context.sshTool,
+            DefaultValue.distribute_hosts_file(self.context.sshTool,
                                                self.context.xmlFile, hosts,
                                                self.context.mpprcFile)
             cmd = "%s -t %s -u %s -X %s" % (OMCommand.getLocalScript("Local_PreInstall"),
@@ -439,6 +442,12 @@ class PreinstallImpl:
                                              False,
                                              self.context.mpprcFile,
                                              hosts)
+
+            # 4.distribute hosts file
+            hosts_file = os.path.normpath(os.path.join(self.context.clusterToolPath, "hosts"))
+            DefaultValue.distribute_hosts_file(self.context.sshTool,
+                                               hosts_file, hosts,
+                                               self.context.mpprcFile)
         except Exception as e:
             raise Exception(str(e))
 
@@ -770,6 +779,32 @@ class PreinstallImpl:
         except Exception as e:
             self.context.logger.log("Warning: This cluster is missing the rdtscp or avx instruction.")
         self.context.logger.log("Successfully checked cpu instructions.", "constant")
+
+    def check_nofile_limit(self):
+        """
+        function: Check if nofile limit more then 640000
+        input:NA
+        output:NA
+        """
+        if self.context.localMode or self.context.isSingle:
+            return
+        if not self.context.clusterInfo.hasNoCm():
+            self.context.logger.log("Checking nofile limit.", "addStep")
+            try:
+                # Checking OS version
+                cmd = "%s -t %s -u %s -l %s" % (
+                    OMCommand.getLocalScript("Local_PreInstall"),
+                    ACTION_CHECK_NOFILE_LIMIT,
+                    self.context.user,
+                    self.context.localLog)
+                CmdExecutor.execCommandWithMode(
+                    cmd,
+                    self.context.sshTool,
+                    self.context.localMode or self.context.isSingle,
+                    self.context.mpprcFile)
+            except Exception as e:
+                raise Exception(str(e))
+            self.context.logger.log("Successfully checked nofile limit.", "constant")
 
     def createOSUser(self):
         """
@@ -1610,6 +1645,9 @@ class PreinstallImpl:
         """
         :return:
         """
+        if not self.context.current_user_root and not CrontabUtil.check_user_crontab_permission():
+            self.context.logger.log("Warning: The %s user does not have permission to set crontab." % self.context.user)
+            return False
         self.context.logger.debug("Start set cron for %s" %self.context.user)
         tmp_path = ClusterConfigFile.readClusterTmpMppdbPath(
             self.context.user, self.context.xmlFile)
@@ -1632,6 +1670,7 @@ class PreinstallImpl:
                                         self.context.localMode or self.context.isSingle,
                                         self.context.mpprcFile)
         self.context.logger.debug("Successfully to set cron for %s" %self.context.user)
+        return True
 
     def do_perf_config(self):
         """

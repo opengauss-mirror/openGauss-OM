@@ -277,6 +277,8 @@ class DefaultValue():
     ALARM_COMPONENT_PATH = "/opt/huawei/snas/bin/snas_cm_cmd"
     # root scripts path
     ROOT_SCRIPTS_PATH = "/root/gauss_om"
+    # preinstall flag path
+    PREINSTALL_FLAG_PATH = "/tmp/preinstall_flag"
 
     # package bak file name list
     PACKAGE_BACK_LIST = ["Gauss200-OLAP-Package-bak.tar.gz",
@@ -529,6 +531,12 @@ class DefaultValue():
     SSH_AUTHORIZED_KEYS = os.path.expanduser("~/.ssh/authorized_keys")
     SSH_KNOWN_HOSTS = os.path.expanduser("~/.ssh/known_hosts")
 
+    # os parameter
+    MAX_REMAIN_SEM = 240000
+    MIN_REMAIN_SEM = 10000
+    NOFILE_LIMIT = 640000
+    DEFAULT_SEM = 32000
+
     @staticmethod
     def encodeParaline(cmd, keyword):
         """
@@ -539,6 +547,20 @@ class DefaultValue():
         if (keyword == "decode"):
             cmd = base64.b64decode(cmd.encode()).decode()
             return cmd
+
+    @staticmethod
+    def read_preinstall_flag():
+        preinstall_flag_file = DefaultValue.PREINSTALL_FLAG_PATH
+        if not os.path.exists(preinstall_flag_file):
+            return True
+        with open(preinstall_flag_file, 'r') as f:
+            content = f.read().strip()
+        if len(content.split()) != 2:
+            raise Exception("The content of the preinstall flag file is incorrect.")
+        if content.split()[0] == "preinstall" and content.split()[1] == "root":
+            return True
+        else:
+            return False
 
     @staticmethod
     def CheckNetWorkBonding(serviceIP, isCheckOS=True):
@@ -712,12 +734,23 @@ class DefaultValue():
         # get hostname
         hostname = socket.gethostname()
 
+        hostIp = ""
+        preinstall_flag = DefaultValue.read_preinstall_flag()
+        if preinstall_flag:
         # get local host in /etc/hosts
-        cmd = "grep -E \"^[1-9 \\t].*%s[ \\t]*#Gauss.* IP Hosts Mapping$\" " \
-              "/etc/hosts | grep -E \" %s \"" % (hostname, hostname)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if (status == 0 and output != ""):
-            hostIp = output.strip().split(' ')[0].strip()
+            cmd = "grep -E \"^[1-9 \\t].*%s[ \\t]*#Gauss.* IP Hosts Mapping$\" " \
+                "/etc/hosts | grep -E \" %s \"" % (hostname, hostname)
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if (status == 0 and output != ""):
+                hostIp = output.strip().split(' ')[0].strip()
+        else:
+            cmd = "grep -E \"^[1-9 \\t].*%s\" " \
+                "%s | grep -E \" %s \"" % (hostname, DefaultValue.PREINSTALL_FLAG_PATH, hostname)
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if (status == 0 and output != ""):
+                hostIp = output.strip().split(' ')[0].strip()
+
+        if hostIp:
             return hostIp
 
         # get local host by os function
@@ -850,7 +883,6 @@ class DefaultValue():
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
                                 + " Error:\n%s" % output)
         return output.strip()
-
 
     @staticmethod
     def getOSInitFile():
@@ -1879,6 +1911,42 @@ class DefaultValue():
                                             g_sshTool,
                                             localMode,
                                             mpprcFile,
+                                            hostname)
+        except Exception as e:
+            raise Exception(str(e))
+
+    @staticmethod
+    def distribute_hosts_file(g_sshTool, hosts_file, hostname=None,
+                              mpprc_file="", local_mode=False):
+        '''
+        function: distribute the hosts file to remote nodes
+        input: g_sshTool, hostname, hosts file, mpprcFile
+        output:NA
+        '''
+        if hostname is None:
+            hostname = []
+        try:
+            # distribute xml file
+            # check and create xml file path
+            hosts_dir = os.path.dirname(hosts_file)
+            hosts_dir = os.path.normpath(hosts_dir)
+            LocalRemoteCmd.checkRemoteDir(g_sshTool, hosts_dir, hostname, mpprc_file,
+                                        local_mode)
+            local_node = NetUtil.GetHostIpOrName()
+            # Skip local file overwriting
+            if not hostname:
+                hostname = g_sshTool.hostNames[:]
+            if local_node in hostname:
+                hostname.remove(local_node)
+            if (not local_mode):
+                # Send xml file to every host
+                g_sshTool.scpFiles(hosts_file, hosts_dir, hostname, mpprc_file)
+            # change owner and mode of xml file
+            cmd = CmdUtil.getChmodCmd(str(DefaultValue.FILE_MODE), hosts_file)
+            CmdExecutor.execCommandWithMode(cmd,
+                                            g_sshTool,
+                                            local_mode,
+                                            mpprc_file,
                                             hostname)
         except Exception as e:
             raise Exception(str(e))
@@ -3329,6 +3397,44 @@ class DefaultValue():
         except Exception as e:
             # failed to read the upgrade_step.csv in isgreyUpgradeNodeSpecify
             logger.logExit(str(e))
+
+    @staticmethod
+    def get_remain_kernel_sem():
+        """
+        get remain kernel sem
+        """
+        # get total sem
+        cmd = "cat /proc/sys/kernel/sem"
+        (status, output) = subprocess.getstatusoutput(cmd)
+
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_501["GAUSS_50110"] % cmd)
+        
+        if output == "":
+            return None
+        if len(output.split()) > 1:
+            if int(output.split()[1]) > DefaultValue.DEFAULT_SEM:
+                return None
+        else:
+            raise Exception("cat /proc/sys/kernel/sem failed")
+        parts = output.split()
+        semmns = int(parts[1])
+
+        # get used sem
+        cmd = "ipcs -s"
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status:
+            raise Exception(ErrorCode.GAUSS_501["GAUSS_50110"] % cmd)
+        current_sems_lines = output.split('\n')
+        # skip the first three lines and process the remaining lines
+        current_sems = [int(line.split()[3]) for line in current_sems_lines[3:] if line.strip()]
+
+        # Calculate the number of semaphores currently in use
+        used_sems = sum(current_sems)
+
+        # Calculate the number of remaining semaphores
+        remaining_sems = semmns - used_sems
+        return remaining_sems
 
 class ClusterCommand():
     '''

@@ -89,6 +89,7 @@ ACTION_SET_CGROUP = "set_cgroup"
 ACTION_CHECK_CONFIG = "check_config"
 ACTION_DSS_NIT = "dss_init"
 ACTION_CHECK_CPU_INSTRUCTIONS = "check_cpu_instructions"
+ACTION_CHECK_NOFILE_LIMIT = "check_nofile_limit"
 
 g_nodeInfo = None
 envConfig = {}
@@ -280,7 +281,8 @@ Common options:
                           ACTION_SET_ARM_OPTIMIZATION,
                           ACTION_CHECK_DISK_SPACE, ACTION_SET_WHITELIST,
                           ACTION_FIX_SERVER_PACKAGE_OWNER, ACTION_DSS_NIT,
-                          ACTION_CHANGE_TOOL_ENV, ACTION_CHECK_CONFIG, ACTION_CHECK_CPU_INSTRUCTIONS]
+                          ACTION_CHANGE_TOOL_ENV, ACTION_CHECK_CONFIG, ACTION_CHECK_CPU_INSTRUCTIONS,
+                          ACTION_CHECK_NOFILE_LIMIT]
         if self.action == "":
             GaussLog.exitWithError(
                 ErrorCode.GAUSS_500["GAUSS_50001"] % 't' + ".")
@@ -2017,6 +2019,25 @@ Common options:
         except Exception as e:
             self.logger.debug(cpu_mission)
             raise Exception(cpu_mission)
+    
+    def check_nofile_limit(self):
+        """
+        function: Check nofile limit
+        input:NA
+        output:NA
+        """
+        self.logger.debug("Checking nofile limit.")
+        if os.getuid() == 0:
+            cmd = "su - %s -c \'ulimit -n\'" % self.user
+        else:
+            cmd = "ulimit -n"
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error: \n%s" % output)
+        ulimit_value = int(output.strip())
+        if ulimit_value < DefaultValue.NOFILE_LIMIT:
+            raise Exception("Deploy cm, the number of file handles for %s user must be greater than %s" % (self.user, DefaultValue.NOFILE_LIMIT))
+        self.logger.debug("Successfully checked nofile limit.")
 
     def checkPlatformArm(self):
         """
@@ -2717,6 +2738,11 @@ Common options:
         # Change owner to appropriate user
         FileUtil.changeOwner(self.user, dest_path)
 
+        # cp hosts file to /home/user/gauss_om/
+        self.logger.debug("cp hosts file to /home/user/gauss_om.")
+        cmd = "cp -rf %s/hosts %s" % (self.clusterToolPath, dest_path)
+        CmdExecutor.execCommandLocally(cmd)
+
         # cp cgroup to /home/user/gauss_om/script
         self.logger.debug("cp cgroup to /home/user/gauss_om/script.")
         backup_lib_dir = os.path.join(dest_path, "lib")
@@ -2738,7 +2764,6 @@ Common options:
                         "gs_checkos"]
         common_scripts = ["gs_sshexkey", "killall", "gs_checkperf"]
         # the script files are not stored in the env path
-        not_in_env_scripts = ["gs_expansion"]
         backup_save_files = backup_scripts + common_scripts
         self.logger.debug("Delete user scripts in om backup_om path.")
         # delete user scripts in om backup_om path
@@ -2764,7 +2789,7 @@ Common options:
         user_om_files = os.listdir(om_user_path)
         for user_file in user_om_files:
             if user_file.startswith("gs_"):
-                if user_file in backup_scripts or user_file in not_in_env_scripts:
+                if user_file in backup_scripts:
                     FileUtil.removeFile("%s/%s" % (om_user_path, user_file))
         FileUtil.changeOwner(self.user, dest_path, recursive=True)
         self.logger.debug("Delete cluster decompress package in user path.")

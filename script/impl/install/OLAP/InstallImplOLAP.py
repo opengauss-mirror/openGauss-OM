@@ -353,17 +353,15 @@ class InstallImplOLAP(InstallImpl):
             memCheck = "cat /proc/cpuinfo | grep processor | wc -l"
             coresCheck = "env -u LANGUAGE LC_ALL=C free -g --si | grep 'Mem' | awk -F ' ' '{print \$2}'"
             cmd = "pssh -s -H %s \"%s & %s\"" % (
-                dbNode.name, memCheck, coresCheck)
+                dbNode.sshIps[0], memCheck, coresCheck)
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0 or len(output.strip().split()) != 2:
                 self.context.logger.debug(
                     ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                    + " Error: \n%s" % str(
-                        output))
+                    + " Error: \n%s" % str(output))
                 raise Exception(
                     ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                    + " Error: \n%s" % str(
-                        output))
+                    + " Error: \n%s" % str(output))
             data_check_info[dbNode.name] = str(output).strip().split()
         self.context.logger.debug(
             "The check info on each node. \nNode : Info(MemSize | CPUCores)")

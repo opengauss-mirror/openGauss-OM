@@ -27,6 +27,7 @@ import weakref
 import time
 from random import sample
 import copy
+import re
 sys.path.append(sys.path[0] + "/../../")
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.Common import DefaultValue
@@ -37,6 +38,8 @@ from base_utils.os.cmd_util import CmdUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from base_utils.security.sensitive_mask import SensitiveMask
 from gspylib.common.Constants import Constants
+from base_utils.security.security_checker import SecurityChecker
+from base_utils.os.hosts_util import HostsUtil
 
 try:
     import paramiko
@@ -79,6 +82,19 @@ def get_sshexkey_file():
         trust_file = os.path.normpath(os.path.join(package_path, "gs_sshexkey"))
     return trust_file
 
+def check_local_mode(host):
+    """
+    function: check single host valid
+    input : host
+    output: NA
+    """
+    if host is None or not host:
+        host = []
+    if len(host) == 1:
+        if host[0] == NetUtil.GetHostIpOrName() or host[0] in NetUtil.getIpAddressList():
+            return True
+    return False
+
 class SshTool():
     """
     Class for controling multi-hosts
@@ -95,6 +111,19 @@ class SshTool():
         self.__timeout = timeout + 10
         self._finalizer = weakref.finalize(self, self.clenSshResultFiles)
         self.__sessions = {}
+        self.is_ip = False
+
+        if hostNames:
+            # if not ip, convert hostname to ip
+            if not SecurityChecker.check_is_ip(hostNames[0]):
+                self.is_ip = False
+                # key:value hostname:ip
+                host_ip_list = HostsUtil.hostname_list_to_ip_list(hostNames)
+                if not host_ip_list:
+                    raise Exception("Failed to hostname to ip.")
+                self.hostNames = host_ip_list
+            else:
+                self.is_ip = True
 
         current_time = str(datetime.datetime.now()).replace(" ", "_").replace(
             ".", "_")
@@ -296,9 +325,20 @@ class SshTool():
             outputCollect = ""
             prefix = ""
             resultMap = self.__readCmdResult(self.__resultFile, len(hostList))
+
+            if not self.is_ip:
+                res_map = {}
+                for key, value in resultMap.items():
+                    name = HostsUtil.ip_to_hostname(key)
+                    res_map[name] = value
+                resultMap = res_map
+                
             for host in hostList:
                 sshOutPutFile = "%s/%s" % (self.__outputPath, host)
                 sshErrorPutFile = "%s/%s" % (self.__errorPath, host)
+                # ip to hostname
+                if not self.is_ip:
+                    host = HostsUtil.ip_to_hostname(host)
                 if resultMap[host] == DefaultValue.SUCCESS:
                     prefix = "SUCCESS"
                 else:
@@ -323,8 +363,9 @@ class SshTool():
         """
         function: timeout clean
         """
-        if hostList is None:
-            hostList = []
+        localMode = False
+        localMode = check_local_mode(hostList)
+        hostList = self.check_host_ip_list(hostList)
         pstree = "python3 %s -sc" % os.path.realpath(os.path.dirname(
             os.path.realpath(__file__)) + "/../../py_pstree.py")
         mpprcFile, userProfile, osProfile = self.getUserOSProfile(env_file)
@@ -354,6 +395,7 @@ class SshTool():
                              self.__errorPath, osProfile, userProfile,
                              timeOutCmd,
                              self.__resultFile)
+            hostList = self.hostNames
         else:
             if os.getuid() == 0 and (mpprcFile == "" or not mpprcFile):
                 sshCmd = "source %s && %s -t %s -H %s -P -p %s -o %s -e" \
@@ -371,10 +413,37 @@ class SshTool():
                           self.__outputPath,
                           self.__errorPath, osProfile, userProfile,
                           timeOutCmd, self.__resultFile)
-        (status, output) = CmdUtil.getstatusoutput_by_fast_popen(sshCmd)
+        if localMode:
+            if os.getuid() == 0 and (mpprcFile == "" or not mpprcFile):
+                sshCmd = "source %s ; %s 2>&1" % (osProfile, cmd)
+            else:
+                sshCmd = "source %s ; source %s; %s 2>&1" \
+                            % (osProfile, userProfile, cmd)
+        (status, output) = subprocess.getstatusoutput(sshCmd)
+
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"]
+                            % sshCmd + " Error:\n%s" % SensitiveMask.mask_pwd(output))
+
         if logger:
             logger.debug("{timeout clean} status: %s, output: %s" % (
                 status, SensitiveMask.mask_pwd(output)))
+
+    def check_host_ip_list(self, host_list):
+        """
+        function: check host valid
+        input : host_list
+        output: NA
+        """
+        host = []
+        if host_list is None or not host_list:
+            return host
+        else:
+            if SecurityChecker.check_is_ip(host_list[0]):
+                self.is_ip = True
+            if not self.is_ip:
+                host = HostsUtil.hostname_list_to_ip_list(host_list)
+        return host
 
     def executeCommand(self, cmd, cmdReturn=DefaultValue.SUCCESS,
                        hostList=None, env_file="", parallel_num=300,
@@ -389,8 +458,8 @@ class SshTool():
         resultMap = {}
         outputCollect = ""
         isTimeOut = False
-        if hostList is None:
-            hostList = []
+        localMode = check_local_mode(hostList)
+        hostList = self.check_host_ip_list(hostList)
         try:
             mpprcFile, userProfile, osProfile = self.getUserOSProfile(
                 env_file)
@@ -425,6 +494,7 @@ class SshTool():
                     sshCmd = sshCmd.replace('parallelism_flag',
                                             '-h ' + self.__hostsFile)
                 hostList = self.hostNames
+                localMode = check_local_mode(hostList)
             else:
                 if os.getuid() == 0 and (mpprcFile == "" or not mpprcFile):
                     sshCmd = "source %s && %s -t %s -H %s -P -p %s -o %s -e" \
@@ -443,10 +513,7 @@ class SshTool():
                                 self.__resultFile)
 
             # single cluster or execute only in local node.
-            if (len(hostList) == 1 and
-                    hostList[0] == NetUtil.GetHostIpOrName()
-                    and cmd.find(" --lock-cluster ") < 0):
-                localMode = True
+            if localMode:
                 if os.getuid() == 0 and (mpprcFile == "" or not mpprcFile):
                     sshCmd = "source %s ; %s 2>&1" % (osProfile, cmd)
                 else:
@@ -494,6 +561,8 @@ class SshTool():
                                     " Error:\n%s" % SensitiveMask.mask_pwd(output))
 
             if localMode:
+                if not self.is_ip:
+                    hostList = [HostsUtil.ip_to_hostname(hostList[0])]
                 resultMap[hostList[0]] = DefaultValue.SUCCESS if status == 0 \
                     else DefaultValue.FAILURE
                 outputCollect = "[%s] %s:\n%s" \
@@ -506,8 +575,10 @@ class SshTool():
             if not isTimeOut:
                 self.clenSshResultFiles()
             raise Exception(str(e))
-
+        
         for host in hostList:
+            if not localMode and not self.is_ip:
+                host = HostsUtil.ip_to_hostname(host)
             if resultMap.get(host) != cmdReturn:
                 if outputCollect.find("GAUSS-5") == -1:
                     raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"]
@@ -542,9 +613,8 @@ class SshTool():
         outputCollect = ""
         isTimeOut = False
         need_replace_quotes = False
-
-        if hostList is None:
-            hostList = []
+        localMode = check_local_mode(hostList)
+        hostList = self.check_host_ip_list(hostList)
 
         if cmd.find("[need_replace_quotes]") != -1:
             cmd = cmd.replace("[need_replace_quotes]", "")
@@ -587,6 +657,7 @@ class SshTool():
                                 osProfile, userProfile, cmd,
                                 self.__resultFile)
                 hostList = self.hostNames
+                localMode = check_local_mode(hostList)
             else:
                 if need_replace_quotes:
                     remote_cmd = cmd.replace("\"", "\\\"")
@@ -609,9 +680,7 @@ class SshTool():
                                 self.__resultFile)
 
             # single cluster or execute only in local node.
-            if (len(hostList) == 1 and
-                    hostList[0] == NetUtil.GetHostIpOrName()):
-                localMode = True
+            if localMode:
                 if os.getuid() == 0 and (mpprcFile == "" or not mpprcFile):
                     sshCmd = "source %s ; %s 2>&1" % (osProfile, cmd)
                 else:
@@ -635,6 +704,8 @@ class SshTool():
 
             if localMode:
                 dir_permission = 0o700
+                if not self.is_ip:
+                    hostList = [HostsUtil.ip_to_hostname(hostList[0])]
                 if status == 0:
                     resultMap[hostList[0]] = DefaultValue.SUCCESS
                     outputCollect = "[%s] %s:\n%s" % ("SUCCESS", hostList[0],
@@ -669,8 +740,10 @@ class SshTool():
             if not isTimeOut:
                 self.clenSshResultFiles()
             raise Exception(str(e))
-
+        
         for host in hostList:
+            if not localMode and not self.is_ip:
+                host = HostsUtil.ip_to_hostname(host)
             if resultMap.get(host) != DefaultValue.SUCCESS:
                 if outputCollect.find("GAUSS-5") == -1:
                     outputCollect = ErrorCode.GAUSS_514["GAUSS_51400"] \
@@ -703,11 +776,15 @@ class SshTool():
         """
         resultMap = {}
         try:
+            if not SecurityChecker.check_is_ip(hostList[0]):
+                hostList = HostsUtil.hostname_list_to_ip_list(hostList)
             for host in hostList:
                 context = ""
                 sshOutPutFile = "%s/%s" % (self.__outputPath, host)
                 sshErrorPutFile = "%s/%s" % (self.__errorPath, host)
 
+                if not self.is_ip:
+                    host = HostsUtil.ip_to_hostname(host)
                 if os.path.isfile(sshOutPutFile):
                     with open(sshOutPutFile, "r") as fp:
                         context = fp.read()
@@ -737,9 +814,10 @@ class SshTool():
         outputCollect = ""
         localMode = False
         resultMap = {}
-        sshHosts = []
-        if hostList is None:
-            hostList = []
+        ssh_hosts = []
+        localMode = False
+        localMode = check_local_mode(hostList)
+        hostList = self.check_host_ip_list(hostList)
         try:
             if env_file != "":
                 mpprcFile = env_file
@@ -758,37 +836,23 @@ class SshTool():
             pscppre = "python3 %s/script/gspylib/pssh/bin/pscp" % gp_home
 
             if len(hostList) == 0:
-                hostSshs = copy.deepcopy(self.hostNames)
+                ssh_hosts = copy.deepcopy(self.hostNames)
+                localMode = check_local_mode(ssh_hosts)
             else:
-                hostSshs = copy.deepcopy(hostList)
-            for host in hostSshs:
-                if NetUtil.get_ip_version(host) == NetUtil.NET_IPV6:
-                    sshHosts.append("[" + host + "]")
-                else:
-                    sshHosts.append(host)
-            if len(sshHosts) == 1 and sshHosts[0] == socket.gethostname() and \
+                ssh_hosts = copy.deepcopy(hostList)
+            if localMode and \
                 srcFile != targetDir and \
                 srcFile != os.path.join(targetDir, os.path.split(srcFile)[1]):
-                localMode = True
                 scpCmd = "cp -r %s %s" % (srcFile, targetDir)
             else:
                 # cp file on local node
-                if socket.gethostname() in sshHosts:
-                    localhost_idx = sshHosts.index(socket.gethostname())
-                    sshHosts.pop(localhost_idx)
-                    cpcmd = "cp -r %s %s" % (srcFile, targetDir)
-                    if srcFile != targetDir and srcFile != os.path.join(targetDir, os.path.basename(srcFile)):
-                        (status, output) = subprocess.getstatusoutput(cpcmd)
-                        if status == 0:
-                            resultMap[socket.gethostname()] = DefaultValue.SUCCESS
-                        else:
-                            resultMap[socket.gethostname()] = DefaultValue.FAILURE
-                if not sshHosts:
+                self.cp_file_on_local_node(srcFile, targetDir, resultMap, ssh_hosts)
+                if not ssh_hosts:
                     return
                 scpCmd = "%s -r -v -t %s -p %s -H %s -o %s -e %s %s %s" \
                           " 2>&1 | tee %s" % (pscppre, self.__timeout,
                                               parallel_num,
-                                              " -H ".join(sshHosts),
+                                              " -H ".join(ssh_hosts),
                                               self.__outputPath,
                                               self.__errorPath, srcFile,
                                               targetDir, self.__resultFile)
@@ -815,45 +879,70 @@ class SshTool():
             # ip and host name should match here
             if localMode:
                 dir_permission = 0o700
+                if not self.is_ip:
+                    ssh_hosts = [HostsUtil.ip_to_hostname(ssh_hosts[0])]
                 if status == 0:
-                    resultMap[sshHosts[0]] = DefaultValue.SUCCESS
-                    outputCollect = "[%s] %s:\n%s" % ("SUCCESS", sshHosts[0],
+                    resultMap[ssh_hosts[0]] = DefaultValue.SUCCESS
+                    outputCollect = "[%s] %s:\n%s" % ("SUCCESS", ssh_hosts[0],
                                                       SensitiveMask.mask_pwd(output))
 
                     if not os.path.exists(self.__outputPath):
                         os.makedirs(self.__outputPath, mode=dir_permission)
-                    file_path = os.path.join(self.__outputPath, sshHosts[0])
+                    file_path = os.path.join(self.__outputPath, ssh_hosts[0])
                     FileUtil.createFileInSafeMode(file_path)
                     with open(file_path, "w") as fp:
                         fp.write(SensitiveMask.mask_pwd(output))
                         fp.flush()
                         fp.close()
                 else:
-                    resultMap[sshHosts[0]] = DefaultValue.FAILURE
-                    outputCollect = "[%s] %s:\n%s" % ("FAILURE", sshHosts[0],
+                    resultMap[ssh_hosts[0]] = DefaultValue.FAILURE
+                    outputCollect = "[%s] %s:\n%s" % ("FAILURE", ssh_hosts[0],
                                                       SensitiveMask.mask_pwd(output))
 
                     if not os.path.exists(self.__errorPath):
                         os.makedirs(self.__errorPath, mode=dir_permission)
-                    file_path = os.path.join(self.__errorPath, sshHosts[0])
+                    file_path = os.path.join(self.__errorPath, ssh_hosts[0])
                     FileUtil.createFileInSafeMode(file_path)
                     with open(file_path, "w") as fp:
                         fp.write(SensitiveMask.mask_pwd(output))
                         fp.flush()
                         fp.close()
             else:
-                resultMap, outputCollect = self.parseSshResult(sshHosts)
+                resultMap, outputCollect = self.parseSshResult(ssh_hosts)
         except Exception as e:
             self.clenSshResultFiles()
             raise Exception(str(e))
-
-        for host in sshHosts:
+        
+        for host in ssh_hosts:
+            if not self.is_ip:
+                host = HostsUtil.ip_to_hostname(host)
             if resultMap.get(host) != DefaultValue.SUCCESS:
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50216"]
                                 % ("file [%s]" % srcFile) +
                                 " To directory: %s." % targetDir +
                                 " Command: %s.\nError:\n%s" % (SensitiveMask.mask_pwd(scpCmd),
                                     SensitiveMask.mask_pwd(outputCollect)))
+
+    def cp_file_on_local_node(self, src_file, target_dir, result_map, ssh_hosts):
+        """"
+        copy file on local node
+        """
+        local_name_or_ip = ""
+        local_name = socket.gethostname()
+        if not self.is_ip:
+            local_name_or_ip = HostsUtil.hostname_list_to_ip_list([local_name])[0]
+        else:
+            local_name_or_ip = local_name
+        if local_name_or_ip in ssh_hosts:
+            localhost_idx = ssh_hosts.index(local_name_or_ip)
+            ssh_hosts.pop(localhost_idx)
+            cpcmd = "cp -r %s %s" % (src_file, target_dir)
+            if src_file != target_dir and src_file != os.path.join(target_dir, os.path.basename(src_file)):
+                (status, output) = subprocess.getstatusoutput(cpcmd)
+                if status == 0:
+                    result_map[local_name_or_ip] = DefaultValue.SUCCESS
+                else:
+                    result_map[local_name_or_ip] = DefaultValue.FAILURE
 
     def checkRemoteFileExist(self, node, fileAbsPath, mpprcFile):
         """
@@ -915,8 +1004,12 @@ class SshTool():
             with open(resultFile, "r") as fp:
                 lines = fp.readlines()
             context = "".join(lines)
+
             for line in lines:
                 resultPair = line.strip().split(" ")
+                if len(resultPair) < 4:
+                    continue
+
                 if len(resultPair) >= 4 and resultPair[2] == "[FAILURE]":
                     resultMap[resultPair[3]] = "Failure"
                 if len(resultPair) >= 4 and resultPair[2] == "[SUCCESS]":

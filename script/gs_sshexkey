@@ -51,6 +51,7 @@ from subprocess import PIPE
 from base_utils.common.fast_popen import FastPopen
 from gspylib.common.copy_python_lib import copy_lib
 from base_utils.os.user_util import UserUtil
+from base_utils.os.crontab_util import CrontabUtil
 
 copy_lib()
 DefaultValue.doConfigForParamiko()
@@ -667,6 +668,8 @@ General options:
         Ips.extend(self.hostList)
         result = self.getAllHosts(Ips)
         self.checkNetworkInfo()
+        # write hosts file
+        self.write_hosts_file(result)
 
         if not self.skipHostnameSet:
             self.writeLocalHosts(result)
@@ -683,40 +686,62 @@ General options:
             self.synchronizationLicenseFile(result)
             self.retry_register_other_ssh_agent()
             self.verifyTrust()
-            self.set_user_crontab(result)
+            self.set_user_ssh_crontab(result)
             self.logger.log("Successfully created SSH trust.")
         except Exception as e:
             self.logger.logExit(str(e))
         finally:
             self.passwd = []
 
-    def set_user_crontab(self, hostnames_ips):
-        if os.getuid() == 0:
-            return
-        hostnames = list(hostnames_ips.values())
-        self.logger.log("Start set cron for %s" % self.user)
-        package_path = os.path.dirname(os.path.realpath(__file__))
+    def get_package_dir(self):
+        """
+        get package dir
+        """
+        return os.path.dirname(os.path.realpath(__file__))
+
+    def get_gp_home(self):
+        """
+        get pg home
+        """
+        package_path = self.get_package_dir()
         gp_home = os.path.join(package_path, '../')
-        check_cron = True
-        try:
-            # create cron tmp file
-            cron_file = "/tmp/gauss_cron_%s" % self.user
+        if EnvUtil.getEnv("GPHOME"):
+            gp_home = EnvUtil.getEnv("GPHOME")
+        return gp_home
+
+    def set_user_ssh_crontab(self, hostnames_ips):
+        """
+        set user cron
+        """
+        # The current user is not root and does not have cron task permissions, exit
+        if os.getuid() != 0 and not CrontabUtil.check_user_crontab_permission():
+            return
+        self.logger.log("Start set cron for %s" % self.user)
+        # hostnames_ips  key is ip; value is hostname
+        hostnames = list(hostnames_ips.values())
+
+        gp_home = self.get_gp_home()
+
+         # create cron tmp file
+        cron_file = "/tmp/gauss_cron_%s" % self.user
+        if os.getuid() == 0:
+            set_cron_cmd = "crontab -u %s -l > %s && " % (self.user, cron_file)
+        else:
             set_cron_cmd = "crontab -l > %s && " % cron_file
-            set_cron_cmd += "sed -i '/CheckSshAgent.py/d' %s;" % cron_file
-            set_cron_cmd += "echo '*/1 * * * * source ~/.bashrc;python3 %s/script/local/CheckSshAgent.py >>/dev/null 2>&1 &' >> %s" % \
+        set_cron_cmd += "sed -i '/CheckSshAgent.py/d' %s;" % cron_file
+        set_cron_cmd += "echo '*/1 * * * * source ~/.bashrc;python3 %s/script/local/CheckSshAgent.py >>/dev/null 2>&1 &' >> %s" % \
                             (gp_home, cron_file)
-            set_cron_cmd += "&& crontab %s" % cron_file
-            set_cron_cmd += "&& rm -f '%s';" % cron_file
-            self.logger.debug("Command for setting CRON: %s" % set_cron_cmd)
-            ssh_tool = SshTool(hostnames)
-            os.environ['GPHOME'] = gp_home
-            ssh_tool.executeCommand(set_cron_cmd, DefaultValue.SUCCESS, '', '')
-            ssh_tool.clenSshResultFiles()
-        except Exception as e:
-            check_cron = False
-            self.logger.log("Warning: The %s user does not have permission for crontab." % self.user)
-        if check_cron:
-            self.logger.log("Successfully to set cron for %s" % self.user)
+        if os.getuid() == 0:
+            set_cron_cmd += "crontab -u %s %s ;" % (self.user, cron_file)
+        else:
+            set_cron_cmd += "crontab %s ;" % cron_file
+        set_cron_cmd += "rm -f '%s';" % cron_file
+        ssh_tool = SshTool(hostnames)
+        os.environ['GPHOME'] = gp_home
+        self.logger.debug("Command for setting CRON: %s" % set_cron_cmd)
+        ssh_tool.executeCommand(set_cron_cmd, DefaultValue.SUCCESS)
+        ssh_tool.clenSshResultFiles()
+        self.logger.log("Successfully to set cron for %s" % self.user)
 
     def createPublicPrivateKeyFile(self):
         """
@@ -820,8 +845,13 @@ General options:
         self._log("Updating the known_hosts file.", "addStep")
         hostnameList = []
         hostnameList.extend(self.hostList)
-        for(key, value) in list(result.items()):
-            hostnameList.append(value)
+        # add hostname when using root user
+        os_hosts_file = "/etc/hosts"
+        for _, hostname in result.items():
+            cmd = "cat %s | grep %s | wc -l" % (os_hosts_file, hostname)
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status == 0 and int(output) > 0:
+                hostnameList.append(hostname)
         for hostname in hostnameList:
             cmd = '%s;/usr/bin/ssh-keyscan -t ed25519 %s >> %s ' % (SYSTEM_SSH_ENV, hostname, self.known_hosts_fname)
             cmd += '&& sed -i "$ s/$/ #OM/" %s ' % self.known_hosts_fname
@@ -829,9 +859,10 @@ General options:
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0 or "Name or service not known".lower() in output.lower():
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error:\n%s" % output)
-        (status, output) = self.checkAuthentication(self.localHost)
-        if not status:
-            raise Exception(ErrorCode.GAUSS_511["GAUSS_51100"] % self.localHost)
+        if os.getuid() == 0:
+            (status, output) = self.checkAuthentication(self.localHost)
+            if not status:
+                raise Exception(ErrorCode.GAUSS_511["GAUSS_51100"] % self.localHost)
         self._log("Successfully updated the known_hosts file.", "constant")
 
     def tryParamikoConnect(self, hostname, client, pswd = None, silence = False):
@@ -1119,6 +1150,26 @@ General options:
         except Exception as e:
             self.logger.logExit(str(e))
         self._log("Successfully distributed SSH trust file to all node.", "constant")
+
+    def write_hosts_file(self, contents):
+        """
+        function: Write hosts file
+        input : contents
+        output: NA
+        """
+        if os.getuid() == 0:
+            return
+        # write hosts file
+        current_path = os.path.dirname(os.path.realpath(__file__))
+        package_dir = os.path.normpath(os.path.join(current_path, "../"))
+        hosts_file = os.path.normpath(os.path.join(package_dir, "hosts"))
+        if os.path.exists(hosts_file):
+            FileUtil.removeFile(hosts_file)
+        FileUtil.createFile(hosts_file)
+
+        FileUtil.write_hosts_file(hosts_file, contents)
+        FileUtil.changeMode(DefaultValue.FILE_MODE, hosts_file, cmd_type="shell")
+        FileUtil.changeOwner(self.user, hosts_file, cmd_type="shell")
 
     def write_hostname_to_list(self, ip_hostname):
         """

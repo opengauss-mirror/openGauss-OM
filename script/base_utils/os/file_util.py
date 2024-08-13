@@ -956,3 +956,64 @@ class FileUtil(object):
         output: NA
         """
         return os.path.exists(file)
+    
+    @staticmethod
+    def get_hosts_file():
+        """
+        get hosts file
+        """
+        gphome = os.environ.get("GPHOME")
+        if gphome:
+            host_file = os.path.normpath(os.path.join(gphome, "hosts"))
+            if host_file and os.path.exists(host_file) and os.path.isfile(host_file):
+                return host_file
+
+        dir_name = os.path.dirname(os.path.realpath(__file__))
+        package_dir = os.path.join(dir_name, "./../../")
+        host_file = os.path.normpath(os.path.join(package_dir, "..", "hosts"))
+
+        if not os.path.exists(host_file) or not os.path.isfile(host_file):
+            raise Exception(ErrorCode.GAUSS_522["GAUSS_52200"] % host_file)
+        return host_file
+
+    @staticmethod
+    def write_hosts_file(path, content=None, mode='w'):
+        lock = _thread.allocate_lock()
+        if content is None:
+            content = {}
+        # check if not exists.
+        if not os.path.exists(path):
+            FileUtil.createFileInSafeMode(path)
+        # check if is a file.
+        if os.path.exists(path) and not os.path.isfile(path):
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50210"] % path)
+        # if no context, return
+        if not content:
+            return False
+        with open(path, mode) as f:
+            for ip, hostname in content.items():
+                f.write("%s %s" % (ip, hostname) + os.linesep)
+            lock.acquire()
+            try:
+                # write context.
+                f.flush()
+            except Exception as excep:
+                lock.release()
+                raise Exception(ErrorCode.GAUSS_502["GAUSS_50205"] % path +
+                                "Error:\n%s" % str(excep))
+            lock.release()
+        return True
+
+    @staticmethod
+    def read_hosts_file(path, mode='r'):
+        if not os.path.exists(path):
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % path)
+        content = {}
+        with open(path, mode) as f:
+            for line in f.readlines():
+                if len(line.strip().split()) != 2:
+                    raise Exception("Error: %s format error" % path)
+                ip = line.strip().split()[0]
+                hostname = line.strip().split()[1]
+                content[ip] = hostname
+        return content

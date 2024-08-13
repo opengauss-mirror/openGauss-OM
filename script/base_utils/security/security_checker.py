@@ -124,3 +124,12 @@ class SecurityChecker(object):
             raise ValidationError(ErrorCode.GAUSS_500['GAUSS_50022'] %
                                   (description, 'between 0 and {}{}'.format(
                                       str(max_value), des2)))
+
+    @staticmethod
+    def check_is_ip(value):
+        """
+        check ip valid
+        """
+        if not re.match(SecurityChecker.IP_PATTERN, value):
+            return False
+        return True

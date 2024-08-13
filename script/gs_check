@@ -615,9 +615,10 @@ def checkuser():
         if (len(dbNameList) == 1 and
                 dbNameList[0] == NetUtil.GetHostIpOrName()):
             return
+        node_ips = g_opts.cluster.getClusterSshIps()[0]
         appPath = EnvUtil.getEnv('GPHOME', g_opts.cluster.appPath)
         psshPath = os.path.join(appPath, 'script/gspylib/pssh/bin/pssh')
-        cmd = "%s -H %s 'id' " % (psshPath, " -H ".join(dbNameList))
+        cmd = "%s -H %s 'id' " % (psshPath, " -H ".join(node_ips))
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             errorNode = []

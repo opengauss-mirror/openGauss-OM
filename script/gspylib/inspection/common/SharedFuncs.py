@@ -32,6 +32,7 @@ from domain_utils.sql_handler.sql_file import SqlFile
 from base_utils.os.net_util import NetUtil
 from os_platform.linux_distro import LinuxDistro
 from base_diff.sql_commands import SqlCommands
+from base_utils.os.hosts_util import HostsUtil
 
 localPath = os.path.dirname(__file__)
 sys.path.insert(0, localPath + "/../lib")
@@ -340,7 +341,6 @@ def runSqlSimplely(sql, user, host, port, tmpPath, database="postgres",
 
     return output
 
-
 def cleanFile(fileName, hostname=""):
     """
     function : remove file
@@ -361,7 +361,8 @@ def cleanFile(fileName, hostname=""):
                             + " Error: \n%s." % output
                             + "The cmd is %s " % cmd)
     else:
-        sshCmd = "pssh -s -H %s '%s'" % (hostname, cmd)
+        ip = HostsUtil.hostname_to_ip(hostname)
+        sshCmd = "pssh -s -H %s '%s'" % (ip, cmd)
         (status, output) = subprocess.getstatusoutput(sshCmd)
         if (status != 0):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50207"] % "file"

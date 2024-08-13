@@ -20,6 +20,7 @@
 import os
 import subprocess
 import threading
+import re
 
 from base_utils.common.constantsbase import ConstantsBase
 from gspylib.common.ErrorCode import ErrorCode
@@ -27,6 +28,9 @@ from base_utils.os.cmd_util import CmdUtil
 from base_utils.os.net_util import NetUtil
 from gspylib.os.gsfile import g_file
 from base_utils.executor.cmd_executor import CmdExecutor
+from base_utils.security.security_checker import SecurityChecker
+from base_utils.os.file_util import FileUtil
+from base_utils.os.hosts_util import HostsUtil
 
 
 class LocalRemoteCmd(object):
@@ -136,13 +140,20 @@ class LocalRemoteCmd(object):
 
         if path_type == "directory":
             opts = "-x -r"
+        if not SecurityChecker.check_is_ip(remote_host):
+            remote_host = HostsUtil.hostname_to_ip(remote_host)
         if copy_to:
-            return "%s;pscp --trace-id %s %s -H %s %s %s " % \
-                   (ENV_SOURCE_CMD, trace_id, opts.strip(), remote_host, src, dest)
+            cmd = "%s;pscp --trace-id %s %s -H %s %s %s " % \
+                (ENV_SOURCE_CMD, trace_id, opts.strip(), remote_host, src, dest)
+            return cmd
         else:
             localhost = NetUtil.getLocalIp()
             if other_host is not None:
                 localhost = other_host
+            if not SecurityChecker.check_is_ip(remote_host):
+                remote_host = HostsUtil.hostname_to_ip(remote_host)
+            if not SecurityChecker.check_is_ip(localhost):
+                localhost = HostsUtil.hostname_to_ip(localhost)
             return "%s;pssh --trace-id %s -s -H %s \" pscp %s -H %s %s %s \" " % \
                    (ENV_SOURCE_CMD, trace_id, remote_host, opts.strip(), localhost, src, dest)
 

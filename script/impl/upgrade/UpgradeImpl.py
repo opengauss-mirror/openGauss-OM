@@ -606,21 +606,11 @@ class UpgradeImpl:
                 else:
                     upgradeAction = const.ACTION_SMALL_UPGRADE
             else:
-                if int(float(newClusterNumber)) > int(float(oldClusterNumber)):
-                    raise Exception(ErrorCode.GAUSS_529["GAUSS_52904"]
-                                    + "This cluster version is "
-                                      "not supported upgrade.")
-                elif ((float(newClusterNumber) - int(float(newClusterNumber)))
-                      > (float(oldClusterNumber) -
-                         int(float(oldClusterNumber)))):
-                    if self.context.is_inplace_upgrade:
-                        upgradeAction = const.ACTION_INPLACE_UPGRADE
-                        self.isLargeInplaceUpgrade = True
-                    else:
-                        upgradeAction = const.ACTION_LARGE_UPGRADE
+                if self.context.is_inplace_upgrade:
+                    upgradeAction = const.ACTION_INPLACE_UPGRADE
+                    self.isLargeInplaceUpgrade = True
                 else:
-                    raise Exception(ErrorCode.GAUSS_516["GAUSS_51629"]
-                                    % newClusterNumber)
+                    upgradeAction = const.ACTION_LARGE_UPGRADE
             self.context.logger.debug("The matched upgrade strategy is: %s."
                                       % upgradeAction)
             return upgradeAction

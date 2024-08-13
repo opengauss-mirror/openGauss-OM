@@ -632,7 +632,10 @@ class SshTool():
                 dir_permission = 0o700
                 if status == 0:
                     resultMap[hostList[0]] = DefaultValue.SUCCESS
-                    outputCollect = "[%s] %s:\n%s" % ("SUCCESS", hostList[0],
+                    if "gs_om -t status --detail" in cmd:
+                        outputCollect = "[%s] %s:\n%s" % ("SUCCESS", hostList[0], output)
+                    else:
+                        outputCollect = "[%s] %s:\n%s" % ("SUCCESS", hostList[0],
                                                       SensitiveMask.mask_pwd(output))
 
                     if not os.path.exists(self.__outputPath):

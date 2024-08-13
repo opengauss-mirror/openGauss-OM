@@ -32,10 +32,11 @@ ASIANUX = "asianux"
 DEBIAN = "debian"
 UBUNTU = "ubuntu"
 UNIONTECH = "uniontech"
+BCLINUX = "bclinux"
 SUPPORT_WHOLE_PLATFORM_LIST = [SUSE, REDHAT, CENTOS, EULEROS, OPENEULER, KYLIN,
-                               FUSIONOS, ASIANUX, DEBIAN, UBUNTU, UNIONTECH]
+                               FUSIONOS, ASIANUX, DEBIAN, UBUNTU, UNIONTECH, BCLINUX]
 # RedhatX platform
-SUPPORT_RHEL_SERIES_PLATFORM_LIST = [REDHAT, CENTOS, "kylin", "asianux"]
+SUPPORT_RHEL_SERIES_PLATFORM_LIST = [REDHAT, CENTOS, "kylin", "asianux", BCLINUX]
 SUPPORT_RHEL6X_VERSION_LIST = ["6.4", "6.5", "6.6", "6.7", "6.8", "6.9", "10"]
 SUPPORT_RHEL7X_VERSION_LIST = ["7.0", "7.1", "7.2", "7.3", "7.4", "7.5", "7.6",
                                "7.7", "7.8", "7.9", "10"]
@@ -77,4 +78,4 @@ PAK_UNIONTECH = "UnionTech"
 _supported_dists = (
     'SuSE', 'debian', 'fedora', 'redhat', 'centos', 'euleros', "openEuler",
     'mandrake', 'mandriva', 'rocks', 'slackware', 'yellowdog', 'gentoo',
-    "FusionOS", 'UnitedLinux', 'turbolinux', 'ubuntu', 'kylin', 'asianux', "UnionTech")
+    "FusionOS", 'UnitedLinux', 'turbolinux', 'ubuntu', 'kylin', 'asianux', "UnionTech", 'bclinux')

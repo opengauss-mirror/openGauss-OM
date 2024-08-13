@@ -954,10 +954,10 @@ class StreamingBase(object):
             if output.count(f"replconninfo{idx}=''") >= 2:
                 continue
             ret = re.search(
-                r"replconninfo%s='localhost=((?:[0-9]{1,3}\.){3}[0-9]{1,3}|(?:[a-f0-9]{1,4}:){7}[a-f0-9]{1,4})"
-                r" localport=(\d{4,5}) localheartbeatport=(\d{4,5}) "
+                r"replconninfo%s='localhost=((?:[0-9]{1,3}\.){3}[0-9]{1,3}|(?:[a-f0-9]{1,4}:){7}[a-f0-9]{1,4}) "
+                r"localport=(\d{4,5}) localheartbeatport=(\d{4,5}) "
                 r"localservice=(\d{4,5}) "
-                r"replconninfo%s='localhost=((?:[0-9]{1,3}\.){3}[0-9]{1,3}|(?:[a-f0-9]{1,4}:){7}[a-f0-9]{1,4})"
+                r"remotehost=((?:[0-9]{1,3}\.){3}[0-9]{1,3}|(?:[a-f0-9]{1,4}:){7}[a-f0-9]{1,4}) "
                 r"remoteport=(\d{4,5}) remoteheartbeatport=(\d{4,5}) "
                 r"remoteservice=(\d{4,5})" % idx, output)
             if not ret:
@@ -1881,10 +1881,10 @@ class StreamingBase(object):
                 continue
             elif "iscrossregion=false" in output.lower():
                 ret = re.search(
-                    r"replconninfo%s='localhost=((?:[0-9]{1,3}\.){3}[0-9]{1,3}|(?:[a-f0-9]{1,4}:){7}[a-f0-9]{1,4})"
-                    r" localport=(\d{4,5}) localheartbeatport=(\d{4,5}) "
+                    r"replconninfo%s='localhost=((?:[0-9]{1,3}\.){3}[0-9]{1,3}|(?:[a-f0-9]{1,4}:){7}[a-f0-9]{1,4}) "
+                    r"localport=(\d{4,5}) localheartbeatport=(\d{4,5}) "
                     r"localservice=(\d{4,5}) "
-                    r"replconninfo%s='localhost=((?:[0-9]{1,3}\.){3}[0-9]{1,3}|(?:[a-f0-9]{1,4}:){7}[a-f0-9]{1,4})"
+                    r"remotehost=((?:[0-9]{1,3}\.){3}[0-9]{1,3}|(?:[a-f0-9]{1,4}:){7}[a-f0-9]{1,4}) "
                     r"remoteport=(\d{4,5}) remoteheartbeatport=(\d{4,5}) "
                     r"remoteservice=(\d{4,5})" % idx, output)
                 if not ret:

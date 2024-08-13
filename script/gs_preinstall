@@ -500,7 +500,7 @@ General options:
         cmd = 'cd {} && '.format(root)
         cmd += 'tar -xpf {}*.tar.bz2  {} && '.format(pkg_prefix, ' '.join(bin_files + dss_files + memcheck_files))
         if cm_files:
-            cmd += 'tar -xpf {}*cm.tar.gz  {} && '.format(pkg_prefix, ' '.join(cm_files))
+            cmd += 'tar -xpf {}*.tar.gz  {} && '.format(pkg_prefix.replace("Server", "CM"), ' '.join(cm_files))
             cmd += 'mkdir -p {0} -m u=rwx && '.format(clib_dss)
             cmd += 'mv {} {} && '.format(' '.join(cm_files + dss_files), clib_dss)
         if memcheck_root_lib != '':

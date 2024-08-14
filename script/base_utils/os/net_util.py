@@ -144,9 +144,9 @@ class NetUtil(object):
             return False
 
     @staticmethod
-    def get_ip_version(hostname):
+    def get_ip_version(ip_address):
         try:
-            ip = ipaddress.ip_address(hostname)
+            ip = ipaddress.ip_address(ip_address)
             # If hostname is a valid IP address (both IPv4 and IPv6)
             if(ip.version == 4):
                 return NetUtil.NET_IPV4

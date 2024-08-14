@@ -40,6 +40,7 @@ from domain_utils.cluster_file.version_info import VersionInfo
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from base_utils.common.constantsbase import ConstantsBase
 from base_utils.os.env_util import EnvUtil
+from base_utils.os.net_util import NetUtil
 from base_utils.security.security_checker import SecurityChecker
 from gspylib.component.DSS.dss_checker import DssSimpleChecker, DssConfig
 
@@ -961,6 +962,7 @@ class dbClusterInfo():
         self.replicaNum = 0
         self.corePath = ""
         self.float_ips = {}
+        self.ips_type = []
 
         # add azName
         self.azName = ""
@@ -2974,6 +2976,11 @@ class dbClusterInfo():
                 raise Exception(ErrorCode.GAUSS_506["GAUSS_50603"] + \
                                 "The IP address is: %s." % ip + " Please "
                                                                 "check it.")
+            self.ips_type.append(NetUtil.get_ip_version(ip))
+            if len(set(self.ips_type)) > 1 or (len(set(self.ips_type)) == 1 and ("" in set(self.ips_type))):
+                raise Exception(ErrorCode.GAUSS_506["GAUSS_50624"] +
+                                "The types of these ip addresses are %s" % self.ips_type + ". Please "
+                                                                                           "check it.")
 
     @staticmethod
     def __read_and_check_config_item(root_node, para, root_type, error_ignore=False):

@@ -337,7 +337,8 @@ class ErrorCode():
         'GAUSS_50621': "[GAUSS-50621] : Failed to check network care speed.\n",
         'GAUSS_50622': "[GAUSS-50622] : Failed to obtain network card "
                        "interrupt count numbers. Commands for getting "
-                       "interrupt count numbers: %s."
+                       "interrupt count numbers: %s.\n",
+        'GAUSS_50624': "[GAUSS-50624] : The types of these ip addresses are inconsistent"
 
     }
 

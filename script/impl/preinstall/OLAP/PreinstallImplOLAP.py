@@ -233,7 +233,8 @@ class PreinstallImplOLAP(PreinstallImpl):
     def cp_host_file_to_tool_dir(self, package_dir):
         hosts_file = os.path.normpath(os.path.join(package_dir, "hosts"))
         target_hosts_file = os.path.normpath(os.path.join(self.context.clusterToolPath, "hosts"))
-        FileUtil.cpFile(hosts_file, target_hosts_file)
+        if package_dir != self.context.clusterToolPath:
+            FileUtil.cpFile(hosts_file, target_hosts_file)
 
     def checkDiskSpace(self):
         """

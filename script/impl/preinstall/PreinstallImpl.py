@@ -786,7 +786,7 @@ class PreinstallImpl:
         input:NA
         output:NA
         """
-        if self.context.localMode or self.context.isSingle:
+        if self.context.localMode or self.context.isSingle or self.context.current_user_root:
             return
         if not self.context.clusterInfo.hasNoCm():
             self.context.logger.log("Checking nofile limit.", "addStep")
@@ -1738,6 +1738,8 @@ class PreinstallImpl:
         self.createDirs()
         # set os parameters
         self.setAndCheckOSParameter()
+        # check notfile limit
+        self.check_nofile_limit()
         # prepare cron service for user
         self.prepareCronService()
         # set environment parameters

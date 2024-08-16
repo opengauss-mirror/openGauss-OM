@@ -741,7 +741,7 @@ General options:
         os.environ['GPHOME'] = gp_home
         self.logger.debug("Command for setting CRON: %s" % set_cron_cmd)
         ssh_tool.executeCommand(set_cron_cmd, DefaultValue.SUCCESS)
-        ssh_tool.clenSshResultFiles()
+        ssh_tool.clen_ssh_result_files()
         self.logger.log("Successfully to set cron for %s" % self.user)
 
     def createPublicPrivateKeyFile(self):

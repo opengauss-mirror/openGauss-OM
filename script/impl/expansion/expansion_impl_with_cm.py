@@ -113,7 +113,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         if os.getuid() != 0:
             return
-        self.ssh_tool.clenSshResultFiles()
+        self.ssh_tool.clen_ssh_result_files()
         self.changeUser()
         self.ssh_tool = SshTool(self.xml_cluster_info.getClusterNodeNames())
         self.logger.log("Success to change user to [{0}]".format(self.user))
@@ -478,6 +478,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         Config instance
         """
         self.logger.debug("Start config instance.")
+        self.check_cm_enable_availablezone()
         self.generateClusterStaticFile()
         self.setGucConfig()
         self._set_other_guc_para()

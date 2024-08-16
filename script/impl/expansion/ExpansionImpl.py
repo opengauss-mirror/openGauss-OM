@@ -345,6 +345,75 @@ class ExpansionImpl():
             break
         return hasStandbyWithSameAZ
 
+    def check_casrole_node_azname_parameter(self):
+        for host in self.context.newHostList:
+            if not self.query_casrole_node_azname_parameter(host):
+                self.expansionSuccess[host] = False
+            else:
+                self.expansionSuccess[host] = True
+        if self._isAllFailed():
+            GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35706"] % "check enable_availablezone")
+
+    def query_casrole_node_azname_parameter(self, host):
+        """
+        query casrole node guc parameter
+        """
+        if self.context.newHostCasRoleMap[host] == "on":
+            if not self.check_enable_availablezone_parameter(host):
+                self.logger.debug("enable_availablezone is off on new host %s" % host)
+                return True
+            self.logger.debug("enable_availablezone is on on new host %s" % host)
+            primary_hostname = self.getPrimaryHostName()
+            primary_hostip = self.context.clusterInfoDict[primary_hostname]["backIp"]
+            existing_standbys = list(set(self.existingHosts) - (set([primary_hostip])))
+            # check whether there are normal standbies in hostAzNameMap[host] azZone
+            has_standby_with_same_az = self.hasNormalStandbyInAZOfCascade(host, existing_standbys)
+            if not has_standby_with_same_az:
+                self.logger.log("There is no azName that is the same as %s" % host)
+                return False
+        return True
+
+    def check_enable_availablezone_parameter(self, cascade_ip):
+        """
+        Check whether enable_availablezone is on on new host
+        """
+        if os.getuid() == 0:
+            self.changeUser()
+        pg_data = EnvUtil.getEnv("PGDATA")
+        check_cmd = "source %s; gs_guc check -D %s -c enable_availablezone" % (self.envFile, pg_data)
+        self.logger.debug("Command for checking enable_availablezone: %s" % check_cmd)
+        ssh_tool = SshTool([cascade_ip])
+        result_map, output = ssh_tool.getSshStatusOutput(check_cmd, [cascade_ip], self.envFile)
+        self.logger.debug("Output for checking enable_availablezone: %s" % output)
+        self.logger.debug("ResultMap for checking enable_availablezone: %s" % result_map)
+        if result_map[cascade_ip] != DefaultValue.SUCCESS:
+            self.logger.error("Failed to get enable_availablezone on new host %s" % cascade_ip)
+        self.cleanSshToolFile(ssh_tool)
+        if output.find("enable_availablezone=on") > 0:
+            self.logger.debug("enable_availablezone is on on new host %s" % cascade_ip)
+            return True
+        else:
+            self.logger.debug("enable_availablezone is off on new host %s" % cascade_ip)
+            return False
+        
+    def check_cm_enable_availablezone(self):
+        """
+        Check enable availablezone only when cascading nodes.
+        """
+        for host in self.context.newHostList:
+            if self.context.newHostCasRoleMap[host] == "on": 
+                check_enable_az = self.check_enable_availablezone_parameter(host)
+                if not check_enable_az:
+                    continue
+                primary_hostname = self.getPrimaryHostName()
+                primary_hostip = self.context.clusterInfoDict[primary_hostname]["backIp"]
+                existing_standbys = list(set(self.existingHosts) - (set([primary_hostip])))
+                has_standby_with_same_az = self.hasNormalStandbyInAZOfCascade(host, existing_standbys)
+                if not has_standby_with_same_az:
+                    self.logger.log("There is no azName that is the same as %s" % host)
+                    self.expansionSuccess[host] = False
+                    continue
+
     def getIncreaseAppNames(self, num):
         """
         the default new database application_name is 'dn_6001' which same with
@@ -389,14 +458,6 @@ class ExpansionImpl():
             hostName = self.context.backIpNameMap[newHost]
             sshIp = self.context.clusterInfoDict[hostName]["sshIp"]
             port = self.context.clusterInfoDict[hostName]["port"]
-            if self.context.newHostCasRoleMap[newHost] == "on":
-                # check whether there are normal standbies in hostAzNameMap[host] azZone
-                hasStandbyWithSameAZ = self.hasNormalStandbyInAZOfCascade(newHost,
-                    existingStandbys)
-                if not hasStandbyWithSameAZ:
-                    notInstalledCascadeHosts.append(newHost)
-                    self.expansionSuccess[newHost] = False
-                    continue
             
             ssh_tool = SshTool([sshIp], timeout=300)
             
@@ -441,6 +502,11 @@ class ExpansionImpl():
                 self.logger.debug("install datanode failed: %s %s" % (newHost, output))
                 self.expansionSuccess[newHost] = False
                 failedInstallHosts.append(newHost)
+                continue
+
+            # query enable_availablezone on cas node
+            if not self.query_casrole_node_azname_parameter(newHost):
+                self.expansionSuccess[newHost] = False
                 continue
             
             # set guc config
@@ -536,6 +602,7 @@ class ExpansionImpl():
            (2) build new instances
         5. generate cluster static file and send to each node.
         """
+        self.check_casrole_node_azname_parameter()
         self.refreshClusterInfoState()
         self.setGucConfig()
         self.addTrust()
@@ -834,14 +901,6 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             if self.context.newHostCasRoleMap[host] == "on":
                 buildMode = MODE_CASCADE
                 hostRole = ROLE_CASCADE
-                # check whether there are normal standbies in hostAzNameMap[host] azZone
-                hasStandbyWithSameAZ = self.hasNormalStandbyInAZOfCascade(host,
-                    existingStandbys)
-                if not hasStandbyWithSameAZ:
-                    self.logger.log("There is no Normal standby in %s" %
-                        hostAzNameMap[host])
-                    self.expansionSuccess[host] = False
-                    continue
             else:
                 buildMode = MODE_STANDBY
                 hostRole = ROLE_STANDBY
@@ -1322,7 +1381,7 @@ remoteservice={remoteservice}'"\
         """
         """
         try:
-            sshTool.clenSshResultFiles()
+            sshTool.clen_ssh_result_files()
         except Exception as e:
             self.logger.debug(str(e))
 
@@ -1704,16 +1763,20 @@ remoteservice={remoteservice}'"\
         self.checkGaussdbAndGsomVersionOfStandby()
         self.logger.log("Start to establish the relationship.")
         self.buildStandbyRelation()
-        self.write_hosts_file()
+        self.rewrite_hosts_file()
         # process success
         pvalue.value = 1
 
-    def write_hosts_file(self):
-        cluster_info = dbClusterInfo()
-        cluster_info.initFromStaticConfig(self.context.user)
+    def rewrite_hosts_file(self):
+        """
+        Rewrite hosts file
+        """
+        static_cluster_info = dbClusterInfo()
+        static_cluster_info.initFromStaticConfig(self.user)
         cluster_hostname_ip_map = {}
-        for name in cluster_info.getClusterNodeNames():
-            node = cluster_info.getDbNodeByName(name)
+        node_names = static_cluster_info.getClusterNodeNames()
+        for name in node_names:
+            node = static_cluster_info.getDbNodeByName(name)
             ip = node.sshIps[0]
             cluster_hostname_ip_map[ip] = name
 
@@ -1723,6 +1786,24 @@ remoteservice={remoteservice}'"\
         FileUtil.write_hosts_file(hosts_file, cluster_hostname_ip_map)
         FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, hosts_file)
         FileUtil.changeOwner(self.user, hosts_file)
+
+        # send hosts file to remote node
+        self.send_hosts_file_to_remote_node(node_names, hosts_file)
+
+    def send_hosts_file_to_remote_node(self, names, hosts_file):
+        """
+        send hosts file to remote node
+        """
+        for host in names:
+            if host == NetUtil.GetHostIpOrName():
+                continue
+            ssh_tool = SshTool([host])
+            cmd_file_rm = g_file.SHELL_CMD_DICT["deleteFile"] % (hosts_file, hosts_file)
+            ssh_tool.executeCommand(cmd_file_rm)
+            DefaultValue.distribute_hosts_file(ssh_tool,
+                                                hosts_file, [host],
+                                                self.envFile)
+            ssh_tool.clen_ssh_result_files()
 
     def rollback(self):
         """
@@ -1795,24 +1876,6 @@ remoteservice={remoteservice}'"\
         parse_result = dict(zip(key_list, value_list))
         self.logger.debug("Parse result is: {0}".format(parse_result))
         return parse_result
-
-    def rewrite_hosts_file(self):
-        """
-        Rewrite hosts file
-        """
-        gp_home = EnvUtil.getEnv("GPHOME")
-        hosts_file = os.path.join(gp_home, "hosts")
-        if os.path.isfile(hosts_file):
-            os.remove(hosts_file)
-        hosts_content = {}
-        for name in self.context.clusterInfo.getClusterNodeNames:
-            node = self.context.clusterInfo.getDbNodeByName(name)
-            node_ip = node.sshIps[0]
-            hosts_content[node_ip] = name
-
-        FileUtil.write_hosts_file(hosts_file, hosts_content)
-        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, hosts_file)
-        FileUtil.changeOwner(self.user, hosts_file)
 
     def run(self):
         """
@@ -1954,6 +2017,6 @@ class GsCtlCommon:
         """
         """
         try:
-            sshTool.clenSshResultFiles()
+            sshTool.clen_ssh_result_files()
         except Exception as e:
             self.logger.debug(str(e))

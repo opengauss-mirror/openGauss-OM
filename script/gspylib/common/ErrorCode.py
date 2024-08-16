@@ -468,7 +468,7 @@ class ErrorCode():
         'GAUSS_51234': "[GAUSS-51234] : The configuration file [%s] "
                        "contains parsing errors.",
         'GAUSS_51235': "[GAUSS-51235] : Invalid directory [%s].",
-        'GAUSS_51236': "[GAUSS-51236] : Failed to parsing xml.",
+        'GAUSS_51236': "[GAUSS-51236] : Failed to parsing xml.The XML file format is incorrect.",
         'GAUSS_51239': "[GAUSS-51239] : Failed to parse json. gs_collect "
                        "configuration file (%s) is invalid , "
                        "check key in json file",

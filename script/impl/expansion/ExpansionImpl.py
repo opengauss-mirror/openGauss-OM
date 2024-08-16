@@ -1835,7 +1835,7 @@ class GsCtlCommon:
         """
         """
         command = "source %s ; gs_ctl query -D %s" % (env, datanode)
-        sshTool = SshTool([datanode])
+        sshTool = SshTool([host])
         resultMap, outputCollect = sshTool.getSshStatusOutput(command,
         [host], env)
         self.logger.debug(outputCollect)

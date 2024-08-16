@@ -329,6 +329,7 @@ General options:
         """
         init node name list
         """
+        self.initClusterInfo()
         self.nodeNameList = self.clusterInfo.getClusterNodeNames()
 
         # write new hosts to host file

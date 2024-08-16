@@ -627,7 +627,7 @@ def collectMinShare():
     output : Instantion
     """
     data = MinShare()
-    cmd = "find ${GAUSSHOME}/share -prune -type d \( -perm -g=w -o -perm -o=w \) -exec ls -ld {} \;"
+    cmd = "find ${GAUSSHOME}/share -prune -perm /g=rwx,o=rwx"
     result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     if result.returncode == 0:
         data.output = result.stdout

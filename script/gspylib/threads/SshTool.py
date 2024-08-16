@@ -115,7 +115,7 @@ class SshTool():
         self.__logFile = logFile
         self.__pid = os.getpid()
         self.__timeout = timeout + 10
-        self._finalizer = weakref.finalize(self, self.clenSshResultFiles)
+        self._finalizer = weakref.finalize(self, self.clen_ssh_result_files)
         self.__sessions = {}
         self.is_ip = False
 
@@ -173,7 +173,7 @@ class SshTool():
     def get_result_file(self):
         return self.__hostsFile
 
-    def clenSshResultFiles(self):
+    def clen_ssh_result_files(self):
         """
         function: Delete file
         input : NA
@@ -581,7 +581,7 @@ class SshTool():
                 resultMap, outputCollect = self.parseSshResult(hostList)
         except Exception as e:
             if not isTimeOut:
-                self.clenSshResultFiles()
+                self.clen_ssh_result_files()
             raise Exception(str(e))
         
         for host in hostList:
@@ -746,7 +746,7 @@ class SshTool():
             if fp:
                 fp.close()
             if not isTimeOut:
-                self.clenSshResultFiles()
+                self.clen_ssh_result_files()
             raise Exception(str(e))
         
         for host in hostList:
@@ -926,7 +926,7 @@ class SshTool():
             else:
                 resultMap, outputCollect = self.parseSshResult(ssh_hosts)
         except Exception as e:
-            self.clenSshResultFiles()
+            self.clen_ssh_result_files()
             raise Exception(str(e))
         
         for host in ssh_hosts:

@@ -441,7 +441,9 @@ class SshTool():
         else:
             if SecurityChecker.check_is_ip(host_list[0]):
                 self.is_ip = True
-            if not self.is_ip:
+                host = host_list
+            else:
+                self.is_ip = False
                 host = HostsUtil.hostname_list_to_ip_list(host_list)
         return host
 

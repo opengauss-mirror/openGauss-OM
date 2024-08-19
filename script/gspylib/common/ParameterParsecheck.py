@@ -619,8 +619,12 @@ class Parameter():
                     self.action = value
 
             if self.action == "":
-                GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"]
-                                       % "t' or '-S" + ".")
+                if module == "gs_om":
+                    GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"]
+                                           % 't' + ".")
+                else:
+                    GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"]
+                                           % "t' or '-S" + ".")
 
             if ((module == "gsom" and not self.action in action_om)
                     or (module == "upgradectl"

@@ -3407,6 +3407,8 @@ class dbClusterInfo():
 
         for i in range(masterNode.cmsNum):
             level = self.__readNodeIntValue(masterNode.name, "cmServerlevel")
+            if level == "":
+                level = self.__readNodeIntValue(masterNode.name, "cmServerLevel")
             hostNames = []
             hostNames_tmp = \
                 self.__readNodeStrValue(masterNode.name,
@@ -4015,6 +4017,8 @@ class dbClusterInfo():
         value = defValue
 
         strValue = self.__readNodeStrValue(nodeName, key, nullable, "")
+        if "cmServerlevel" == key and strValue is None:
+            return ""
         if (strValue != ""):
             value = int(strValue)
         return value
@@ -4038,6 +4042,8 @@ class dbClusterInfo():
         elif (retStatus == 2 and "syncNum" in key):
             return None
         elif (retStatus == 2 and "syncNode" in key):
+            return None
+        elif (retStatus == 2 and "cmServerlevel" == key):
             return None
         else:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % \

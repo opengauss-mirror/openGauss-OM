@@ -846,8 +846,9 @@ def collectClientAuthTime():
     output : Instantion
     """
     data = ClientAuthTime()
-    value = getValueFromFile('authentication_timeout')
-    data.output = value
+    data.db = []
+    sql_query = """show authentication_timeout;"""
+    getDatabaseInfo(data, sql_query)
     return data
 
 
@@ -3050,7 +3051,7 @@ def checkClientAuthTime(isSetting):
     output : NA
     """
     data = collectClientAuthTime()
-    if not data.output == '1min':
+    if not data.db[0].strip() == '1min':
         if not isSetting:
             g_logger.log("        Warning reason: Ensure correct client authentication timeout configuration.The default timeout is recommended to be set to 1 minute. If a client does not complete authentication with the server within the parameter-set time, the server automatically disconnects from the client. This prevents problematic clients from indefinitely occupying connection slots.Setting the parameter value too low may lead to authentication failures due to timeouts.")
         else:
@@ -3063,7 +3064,7 @@ def checkAuthEncriptionCount(isSetting):
     output : NA
     """
     data = collectAuthEncriptionCount()
-    if not int(data.db[0]) == 10000:
+    if not int(data.db[0]) < 10000:
         if not isSetting:
             g_logger.log("        Warning reason: Ensure correct configuration of authentication encryption iteration counts.Setting the number of iterations too low will reduce the security of password storage, while setting it too high can degrade performance in scenarios involving password encryption, such as user creation and authentication. Please set the number of iterations reasonably according to actual hardware conditions, with a minimum of 10,000 iterations.")
         else:
@@ -3076,7 +3077,7 @@ def checkFailedLoginCount(isSetting):
     output : NA
     """
     data = collectFailedLoginCount()
-    if not int(data.db[0]) == 10:
+    if int(data.db[0]) == 0:
         if not isSetting:
             g_logger.log("        Warning reason: Ensure correct configuration of account login failure attempt counts.Configuring the number of failed login attempts through the parameter 'failed_login_attempts' can prevent passwords from being cracked by brute force.When the number of consecutive authentication failures exceeds this parameter value, the account will be automatically locked.")
         else:

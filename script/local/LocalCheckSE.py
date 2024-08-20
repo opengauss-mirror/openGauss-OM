@@ -468,40 +468,6 @@ def collectHostnossl():
 
 
 #############################################################################
-# host no all
-#############################################################################
-class Hostnoall:
-    """
-    Class: hostnossl
-    """
-
-    def __init__(self):
-        """
-        function : Init class hostnoall
-        input  : NA
-        output : NA
-        """
-        self.output = None
-        self.errormsg = None
-
-
-def collectHostnoall():
-    """
-    function : Collector Hostnoall
-    input  : NA
-    output : Instantion
-    """
-    data = Hostnoall()
-    cmd = "grep -P '^[^#]*host(ssl|nossl)?\s+[Aa][Ll][Ll]' ${PGDATA}/pg_hba.conf"
-    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-    if result.returncode == 0:
-        data.output = result.stdout
-    else:
-        data.errormsg = result.stderr
-    return data
-
-
-#############################################################################
 # host Address no 0.0.0.0/0
 #############################################################################
 class HostAddressno0:
@@ -2551,7 +2517,6 @@ def checkConnection(isSetting=False):
     checkUnixsocket(isSetting)
     checkMD5Host()
     checkHostnossl()
-    checkHostnoall()
     checkHostAddressno0()
     checkSSLConnection(isSetting)
 
@@ -2669,16 +2634,6 @@ def checkHostnossl():
     data = collectHostnossl()
     if data.output:
         g_logger.log("        Warning reason:Ensure there are no 'hostnossl' entries.The 'hostnossl' entry specifies connections that do not use SSL encryption, while the 'host' entry allows both SSL and non-SSL connections. The 'hostssl' entry is restricted to using only SSL connections. From a security standpoint, it is recommended to use SSL encryption for data transmission to prevent information leakage.")
-
-def checkHostnoall():
-    """
-    function : Check Hostnoall
-    input  : NA
-    output : NA
-    """
-    data = collectHostnoall()
-    if data.output:
-        g_logger.log("        Warning reason:Ensure there are no 'host' entries specifying 'all' for the database.Under the premise of meeting business requirements, it isUnder the premise of meeting business requirements, it isate specific databases for different it is advisable to designate specific databases for different users or client IP addresses to avoid mutual interference between various services.")
 
 def checkHostAddressno0():
     """

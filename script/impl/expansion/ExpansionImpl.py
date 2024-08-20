@@ -1721,6 +1721,8 @@ remoteservice={remoteservice}'"\
         if os.path.exists(hosts_file):
             FileUtil.removeFile(hosts_file)
         FileUtil.write_hosts_file(hosts_file, cluster_hostname_ip_map)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, hosts_file)
+        FileUtil.changeOwner(self.user, hosts_file)
 
     def rollback(self):
         """
@@ -1809,6 +1811,8 @@ remoteservice={remoteservice}'"\
             hosts_content[node_ip] = name
 
         FileUtil.write_hosts_file(hosts_file, hosts_content)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, hosts_file)
+        FileUtil.changeOwner(self.user, hosts_file)
 
     def run(self):
         """

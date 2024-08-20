@@ -814,11 +814,11 @@ class SshTool():
         """
         gp_home = ""
         outputCollect = ""
-        localMode = False
         resultMap = {}
+        hosts = []
         ssh_hosts = []
-        localMode = False
-        localMode = check_local_mode(hostList)
+        local_mode = False
+        local_mode = check_local_mode(hostList)
         hostList = self.check_host_ip_list(hostList)
         try:
             if env_file != "":
@@ -838,11 +838,19 @@ class SshTool():
             pscppre = "python3 %s/script/gspylib/pssh/bin/pscp" % gp_home
 
             if len(hostList) == 0:
-                ssh_hosts = copy.deepcopy(self.hostNames)
-                localMode = check_local_mode(ssh_hosts)
+                hosts = copy.deepcopy(self.hostNames)
+                local_mode = check_local_mode(hosts)
             else:
-                ssh_hosts = copy.deepcopy(hostList)
-            if localMode and \
+                hosts = copy.deepcopy(hostList)
+                for host in hosts:
+                    if NetUtil.get_ip_version(host) == NetUtil.NET_IPV6:
+                        # scp file is to the ipv6 address, needs to add [] to ipaddress:
+                        # scp a.txt [2407:c080:1200:22a0:613f:8d3b:caa:2335]:/data
+                        ssh_hosts.append("[" + host + "]")
+                    else:
+                        # if host is ipv4 or hostname
+                        ssh_hosts.append(host)
+            if local_mode and \
                 srcFile != targetDir and \
                 srcFile != os.path.join(targetDir, os.path.split(srcFile)[1]):
                 scpCmd = "cp -r %s %s" % (srcFile, targetDir)
@@ -879,7 +887,7 @@ class SshTool():
                                 + " Error:\n%s" % output)
 
             # ip and host name should match here
-            if localMode:
+            if local_mode:
                 dir_permission = 0o700
                 if not self.is_ip:
                     ssh_hosts = [HostsUtil.ip_to_hostname(ssh_hosts[0])]

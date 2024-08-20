@@ -299,7 +299,7 @@ def collectDBConnection():
     """
     data = DBConnection()
     data.db = []
-    sql_query = """SELECT datname FROM pg_database WHERE datistemplate = false AND datconnlimit = -1;"""
+    sql_query = """SELECT datname FROM pg_database WHERE datistemplate = false AND (datconnlimit = -1 OR datconnlimit > 1024);"""
     getDatabaseInfo(data, sql_query)
     return data
 
@@ -468,40 +468,6 @@ def collectHostnossl():
 
 
 #############################################################################
-# host no all
-#############################################################################
-class Hostnoall:
-    """
-    Class: hostnossl
-    """
-
-    def __init__(self):
-        """
-        function : Init class hostnoall
-        input  : NA
-        output : NA
-        """
-        self.output = None
-        self.errormsg = None
-
-
-def collectHostnoall():
-    """
-    function : Collector Hostnoall
-    input  : NA
-    output : Instantion
-    """
-    data = Hostnoall()
-    cmd = "grep -P '^[^#]*host(ssl|nossl)?\s+[Aa][Ll][Ll]' ${PGDATA}/pg_hba.conf"
-    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-    if result.returncode == 0:
-        data.output = result.stdout
-    else:
-        data.errormsg = result.stderr
-    return data
-
-
-#############################################################################
 # host Address no 0.0.0.0/0
 #############################################################################
 class HostAddressno0:
@@ -627,7 +593,7 @@ def collectMinShare():
     output : Instantion
     """
     data = MinShare()
-    cmd = "find ${GAUSSHOME}/share -prune -type d \( -perm -g=w -o -perm -o=w \) -exec ls -ld {} \;"
+    cmd = "find ${GAUSSHOME}/share -prune -perm /g=rwx,o=rwx"
     result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     if result.returncode == 0:
         data.output = result.stdout
@@ -2551,7 +2517,6 @@ def checkConnection(isSetting=False):
     checkUnixsocket(isSetting)
     checkMD5Host()
     checkHostnossl()
-    checkHostnoall()
     checkHostAddressno0()
     checkSSLConnection(isSetting)
 
@@ -2592,6 +2557,9 @@ def checkConnectionConfiguration(isSetting):
         if not isSetting:
             g_logger.log("        Warning reason:Ensure correct configuration of maximum connection settings for the database instance.Setting parameters too high may cause the database to request more System V shared memory or semaphores, exceeding the values allowed by the operating system's default configuration. Users need to determine the size of parameter values based on business specifications or consult technical support.You can modify the value of the parameter max_connections and then restart the database.")
         else:
+            admin_connections = collectAdminConnection()
+            if admin_connections.output >= 5000:
+                setAdminConnection(admin_connections)
             setConnectionConfiguration(data)
 
 def checkDBConnection(isSetting):
@@ -2615,7 +2583,7 @@ def checkAdminConnection(isSetting):
     output : NA
     """
     data = collectAdminConnection()
-    if not (data.output < data.maxValue):
+    if not ((data.output < data.maxValue) and (data.output >= 3)):
         if not isSetting:
             g_logger.log("        Warning reason:Ensure the connection settings used by system administrators are configured correctly.The parameter sysadmin_reserved_connections represents the minimum number of connections reserved for the database system administrator. This ensures that there are dedicated connection channels for the system administrator, preventing connections from being occupied by regular users or malicious users, which could otherwise prevent the administrator from connecting. The value of this parameter must be less than the value of max_connections.")
         else:
@@ -2666,16 +2634,6 @@ def checkHostnossl():
     data = collectHostnossl()
     if data.output:
         g_logger.log("        Warning reason:Ensure there are no 'hostnossl' entries.The 'hostnossl' entry specifies connections that do not use SSL encryption, while the 'host' entry allows both SSL and non-SSL connections. The 'hostssl' entry is restricted to using only SSL connections. From a security standpoint, it is recommended to use SSL encryption for data transmission to prevent information leakage.")
-
-def checkHostnoall():
-    """
-    function : Check Hostnoall
-    input  : NA
-    output : NA
-    """
-    data = collectHostnoall()
-    if data.output:
-        g_logger.log("        Warning reason:Ensure there are no 'host' entries specifying 'all' for the database.Under the premise of meeting business requirements, it isUnder the premise of meeting business requirements, it isate specific databases for different it is advisable to designate specific databases for different users or client IP addresses to avoid mutual interference between various services.")
 
 def checkHostAddressno0():
     """

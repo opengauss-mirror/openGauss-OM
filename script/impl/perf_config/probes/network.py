@@ -20,6 +20,7 @@
 #############################################################################
 
 import os
+import ipaddress
 from impl.perf_config.basic.project import Project
 from impl.perf_config.basic.probe import Probe, ProbeGroup
 from base_utils.os.cmd_util import CmdUtil
@@ -131,10 +132,20 @@ class NetworkInfo(ProbeGroup):
         :param argc: device name or ipv4 or mac
         :return:
         """
-        if argc == 'localhost':
-            argc = '127.0.0.1'
+        # Handle localhost special case
+        if argc in ['localhost', '127.0.0.1', '::1']:
+            argc = '127.0.0.1' if argc == 'localhost' else argc
+        try:
+            ip = ipaddress.ip_address(argc)
+            is_ip = True
+        except ValueError:
+            is_ip = False
 
         for gate in self._gates:
-            if gate.name == argc or gate.ipv4 == argc or gate.mac == argc:
-                return gate
+            if is_ip:
+                if (ip.version == 4 and gate.ipv4 == argc) or (ip.version == 6 and gate.ipv6 == argc):
+                    return gate
+            else:
+                if gate.name == argc or gate.mac == argc:
+                    return gate
         return

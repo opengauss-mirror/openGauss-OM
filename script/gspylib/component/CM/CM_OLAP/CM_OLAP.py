@@ -463,53 +463,54 @@ class CM_OLAP(CM):
                                              app_path)
         mpprc_file = EnvUtil.getEnv(DefaultValue.MPPRC_FILE_ENV)
 
-        cron_file = "%s/gauss_cron_%d" % (EnvUtil.getTmpDirFromEnv(), os.getpid())
-        # get all content by crontab command
-        (status, output) = CrontabUtil.getAllCrontab()
-        if status == 0:
-            # overwrit cronFile, make it empty.
-            FileUtil.createFile(cron_file, True, DefaultValue.KEY_FILE_MODE)
-            content_cron_file = [output]
-            if output != "":
-                FileUtil.writeFile(cron_file, content_cron_file)
-                FileUtil.deleteLine(cron_file, "\\/bin\\/om_monitor")
-        elif status not in [256, 1]:  # status==256 means this user has no cron
-            raise Exception(ErrorCode.GAUSS_508["GAUSS_50803"] + " Error: \n%s" % output)
+        if CrontabUtil.check_user_crontab_permission():
+            cron_file = "%s/gauss_cron_%d" % (EnvUtil.getTmpDirFromEnv(), os.getpid())
+            # get all content by crontab command
+            (status, output) = CrontabUtil.getAllCrontab()
+            if status == 0:
+                # overwrit cronFile, make it empty.
+                FileUtil.createFile(cron_file, True, DefaultValue.KEY_FILE_MODE)
+                content_cron_file = [output]
+                if output != "":
+                    FileUtil.writeFile(cron_file, content_cron_file)
+                    FileUtil.deleteLine(cron_file, "\\/bin\\/om_monitor")
+            elif status not in [256, 1]:  # status==256 means this user has no cron
+                raise Exception(ErrorCode.GAUSS_508["GAUSS_50803"] + " Error: \n%s" % output)
 
-        if mpprc_file != "" and mpprc_file is not None:
-            cron_content = "*/1 * * * * source /etc/profile;(if [ -f ~/.profile ];" \
-                           "then source ~/.profile;fi);source ~/.bashrc;source %s;" \
-                           "nohup %s/bin/om_monitor -L %s >>/dev/null 2>&1 &" % (mpprc_file,
-                                                                                 app_path,
-                                                                                 log_path)
-            content_cron_file = [cron_content]
-        else:
-            cron_content = "*/1 * * * * source /etc/profile;(if [ -f ~/.profile ];" \
-                           "then source ~/.profile;fi);source ~/.bashrc;" \
-                           "nohup %s/bin/om_monitor -L %s >>/dev/null 2>&1 &" % (app_path,
-                                                                                 log_path)
-            content_cron_file = [cron_content]
+            if mpprc_file != "" and mpprc_file is not None:
+                cron_content = "*/1 * * * * source /etc/profile;(if [ -f ~/.profile ];" \
+                            "then source ~/.profile;fi);source ~/.bashrc;source %s;" \
+                            "nohup %s/bin/om_monitor -L %s >>/dev/null 2>&1 &" % (mpprc_file,
+                                                                                    app_path,
+                                                                                    log_path)
+                content_cron_file = [cron_content]
+            else:
+                cron_content = "*/1 * * * * source /etc/profile;(if [ -f ~/.profile ];" \
+                            "then source ~/.profile;fi);source ~/.bashrc;" \
+                            "nohup %s/bin/om_monitor -L %s >>/dev/null 2>&1 &" % (app_path,
+                                                                                    log_path)
+                content_cron_file = [cron_content]
 
-        # Set cron for clear corefiles
-        gp_home = EnvUtil.getEnvironmentParameterValue("GPHOME", "")
-        default_xml = "%s/cluster_default_agent.xml" % gp_home
-        if os.path.exists(default_xml):
-            corefile = dbClusterInfo.readClustercorePath(default_xml)
-            if not os.path.exists(corefile):
-                cron_content_coreclear = "* */1 * * * diskUse=$(df %s -h | grep -v 'Use' | " \
-                                         "awk '{print $5}');" \
-                                         "fileNum=$(expr $(ls %s | wc -l) - 5);" % (corefile,
-                                                                                    corefile)
-                cron_content_coreclear += "(if [ ${diskUse%%%%%%} -gt %s -a $fileNum -gt 5 ];" \
-                                          "then ls -tr | head -$fileNum | " \
-                                          "xargs -i -n$fileNum rm -rf {};fi) >>/dev/null " \
-                                          "2>&1 &" % DefaultValue.CORE_PATH_DISK_THRESHOLD
-                content_cron_file.append(cron_content_coreclear)
-        FileUtil.writeFile(cron_file, content_cron_file)
-        CrontabUtil.execCrontab(cron_file)
-        FileUtil.removeFile(cron_file)
+            # Set cron for clear corefiles
+            gp_home = EnvUtil.getEnvironmentParameterValue("GPHOME", "")
+            default_xml = "%s/cluster_default_agent.xml" % gp_home
+            if os.path.exists(default_xml):
+                corefile = dbClusterInfo.readClustercorePath(default_xml)
+                if not os.path.exists(corefile):
+                    cron_content_coreclear = "* */1 * * * diskUse=$(df %s -h | grep -v 'Use' | " \
+                                            "awk '{print $5}');" \
+                                            "fileNum=$(expr $(ls %s | wc -l) - 5);" % (corefile,
+                                                                                        corefile)
+                    cron_content_coreclear += "(if [ ${diskUse%%%%%%} -gt %s -a $fileNum -gt 5 ];" \
+                                            "then ls -tr | head -$fileNum | " \
+                                            "xargs -i -n$fileNum rm -rf {};fi) >>/dev/null " \
+                                            "2>&1 &" % DefaultValue.CORE_PATH_DISK_THRESHOLD
+                    content_cron_file.append(cron_content_coreclear)
+            FileUtil.writeFile(cron_file, content_cron_file)
+            CrontabUtil.execCrontab(cron_file)
+            FileUtil.removeFile(cron_file)
 
-        self._kill_om_monitor()
+            self._kill_om_monitor()
 
         if mpprc_file != "" and mpprc_file is not None:
             cmd = "source /etc/profile;(if [ -f ~/.profile ];then source ~/.profile;fi);" \

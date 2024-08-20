@@ -212,18 +212,13 @@ class OmImplOLAP(OmImpl):
                 self.do_opt_cm_components('start')
             return
         
-        # if has cm and param --component!=DN, will start cluster by cm_ctl command
-        if ((not self.context.clusterInfo.hasNoCm() and self.context.g_opts.component != "DN")
-            and DefaultValue.isgreyUpgradeNodeSpecify(self.context.user,
-            DefaultValue.GREY_UPGRADE_STEP_UPGRADE_PROCESS, None, self.context.logger)):
+        # if has cm and not in separately upgrade, will start cluster by cm_ctl command
+        if (not self.context.clusterInfo.hasNoCm() and self.context.g_opts.component != "DN"):
             self.context.logger.debug("Have CM configuration, upgrade all"
                                       " nodes together.")
             self.doStartClusterByCm()
             return
-        else:
-            self.context.logger.debug("Have CM configuration, rolling upgrade "
-                                     "partial node but not all nodes, so "
-                                     "start cluster with openGauss om.")
+        
         # Specifies the stop node
         # Gets the specified node id
         startType = "node" if self.context.g_opts.nodeName != "" else "cluster"
@@ -363,7 +358,7 @@ class OmImplOLAP(OmImpl):
                 self.do_opt_cm_components('stop')
             return
         
-        # if has cm and param --component!=DN, will start cluster by cm_ctl command
+        # if has cm and not in separately upgrade, will stop cluster by cm_ctl command
         if not self.context.clusterInfo.hasNoCm() and self.context.g_opts.component != "DN":
             self.doStopClusterByCm()
             return

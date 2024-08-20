@@ -4801,7 +4801,7 @@ class dbClusterInfo():
                                       % (gaussHome, dbNode.name)
             if dbNode.name != localHostName:
                 cmd = "export LD_LIBRARY_PATH=/usr/lib64;/usr/bin/scp %s:%s %s" % (
-                    dbNode.name, dynamicConfigFile, remoteDynamicConfigFile)
+                    dbNode.sshIps[0], dynamicConfigFile, remoteDynamicConfigFile)
                 status, output = subprocess.getstatusoutput(cmd)
                 if status:
                     if output.find("No such file or directory") >= 0:

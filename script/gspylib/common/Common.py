@@ -277,8 +277,6 @@ class DefaultValue():
     ALARM_COMPONENT_PATH = "/opt/huawei/snas/bin/snas_cm_cmd"
     # root scripts path
     ROOT_SCRIPTS_PATH = "/root/gauss_om"
-    # preinstall flag path
-    PREINSTALL_FLAG_PATH = "/tmp/preinstall_flag"
 
     # package bak file name list
     PACKAGE_BACK_LIST = ["Gauss200-OLAP-Package-bak.tar.gz",
@@ -549,20 +547,6 @@ class DefaultValue():
             return cmd
 
     @staticmethod
-    def read_preinstall_flag():
-        preinstall_flag_file = DefaultValue.PREINSTALL_FLAG_PATH
-        if not os.path.exists(preinstall_flag_file):
-            return True
-        with open(preinstall_flag_file, 'r') as f:
-            content = f.read().strip()
-        if len(content.split()) != 2:
-            raise Exception("The content of the preinstall flag file is incorrect.")
-        if content.split()[0] == "preinstall" and content.split()[1] == "root":
-            return True
-        else:
-            return False
-
-    @staticmethod
     def CheckNetWorkBonding(serviceIP, isCheckOS=True):
         """
         function : Check NetWork ConfFile
@@ -734,23 +718,12 @@ class DefaultValue():
         # get hostname
         hostname = socket.gethostname()
 
-        hostIp = ""
-        preinstall_flag = DefaultValue.read_preinstall_flag()
-        if preinstall_flag:
         # get local host in /etc/hosts
-            cmd = "grep -E \"^[1-9 \\t].*%s[ \\t]*#Gauss.* IP Hosts Mapping$\" " \
-                "/etc/hosts | grep -E \" %s \"" % (hostname, hostname)
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if (status == 0 and output != ""):
-                hostIp = output.strip().split(' ')[0].strip()
-        else:
-            cmd = "grep -E \"^[1-9 \\t].*%s\" " \
-                "%s | grep -E \" %s \"" % (hostname, DefaultValue.PREINSTALL_FLAG_PATH, hostname)
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if (status == 0 and output != ""):
-                hostIp = output.strip().split(' ')[0].strip()
-
-        if hostIp:
+        cmd = "grep -E \"^[1-9 \\t].*%s[ \\t]*#Gauss.* IP Hosts Mapping$\" " \
+              "/etc/hosts | grep -E \" %s \"" % (hostname, hostname)
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if (status == 0 and output != ""):
+            hostIp = output.strip().split(' ')[0].strip()
             return hostIp
 
         # get local host by os function

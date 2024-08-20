@@ -100,6 +100,7 @@ DEFAULT_INTERVAL = 60
 DEFAULT_CONSISTENCY_INTERVAL = 6
 CHECK_ITEMNUMLIST = ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9',
                      'A10', 'A11', 'A12', 'A13', 'A14']
+NO_ROOT_USER_CHECK_ITEMNUMLIST = ['A1', 'A2', 'A3', 'A4', 'A5', 'A8', 'A12', 'A13']
 SET_ITEMNUMLIST = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8']
 LOG_DIR = "/tmp/gs_checkos"
 Local_CheckOs = ""
@@ -173,8 +174,9 @@ def initGlobals():
     g_logger = GaussLog(g_opts.logFile, "gs_checkos")
     dirName = os.path.dirname(g_opts.logFile)
     g_opts.localLog = os.path.join(dirName, ClusterConstants.LOCAL_LOG_FILE)
-    g_sshTool = SshTool(g_opts.hostnameList, g_logger.logFile,
-                        DefaultValue.TIMEOUT_PSSH_CHECK)
+    if not g_opts.localMode:
+        g_sshTool = SshTool(g_opts.hostnameList, g_logger.logFile,
+                            DefaultValue.TIMEOUT_PSSH_CHECK)
     g_clusterInfo = dbClusterInfo()
     if (g_opts.confFile != ""):
         g_clusterInfo.initFromXml(g_opts.confFile)
@@ -304,15 +306,15 @@ def parseCommandLine():
         g_opts.detail = ParaDict.get("show_detail")
 
 def get_user_info():
-        """
-        function: get user
-        input: NA
-        output: NA
-        """
-        if os.getuid() != 0:
-            user_info = UserUtil.getUserInfo()
-            g_opts.user = user_info.get("name")
-            DefaultValue.checkPathVaild(g_opts.user)
+    """
+    function: get user
+    input: NA
+    output: NA
+    """
+    if os.getuid() != 0:
+        user_info = UserUtil.getUserInfo()
+        g_opts.user = user_info.get("name")
+        DefaultValue.checkPathVaild(g_opts.user)
 
 def readHostFile(hostfile):
     """
@@ -392,7 +394,7 @@ def setLogFile():
     """
     """
     if (g_opts.logFile == ""):
-        if os.getuid() == 0:
+        if is_root_user():
             create_log_file()
         else:
             # get gausslog from env
@@ -478,6 +480,11 @@ def checkParameter():
     ############################################
     checkOutputFile()
 
+def is_root_user():
+    """
+    Check if current user is root
+    """
+    return os.getuid() == 0
 
 def doCheckOS(itemNumber):
     """
@@ -500,19 +507,14 @@ def doCheckOS(itemNumber):
     elif (itemNumber == 'A8'):
         checkDiskConfigure()
     elif (itemNumber == 'A9'):
-        if os.getuid() == 0:
-            checkBlockDevConfigure()
-        else:
-            checkLogicalBlock()
+        checkBlockDevConfigure()
+        checkLogicalBlock()
     elif (itemNumber == 'A10'):
-        if os.getuid() == 0:
-            checkIOConfigure()
-        else:
-            checkIOrequestqueue()
-            checkMaxAsyIOrequests()
+        checkIOrequestqueue()
+        checkMaxAsyIOrequests()
+        checkIOConfigure()
     elif (itemNumber == 'A11'):
-        if os.getuid() == 0:
-            checkNetworkConfigure()
+        checkNetworkConfigure()
     elif (itemNumber == 'A12'):
         checkTimeConsistency()
     elif (itemNumber == 'A13'):
@@ -1549,7 +1551,10 @@ def main():
         GaussLog.exitWithError(str(e))
 
     if ("A" in g_opts.item_detail):
-        itemList = CHECK_ITEMNUMLIST
+        if is_root_user():
+            itemList = CHECK_ITEMNUMLIST
+        else:
+            itemList = NO_ROOT_USER_CHECK_ITEMNUMLIST
     elif ("B" in g_opts.item_detail):
         itemList = SET_ITEMNUMLIST
     else:
@@ -1586,10 +1591,16 @@ def main():
                          % g_opts.outputfile)
 
         for item in itemList:
-            if (os.getuid() == 0 and g_opts.set):
-                doSetOS(item)
+            if is_root_user():
+                if g_opts.set:
+                    doSetOS(item)
+                else:
+                    doCheckOS(item)
             else:
+                if item not in NO_ROOT_USER_CHECK_ITEMNUMLIST:
+                    break
                 doCheckOS(item)
+                
             DisplayResultInformation(item, output)
 
         if (fp):

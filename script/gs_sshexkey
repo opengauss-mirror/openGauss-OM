@@ -846,11 +846,12 @@ General options:
         hostnameList = []
         hostnameList.extend(self.hostList)
         # add hostname when using root user
-        os_hosts_file = "/etc/hosts"
         for _, hostname in result.items():
-            cmd = "cat %s | grep %s | wc -l" % (os_hosts_file, hostname)
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status == 0 and int(output) > 0:
+            try:
+                host = socket.gethostbyname(hostname)
+            except Exception as e:
+                host = ""
+            if host:
                 hostnameList.append(hostname)
         for hostname in hostnameList:
             cmd = '%s;/usr/bin/ssh-keyscan -t ed25519 %s >> %s ' % (SYSTEM_SSH_ENV, hostname, self.known_hosts_fname)

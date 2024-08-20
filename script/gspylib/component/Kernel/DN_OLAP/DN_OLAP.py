@@ -226,6 +226,9 @@ class DN_OLAP(Kernel):
         if "127.0.0.1" in self.instInfo.listenIps:
             tmp_dn_dict["listen_addresses"] = "'%s'" % ",".join(
                 self.instInfo.listenIps)
+        elif "::1" in self.instInfo.listenIps:
+            tmp_dn_dict["listen_addresses"] = "'%s'" % ",".join(
+                self.instInfo.listenIps)
         else:
             tmp_dn_dict["listen_addresses"] = "'localhost,%s'" % ",".join(
                 self.instInfo.listenIps)

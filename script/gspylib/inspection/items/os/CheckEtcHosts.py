@@ -48,6 +48,9 @@ class CheckEtcHosts(BaseItem):
             if (eachIP.find("127.0.0.1 localhost") == 0):
                 localHost = True
                 break
+            if (eachIP.find("::1 localhost") == 0):
+                localHost = True
+                break
         if (not localHost):
             self.result.rst = ResultStatus.NG
             self.result.val = "The /etc/hosts does not match localhosts."
@@ -61,6 +64,8 @@ class CheckEtcHosts(BaseItem):
             ip = IPInfo.split()[0]
             host = IPInfo.split()[1]
             if (ip == "127.0.0.1"):
+                continue
+            if (ip == "::1"):
                 continue
             if (ip in IPMapping.keys() and host != IPMapping[ip]):
                 conflictsMapping.append(IPInfo)

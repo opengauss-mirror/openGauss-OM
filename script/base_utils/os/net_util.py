@@ -563,19 +563,30 @@ class NetUtil(object):
                             " Error: \n%s" % str(excep))
 
     @staticmethod
+    def extract_ip_addresses(net_work_info):
+        """
+        Extracts IP addresses (both IPv4 and IPv6) from network interface information.
+        param net_work_info: Dictionary of network interfaces and their addresses.
+        return: List of IP addresses.
+        """
+        ip_address_list = []
+        for interface, addrs in net_work_info.items():
+            for addr in addrs:
+                if addr.family == AF_INET or addr.family == AF_INET6:
+                    ip_address_list.append(addr.address)
+        return ip_address_list
+
+    @staticmethod
     def getIpAddressList():
         """
-        Get IP address list
+        Gets a list of IP addresses (both IPv4 and IPv6) from all network interfaces
+        return: List of IP addresses.
+        raises Exception: If no IP addresses are found.
         """
-        # Obtain all Ips by psutil module
         try:
-            ip_address_list = []
             net_work_info = psutil.net_if_addrs()
-            for per_num in net_work_info.keys():
-                net_info = net_work_info[per_num][0]
-                if len(net_info.address.split('.')) == 4:
-                    ip_address_list.append(net_info.address)
-            if len(ip_address_list) == 0:
+            ip_address_list = NetUtil.extract_ip_addresses(net_work_info)
+            if not ip_address_list:
                 raise Exception(ErrorCode.GAUSS_506["GAUSS_50616"])
             return ip_address_list
         except Exception as excep:

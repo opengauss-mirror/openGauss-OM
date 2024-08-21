@@ -154,6 +154,19 @@ def extractValues(s):
     return lines
 
 
+def extract_types(s):
+    """
+    function : extract types
+    input  : String
+    output : String
+    """
+    match = re.search(r'=\{(.*?)\}', s)
+    if match:
+        return match.group(1)
+    else:
+        return ""
+
+
 #############################################################################
 def getDatabaseInfo(data, sql_query):
     """
@@ -167,6 +180,8 @@ def getDatabaseInfo(data, sql_query):
     if status != 0:
         raise Exception((ErrorCode.GAUSS_505["GAUSS_50502"] % "ConnectionConfiguration") +
                         ("The cmd is : %s" % cmd))
+    if "ERROR:" in output:
+        raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % output)
     value = extractRowsCount(output)
     if not value is None:
         data.output = value
@@ -812,7 +827,7 @@ def collectMinPGLog():
     user = getUserInfo()
     GAUSSUSER = user.username
     GAUSSGROUP = user.groupname
-    cmd = f"find {os.getenv('GAUSSHOME')}/log/{GAUSSUSER} -prune \( ! -user {GAUSSUSER} -o ! -group {GAUSSGROUP} -o -perm /g=rwx,o=rwx \)"
+    cmd = "find ${GAUSSLOG} -prune \( ! -user %s -o ! -group %s -o -perm /g=rwx,o=rwx \)" % (GAUSSUSER, GAUSSGROUP)
     result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     if result.returncode == 0:
         data.output = result.stdout
@@ -3025,7 +3040,7 @@ def setMinPGLog(data):
     output : NA
     """
     try:
-        cmd_set = "chmod 0700 %s/pg_log" % (os.getenv('PGDATA'))
+        cmd_set = "chmod 0700 ${GAUSSLOG}"
         result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     except Exception as e:
         g_logger.log("Failed to set Min Data")
@@ -3064,7 +3079,7 @@ def checkAuthEncriptionCount(isSetting):
     output : NA
     """
     data = collectAuthEncriptionCount()
-    if not int(data.db[0]) < 10000:
+    if int(data.db[0]) < 10000:
         if not isSetting:
             g_logger.log("        Warning reason: Ensure correct configuration of authentication encryption iteration counts.Setting the number of iterations too low will reduce the security of password storage, while setting it too high can degrade performance in scenarios involving password encryption, such as user creation and authentication. Please set the number of iterations reasonably according to actual hardware conditions, with a minimum of 10,000 iterations.")
         else:
@@ -3500,17 +3515,35 @@ def setPublicRolAllPerm(data):
     result = PublicRolAllPerm()
     result.db = []
     try:
-        for item in data[0].db:
-            sql_query = """REVOKE ALL ON %s FROM PUBLIC;""" %(item.split("|")[0].strip())
-            getDatabaseInfo(result, sql_query)
-        for item in data[1].db:
-            sql_query = """REVOKE ALL ON SCHEMA %s FROM PUBLIC;""" %(item.split("|")[0].strip())
-            getDatabaseInfo(result, sql_query)
-        for item in data[2].db:
-            sql_query = """REVOKE ALL ON FUNCTION %s() FROM PUBLIC;""" %(item.split("|")[0].strip())
-            getDatabaseInfo(result, sql_query)
+        if data[0].db[0].strip():
+            for item in data[0].db:
+                sql_query = """REVOKE ALL ON %s FROM PUBLIC;""" % (item.split("|")[0].strip())
+                getDatabaseInfo(result, sql_query)
+        if data[1].db[0].strip():
+            for item in data[1].db:
+                sql_query = """REVOKE ALL ON SCHEMA %s FROM PUBLIC;""" % (item.split("|")[0].strip())
+                getDatabaseInfo(result, sql_query)
+        if data[2].db[0].strip():
+            set_remove_all_function(data[2].db, result)
     except Exception as e:
-        data.errormsg = e.__str__()
+        raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % e.__str__())
+
+def set_remove_all_function(data, result):
+    """
+    function : Set Remove All Function
+    input  : Instantion, Instantion
+    output : NA
+    """
+    for item in data:
+        df = PublicRolAllPerm()
+        df.db = []
+        proname = item.split("|")[0].strip()
+        sql_df = """SELECT proargtypes::regtype[] AS arg_types, proargnames AS arg_names FROM pg_proc WHERE proname = '%s';""" % proname
+        getDatabaseInfo(df, sql_df)
+        for line in df.db:
+            arg_type = extract_types(line.split("|")[0].strip())
+            sql_query = """REVOKE ALL ON FUNCTION %s(%s) FROM PUBLIC;""" % (proname, arg_type)
+            getDatabaseInfo(result, sql_query)
 
 def setAdminPrivileges(data):
     """

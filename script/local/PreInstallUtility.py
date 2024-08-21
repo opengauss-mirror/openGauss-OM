@@ -3174,6 +3174,8 @@ Common options:
                 self.check_config()
             elif self.action == ACTION_CHECK_CPU_INSTRUCTIONS:
                 self.check_cpu_instructions()
+            elif self.action == ACTION_CHECK_NOFILE_LIMIT:
+                self.check_nofile_limit()
             else:
                 self.logger.logExit(ErrorCode.GAUSS_500["GAUSS_50000"]
                                     % self.action)

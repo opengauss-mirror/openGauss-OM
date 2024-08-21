@@ -1622,7 +1622,7 @@ class dbClusterInfo():
                 clusterState = "Unavailable"
         return (clusterState, syncInfo)
 
-    def __getDnState(self, dnInst, dbNode, localHostName, sshtool):
+    def __getDnState(self, dnInst, dbNode, localHostName, sshtool, logger=None):
         sql = "select local_role, static_connections, db_state from " \
               "pg_stat_get_stream_replications();"
         if dbNode.name != localHostName:
@@ -1633,6 +1633,9 @@ class dbClusterInfo():
                       dnInst.port, sql)
             (statusMap, output) = sshtool.getSshStatusOutput(cmd,
                                                              [dbNode.name])
+            if logger:
+                logger.debug(statusMap)
+                logger.debug(output)
             dnDown = output.find("failed to connect") >= 0
             if statusMap[dbNode.name] != 'Success' or dnDown:
                 dnInst.localRole = "Down" if dnDown else "Unknown"
@@ -4560,8 +4563,8 @@ class dbClusterInfo():
     def isSingleNode(self):
         return (self.__getDnInstanceNum() <= 1)
 
-    def doRefreshConf(self, user, localHostName, sshtool):
-        self.__createDynamicConfig(user, localHostName, sshtool)
+    def doRefreshConf(self, user, localHostName, sshtool, logger=None):
+        self.__createDynamicConfig(user, localHostName, sshtool, logger)
         self.__create_simple_datanode_config(user, localHostName, sshtool)
         self.__reset_replconninfo(user, sshtool)
 
@@ -4600,7 +4603,7 @@ class dbClusterInfo():
                 offset = (fp.tell() // PAGE_SIZE + 1) * PAGE_SIZE
                 fp.seek(offset)
                 (primaryNodeNum, info) = self.__packDynamicNodeInfo(
-                    dbNode, localHostName, sshtool)
+                    dbNode, localHostName, sshtool, logger)
                 primaryDnNum += primaryNodeNum
                 fp.write(info)
             if primaryDnNum != 1:
@@ -4693,7 +4696,7 @@ class dbClusterInfo():
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"]
                                 % cmd + "Error:\n%s" % output)
 
-    def __packDynamicNodeInfo(self, dbNode, localHostName, sshtool):
+    def __packDynamicNodeInfo(self, dbNode, localHostName, sshtool, logger=None):
         # node id
         info = struct.pack("I", dbNode.id)
         # node name
@@ -4701,7 +4704,7 @@ class dbClusterInfo():
         info += struct.pack("I", len(dbNode.datanodes))
         primaryNum = 0
         for dnInst in dbNode.datanodes:
-            self.__getDnState(dnInst, dbNode, localHostName, sshtool)
+            self.__getDnState(dnInst, dbNode, localHostName, sshtool, logger)
             instanceType = 0
             if dnInst.localRole == "Primary":
                 instanceType = MASTER_INSTANCE
@@ -4710,6 +4713,10 @@ class dbClusterInfo():
                 instanceType = CASCADE_STANDBY
             else:
                 instanceType = STANDBY_INSTANCE
+            if logger:
+                logger.debug(f"""instanceInfo: name: {dnInst.hostname}, \
+                         role: {dnInst.localRole}, \
+                         state: {dnInst.state}""")
             info += struct.pack("I", dnInst.instanceId)
             # datanode id
             info += struct.pack("I", dnInst.mirrorId)

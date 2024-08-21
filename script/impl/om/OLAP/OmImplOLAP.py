@@ -402,7 +402,7 @@ class OmImplOLAP(OmImpl):
         hostname = NetUtil.GetHostIpOrName()
         sshtool = SshTool(self.context.clusterInfo.getClusterNodeNames())
         self.context.clusterInfo.doRefreshConf(self.context.user, hostname,
-                                               sshtool)
+                                               sshtool, self.logger)
 
         self.logger.log("Successfully generated dynamic configuration file.")
 

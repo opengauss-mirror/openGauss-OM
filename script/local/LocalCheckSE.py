@@ -144,13 +144,14 @@ def extractRowsCount(s):
         return None
 
 
-def extractValues(s):
+def extract_values(s, value):
     """
     function : extract values
-    input  : String
+    input  : String, String
     output : String
     """
-    lines = s.strip().splitlines()[2:-1]
+    row = int(value)
+    lines = s.strip().splitlines()[-row - 1:-1]
     return lines
 
 
@@ -186,7 +187,7 @@ def getDatabaseInfo(data, sql_query):
     if not value is None:
         data.output = value
         if data.output > 0:
-            data.db.extend(extractValues(output))
+            data.db.extend(extract_values(output, value))
         else:
             data.db.append("")
     return data
@@ -4283,7 +4284,8 @@ def setLogFilename(data):
     output : NA
     """
     try:
-        cmd_set = "gs_guc reload -D %s -c \"log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'\"" % (os.getenv('PGDATA'))
+        pgdata = os.getenv('PGDATA')
+        cmd_set = f"gs_guc reload -D {pgdata} -c \"log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'\""
         result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Log Filename")

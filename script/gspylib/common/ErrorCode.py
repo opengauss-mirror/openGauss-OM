@@ -338,7 +338,9 @@ class ErrorCode():
         'GAUSS_50622': "[GAUSS-50622] : Failed to obtain network card "
                        "interrupt count numbers. Commands for getting "
                        "interrupt count numbers: %s.\n",
-        'GAUSS_50624': "[GAUSS-50624] : The types of these ip addresses are inconsistent"
+        'GAUSS_50624': "[GAUSS-50624] : The types of these ip addresses are inconsistent.",
+        'GAUSS_50625': "[GAUSS-50625] : The ip address of the cluster block is inconsistent "
+                       "with that of the device."
 
     }
 

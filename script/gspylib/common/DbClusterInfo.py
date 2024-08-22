@@ -4807,8 +4807,13 @@ class dbClusterInfo():
             remoteDynamicConfigFile = "%s/bin/cluster_dynamic_config_%s" \
                                       % (gaussHome, dbNode.name)
             if dbNode.name != localHostName:
+                node_ip = dbNode.sshIps[0]
+                if NetUtil.get_ip_version(node_ip) == NetUtil.NET_IPV6:
+                    # scp file is to the ipv6 address, needs to add [] to ipaddress:
+                    # scp a.txt [2407:c080:1200:22a0:613f:8d3b:caa:2335]:/data
+                    node_ip = "[" + node_ip + "]"
                 cmd = "export LD_LIBRARY_PATH=/usr/lib64;/usr/bin/scp %s:%s %s" % (
-                    dbNode.sshIps[0], dynamicConfigFile, remoteDynamicConfigFile)
+                    node_ip, dynamicConfigFile, remoteDynamicConfigFile)
                 status, output = subprocess.getstatusoutput(cmd)
                 if status:
                     if output.find("No such file or directory") >= 0:
@@ -4850,6 +4855,10 @@ class dbClusterInfo():
             else:
                 node = self.getDbNodeByName(dbNode.name)
                 node_ip = node.sshIps[0]
+                if NetUtil.get_ip_version(node_ip) == NetUtil.NET_IPV6:
+                    # scp file is to the ipv6 address, needs to add [] to ipaddress:
+                    # scp a.txt [2407:c080:1200:22a0:613f:8d3b:caa:2335]:/data
+                    node_ip = "[" + node_ip + "]"
                 cmd = "export LD_LIBRARY_PATH=/usr/lib64;/usr/bin/scp %s %s:%s" % (sourceFile, node_ip, targetFile)
                 status, output = subprocess.getstatusoutput(cmd)
             if status:

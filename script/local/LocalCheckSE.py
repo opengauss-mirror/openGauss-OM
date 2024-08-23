@@ -2447,10 +2447,11 @@ def collectNtpd():
     data = Ntpd()
     cmd = 'service ntpd status 2>&1 | grep Active'
     result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-    if result.returncode == 0:
-        data.output = result.stdout
-    else:
-        data.errormsg = result.stderr
+    if not result.stdout:
+        cmd = 'systemctl status ntpd.service'
+        result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                universal_newlines=True)
+    data.output = result.stdout
     return data
 
 
@@ -4525,8 +4526,6 @@ def checkArchiveMode(isSetting):
         if not isSetting:
             g_logger.log(
                 "         Warning reason:Ensure archiving mode is enabled.After enabling archive mode, it is necessary to plan the disk space occupied by archived logs. The log archiving process may impact database performance.")
-        else:
-            setArchiveMode(data)
 
 
 #############################################################################
@@ -4537,7 +4536,6 @@ def setBackupConfiguration(isSetting=True):
     output : NA
     """
     checkWalLevel(isSetting)
-    checkArchiveMode(isSetting)
 
 
 def setWalLevel(data):
@@ -4553,24 +4551,6 @@ def setWalLevel(data):
             g_logger.log("Failed to set Wal Level")
         cmd_restart = "gs_ctl restart -D %s" %(os.getenv('PGDATA'))
         subprocess.run(cmd_restart, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-    except Exception as e:
-        data.errormsg = e.__str__()
-
-def setArchiveMode(data):
-    """
-    function : Set Archive Mode
-    input  : Instantion
-    output : NA
-    """
-    try:
-        cmd_set_archive_mode = "gs_guc reload -D %s -c \"archive_mode=on\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set_archive_mode, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-        if not re.search(r'Success to perform gs_guc!', result.stdout):
-            g_logger.log("Failed to set Archive Mode")
-        cmd_set_archive_command = "gs_guc reload -D %s -c \"archive_command='cp --remove-destination %p /mnt/server/archive/%f'\"" % (os.getenv('PGDATA'))
-        result = subprocess.run(cmd_set_archive_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-        if not re.search(r'Success to perform gs_guc!', result.stdout):
-            g_logger.log("Failed to set Archive Mode")
     except Exception as e:
         data.errormsg = e.__str__()
 

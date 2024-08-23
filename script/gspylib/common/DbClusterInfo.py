@@ -963,6 +963,8 @@ class dbClusterInfo():
         self.corePath = ""
         self.float_ips = {}
         self.ips_type = []
+        self.cluster_back_ip1s = []
+        self.node_num = 0
 
         # add azName
         self.azName = ""
@@ -2641,6 +2643,10 @@ class dbClusterInfo():
         if [node_name] != self.__getAllHostnamesFromDEVICELIST():
             raise Exception(ErrorCode.GAUSS_512["GAUSS_51236"] +
                             " The number of nodeNames and DEVICE are not same.")
+        if (not self.__isIpValid(self.cluster_back_ip1s[0])):
+            raise Exception(ErrorCode.GAUSS_506["GAUSS_50603"] + \
+                            "The IP address is: %s." % self.cluster_back_ip1s[0] + " Please "
+                                                                                 "check it.")
         # Get basic info of node: name, ip and master instance number etc.
         self.dbNodes = []
         db_node = dbNodeInfo(1, node_name)
@@ -2891,6 +2897,12 @@ class dbClusterInfo():
             backIP1 = dbNode.backIps[0]
             nodeips.extend(dbNode.backIps)
             nodeips.extend(dbNode.sshIps)
+            # Check whether the ip addresses of the cluster block and device are consistent
+            if backIP1 != self.cluster_back_ip1s[self.node_num]:
+                raise Exception(ErrorCode.GAUSS_506["GAUSS_50625"] +
+                                "These ip addresses are %s and %s" % (self.cluster_back_ip1s[self.node_num], backIP1)
+                                + ". Please check it.")
+            self.node_num += 1
             # get node ip and node port from cmserver
             for cmsInst in dbNode.cmservers:
                 nodeips.extend(cmsInst.listenIps)
@@ -3024,6 +3036,9 @@ class dbClusterInfo():
         # Read application log path
         self.logPath = self.__read_and_check_config_item(xmlRootNode, "gaussdbLogPath",
                                                          "cluster", error_ignore=True)
+        # Read cluster backIp1s
+        cluster_backip1s_str = self.__read_and_check_config_item(xmlRootNode, "backIp1s", "cluster")
+        self.cluster_back_ip1s = cluster_backip1s_str.split(",")
         if not self.logPath:
             self.logPath = "/var/log/gaussdb"
         if not os.path.isabs(self.logPath):
@@ -3123,13 +3138,24 @@ class dbClusterInfo():
         """
         # read cluster node info.
         (retStatus, retValue) = ClusterConfigFile.readOneClusterConfigItem(xmlRootNode,
-                                                         "nodeNames",
-                                                         "cluster")
+                                                                           "nodeNames",
+                                                                           "cluster")
         if (retStatus != 0):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"]
                             % "node names" + " Error: \n%s" % retValue)
         nodeNames = []
+        backip_types = set()
         nodeNames_tmp = retValue.split(",")
+        for back_ip in self.cluster_back_ip1s:
+            if (not self.__isIpValid(back_ip)):
+                raise Exception(ErrorCode.GAUSS_506["GAUSS_50603"] + \
+                                "The IP address is: %s." % back_ip + " Please "
+                                                                    "check it.")
+            backip_types.add(NetUtil.get_ip_version(back_ip))
+            if len(backip_types) > 1 or (len(backip_types) == 1 and ("" in backip_types)):
+                raise Exception(ErrorCode.GAUSS_506["GAUSS_50624"] +
+                                "The types of these ip addresses are %s" % backip_types + ". Please "
+                                                                                          "check it.")
         for nodename in nodeNames_tmp:
             nodeNames.append(nodename.strip())
         if (len(nodeNames) == 0):

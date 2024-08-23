@@ -369,22 +369,19 @@ def setLogFile():
     """
     """
     if (g_opts.logFile == ""):
-        if os.getuid() == 0:
-            createLogFile()
+        # get gausslog from env
+        gauss_log = EnvUtil.getEnv("GAUSSLOG")
+        if gauss_log:
+            g_opts.logFile = os.path.normpath(
+                os.path.join(gauss_log, g_opts.user, "om", ClusterConstants.GS_CHECKSE_LOG_FILE))
+        # get gausslog from xml
+        elif g_opts.confFile:
+            g_opts.logFile = getCheckseLogPath(ClusterConstants.GS_CHECKSE_LOG_FILE, g_opts.confFile)
+            if (not os.path.isabs(g_opts.logFile)):
+                GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"]
+                                       % g_opts.logFile)
         else:
-            # get gausslog from env
-            gauss_log = EnvUtil.getEnv("GAUSSLOG")
-            if gauss_log:
-                g_opts.logFile = os.path.normpath(
-                    os.path.join(gauss_log, g_opts.user, "om", ClusterConstants.GS_CHECKSE_LOG_FILE))
-            # get gausslog from xml
-            elif g_opts.confFile:
-                g_opts.logFile = getCheckseLogPath(ClusterConstants.GS_CHECKSE_LOG_FILE, g_opts.confFile)
-                if (not os.path.isabs(g_opts.logFile)):
-                    GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50213"]
-                                           % g_opts.logFile)
-            else:
-                createLogFile()
+            createLogFile()
 
         UserUtil.check_path_owner(g_opts.logFile)
 

@@ -912,7 +912,7 @@ class PostUninstallImpl:
         except Exception as e:
             raise Exception(str(e))
 
-    def delet_root_mutual_trust(self, local_host, path):
+    def delet_root_mutual_trust(self, local_host):
         """
         :return:
         """
@@ -948,6 +948,8 @@ class PostUninstallImpl:
 
         # delete remote root mutual trust
         kill_remote_ssh_agent_cmd = DefaultValue.killInstProcessCmd("ssh-agent", True)
+        current_dir = os.path.dirname(os.path.realpath(__file__))
+        path = os.path.join(current_dir, "../../../")
         self.sshTool.getSshStatusOutput(cmd % kill_remote_ssh_agent_cmd, host_list, gp_path=path)
         # delete local root mutual trust
         CmdExecutor.execCommandLocally(cmd % kill_ssh_agent_cmd)
@@ -981,8 +983,7 @@ class PostUninstallImpl:
                 os_profile = self.mpprcFile
             else:
                 os_profile = ClusterConstants.ETC_PROFILE
-            path = EnvUtil.get_env_param(source_file=os_profile,
-                                         env_param="UNPACKPATH")
+            
             self.createTrustForRoot()
             self.cleanGphomeScript()
             self.checkLogFilePath()
@@ -996,10 +997,10 @@ class PostUninstallImpl:
             self.logger.log("Successfully cleaned environment.")
             if os.path.exists(self.gauss_om_path):
                 self.cleanOthernodesBackupScript()
-                self.delet_root_mutual_trust(local_host, path)
+                self.delet_root_mutual_trust(local_host)
                 self.cleanLocalBackupScript()
             else:
-                self.delet_root_mutual_trust(local_host, path)
+                self.delet_root_mutual_trust(local_host)
                 self.logger.log("clean over.")
         except Exception as e:
             self.logger.logExit(str(e))

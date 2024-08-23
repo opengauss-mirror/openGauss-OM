@@ -2725,7 +2725,7 @@ Common options:
         package_path = get_package_path()
         om_backup_path = os.path.dirname(package_path)
         check_backup_path = os.path.join("/home", self.user, "gauss_om")
-        if om_backup_path == check_backup_path or not self.current_user_root:
+        if om_backup_path == check_backup_path:
             return
 
         self.logger.log("Backup om scripts.")
@@ -2743,16 +2743,17 @@ Common options:
         cmd = "cp -rf %s/hosts %s" % (self.clusterToolPath, dest_path)
         CmdExecutor.execCommandLocally(cmd)
 
-        # cp cgroup to /home/user/gauss_om/script
-        self.logger.debug("cp cgroup to /home/user/gauss_om/script.")
-        backup_lib_dir = os.path.join(dest_path, "lib")
-        backup_bin_dir = os.path.join(dest_path, "bin")
-        FileUtil.createDirectory(backup_lib_dir, mode=DefaultValue.KEY_DIRECTORY_MODE)
-        FileUtil.createDirectory(backup_bin_dir, mode=DefaultValue.KEY_DIRECTORY_MODE)
-        libcgroup_dir = os.path.realpath("%s/libcgroup/lib/libcgroup.so*" % package_path)
-        cgroup_exe_dir = os.path.realpath("%s/libcgroup/bin/gs_cgroup" % package_path)
-        cp_cmd = "cp -rf %s %s; cp -rf %s %s" % (libcgroup_dir, backup_lib_dir, cgroup_exe_dir, backup_bin_dir)
-        CmdExecutor.execCommandLocally(cp_cmd)
+        if self.current_user_root:
+            # cp cgroup to /home/user/gauss_om/script
+            self.logger.debug("cp cgroup to /home/user/gauss_om/script.")
+            backup_lib_dir = os.path.join(dest_path, "lib")
+            backup_bin_dir = os.path.join(dest_path, "bin")
+            FileUtil.createDirectory(backup_lib_dir, mode=DefaultValue.KEY_DIRECTORY_MODE)
+            FileUtil.createDirectory(backup_bin_dir, mode=DefaultValue.KEY_DIRECTORY_MODE)
+            libcgroup_dir = os.path.realpath("%s/libcgroup/lib/libcgroup.so*" % package_path)
+            cgroup_exe_dir = os.path.realpath("%s/libcgroup/bin/gs_cgroup" % package_path)
+            cp_cmd = "cp -rf %s %s; cp -rf %s %s" % (libcgroup_dir, backup_lib_dir, cgroup_exe_dir, backup_bin_dir)
+            CmdExecutor.execCommandLocally(cp_cmd)
 
         # cp $GPHOME script lib to /home/user/gauss_om/
         cmd = ("cp -rf %s/script %s/lib %s/version.cfg %s"

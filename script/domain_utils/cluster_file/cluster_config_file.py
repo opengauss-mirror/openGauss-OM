@@ -24,6 +24,8 @@ import xml.etree.cElementTree as ETree
 
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.GaussLog import GaussLog
+from gspylib.common.ClusterParams import ClusterParams
+from gspylib.common.DeviceListParams import DeviceListParams
 from base_utils.security.security_checker import SecurityChecker
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 
@@ -111,6 +113,7 @@ class ClusterConfigFile:
                 raise Exception(ErrorCode.GAUSS_512["GAUSS_51200"] % element_name)
             element = root_node.findall('CLUSTER')[0]
             nodeArray = element.findall('PARAM')
+            ClusterConfigFile.validate_param_names_in_cluster(nodeArray)
             (return_status, return_value) = ClusterConfigFile.findParamInCluster(para_name,
                                                                                  nodeArray)
         elif element_name == 'node'.upper():
@@ -119,12 +122,43 @@ class ClusterConfigFile:
                 raise Exception(ErrorCode.GAUSS_512["GAUSS_51200"] % element_name)
             device_array = root_node.findall('DEVICELIST')[0]
             device_node = device_array.findall('DEVICE')
+            ClusterConfigFile.validate_param_names_in_devicelist(device_node)
             (return_status, return_value) = ClusterConfigFile.findParamByName(nodeName, para_name,
                                                                               device_node)
         else:
             raise Exception(ErrorCode.GAUSS_512["GAUSS_51200"] % element_name)
 
         return (return_status, return_value)
+
+    @staticmethod
+    def validate_param_names_in_cluster(node_array):
+        """
+        function : Validate parameter names in Cluster
+        input : []
+        output : NA
+        """
+        expected_param_names = ClusterParams.get_all_param_names()
+        pattern = ClusterParams.FLOAT_IP_PATTERN
+        for node in node_array:
+            name = node.attrib['name']
+            if name not in expected_param_names and not pattern.match(name):
+                raise Exception(ErrorCode.GAUSS_512["GAUSS_51258"] % name)
+
+    @staticmethod
+    def validate_param_names_in_devicelist(device_node):
+        """
+        function : Validate parameter names in DEVICELIST
+        input : Object
+        output : NA
+        """
+        expected_param_names = DeviceListParams.get_all_param_names()
+        pattern = DeviceListParams.SYNC_NODE_PATTERN
+        for dev in device_node:
+            param_list = dev.findall('PARAM')
+            for param in param_list:
+                thisname = param.attrib['name']
+                if thisname not in expected_param_names and not pattern.match(thisname):
+                    raise Exception(ErrorCode.GAUSS_512["GAUSS_51258"] % thisname)
 
     @staticmethod
     def findParamByName(node_name, para_name, device_node):

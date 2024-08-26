@@ -3706,7 +3706,7 @@ def checkAuditSystemObject(isSetting):
     output : NA
     """
     data = collectAuditSystemObject()
-    if int(data.db[0].strip()) < 67121195:
+    if int(data.db[0].strip()) < 67121159:
         if not isSetting:
             g_logger.log(
                 "        Warning reason:Ensure auditing of database object creation, deletion, and modification is enabled.The parameter 'audit_system_object' determines whether to record audit logs for CREATE, DROP, and ALTER operations on database objects.")
@@ -3895,7 +3895,7 @@ def setAuditSystemObject(data):
     output : NA
     """
     try:
-        cmd_set = "gs_guc reload -D %s -c \"audit_system_object = 67121195\"" % (os.getenv('PGDATA'))
+        cmd_set = "gs_guc reload -D %s -c \"audit_system_object = 67121159\"" % (os.getenv('PGDATA'))
         result = subprocess.run(cmd_set, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if not re.search(r'Success to perform gs_guc!', result.stdout):
             g_logger.log("Failed to set Audit System Object")

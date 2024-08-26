@@ -687,6 +687,7 @@ General options:
             self.retry_register_other_ssh_agent()
             self.verifyTrust()
             self.set_user_ssh_crontab(result)
+            self.delete_tmp_file()
             self.logger.log("Successfully created SSH trust.")
         except Exception as e:
             self.logger.logExit(str(e))
@@ -1158,12 +1159,8 @@ General options:
         input : contents
         output: NA
         """
-        if os.getuid() == 0:
-            return
         # write hosts file
-        current_path = os.path.dirname(os.path.realpath(__file__))
-        package_dir = os.path.normpath(os.path.join(current_path, "../"))
-        hosts_file = os.path.normpath(os.path.join(package_dir, "hosts"))
+        hosts_file = "/tmp/gs_sshexkey_hosts"
         if os.path.exists(hosts_file):
             FileUtil.removeFile(hosts_file)
         FileUtil.createFile(hosts_file)
@@ -1171,6 +1168,15 @@ General options:
         FileUtil.write_hosts_file(hosts_file, contents)
         FileUtil.changeMode(DefaultValue.FILE_MODE, hosts_file, cmd_type="shell")
         FileUtil.changeOwner(self.user, hosts_file, cmd_type="shell")
+
+    def delete_tmp_file(self):
+        """
+        function: Delete tmp file
+        input : NA
+        output: NA
+        """
+        hosts_file = "/tmp/gs_sshexkey_hosts"
+        FileUtil.removeFile(hosts_file)
 
     def write_hostname_to_list(self, ip_hostname):
         """

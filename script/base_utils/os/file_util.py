@@ -971,6 +971,12 @@ class FileUtil(object):
         dir_name = os.path.dirname(os.path.realpath(__file__))
         package_dir = os.path.join(dir_name, "./../../")
         host_file = os.path.normpath(os.path.join(package_dir, "..", "hosts"))
+        if host_file and os.path.exists(host_file) and os.path.isfile(host_file):
+            return host_file
+
+        tmp_hosts_file = "/tmp/gs_sshexkey_hosts"
+        if os.path.exists(tmp_hosts_file):
+            host_file = tmp_hosts_file
 
         if not os.path.exists(host_file) or not os.path.isfile(host_file):
             raise Exception(ErrorCode.GAUSS_522["GAUSS_52200"] % host_file)

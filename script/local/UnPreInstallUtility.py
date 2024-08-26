@@ -483,6 +483,10 @@ class Postuninstall(LocalBaseOM):
         # mkdir gauss_om dir
         gaussom_lib_dir = "/home/%s/gauss_om/lib/" % self.user
         gaussom_bin_dir = "/home/%s/gauss_om/bin/" % self.user
+
+        if not os.path.exists(gaussom_bin_dir) or not os.path.exists(gaussom_lib_dir) or \
+            len(os.listdir(gaussom_bin_dir)) == 0 or len(os.listdir(gaussom_lib_dir)) == 0:
+            return
         # delete cgroup
         cmd = "export LD_LIBRARY_PATH=%s:\$LD_LIBRARY_PATH && %s/gs_cgroup -d -U %s" % (gaussom_lib_dir, gaussom_bin_dir, self.user)
         (status, output) = subprocess.getstatusoutput(cmd)

@@ -570,7 +570,7 @@ General options:
             contents[ip] = hostname
 
         FileUtil.write_hosts_file(hosts_file, contents)
-        FileUtil.changeMode(DefaultValue.FILE_MODE, hosts_file, cmd_type="shell")
+        FileUtil.changeMode(DefaultValue.FILE_MODE, hosts_file)
 
     # check expect for cm/create trust
     def check_expect(self):

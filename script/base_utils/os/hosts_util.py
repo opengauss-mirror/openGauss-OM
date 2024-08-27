@@ -42,6 +42,9 @@ class HostsUtil:
     def ip_to_hostname(host_ip):
         if not host_ip:
             return ""
+        if host_ip[:1] == '[' and host_ip[-1:] == ']':
+            host_ip = host_ip.strip('[]')
+
         hosts_file = FileUtil.get_hosts_file()
         if not os.path.isfile(hosts_file):
             raise Exception("hosts file is not exist")

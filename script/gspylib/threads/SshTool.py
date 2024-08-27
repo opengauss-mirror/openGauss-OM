@@ -25,6 +25,7 @@ import sys
 import datetime
 import weakref
 import time
+import ipaddress
 from random import sample
 import copy
 import re
@@ -91,7 +92,12 @@ def check_local_mode(host):
     if host is None or not host:
         host = []
     if len(host) == 1:
-        if host[0] == NetUtil.GetHostIpOrName() or host[0] in NetUtil.getIpAddressList():
+        # Check whether host is an IP address or a host name.
+        ip = host[0]
+        if NetUtil.isIpValid(host[0]):
+            # Use the compressed format of the IP.
+            ip = ipaddress.ip_address(host[0]).compressed
+        if host[0] == NetUtil.GetHostIpOrName() or ip in NetUtil.getIpAddressList():
             return True
     return False
 

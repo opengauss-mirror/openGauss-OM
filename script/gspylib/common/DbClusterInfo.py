@@ -4594,7 +4594,7 @@ class dbClusterInfo():
         self.__create_simple_datanode_config(user, localHostName, sshtool)
         self.__reset_replconninfo(user, sshtool)
 
-    def __createDynamicConfig(self, user, localHostName, sshtool):
+    def __createDynamicConfig(self, user, localHostName, sshtool, logger=None):
         """
         function : Save cluster info into to dynamic config
         input : String,int

@@ -706,8 +706,6 @@ General options:
         """
         package_path = self.get_package_dir()
         gp_home = os.path.join(package_path, '../')
-        if EnvUtil.getEnv("GPHOME"):
-            gp_home = EnvUtil.getEnv("GPHOME")
         return gp_home
 
     def set_user_ssh_crontab(self, hostnames_ips):

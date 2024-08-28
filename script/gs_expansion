@@ -269,6 +269,8 @@ General options:
                 "instanceType": -1,
                 "azPriority": dbNode.azPriority
             }
+            if dbNode and len(dbNode.datanodes) > 0:
+                clusterInfoDict[nodeName]["instanceId"] = dbNode.datanodes[0].instanceId
 
             # fill uwal config into clusterInfo
             if clusterInfo.enable_uwal == 'on':

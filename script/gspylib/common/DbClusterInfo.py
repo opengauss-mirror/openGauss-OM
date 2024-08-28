@@ -667,7 +667,6 @@ class instanceInfo():
             ret += ",name=%s" % self.name
         return ret
 
-
 class dbNodeInfo():
     """
     Instance info on a node
@@ -2796,6 +2795,12 @@ class dbClusterInfo():
                 return dbNode
 
         return None
+    
+    def setDbNodeInstancdIdByName(self, name, instanceId):
+        for dbNode in self.dbNodes:
+            if dbNode.name == name and len(dbNode.datanodes) > 0:
+                dbNode.datanodes[0].instanceId = instanceId
+                return
 
     def getPeerInstance(self, dbInst):
         """  

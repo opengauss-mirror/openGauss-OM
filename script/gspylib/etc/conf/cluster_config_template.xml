@@ -23,7 +23,7 @@
             <PARAM name="cmServerPortBase" value="15000"/>
             <PARAM name="cmServerListenIp1" value="192.168.0.1,192.168.0.2,192.168.0.3"/>
             <PARAM name="cmServerHaIp1" value="192.168.0.1,192.168.0.2,192.168.0.3"/>
-            <PARAM name="cmServerlevel" value="1"/>
+            <PARAM name="cmServerLevel" value="1"/>
             <PARAM name="cmServerRelation" value="node1_hostname,node2_hostname,node3_hostname"/>
             <PARAM name="cmDir" value="/opt/huawei/data/cmserver"/>
             <PARAM name="dataNum" value="1"/>

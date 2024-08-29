@@ -361,6 +361,7 @@ class ExpansionImpl():
         existInsIds = []
         for dbNode in dbNodes:
             for dnInst in dbNode.datanodes:
+                self.context.clusterInfoDict[dbNode.name]["instanceId"] = dnInst.instanceId
                 existInsIds.append(int(dnInst.instanceId))
         idx = 0
         while idx <= MAX_DATANODE_NUM and num > 0:
@@ -474,6 +475,8 @@ class ExpansionImpl():
         if not self.newInsIds:
             return
         appName = self.newInsIds[0]
+        # update new instance id
+        self.context.clusterInfoDict[hostName]["instanceId"] = appName
         logPath = ClusterDir.getUserLogDirWithUser(self.user)
         logDir = "%s/pg_log/dn_%d" % (logPath, appName)
         auditDir = "%s/pg_audit/dn_%d" % (logPath, appName)
@@ -1041,6 +1044,7 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             dataNode = nodeInfo["dataNode"]
             exist_reg = r"(.*)%s[\s]*%s(.*)%s(.*)" % (nodeName, nodeIp, dataNode)
             dbNode = self.context.clusterInfo.getDbNodeByName(nodeName)
+            self.context.clusterInfo.setDbNodeInstancdIdByName(nodeName, self.context.clusterInfoDict[nodeName]["instanceId"])
             if not re.search(exist_reg, result) and nodeIp not in self.context.newHostList:
                 self.logger.debug("The node ip [%s] will not be added to cluster." % nodeIp)
                 self.context.clusterInfo.dbNodes.remove(dbNode)

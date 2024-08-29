@@ -149,25 +149,7 @@ General options:
         cmdFile = "%s/ClusterCall_%d.sh"\
                       % (EnvUtil.getTmpDirFromEnv(), os.getpid())
         try:
-            # Queries the existence of objects that
-            # the command executes in all nodes
-            command = (self.cmd.strip()).split(" ")
-            checkCmd = g_file.SHELL_CMD_DICT["getFullPathForShellCmd"] % \
-                       command[0]
-            (status, output) = self.sshTool.getSshStatusOutput(checkCmd)
-            # Resolve all node execution results
-            for node in status.keys():
-                if (status[node] != DefaultValue.SUCCESS):
-                    failedNodes += "%s " % node
-                else:
-                    succeedNodes += "%s " % node
-            if (failedNodes != ""):
-                GaussLog.exitWithError(ErrorCode.GAUSS_524["GAUSS_52403"]
-                                       % (command[0], failedNodes))
-            failedNodes = ""
-            succeedNodes = ""
             executeCmd = self.cmd
-            #############################################################
 
             FileUtil.createFile(cmdFile, True, DefaultValue.FILE_MODE)
 

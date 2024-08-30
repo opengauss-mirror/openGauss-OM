@@ -844,8 +844,8 @@ class SshTool():
             pscppre = "python3 %s/script/gspylib/pssh/bin/pscp" % gp_home
 
             if len(hostList) == 0:
-                hosts = copy.deepcopy(self.hostNames)
-                local_mode = check_local_mode(hosts)
+                ssh_hosts = copy.deepcopy(self.hostNames)
+                local_mode = check_local_mode(ssh_hosts)
             else:
                 hosts = copy.deepcopy(hostList)
                 for host in hosts:
@@ -930,7 +930,7 @@ class SshTool():
             raise Exception(str(e))
         
         for host in ssh_hosts:
-            if not self.is_ip:
+            if not local_mode and not self.is_ip:
                 host = HostsUtil.ip_to_hostname(host)
             if resultMap.get(host) != DefaultValue.SUCCESS:
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50216"]

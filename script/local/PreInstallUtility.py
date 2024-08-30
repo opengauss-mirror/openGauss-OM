@@ -1415,13 +1415,6 @@ Common options:
         DefaultValue.cleanUserEnvVariable(userProfile,
                                           cleanGS_CLUSTER_NAME=False, cleanLD_LIBRARY=False)
         self.logger.debug("Successfully delete user's environmental variable.")
-        if self.mpprcFile:
-            # import environment variable separation scene to bashrc
-            FileUtil.deleteLine(self.user_env_file,
-                                "^\\s*export\\s*%s=.*$" % DefaultValue.MPPRC_FILE_ENV)
-            context = "export %s=%s" % (DefaultValue.MPPRC_FILE_ENV, self.mpprcFile)
-            FileUtil.writeFile(self.user_env_file, [context])
-            self.logger.debug("Successfully flush 'export MPPRC' in bashrc")
 
         # user's environmental variable
         self.logger.debug("Seting user's environmental variable.")
@@ -1708,6 +1701,7 @@ Common options:
         self.logger.debug(
             "Successfully deleted crash old tool ENV. Setting new tool ENV.")
         # set env in user profile
+        self.user_env_file = ProfileFile.get_user_bashrc(self.user)
         try:
             # check if the file is a link
             FileUtil.checkLink(userProfile)
@@ -1716,6 +1710,11 @@ Common options:
                 context = "export %s=%s" % (
                     DefaultValue.MPPRC_FILE_ENV, self.mpprcFile)
                 FileUtil.writeFile(userProfile, [context])
+                # import environment variable separation scene to bashrc
+                FileUtil.deleteLine(self.user_env_file,
+                                    "^\\s*export\\s*%s=.*$" % DefaultValue.MPPRC_FILE_ENV)
+                FileUtil.writeFile(self.user_env_file, [context])
+                self.logger.debug("Successfully flush 'export MPPRC' in bashrc")
             # set GPHOME
             FileUtil.writeFile(userProfile,
                              ["export GPHOME=%s" % self.clusterToolPath])

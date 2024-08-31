@@ -530,10 +530,8 @@ class DefaultValue():
     SSH_KNOWN_HOSTS = os.path.expanduser("~/.ssh/known_hosts")
 
     # os parameter
-    MAX_REMAIN_SEM = 240000
-    MIN_REMAIN_SEM = 10000
     NOFILE_LIMIT = 640000
-    DEFAULT_SEM = 32000
+    MAX_SEM = 6400000
 
     @staticmethod
     def encodeParaline(cmd, keyword):
@@ -3372,42 +3370,18 @@ class DefaultValue():
             logger.logExit(str(e))
 
     @staticmethod
-    def get_remain_kernel_sem():
+    def get_kernel_sem():
         """
-        get remain kernel sem
+        get kernel sem
         """
         # get total sem
         cmd = "cat /proc/sys/kernel/sem"
         (status, output) = subprocess.getstatusoutput(cmd)
 
-        if status != 0:
+        if status != 0 or output == "":
             raise Exception(ErrorCode.GAUSS_501["GAUSS_50110"] % cmd)
         
-        if output == "":
-            return None
-        if len(output.split()) > 1:
-            if int(output.split()[1]) > DefaultValue.DEFAULT_SEM:
-                return None
-        else:
-            raise Exception("cat /proc/sys/kernel/sem failed")
-        parts = output.split()
-        semmns = int(parts[1])
-
-        # get used sem
-        cmd = "ipcs -s"
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status:
-            raise Exception(ErrorCode.GAUSS_501["GAUSS_50110"] % cmd)
-        current_sems_lines = output.split('\n')
-        # skip the first three lines and process the remaining lines
-        current_sems = [int(line.split()[3]) for line in current_sems_lines[3:] if line.strip()]
-
-        # Calculate the number of semaphores currently in use
-        used_sems = sum(current_sems)
-
-        # Calculate the number of remaining semaphores
-        remaining_sems = semmns - used_sems
-        return remaining_sems
+        return int(output.split()[1])
 
 class ClusterCommand():
     '''

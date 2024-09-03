@@ -844,18 +844,18 @@ class SshTool():
             pscppre = "python3 %s/script/gspylib/pssh/bin/pscp" % gp_home
 
             if len(hostList) == 0:
-                ssh_hosts = copy.deepcopy(self.hostNames)
-                local_mode = check_local_mode(ssh_hosts)
+                hosts = copy.deepcopy(self.hostNames)
+                local_mode = check_local_mode(hosts)
             else:
                 hosts = copy.deepcopy(hostList)
-                for host in hosts:
-                    if NetUtil.get_ip_version(host) == NetUtil.NET_IPV6:
-                        # scp file is to the ipv6 address, needs to add [] to ipaddress:
-                        # scp a.txt [2407:c080:1200:22a0:613f:8d3b:caa:2335]:/data
-                        ssh_hosts.append("[" + host + "]")
-                    else:
-                        # if host is ipv4 or hostname
-                        ssh_hosts.append(host)
+            for host in hosts:
+                if NetUtil.get_ip_version(host) == NetUtil.NET_IPV6:
+                    # scp file is to the ipv6 address, needs to add [] to ipaddress:
+                    # scp a.txt [2407:c080:1200:22a0:613f:8d3b:caa:2335]:/data
+                    ssh_hosts.append("[" + host + "]")
+                else:
+                    # if host is ipv4 or hostname
+                    ssh_hosts.append(host)
             if local_mode and \
                 srcFile != targetDir and \
                 srcFile != os.path.join(targetDir, os.path.split(srcFile)[1]):

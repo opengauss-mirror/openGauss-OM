@@ -503,11 +503,11 @@ class ExpansionImplWithCm(ExpansionImpl):
         self.checkClusterStatus()
         self.validNodeInStandbyList()
 
-    def get_dss_env_root(self, env):
+    def get_env_root(self, env):
         """
         Get dss_home when current user is root.
         """
-        cmd = f"su - {self.user} -c 'cat {self.envFile} | grep {env}'"
+        cmd = f"su - {self.user} -c 'cat {self.envFile} | grep {env} | grep /'"
         sta, out = subprocess.getstatusoutput(cmd)
         value = out.split('=')[-1]
         return value
@@ -527,7 +527,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         Update dss_nodes_list on old nodes.
         """
-        dss_home = self.get_dss_env_root("DSS_HOME")
+        dss_home = self.get_env_root("DSS_HOME")
         dss_inst = dss_home + '/cfg/dss_inst.ini'
         if os.getuid() == 0:
             get_list_cmd = f"su - {self.user} -c 'cat {dss_inst} | grep DSS_NODES_LIST'"
@@ -566,29 +566,26 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         Update ss_interconnect_url on old nodes.
         """
-        pg_port = self.get_dss_env_root("PGPORT")
-        if os.getuid() == 0:
-            get_url_cmd = 'su - %s -c "source %s; gsql -d postgres -p %s -c \'show ss_interconnect_url;\'"' % (
-                self.user, self.envFile, pg_port)
-        else:
-            get_url_cmd = "source %s; gsql -d postgres -p %s -c 'show ss_interconnect_url;'" % (self.envFile, pg_port)
+        pgdata_path = self.get_env_root("PGDATA")
+        conf_file = pgdata_path + os.sep + 'postgresql.conf'
+        get_url_cmd = "grep -n 'ss_interconnect_url' %s" % conf_file
         sta, out = subprocess.getstatusoutput(get_url_cmd)
-        url = out.split('\n')[2]
+        url = eval(out.split('=')[-1].strip())
         url_port = (url.split(',')[0]).split(':')[-1]
         dss_port = (node_list.split(',')[0]).split(':')[-1]
         new_url = node_list.replace(dss_port, url_port)
-        new_url = 'ss_interconnect_url=%s' % new_url
-        pgdata_path = EnvUtil.getEnv("PGDATA")
-        conf_file = pgdata_path + os.sep + 'postgresql.conf'
 
-        guc_cmd = 'sed -i "s/^.*ss_interconnect_url.*$/%s/" %s' % (new_url, conf_file)
-        if os.getuid() == 0:
-            guc_cmd = f"su - {self.user} -c '{guc_cmd}'"
+        guc_cmd = "grep -n 'ss_interconnect_url' %s | cut -f1 -d: | xargs -I {} sed -i {}\'s/%s/%s/g' %s" % (
+                  conf_file, url, new_url, conf_file)
         self.logger.debug("Command for update ss_interconnect_url: %s" % guc_cmd)
-        status, _ = subprocess.getstatusoutput(guc_cmd)
-        if status != 0:
-            self.logger.debug("Failed to update ss_interconnect_url.")
-            raise Exception("Failed to update ss_interconnect_url.")
+        for host in hosts:
+            ssh_tool = SshTool([host], timeout=300)
+            result_map, _ = ssh_tool.getSshStatusOutput(guc_cmd, [])
+            if result_map[host] == DefaultValue.SUCCESS:
+                self.logger.log("Update ss_interconnect_url on %s success." % host)
+            else:
+                self.logger.debug("Failed to update ss_interconnect_url on %s" % host)
+                raise Exception("Failed to update ss_interconnect_url on %s" % host)
         self.logger.log("Successfully update ss_interconnect_url on old nodes.")
 
     def update_old_cm_res(self):
@@ -648,7 +645,7 @@ class ExpansionImplWithCm(ExpansionImpl):
 
         old_names = self.get_cluster_nodes()
         node_list = self.update_dss_inst(old_names)
-        self.update_guc_url(node_list, old_names)
+        self.update_guc_url(node_list.split('=')[-1], old_names)
 
     def do_preinstall(self):
         """

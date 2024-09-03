@@ -1199,9 +1199,6 @@ def getXlogCmd(Inst, normalNode):
     output: xlog file
     """
     if check_dss_env():
-        if g_opts.file_number <= 0:
-            g_logger.log("Failed to collect xlog files when enable dss, FileNumber must be greater than 0.")
-            raise Exception("Failed to collect xlog files when enable dss, FileNumber must be greater than 0.")
         dss_home = EnvUtil.getEnv('DSS_HOME')
         inst_id = DssInst.get_dss_id_from_key(dss_home)
         pri_vgname = DssInst.get_private_vgname_by_ini(dss_home, inst_id)
@@ -1661,13 +1658,13 @@ def get_dss_replslot_dir(vgname):
     if status != 0:
         g_logger.debug("Failed to collect pg_replslot directorys."
                        " Command: %s \n Error: %s.\n" % (cmd, output))
-        raise Exception("Failed to collect pg_replslot directorys.")
+        return []
     file_dirs = []
     out_list = output.split('\n')
     for out in out_list:
         data = out.split()
         for item in data:
-            if re.findall(r"slot", item):
+            if vgname not in item and re.findall(r"slot", item):
                 file_dirs.append(item)
 
     return file_dirs
@@ -1676,9 +1673,9 @@ def get_dss_repslot_files(vgname, slot_path):
     cmd = "dsscmd ls -p +%s/pg_replslot/%s/" % (vgname, slot_path)
     (status1, output1) = subprocess.getstatusoutput(cmd)
     if status1 != 0:
-        g_logger.debug("Failed to collect pg_replslot directorys."
+        g_logger.debug("Failed to collect pg_replslot files."
                        " Command: %s \n Error: %s.\n" % (cmd, output1))
-        raise Exception("Failed to collect pg_replslot directorys.")
+        return []
     slot_files = []
     out1_lines = output1.split('\n')
     for line in out1_lines:
@@ -1690,19 +1687,21 @@ def get_dss_repslot_files(vgname, slot_path):
 
 def get_dss_bak_conf(Inst):
     vgname = EnvUtil.getEnv("VGNAME")
-    cmd = "dsscmd cp -s +%s/pg_control -d '%s'/configfiles/config_%s/pg_control" % \
-          (vgname, g_resultdir, g_current_time)
-    create_path = '%s/configfiles/config_%s/pg_replslot' % (g_resultdir, g_current_time)
+    cmd = "dsscmd cp -s +%s/pg_control -d %s/configfiles/config_%s/dn_%s/pg_control" % \
+          (vgname, g_resultdir, g_current_time, Inst.instanceId)
+    create_path = '%s/configfiles/config_%s/dn_%s/pg_replslot' % (g_resultdir, g_current_time, Inst.instanceId)
     cmd = "%s && mkdir -p %s" % (cmd, create_path)
     slot_dir = get_dss_replslot_dir(vgname)
     slots = []
-    for sdir in slot_dir:
-        cmd = "%s && mkdir -p %s/%s" % (cmd, create_path, sdir)
-        slot_files = get_dss_repslot_files(vgname, sdir)
-        slots.extend(slot_files)
-    for slot in slots:
-        cmd = "%s && dsscmd cp -s +%s/pg_replslot/%s -d %s/%s" % \
-              (cmd, vgname, slot, create_path, slot)
+    if slot_dir:
+        for sdir in slot_dir:
+            cmd = "%s && mkdir -p %s/%s" % (cmd, create_path, sdir)
+            slot_files = get_dss_repslot_files(vgname, sdir)
+            slots.extend(slot_files)
+    if slots:
+        for slot in slots: 
+            cmd = "%s && dsscmd cp -s +%s/pg_replslot/%s -d %s/%s" % \
+                  (cmd, vgname, slot, create_path, slot)
     (status1, output1) = subprocess.getstatusoutput(cmd)
     if status1 != 0:
         g_jobInfo.failedTask[

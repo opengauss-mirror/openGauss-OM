@@ -543,7 +543,7 @@ class OperCommon:
         if output_v == '*':
             resultDict['syncStandbyStr'] = output_v
         else:
-            resultDict['syncStandbyStr'] = self.check_syncStandbyStr(dnId,
+            resultDict['syncStandbyStr'] = self.check_sync_standby_str(dnId,
                                                                      output_v)
 
         cmd = "grep '^host.*trust' %s" % pghbaConfName
@@ -564,36 +564,65 @@ class OperCommon:
             "[gs_dropnode]End to parse parameter config file on %s." % host)
         return resultDict
 
-    def check_syncStandbyStr(self, dnlist, output):
-        output_no = '0'
-        output_result = output
-        output_new_no = '1'
+    def check_sync_standby_str(self, dnlist, output):
+        if output.strip() == '' or output.strip() == '*':
+            return output.strip()
+        
         if '(' in output:
-            output_dn = re.findall(r'\((.*)\)', output)[0]
-            output_no = re.findall(r'.*(\d) *\(.*\)', output)[0]
+            # output: 'ANY 1 (dn_6002, dn_6004), ANY 3 (dn_6003, dn_6005, dn_6006)'
+            output_dn_list = re.findall(r'(?:\w+\s+)?\d+\s+\(.*?\)', output)
+            # output_dn_list: ['ANY 1 (dn_6002, dn_6004)', 'ANY 3 (dn_6003, dn_6005, dn_6006)']
+            output_dn_list = self.delete_sync_node_para(dnlist, output_dn_list)
+            output_dn_str = ",".join(output_dn_list)
         else:
-            output_dn = output
-        output_dn_nospace = re.sub(' *', '', output_dn)
-        init_no = len(output_dn_nospace.split(','))
+            output_dn_list = [item.strip() for item in output.strip().split(',')]
+            output_dn_str = self.delete_sync_node_para_no_bracket(dnlist, output_dn_list)
+        
+        return output_dn_str
+    
+    def delete_sync_node_para(self, dnlist, origin_list):
+        res_list = []
+        for origin in origin_list:
+            res_str = ""
+            output_no = '0'
+            count_dn = 0
+            output_dn_pre = re.findall(r'([^\(]+?)\s*\([^)]*\)', origin)[0]
+            # get the value inside bracket
+            output_dn = re.findall(r'\((.*)\)', origin)[0]
+            # remove spaces
+            output_dn_nospace = re.sub(' *', '', output_dn)
+            init_no = len(output_dn_nospace.split(","))
+            output_no = re.findall(r'\d+', output_dn_pre)[0]
+            for dninst in dnlist:
+                if dninst in output_dn:
+                    output_list = output_dn_nospace.split(",")
+                    output_list.remove(dninst)
+                    output_dn_nospace = ','.join(output_list)
+                    init_no -= 1
+                    count_dn += 1
+
+                if output_dn_nospace == "":
+                    continue
+                output_dn_nospace = "(" + output_dn_nospace + ")"
+                res_str += output_dn_pre + output_dn_nospace
+                res_str = self.delete_sync_node_no(output_no, init_no, count_dn, res_str)
+                res_list.append(res_str)
+        return res_list
+
+    def delete_sync_node_para_no_bracket(self, dnlist, origin_list):
+        res_str = ""
+        for dninst in dnlist:
+            if dninst in origin_list:
+                origin_list.remove(dninst)
+                res_str = ','.join(origin_list)
+        return res_str
+
+    def delete_sync_node_no(self, output_no, init_no, count_dn, output_result):
+        output_new_no = '1'
         quorum_no = int(init_no / 2) + 1
         half_no = quorum_no - 1
-        count_dn = 0
-        list_output1 = '*'
-        for dninst in dnlist:
-            if dninst in output_dn_nospace:
-                list_output1 = output_dn_nospace.split(',')
-                list_output1.remove(dninst)
-                list_output1 = ','.join(list_output1)
-                output_dn_nospace = list_output1
-                init_no -= 1
-                count_dn += 1
-        if count_dn == 0:
-            return output_result
-        if list_output1 == '':
-            return ''
-        if list_output1 != '*':
-            output_result = output.replace(output_dn, list_output1)
-        if output_no == '0':
+        
+        if count_dn == 0 or output_no == '0':
             return output_result
         if int(output_no) == quorum_no:
             output_new_no = str(int(init_no / 2) + 1)

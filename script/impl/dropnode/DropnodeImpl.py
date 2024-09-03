@@ -39,6 +39,7 @@ from base_utils.os.net_util import NetUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from base_utils.os.file_util import FileUtil
 from gspylib.common.DbClusterInfo import dbClusterInfo
+from gspylib.os.gsfile import g_file
 
 
 # master 
@@ -275,7 +276,7 @@ class DropnodeImpl():
         """
         """
         try:
-            sshTool.clenSshResultFiles()
+            sshTool.clen_ssh_result_files()
         except Exception as e:
             self.logger.debug(str(e))
 
@@ -363,9 +364,10 @@ class DropnodeImpl():
         Rewrite hosts file
         """
         cluster_info = dbClusterInfo()
-        cluster_info.initFromStaticConfig(self.context.user)
+        cluster_info.initFromStaticConfig(self.user)
         cluster_hostname_ip_map = {}
-        for name in cluster_info.getClusterNodeNames():
+        node_names = cluster_info.getClusterNodeNames()
+        for name in node_names:
             node = cluster_info.getDbNodeByName(name)
             ip = node.sshIps[0]
             cluster_hostname_ip_map[ip] = name
@@ -376,6 +378,18 @@ class DropnodeImpl():
         FileUtil.write_hosts_file(hosts_file, cluster_hostname_ip_map)
         FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, hosts_file)
         FileUtil.changeOwner(self.user, hosts_file)
+
+        # send hosts file to remote  node
+        for host in node_names:
+            if host == NetUtil.GetHostIpOrName():
+                continue
+            ssh_tool = SshTool([host])
+            cmd_file_rm = g_file.SHELL_CMD_DICT["deleteFile"] % (hosts_file, hosts_file)
+            ssh_tool.executeCommand(cmd_file_rm)
+            DefaultValue.distribute_hosts_file(ssh_tool,
+                                                hosts_file, [host],
+                                                self.envFile)
+            ssh_tool.clen_ssh_result_files()
 
     def run(self):
         """

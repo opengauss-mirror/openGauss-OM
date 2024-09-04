@@ -620,7 +620,7 @@ class DefaultValue():
         NetWorkConfFile = ""
         distname, version, idnum = LinuxDistro.linux_distribution()
         distname = distname.lower()
-        if (distname in ("redhat", "centos", "euleros", "openeuler", "fusionos")):
+        if (distname in ("redhat", "centos", "euleros", "openeuler", "fusionos", "h3linux", "ningos")):
             NetWorkConfFile = "%s/ifcfg-%s" % (RedHatNetWorkConfPath,
                                                networkCardNum)
         else:
@@ -629,7 +629,7 @@ class DefaultValue():
 
         if (not os.path.exists(NetWorkConfFile)):
             if (distname in (
-                    "redhat", "centos", "euleros", "openeuler", "fusionos")):
+                    "redhat", "centos", "euleros", "openeuler", "fusionos", "h3linux", "ningos")):
                 cmd = "find %s -iname 'ifcfg-*-%s' -print" % (
                     RedHatNetWorkConfPath, networkCardNum)
             elif (distname == "debian" and version == "buster/sid"):
@@ -815,7 +815,7 @@ class DefaultValue():
         """
         distname, version, _ = LinuxDistro.linux_distribution()
         if (distname.lower() in ("suse", "redhat", "centos", "euleros",
-                                 "openeuler", "fusionos")):
+                                 "openeuler", "fusionos", "h3linux", "ningos")):
             cmd = g_file.SHELL_CMD_DICT["checkPassword"] % (checkUser,
                                                             "'^Last.*Change'")
         else:
@@ -836,7 +836,7 @@ class DefaultValue():
                 if ("password must be changed" in result):
                     raise Exception(ErrorCode.GAUSS_503["GAUSS_50307"])
         if (distname.lower() in ("redhat", "centos", "euleros",
-                                 "openeuler", "fusionos")):
+                                 "openeuler", "fusionos", "h3linux", "ningos")):
             if ("password must be changed" in result):
                 raise Exception(ErrorCode.GAUSS_503["GAUSS_50307"])
 
@@ -911,7 +911,7 @@ class DefaultValue():
             return initSystemFile
         if (distname == "SuSE" and os.path.isfile(initFileSuse)):
             initFile = initFileSuse
-        elif (distname in ("redhat", "centos", "euleros", "openEuler", "FusionOS", "kylin") and
+        elif (distname in ("redhat", "centos", "euleros", "openEuler", "FusionOS", "kylin", "h3linux", "ningos") and
               os.path.isfile(initFileRedhat)):
             initFile = initFileRedhat
         elif (distname == "debian" and version == "buster/sid" and

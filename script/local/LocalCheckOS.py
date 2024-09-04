@@ -664,7 +664,7 @@ def disRemoveIPC():
     """
     g_logger.debug("disbale RemoveIPC.")
     distName = g_Platform.getCurrentPlatForm()[0]
-    if distName.upper() in ("OPENEULER", "FUSIONOS", "KYLIN"):
+    if distName.upper() in ("OPENEULER", "FUSIONOS", "KYLIN", "H3LINUX", "NINGOS"):
         cmd = "setenforce 0"
         subprocess.getstatusoutput(cmd)
         initFile = "/usr/lib/systemd/system/systemd-logind.service"
@@ -1436,7 +1436,7 @@ def collectfirewall():
     """
     data = firewall()
     distname = LinuxDistro.linux_distribution()[0]
-    if distname in ("redhat", "centos", "euleros", "openEuler", "FusionOS", "kylin"):
+    if distname in ("redhat", "centos", "euleros", "openEuler", "FusionOS", "kylin", "H3Linux", "NingOS"):
         data.distname = distname.upper()
         if g_Platform.isPlatFormEulerOSOrRHEL7X():
             cmd = "systemctl status firewalld.service"
@@ -1451,7 +1451,7 @@ def collectfirewall():
         data.errormsg = output
         return data
 
-    if distname in ("redhat", "centos", "euleros", "openEuler", "FusionOS", "kylin"):
+    if distname in ("redhat", "centos", "euleros", "openEuler", "FusionOS", "kylin", "H3Linux", "NingOS"):
         if g_Platform.isPlatFormEulerOSOrRHEL7X():
             if (output.strip()).find("Active: "
                                      "active (running)") > 0:
@@ -1908,7 +1908,7 @@ def CheckPlatformInfo():
                                         data.bits)
             g_logger.log("False %s %s" % (data.distname, platform_str))
             return
-    elif (data.distname == "euleros" or data.distname == "openEuler" or data.distname == "FusionOS" or data.distname == "kylin" or data.distname == "uos"):
+    elif (data.distname == "euleros" or data.distname == "openEuler" or data.distname == "FusionOS" or data.distname == "kylin" or data.distname == "uos" or data.distname == "H3Linux" or data.distname == "NingOS"):
         mixed_type = "%s" % data.distname
         platform_str = "%s_%s_%s" % (data.distname, data.version, data.bits)
     elif (data.distname == "debian" or data.version == "buster/sid"):

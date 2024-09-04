@@ -54,7 +54,7 @@ NET_IPV4 = "ipv4"
 _supported_dists = (
     'SuSE', 'debian', 'fedora', 'redhat', 'centos', 'euleros', "openEuler",
     'mandrake', 'mandriva', 'rocks', 'slackware', 'yellowdog', 'gentoo',
-    'FusionOS', 'UnitedLinux', 'turbolinux')
+    'FusionOS', 'UnitedLinux', 'turbolinux', 'H3Linux', 'NingOS')
 _release_filename = re.compile(r'(\w+)[-_](release|version)')
 _lsb_release_version = re.compile(r'(.+)'
                                   ' release '
@@ -76,8 +76,10 @@ DEBIAN = "debian"
 UBUNTU = "ubuntu"
 UNIONTECH = "uniontech"
 UOS = "uos"
+H3LINUX = "h3linux"
+NINGOS = "ningos"
 SUPPORT_WHOLE_PLATFORM_LIST = [SUSE, REDHAT, CENTOS, EULEROS, FUSIONOS,
-                               OPENEULER, KYLIN, ASIANUX, DEBIAN, UBUNTU, UOS, UNIONTECH]
+                               OPENEULER, KYLIN, ASIANUX, DEBIAN, UBUNTU, UOS, UNIONTECH, H3LINUX, NINGOS]
 # RedhatX platform
 SUPPORT_RHEL_SERIES_PLATFORM_LIST = [REDHAT, CENTOS, "kylin", "asianux"]
 SUPPORT_RHEL6X_VERSION_LIST = ["6.4", "6.5", "6.6", "6.7", "6.8", "6.9", "10"]
@@ -115,11 +117,14 @@ PAK_SUSE = "SUSE"
 PAK_UNIONTECH = "UnionTech"
 PAK_KYLIN = "Kylin"
 PAK_UOS = "UOS"
+PAK_H3LINUX = "H3Linux"
+PAK_NINGOS = "NingOS"
 #######################################################
 _supported_dists = (
     'SuSE', 'debian', 'fedora', 'redhat', 'centos', 'euleros', 'openEuler',
     'mandrake', 'mandriva', 'rocks', 'slackware', 'yellowdog', 'gentoo',
-    'FusionOS', 'UnitedLinux', 'turbolinux', 'kylin', 'asianux', 'ubuntu', 'uos', 'UnionTech')
+    'FusionOS', 'UnitedLinux', 'turbolinux', 'kylin', 'asianux', 'ubuntu', 'uos', 'UnionTech',
+    'H3Linux', 'NingOS')
 _release_filename = re.compile(r'(\w+)[-_](release|version)')
 _lsb_release_version = re.compile(r'(.+)'
                                   ' release '
@@ -1727,6 +1732,18 @@ class LinuxPlatform(GenericPlatform):
                                         prefixStr, packageVersion,
                                         PAK_FUSIONOS,
                                         BIT_VERSION, postfixStr))
+        elif distname in H3LINUX:
+            fileName = os.path.join(dirName, "./../../../",
+                                    "%s-%s-%s-%s.%s" % (
+                                        prefixStr, packageVersion,
+                                        PAK_H3LINUX,
+                                        BIT_VERSION, postfixStr))
+        elif distname in NINGOS:
+            fileName = os.path.join(dirName, "./../../../",
+                                    "%s-%s-%s-%s.%s" % (
+                                        prefixStr, packageVersion,
+                                        PAK_NINGOS,
+                                        BIT_VERSION, postfixStr))
         elif distname in DEBIAN and (version == "buster/sid"):
             fileName = os.path.join(dirName, "./../../../",
                                     "%s-%s-%s-%s.%s" % (
@@ -2028,7 +2045,8 @@ class RHELPlatform(LinuxPlatform):
                 (distName.lower() == CENTOS and version[0:3] ==
                  SUPPORT_EULEROS_VERSION_LIST and
                  os.path.isfile(os.path.join("/etc", "euleros-release"))) or
-                (distName.lower() == OPENEULER) or (distName.lower() == FUSIONOS)):
+                (distName.lower() == OPENEULER) or (distName.lower() == FUSIONOS) or
+                (distName.lower() == H3LINUX) or (distName.lower() == NINGOS)):
             return True
         else:
             return False
@@ -2158,6 +2176,8 @@ class RHELPlatform(LinuxPlatform):
                    version[0:3] in SUPPORT_RHEL_SERIES_VERSION_LIST)) or
                  (distName.lower() == OPENEULER) or
                  (distName.lower() == FUSIONOS) or
+                 (distName.lower() == H3LINUX) or
+                 (distName.lower() == NINGOS) or
                  (distName.lower() == DEBIAN and version == "buster/sid")
             )):
                 return distName.lower(), version[0:3]

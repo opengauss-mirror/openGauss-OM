@@ -317,7 +317,7 @@ General options:
             group = grp.getgrgid(pwd.getpwnam(self.user).pw_gid).gr_name
             distname, version, idnum = LinuxDistro.linux_distribution()
             # check if OS version is redhat or Euler
-            if (distname in ("redhat", "euleros", "centos", "openEuler", "FusionOS")):
+            if (distname in ("redhat", "euleros", "centos", "openEuler", "FusionOS", "H3Linux", "NingOS")):
                 if (self.deleteGroup != True and self.deleteUser == True
                         and self.user == group):
                     GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] %

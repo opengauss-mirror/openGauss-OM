@@ -33,8 +33,11 @@ DEBIAN = "debian"
 UBUNTU = "ubuntu"
 UNIONTECH = "uniontech"
 UOS = "uos"
+H3LINUX = "h3linux"
+NINGOS = "ningos"
 SUPPORT_WHOLE_PLATFORM_LIST = [SUSE, REDHAT, CENTOS, EULEROS, OPENEULER, KYLIN,
-                               FUSIONOS, ASIANUX, DEBIAN, UBUNTU, UOS, UNIONTECH]
+                               FUSIONOS, ASIANUX, DEBIAN, UBUNTU, UOS, UNIONTECH,
+                               H3LINUX, NINGOS]
 # RedhatX platform
 SUPPORT_RHEL_SERIES_PLATFORM_LIST = [REDHAT, CENTOS, "kylin", "asianux"]
 SUPPORT_RHEL6X_VERSION_LIST = ["6.4", "6.5", "6.6", "6.7", "6.8", "6.9", "10"]
@@ -74,8 +77,11 @@ PAK_KYLIN = "Kylin"
 PAK_SUSE = "SUSE"
 PAK_DEBIAN = "Debian"
 PAK_UOS = "UOS"
+PAK_H3LINUX = "H3Linux"
+PAK_NINGOS = "NingOS"
 #######################################################
 _supported_dists = (
     'SuSE', 'debian', 'fedora', 'redhat', 'centos', 'euleros', 'openEuler',
     'mandrake', 'mandriva', 'rocks', 'slackware', 'yellowdog', 'gentoo',
-    'FusionOS', 'UnitedLinux', 'turbolinux', 'ubuntu', 'kylin', 'asianux', 'uos', 'UnionTech')
+    'FusionOS', 'UnitedLinux', 'turbolinux', 'ubuntu', 'kylin', 'asianux', 'uos', 'UnionTech',
+    'H3Linux', 'NingOS')

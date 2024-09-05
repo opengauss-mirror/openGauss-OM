@@ -634,7 +634,7 @@ def isSupportSystemOs():
     output : NA
     """
     osName = LinuxDistro.linux_distribution()[0]
-    if osName in ["redhat", "centos", "euleros", "openEuler", "FusionOS"]:
+    if osName in ["redhat", "centos", "euleros", "openEuler", "FusionOS", "H3Linux", "NingOS"]:
         return True
     else:
         return False

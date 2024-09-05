@@ -683,7 +683,13 @@ class PreinstallImpl:
                 self.context.user,
                 self.context.xmlFile,
                 self.context.localLog)
-            subprocess.getstatusoutput(cmd)
+            if self.context.mpprcFile != "":
+                cmd += " -s '%s'" % (
+                    self.context.mpprcFile)
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                self.context.logger.debug("Failed to check hostname mapping: %s" % cmd)
+                raise Exception(output)
         except Exception as e:
             raise Exception(str(e))
 

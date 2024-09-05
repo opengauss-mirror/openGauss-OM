@@ -319,8 +319,6 @@ Common options:
                 if not os.path.exists(self.mpprcFile):
                     GaussLog.exitWithError(
                         ErrorCode.GAUSS_502["GAUSS_50201"] % self.mpprcFile)
-        else:
-            self.mpprcFile = os.path.normpath(os.path.join(os.path.expanduser("~%s" % self.user), ".bashrc"))
 
         if self.logFile == "":
             self.logFile = ClusterLog.getOMLogPath(
@@ -654,6 +652,8 @@ Common options:
         input : NA
         output: NA
         """
+        if not self.mpprcFile:
+            self.mpprcFile = ProfileFile.get_user_bashrc(self.user)
         retry = 1
         cmd = "source %s;pssh -s -H %s hostname" % (self.mpprcFile, node_name)
         while True:
@@ -667,6 +667,15 @@ Common options:
                                 % (cmd, output))
             retry += 1
             time.sleep(1)
+
+        hostname_cmd = "pssh -s -H %s 'cat /etc/hostname'" % (node_name)
+        (status, output) = subprocess.getstatusoutput(hostname_cmd)
+        if status == 0 and output.strip() == node_name:
+            pass
+        else:
+            raise Exception(ErrorCode.GAUSS_512["GAUSS_51248"] % node_name
+                            + " Command: \"%s\". Error: \n%s"
+                            % (hostname_cmd, output))
 
     def checkPasswdIsExpires(self):
         """

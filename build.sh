@@ -54,7 +54,7 @@ done
 
 PLAT_FORM_STR=$(sh "${ROOT_DIR}/build/get_PlatForm_str.sh")
 if [ "${PLAT_FORM_STR}"x == "Failed"x ]; then
-    echo "We only support openEuler(aarch64), EulerOS(aarch64), FusionOS, CentOS, UOS platform."
+    echo "We only support openEuler(aarch64), EulerOS(aarch64), FusionOS, CentOS, UOS, H3Linux, NingOS platform."
     exit 1;
 fi
 
@@ -80,8 +80,12 @@ elif [ X$(echo $PLAT_FORM_STR | grep "kylin") != X"" ]; then
     dist_version="Kylin"
 elif [ X$(echo $PLAT_FORM_STR | grep "uos") != X"" ]; then
     dist_version="UOS"
+elif [ X$(echo $PLAT_FORM_STR | grep "h3linux") != X"" ]; then
+    dist_version="H3Linux"
+elif [ X$(echo $PLAT_FORM_STR | grep "ningos") != X"" ]; then
+    dist_version="NingOS"
 else
-    echo "We only support openEuler(aarch64), EulerOS(aarch64), FusionOS, CentOS, Ubuntu(x86), UOS platform."
+    echo "We only support openEuler(aarch64), EulerOS(aarch64), FusionOS, CentOS, Ubuntu(x86), UOS, H3Linux, NingOS platform."
     echo "Kernel is $kernel"
     exit 1
 fi

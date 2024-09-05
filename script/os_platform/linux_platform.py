@@ -28,7 +28,7 @@ from os_platform.common import REDHAT, PAK_REDHAT, BIT_VERSION, \
     CENTOS, UOS, PAK_EULER, PAK_CENTOS, ASIANUX, SUSE, PAK_ASIANUX, \
     EULEROS, OPENEULER, KYLIN, PAK_OPENEULER, SUPPORT_WHOLE_PLATFORM_LIST,\
     BLANK_SPACE, PAK_UBUNTU, DEBIAN, PAK_KYLIN, PAK_UOS, PAK_SUSE, PAK_DEBIAN, \
-    FUSIONOS, PAK_FUSIONOS
+    FUSIONOS, PAK_FUSIONOS, H3LINUX, PAK_H3LINUX, NINGOS, PAK_NINGOS
 from os_platform.linux_distro import LinuxDistro
 
 
@@ -232,6 +232,18 @@ class LinuxPlatform(object):
                 self.package_file_path(prefix_str, packageVersion, PAK_OPENEULER, postfix_str),
                 self.package_file_path(prefix_str, packageVersion, PAK_KYLIN, postfix_str),
                 self.package_file_path(prefix_str, packageVersion, PAK_UOS, postfix_str)
+                ]
+
+        elif distname == H3LINUX:
+            file_name_list = [
+                self.package_file_path(prefix_str, packageVersion, PAK_OPENEULER, postfix_str),
+                self.package_file_path(prefix_str, packageVersion, PAK_H3LINUX, postfix_str)
+                ]
+
+        elif distname == NINGOS:
+            file_name_list = [
+                self.package_file_path(prefix_str, packageVersion, PAK_OPENEULER, postfix_str),
+                self.package_file_path(prefix_str, packageVersion, PAK_NINGOS, postfix_str)
                 ]
         
         elif distname == DEBIAN:

@@ -365,38 +365,7 @@ class DropnodeImpl():
             self.cleanSshToolFile(sshTool)
         else:
             pass
-
-    def rewrite_hosts_file(self):
-        """
-        Rewrite hosts file
-        """
-        cluster_info = dbClusterInfo()
-        cluster_info.initFromStaticConfig(self.user)
-        cluster_hostname_ip_map = {}
-        node_names = cluster_info.getClusterNodeNames()
-        for name in node_names:
-            node = cluster_info.getDbNodeByName(name)
-            ip = node.sshIps[0]
-            cluster_hostname_ip_map[ip] = name
-
-        hosts_file = FileUtil.get_hosts_file()
-        if os.path.exists(hosts_file):
-            FileUtil.removeFile(hosts_file)
-        FileUtil.write_hosts_file(hosts_file, cluster_hostname_ip_map)
-        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, hosts_file)
-        FileUtil.changeOwner(self.user, hosts_file)
-
-        # send hosts file to remote  node
-        for host in node_names:
-            if host == NetUtil.GetHostIpOrName():
-                continue
-            ssh_tool = SshTool([host])
-            cmd_file_rm = g_file.SHELL_CMD_DICT["deleteFile"] % (hosts_file, hosts_file)
-            ssh_tool.executeCommand(cmd_file_rm)
-            DefaultValue.distribute_hosts_file(ssh_tool,
-                                                hosts_file, [host],
-                                                self.envFile)
-            ssh_tool.clen_ssh_result_files()
+        
 
     def run(self):
         """
@@ -409,7 +378,6 @@ class DropnodeImpl():
         self.operationOnlyOnPrimary()
         self.modifyStaticConf()
         self.restartInstance()
-        self.rewrite_hosts_file()
         self.logger.log("[gs_dropnode]Success to drop the target nodes.")
 
 

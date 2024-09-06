@@ -199,6 +199,10 @@ General options:
                 GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35701"] % "-G")
         if len(self.newHostList) == 0:
             GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35701"] % "-h")
+        # convert to compressed IP address
+        clusterInfo = dbClusterInfo()
+        clusterInfo.initFromStaticConfig(self.user)
+        self.newHostList = clusterInfo.compress_ips(self.newHostList)
         # check if upgrade action is exist
         if DefaultValue.isUnderUpgrade(self.user):
             GaussLog.exitWithError(ErrorCode.GAUSS_529["GAUSS_52936"])
@@ -325,7 +329,7 @@ General options:
         self.node_ip_list = self.clusterInfo.getClusterSshIps()[0]
         for ip in self.newHostList:
             if ip not in self.node_ip_list:
-                self.node_ip_list.append(ip) 
+                self.node_ip_list.append(ip)
 
     def global_init(self):
         """

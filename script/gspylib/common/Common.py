@@ -1887,42 +1887,6 @@ class DefaultValue():
             raise Exception(str(e))
 
     @staticmethod
-    def distribute_hosts_file(g_sshTool, hosts_file, hostname=None,
-                              mpprc_file="", local_mode=False):
-        '''
-        function: distribute the hosts file to remote nodes
-        input: g_sshTool, hostname, hosts file, mpprcFile
-        output:NA
-        '''
-        if hostname is None:
-            hostname = []
-        try:
-            # distribute xml file
-            # check and create xml file path
-            hosts_dir = os.path.dirname(hosts_file)
-            hosts_dir = os.path.normpath(hosts_dir)
-            LocalRemoteCmd.checkRemoteDir(g_sshTool, hosts_dir, hostname, mpprc_file,
-                                        local_mode)
-            local_node = NetUtil.GetHostIpOrName()
-            # Skip local file overwriting
-            if not hostname:
-                hostname = g_sshTool.hostNames[:]
-            if local_node in hostname:
-                hostname.remove(local_node)
-            if (not local_mode):
-                # Send xml file to every host
-                g_sshTool.scpFiles(hosts_file, hosts_dir, hostname, mpprc_file)
-            # change owner and mode of xml file
-            cmd = CmdUtil.getChmodCmd(str(DefaultValue.FILE_MODE), hosts_file)
-            CmdExecutor.execCommandWithMode(cmd,
-                                            g_sshTool,
-                                            local_mode,
-                                            mpprc_file,
-                                            hostname)
-        except Exception as e:
-            raise Exception(str(e))
-
-    @staticmethod
     def getSecurityMode():
         """
         function:to set security mode,if security_mode is not in config

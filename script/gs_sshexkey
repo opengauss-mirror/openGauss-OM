@@ -37,6 +37,7 @@ import secrets
 import string
 import platform
 import gc
+import copy
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.threads.parallelTool import parallelTool
@@ -52,6 +53,7 @@ from base_utils.common.fast_popen import FastPopen
 from gspylib.common.copy_python_lib import copy_lib
 from base_utils.os.user_util import UserUtil
 from base_utils.os.crontab_util import CrontabUtil
+from base_utils.os.hosts_util import HostsUtil
 
 copy_lib()
 DefaultValue.doConfigForParamiko()
@@ -717,7 +719,7 @@ General options:
             return
         self.logger.log("Start set cron for %s" % self.user)
         # hostnames_ips  key is ip; value is hostname
-        hostnames = list(hostnames_ips.values())
+        hostnames = [hostname for hostname in list(hostnames_ips.values()) if hostname != "localhost"]
 
         gp_home = self.get_gp_home()
 
@@ -1151,19 +1153,20 @@ General options:
             self.logger.logExit(str(e))
         self._log("Successfully distributed SSH trust file to all node.", "constant")
 
-    def write_hosts_file(self, contents):
+    def write_hosts_file(self, result):
         """
         function: Write hosts file
-        input : contents
+        input : result
         output: NA
         """
+        contents = copy.deepcopy(result)
         # write hosts file
         hosts_file = "/tmp/gs_sshexkey_hosts"
         if os.path.exists(hosts_file):
             FileUtil.removeFile(hosts_file)
         FileUtil.createFile(hosts_file)
 
-        FileUtil.write_hosts_file(hosts_file, contents)
+        HostsUtil.write_hosts_file(hosts_file, contents)
         FileUtil.changeMode(DefaultValue.FILE_MODE, hosts_file, cmd_type="shell")
         FileUtil.changeOwner(self.user, hosts_file, cmd_type="shell")
 
@@ -1527,6 +1530,7 @@ if __name__ == '__main__':
         createTrust = GaussCreateTrust()
         createTrust.run()
     except Exception as e:
+        createTrust.delete_tmp_file()
         if str(e).startswith("[GAUSS-"):
             GaussLog.exitWithError(str(e))
         else:

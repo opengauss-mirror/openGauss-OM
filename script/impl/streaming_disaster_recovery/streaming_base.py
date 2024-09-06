@@ -815,7 +815,7 @@ class StreamingBase(object):
         self.logger.debug("Start [%s] shardNum [%s] node [%s] wal_keep_segments value [%s]."
                           % (opt_type, inst.mirrorId, inst.hostname, value))
         cmd = "source %s; pssh -H %s \"source %s ; gs_guc %s " \
-              "-Z datanode -D %s -c \\\"wal_keep_segments = '%s'\\\"\"" % \
+              "-Z datanode -D %s -c \\\"wal_keep_segments = %s\\\"\"" % \
               (mpprc_file, inst.hostname, mpprc_file, opt_type, inst.datadir, value)
         status, output = CmdUtil.retryGetstatusoutput(cmd)
         if status != 0:

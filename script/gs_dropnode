@@ -163,6 +163,7 @@ General options:
 
         # get dbcluster info from static config file
         self.clusterInfo.initFromStaticConfig(self.user)
+        self.hostIpListForDel = self.clusterInfo.compress_ips(self.hostIpListForDel)
         appPath = self.clusterInfo.appPath
         db_uid = os.stat(appPath).st_uid
         db_gid = os.stat(appPath).st_gid

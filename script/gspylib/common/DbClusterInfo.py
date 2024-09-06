@@ -2618,6 +2618,7 @@ class dbClusterInfo():
                             % xmlFile + " Error:\n%s" % str(e))
 
         self.__readClusterGlobalInfo()
+        self.get_cluster_back_ip1s()
         if self.__read_and_check_config_item(xmlRootNode, "clusterType", "cluster", True) == \
                 "single-inst-one-node":
             self.__read_cluster_node_info_for_one()
@@ -2836,7 +2837,7 @@ class dbClusterInfo():
             for dbNode in self.dbNodes:
                 ips.append(dbNode.backIps[num])
             backIps.extend(ips)
-        return backIps
+        return self.compress_ips(backIps)
 
     def getClusterSshIps(self):
         """
@@ -2855,7 +2856,7 @@ class dbClusterInfo():
             ips = []
             for dbNode in self.dbNodes:
                 ips.append(dbNode.sshIps[num])
-            sshIps.append(ips)
+            sshIps.append(self.compress_ips(ips))
         return sshIps
 
     def getazNames(self):
@@ -3041,9 +3042,6 @@ class dbClusterInfo():
         # Read application log path
         self.logPath = self.__read_and_check_config_item(xmlRootNode, "gaussdbLogPath",
                                                          "cluster", error_ignore=True)
-        # Read cluster backIp1s
-        cluster_backip1s_str = self.__read_and_check_config_item(xmlRootNode, "backIp1s", "cluster")
-        self.cluster_back_ip1s = cluster_backip1s_str.split(",")
         if not self.logPath:
             self.logPath = "/var/log/gaussdb"
         if not os.path.isabs(self.logPath):
@@ -3060,7 +3058,6 @@ class dbClusterInfo():
         elif self.enable_dss.strip() not in ['off', '']:
             raise Exception(ErrorCode.GAUSS_500["GAUSS_50011"] %
                                 ('enable_dss', self.enable_dss))
-
 
         # Read enable_dcf
         ret_status, self.enable_dcf = ClusterConfigFile.readOneClusterConfigItem(xmlRootNode,
@@ -3114,6 +3111,19 @@ class dbClusterInfo():
         if "HOST_IP" in os.environ.keys():
             self.corePath = self.__read_and_check_config_item(xmlRootNode, "corePath",
                                                               "cluster", True)
+
+    def get_cluster_back_ip1s(self):
+        # Read cluster backIp1s
+        status, output = ClusterConfigFile.readOneClusterConfigItem(
+            xmlRootNode, "backIp1s", "cluster")
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] % "backIp1s" + " Error: \n%s" % output)
+
+        cluster_backip1s_str = output.strip()
+
+        if output:
+            self.cluster_back_ip1s = cluster_backip1s_str.split(",")
+            self.cluster_back_ip1s = self.compress_ips(self.cluster_back_ip1s)
 
     def __getAllHostnamesFromDEVICELIST(self):
         """
@@ -3213,6 +3223,22 @@ class dbClusterInfo():
                 inst.azName = node.azName
                 inst.azPriority = node.azPriority
         self.__setNodePortForSinglePrimaryMultiStandby()
+
+    def compress_ips(self, ips):
+        # New list to store the compressed IP addresses
+        compressed_ips = []
+
+        for ip in ips:
+            ip = ip.strip()
+            if (not self.__isIpValid(ip)):
+                raise Exception(ErrorCode.GAUSS_506["GAUSS_50603"] + \
+                    "The IP address is: %s." % ip + " Please check it.")
+            # Convert to an IP address object
+            ip_obj = ipaddress.ip_address(ip)
+            # Obtain the compressed IP
+            compressed_ip = ip_obj.compressed
+            compressed_ips.append(compressed_ip)
+        return compressed_ips
 
     def __getPeerInstance(self, dbInst):
         """
@@ -3970,7 +3996,7 @@ class dbClusterInfo():
                 break
             ipList.append(value)
 
-        return ipList
+        return self.compress_ips(ipList)
 
     def __readVirtualIp(self, nodeName, prefix):
         """
@@ -3986,7 +4012,7 @@ class dbClusterInfo():
                 ip = ip.strip()
                 if ip not in ipList:
                     ipList.append(ip)
-        return ipList
+        return self.compress_ips(ipList)
 
     def __isIpValid(self, ip):
         """  

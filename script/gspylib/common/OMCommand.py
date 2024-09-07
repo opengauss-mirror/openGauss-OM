@@ -135,7 +135,9 @@ class OMCommand():
             "Local_Upgrade_Utility": os.path.normpath(
                 Current_Path + "/../../local/UpgradeUtility.py"),
             "Local_Upgrade_CM": os.path.normpath(
-                Current_Path + "/../../local/upgrade_cm_utility.py")
+                Current_Path + "/../../local/upgrade_cm_utility.py"),
+            "Local_Operate_CM": os.path.normpath(
+                Current_Path + "/../../local/LocalCmOpt.py")
         }
 
         return "python3 '%s'" % LocalScript[script]

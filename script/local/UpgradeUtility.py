@@ -4362,45 +4362,8 @@ def isKillDn():
         pattern = re.compile(r'[(](.*?)[)]')
         versionInBrackets = re.findall(pattern, output)
         curCommitid = versionInBrackets[0].split(" ")[-1]
-        # get the dn and cn name
-        dnInst = None
-        clusterNodes = g_clusterInfo.dbNodes
-        with_cm = True if g_clusterInfo.cmscount > 0 else False
-        for dbNode in clusterNodes:
-            if len(dbNode.datanodes) == 0:
-                continue
-            dnInst = dbNode.datanodes[0]
-            primaryDnNode, _ = DefaultValue.getPrimaryNode(g_opts.userProfile, with_cm=with_cm)
-            if dnInst.hostname not in primaryDnNode:
-                continue
-            break
-        localHost = NetUtil.GetHostIpOrName()
-        if int(g_opts.oldVersion) >= 92069:
-            sql = "select node_name, node_type from pg_catalog.pgxc_node " \
-                  "where node_host = '%s';" % localHost
-        else:
-            if g_dbNode.name != dnInst.hostname:
-                sql = "select node_name, node_type from pg_catalog.pgxc_node " \
-                      "where node_host = '%s';" % localHost
-            else:
-                sql = "select node_name, node_type from pg_catalog.pgxc_node" \
-                      " where node_host = 'localhost';"
-        g_logger.debug("Sql to query node name: %s" % sql)
-        (status, output) = ClusterCommand.remoteSQLCommand(
-            sql, g_opts.user,
-            dnInst.hostname, dnInst.port, False,
-            DefaultValue.DEFAULT_DB_NAME, IsInplaceUpgrade=True)
-        if status != 0 or SqlResult.findErrorInSql(output):
-            raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
-                            " Error: \n%s" % str(output))
-        resList = output.split('\n')
-        dnNames = []
-        for record in resList:
-            record = record.split('|')
-            nodeName = record[0].strip()
-            dnNames.append(nodeName)
-        g_logger.debug("isKillDn dnName:{0} "
-                       "commitid:{1}".format(dnNames, curCommitid))
+        
+        g_logger.debug("isKillDn commitid:{0}".format(curCommitid))
         # execute on the dn and cn to get the exists process version
         if g_opts.rolling:
             current_user = pwd.getpwuid(os.getuid()).pw_name

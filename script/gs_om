@@ -115,6 +115,9 @@ class CmdOptions():
         # generate_xml
         self.add_hostips = ""
         self.add_hostnames = ""
+        
+        # operate cm
+        self.component = ""
 
 
 ###########################################
@@ -139,11 +142,12 @@ Usage:
   gs_om -V | --version
   OLAP scene:
     gs_om -t start [-h HOSTNAME] [-D dataDir] [--time-out=SECS]
-                   [--security-mode=MODE] [--cluster-number=None] [-l LOGFILE]
+                   [--security-mode=MODE] [--cluster-number=None] 
+                   [--component=CM] [-l LOGFILE]
     gs_om -t stop [-h HOSTNAME] [-D dataDir]  [--time-out=SECS] [-m MODE]
-                  [-l LOGFILE]
+                  [-l LOGFILE]  [--component=CM]
     gs_om -t restart [-h HOSTNAME] [-D dataDir] [--time-out=SECS]
-                   [--security-mode=MODE] [-l LOGFILE] [-m MODE]
+                   [--security-mode=MODE]  [--component=CM] [-l LOGFILE] [-m MODE]
     gs_om -t status [-h HOSTNAME] [-o OUTPUT] [--detail] [--all] [--az=AZ] [-l LOGFILE]
                     [--time-out=SECS]
     gs_om -t generateconf -X XMLFILE [--distribute] [-l LOGFILE]
@@ -472,6 +476,13 @@ Install options:
             self.g_opts.add_hostnames = ParaDict.get("add_hostname")
         if (ParaDict.__contains__("add_hostip")):
             self.g_opts.add_hostips = ParaDict.get("add_hostip")
+            
+    def parse_component(self, ParaDict):
+        support_comp_list = [ "CM", "DN" ]
+        if (ParaDict.__contains__("component")):
+            self.g_opts.component = ParaDict.get("component")
+            if self.g_opts.component not in support_comp_list:
+                GaussLog.exitWithError(f"--component only support {support_comp_list}")
 
     def parseCommandLine(self):
         """
@@ -524,6 +535,8 @@ Install options:
         self.parseAZ(ParaDict)
         # Parse generate xml parameter
         self.parse_generate_xml(ParaDict)
+        # Parse operation component
+        self.parse_component(ParaDict)
 
     ###########################################################################
     # Check parameters for all operations

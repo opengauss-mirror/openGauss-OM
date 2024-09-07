@@ -238,12 +238,19 @@ class DropnodeImpl():
             nameLoop = backIpDict_keys[backIpDict_values.index(ipLoop)]
             dnLoop = self.context.clusterInfo.getDbNodeByName(nameLoop)
             self.context.clusterInfo.dbNodes.remove(dnLoop)
+
+        # update instanceType
         for dbNode in self.context.clusterInfo.dbNodes:
             if dbNode.name == self.localhostname:
                 # dropnode only allow executed on primary node
                 # instanceType should change to master while the cluster had switchover
                 if len(dbNode.datanodes) > 0:
                     dbNode.datanodes[0].instanceType = MASTER_INSTANCE
+                    break
+
+        # save cluster_static_config
+        for dbNode in self.context.clusterInfo.dbNodes:
+            if dbNode.name == self.localhostname:
                 self.context.clusterInfo.saveToStaticConfig(staticConfigPath,
                                                             dbNode.id)
                 continue

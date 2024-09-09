@@ -108,12 +108,13 @@ gs_dropnode = ["-?", "--help", "-V", "--version", "-U:", "-G:",
 # gs_om child branch
 gs_om_start = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-I:",
                "--time-out=", "--az=", "-l:", "--nodeId=", "-D:",
-               "--security-mode=", "--cluster-number="]
+               "--security-mode=", "--cluster-number=", "--component="]
 gs_om_stop = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-I:", "-m:",
-              "--az=", "-l:", "--mode=", "--nodeId=", "--time-out=", "-D:"]
+              "--az=", "-l:", "--mode=", "--nodeId=", "--time-out=", "-D:",
+              "--component="]
 gs_om_restart = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-I:",
                "--time-out=", "--az=", "-l:", "--nodeId=", "-D:",
-               "--security-mode=", "--mode=", "-m:"]
+               "--security-mode=", "--mode=", "-m:", "--component="]
 gs_om_view = ["-t:", "-?", "--help", "-V", "--version", "-o:", "-l:", "--dynamic"]
 gs_om_query = ["-t:", "-?", "--help", "-V", "--version", "-o:", "-l:", "--time-out="]
 gs_om_status = ["-t:", "-?", "--help", "-V", "--version", "-h:", "-o:",
@@ -356,7 +357,8 @@ class Parameter():
                               "--add-hostname": "add_hostname",
                               "--add-hostip": "add_hostip",
                               "--security-mode": "security_mode",
-                              "--cluster-number": "cluster_number"
+                              "--cluster-number": "cluster_number",
+                              "--component": "component"
                               }
         parameterNeedValue_keys = parameterNeedValue.keys()
 

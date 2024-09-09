@@ -202,8 +202,18 @@ class OmImplOLAP(OmImpl):
         output: NA
         """
         self.logger.debug("Operating: Starting.")
-        # if has cm, will start cluster by cm_ctl command
-        if ((not self.context.clusterInfo.hasNoCm())
+        
+        # only stop cm components(cm_server cm_agent om_monitor)
+        print(self.context.g_opts.component)
+        if self.context.g_opts.component == "CM":
+            if self.context.clusterInfo.hasNoCm():
+                self.logger.log("No CM components to start.")
+            else:
+                self.do_opt_cm_components('start')
+            return
+        
+        # if has cm and param --component!=DN, will start cluster by cm_ctl command
+        if ((not self.context.clusterInfo.hasNoCm() and self.context.g_opts.component != "DN")
             and DefaultValue.isgreyUpgradeNodeSpecify(self.context.user,
             DefaultValue.GREY_UPGRADE_STEP_UPGRADE_PROCESS, None, self.context.logger)):
             self.context.logger.debug("Have CM configuration, upgrade all"
@@ -267,6 +277,9 @@ class OmImplOLAP(OmImpl):
             cluster_state = ""
             cmd = "source %s; gs_om -t status|grep cluster_state" \
                   % self.context.g_opts.mpprcFile
+            if self.context.g_opts.component == "DN":
+                cmd = "source %s; gs_om -t query|grep cluster_state" \
+                  % self.context.g_opts.mpprcFile
             while time.time() <= 30 + starttime:
                 status, output = subprocess.getstatusoutput(cmd)
                 if status != 0:
@@ -310,7 +323,29 @@ class OmImplOLAP(OmImpl):
                                              self.dataDir,
                                              self.context.g_opts.azName))
         self.logger.debug("Operation succeeded: Stop by cm.")
+        
+    def do_opt_cm_components(self, action):
+        if self.context.g_opts.nodeName == "":
+            host_list = self.clusterInfo.getClusterNodeNames()
+        else:
+            host_list = []
+            host_list.append(self.context.g_opts.nodeName)
+        self.sshTool = SshTool(self.clusterInfo.getClusterNodeNames(), None,
+                               DefaultValue.TIMEOUT_CLUSTER_START)
+        
+        stopcmd = "crontab -l | sed '/om_monitor/s/^/#/' | crontab -;" \
+            + f"pkill -9 om_monitor -U {self.context.user}" \
+            + f"pkill -9 cm_agent -U {self.context.user};" \
+            + f"pkill -9 cm_server -U {self.context.user}"
+            
 
+        cmd = "source %s; %s -U %s -R %s --action %s" % (
+            self.context.g_opts.mpprcFile,
+            OMCommand.getLocalScript("Local_Operate_CM"),
+            self.context.user, self.context.clusterInfo.appPath,
+            action)
+        (statusMap, output) = self.sshTool.getSshStatusOutput(cmd, host_list)
+        
     def doStopCluster(self):
         """
         function: do stop cluster
@@ -318,8 +353,18 @@ class OmImplOLAP(OmImpl):
         output: NA
         """
         self.logger.debug("Operating: Stopping.")
-        # if has cm, will start cluster by cm_ctl command
-        if not self.context.clusterInfo.hasNoCm():
+        
+        # only stop cm components(cm_server cm_agent om_monitor)
+        print(self.context.g_opts.component)
+        if self.context.g_opts.component == "CM":
+            if self.context.clusterInfo.hasNoCm():
+                self.logger.log("No CM components to stop.")
+            else:
+                self.do_opt_cm_components('stop')
+            return
+        
+        # if has cm and param --component!=DN, will start cluster by cm_ctl command
+        if not self.context.clusterInfo.hasNoCm() and self.context.g_opts.component != "DN":
             self.doStopClusterByCm()
             return
         # Specifies the stop node

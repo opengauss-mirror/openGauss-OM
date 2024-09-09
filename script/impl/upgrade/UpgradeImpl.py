@@ -1838,6 +1838,7 @@ class UpgradeImpl:
         """
         self.context.logger.log("Switching all db processes.", "addStep")
         self._check_and_start_cluster()
+        
         if DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) > 0:
             self.setUpgradeFromParam(self.context.oldClusterNumber)
             self.reloadCmAgent()
@@ -1959,6 +1960,22 @@ class UpgradeImpl:
 
         self.waif_for_om_monitor_start(is_rollback=isRollback)
 
+        # Under cm, restart the cm component and database component separately.
+        # ddes mode and specified node upgrade are not supported.
+        upgrade_sep_comps = False
+        if DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) > 0 and \
+            not EnvUtil.is_dss_mode(getpass.getuser()) and \
+            len(self.context.nodeNames) == len(self.context.clusterNodes):
+            self.context.logger.log("Upgrade with seperating CM and Dn components.")
+            upgrade_sep_comps = True
+            
+            self.context.logger.log("Stop CM components.")
+            cmd = "gs_om -t stop --component=CM"
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
+                            "Command:%s. Error:\n%s" % (cmd, output))
+        self.refresh_dynamic_config_file();
         self.context.logger.log("Switching DN processes.")
         is_rolling = False
         start_time = timeit.default_timer()
@@ -2000,15 +2017,24 @@ class UpgradeImpl:
         hostList = copy.deepcopy(self.context.nodeNames)
         self.context.sshTool.executeCommand(cmd, hostList=hostList)
         start_cluster_time = timeit.default_timer()
-        self.greyStartCluster()
+        self.greyStartCluster(upgrade_sep_comps)
         end_cluster_time = timeit.default_timer() - start_cluster_time
         self.context.logger.debug("Time to start cluster is %s" %
                                   self.getTimeFormat(end_cluster_time))
         elapsed = timeit.default_timer() - start_time
         self.context.logger.debug("Time to switch DN process version: %s"
                                   % self.getTimeFormat(elapsed))
-
-    def greyStartCluster(self):
+        
+        if upgrade_sep_comps:
+            self.context.logger.log("Start CM components.")
+            cmd = "gs_om -t start --component=CM"
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
+                            "Command:%s. Error:\n%s" % (cmd, output))
+        
+        
+    def greyStartCluster(self, only_dn=False):
         """
         start cluster in grey upgrade
         :return:
@@ -2021,6 +2047,8 @@ class UpgradeImpl:
             cmd = "gs_om -t start --cluster-number='%s' --time-out=600" % (number)
         else:
             cmd = "gs_om -t start"
+        if only_dn:
+            cmd += " --component=DN"
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %

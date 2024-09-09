@@ -25,6 +25,7 @@ import subprocess
 import pwd
 import grp
 import json
+import ipaddress
 from subprocess import PIPE
 
 from base_utils.common.constantsbase import ConstantsBase
@@ -997,7 +998,9 @@ class FileUtil(object):
         if not content:
             return False
         with open(path, mode) as f:
-            for ip, hostname in content.items():
+            for ip_xml, hostname in content.items():
+                # Use the compressed format of the IP.
+                ip = ipaddress.ip_address(ip_xml).compressed
                 f.write("%s %s" % (ip, hostname) + os.linesep)
             lock.acquire()
             try:

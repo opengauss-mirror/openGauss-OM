@@ -3996,7 +3996,7 @@ class dbClusterInfo():
                 break
             ipList.append(value)
 
-        return self.compress_ips(ipList)
+        return ipList
 
     def __readVirtualIp(self, nodeName, prefix):
         """
@@ -4058,6 +4058,7 @@ class dbClusterInfo():
             ipList_tmp = multiIpList[i].split(",")
             for ip in ipList_tmp:
                 ipList.append(ip.strip())
+            ipList = self.compress_ips(ipList)
             ipNum = len(ipList)
             if (ipNum != InstCount):
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"]

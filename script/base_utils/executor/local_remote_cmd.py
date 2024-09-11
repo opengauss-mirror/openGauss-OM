@@ -143,6 +143,8 @@ class LocalRemoteCmd(object):
         if not SecurityChecker.check_is_ip(remote_host):
             remote_host = HostsUtil.hostname_to_ip(remote_host)
         if copy_to:
+            if NetUtil.get_ip_version(remote_host) == NetUtil.NET_IPV6:
+                remote_host = "[" + remote_host + "]"
             cmd = "%s;pscp --trace-id %s %s -H %s %s %s " % \
                 (ENV_SOURCE_CMD, trace_id, opts.strip(), remote_host, src, dest)
             return cmd
@@ -154,6 +156,8 @@ class LocalRemoteCmd(object):
                 remote_host = HostsUtil.hostname_to_ip(remote_host)
             if not SecurityChecker.check_is_ip(localhost):
                 localhost = HostsUtil.hostname_to_ip(localhost)
+            if NetUtil.get_ip_version(localhost) == NetUtil.NET_IPV6:
+                localhost = "[" + localhost + "]"
             return "%s;pssh --trace-id %s -s -H %s \" pscp %s -H %s %s %s \" " % \
                    (ENV_SOURCE_CMD, trace_id, remote_host, opts.strip(), localhost, src, dest)
 

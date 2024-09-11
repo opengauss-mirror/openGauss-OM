@@ -52,6 +52,9 @@ class DeviceListParams:
     FLOAT_IP_MAP1 = 'floatIpMap1'
     DATA_PORT_STANDBY = 'dataPortStandby'
     DATA_PORT_DUMMY_STANDBY = 'dataPortDummyStandby'
+    LOCAL_STREAM_IP_MAP1 = 'localStreamIpmap1'
+    REMOTE_STREAM_IP_MAP1 = 'remoteStreamIpmap1'
+    REMOTE_DATA_PORT_BASE = 'remotedataPortBase'
 
     @staticmethod
     def get_all_param_names():
@@ -79,7 +82,10 @@ class DeviceListParams:
             DeviceListParams.DATA_NODE_XLOG_PATH1,
             DeviceListParams.FLOAT_IP_MAP1,
             DeviceListParams.DATA_PORT_STANDBY,
-            DeviceListParams.DATA_PORT_DUMMY_STANDBY
+            DeviceListParams.DATA_PORT_DUMMY_STANDBY,
+            DeviceListParams.LOCAL_STREAM_IP_MAP1,
+            DeviceListParams.REMOTE_STREAM_IP_MAP1,
+            DeviceListParams.REMOTE_DATA_PORT_BASE
         ]
 
     SYNC_NODE_PATTERN = re.compile(r'^syncNode_.*')

@@ -3432,16 +3432,30 @@ class dbClusterInfo():
         input : masterNode
         output : cmsCount
         """
-        cmsList = self.__readNodeStrValue(masterNode.name, "cmServerRelation",
+        cms_list = self.__readNodeStrValue(masterNode.name, "cmServerRelation",
                                           True, "").split(",")
-        if (len(cmsList) == 0):
+        cms_count = len(cms_list)
+        device_count = len(self.__getAllHostnamesFromDEVICELIST())
+        if (cms_count == 0):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"]
                             % ("CMServer configuration on host [%s]"
                                % str(masterNode.name))
                             + " The information of %s is wrong."
                             % "cmServerRelation")
-        cmsCount = len(cmsList)
-        return cmsCount
+
+        if cms_count != device_count:
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"]
+                            % "CMServer configuration, "
+                               "The num of cmServerRelation's hostname is wrong, "
+                               "Please check it.")
+
+        for name_node in cms_list:
+            name_node = name_node.strip()
+            if name_node not in self.__getAllHostnamesFromDEVICELIST():
+                raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"]
+                                % ("The information of %s:%s is wrong.")
+                                % ("cmServerRelation", name_node))
+        return cms_count
 
     def __readCmsConfig(self, masterNode):
         """

@@ -206,17 +206,26 @@ class GenerateXml:
         if not dss_home:
             return
 
-        cm_conf_file = os.path.normpath(os.path.join(dss_home, 'cfg', 'dss_cm_conf.ini'))
+        cm_dir = cluster_info.dbNodes[0].cmDataDir
+        cm_server_conf_file = os.path.normpath(os.path.join(cm_dir, 'cm_server/cm_server.conf'))
         vg_conf_file = os.path.normpath(os.path.join(dss_home, 'cfg', 'dss_vg_conf.ini'))
 
         voting_disk_path = ""
         share_disk_dir = ""
-        if not os.path.exists(cm_conf_file):
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % cm_conf_file)
-        with open(cm_conf_file, 'r') as fd:
-            lines = fd.readlines()
-            voting_disk_path = lines[0].strip()
-            share_disk_dir = lines[1].strip()
+        if not os.path.exists(cm_server_conf_file):
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % cm_server_conf_file)
+        
+        cmd = "cat %s | grep 'voting_disk_path' | awk -F '=' '{print $2}'" % cm_server_conf_file
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0 or not output.strip():
+            raise Exception("Failed to get voting_disk_path from cm_server.cfg. Error: %s" % output)
+        voting_disk_path = output.strip()
+
+        cmd = "cat %s | grep 'share_disk_path' | awk -F '=' '{print $2}'" % cm_server_conf_file
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0 or not output.strip():
+            raise Exception("Failed to get share_disk_path from cm_server.cfg. Error: %s" % output)
+        share_disk_dir = output.strip()            
 
         dss_vg_info = ""
         if not os.path.exists(vg_conf_file):

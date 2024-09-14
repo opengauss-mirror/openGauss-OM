@@ -430,7 +430,7 @@ class PreinstallImpl:
                     "Successfully distribute package to package path.")
                 break
             # 3.distribute xml file
-            DefaultValue.distribute_hosts_file(self.context.sshTool,
+            DefaultValue.distributeXmlConfFile(self.context.sshTool,
                                                self.context.xmlFile, hosts,
                                                self.context.mpprcFile)
             cmd = "%s -t %s -u %s -X %s" % (OMCommand.getLocalScript("Local_PreInstall"),
@@ -445,7 +445,7 @@ class PreinstallImpl:
 
             # 4.distribute hosts file
             hosts_file = os.path.normpath(os.path.join(self.context.clusterToolPath, "hosts"))
-            DefaultValue.distribute_hosts_file(self.context.sshTool,
+            DefaultValue.distributeXmlConfFile(self.context.sshTool,
                                                hosts_file, hosts,
                                                self.context.mpprcFile)
         except Exception as e:

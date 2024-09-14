@@ -72,6 +72,7 @@ from base_utils.os.file_util import FileUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from base_utils.os.user_util import UserUtil
 from base_utils.template.xml_template import GenerateTemplate
+from base_utils.os.hosts_util import HostsUtil
 
 
 #############################################################################
@@ -569,7 +570,7 @@ General options:
             ip = node.sshIps[0]
             contents[ip] = hostname
 
-        FileUtil.write_hosts_file(hosts_file, contents)
+        HostsUtil.write_hosts_file(hosts_file, contents)
         FileUtil.changeMode(DefaultValue.FILE_MODE, hosts_file)
 
     # check expect for cm/create trust

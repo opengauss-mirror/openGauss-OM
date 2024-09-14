@@ -1767,48 +1767,10 @@ remoteservice={remoteservice}'"\
         self.checkGaussdbAndGsomVersionOfStandby()
         self.logger.log("Start to establish the relationship.")
         self.buildStandbyRelation()
-        self.rewrite_hosts_file()
+        self.send_hosts_file_to_remote_nodes()
         # process success
         pvalue.value = 1
-
-    def rewrite_hosts_file(self):
-        """
-        Rewrite hosts file
-        """
-        static_cluster_info = dbClusterInfo()
-        static_cluster_info.initFromStaticConfig(self.user)
-        cluster_hostname_ip_map = {}
-        node_names = static_cluster_info.getClusterNodeNames()
-        for name in node_names:
-            node = static_cluster_info.getDbNodeByName(name)
-            ip = node.sshIps[0]
-            cluster_hostname_ip_map[ip] = name
-
-        hosts_file = FileUtil.get_hosts_file()
-        if os.path.exists(hosts_file):
-            FileUtil.removeFile(hosts_file)
-        FileUtil.write_hosts_file(hosts_file, cluster_hostname_ip_map)
-        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, hosts_file)
-        FileUtil.changeOwner(self.user, hosts_file)
-
-        # send hosts file to remote node
-        self.send_hosts_file_to_remote_node(node_names, hosts_file)
-
-    def send_hosts_file_to_remote_node(self, names, hosts_file):
-        """
-        send hosts file to remote node
-        """
-        for host in names:
-            if host == NetUtil.GetHostIpOrName():
-                continue
-            ssh_tool = SshTool([host])
-            cmd_file_rm = g_file.SHELL_CMD_DICT["deleteFile"] % (hosts_file, hosts_file)
-            ssh_tool.executeCommand(cmd_file_rm)
-            DefaultValue.distribute_hosts_file(ssh_tool,
-                                                hosts_file, [host],
-                                                self.envFile)
-            ssh_tool.clen_ssh_result_files()
-
+    
     def rollback(self):
         """
         rollback all hosts' replconninfo about failed hosts
@@ -1880,6 +1842,38 @@ remoteservice={remoteservice}'"\
         parse_result = dict(zip(key_list, value_list))
         self.logger.debug("Parse result is: {0}".format(parse_result))
         return parse_result
+    
+    def send_hosts_file_to_remote_nodes(self):
+        """
+        send hosts file to remote node
+        """
+        static_cluster_info = dbClusterInfo()
+        static_cluster_info.initFromStaticConfig(self.user)
+        node_names = static_cluster_info.getClusterNodeNames()
+        # GPHOME path
+        gp_home = os.environ.get("GPHOME")
+        hosts_file1 = os.path.normpath(os.path.join(gp_home, "hosts"))
+        hosts_dir1 = os.path.dirname(hosts_file1)
+        # gauss_om path
+        user_home = os.path.expanduser(f"~{self.user}")
+        gauss_om = os.path.normpath(os.path.join(user_home, "gauss_om"))
+        hosts_file2 = os.path.join(gauss_om, "hosts")
+        hosts_dir2 = os.path.dirname(hosts_file2)
+
+        node_names.remove(NetUtil.GetHostIpOrName())
+        ssh_tool = SshTool(node_names)
+        self.send_file_common(node_names, hosts_file1, hosts_dir1, ssh_tool)
+        self.send_file_common(node_names, hosts_file2, hosts_dir2, ssh_tool)
+        ssh_tool.clen_ssh_result_files()
+
+    def send_file_common(self, names, hosts_file, hosts_dir, ssh_tool):
+        cmd = "(if [ -f '%s' ]; then rm -f '%s';fi)" % (hosts_file, hosts_file)
+        ssh_tool.executeCommand(cmd)
+        ssh_tool.scpFiles(hosts_file, hosts_dir, names)
+        cmd = CmdUtil.getChmodCmd(str(DefaultValue.HOSTS_FILE), hosts_file)
+        ssh_tool.executeCommand(cmd)
+        cmd = CmdUtil.getChownCmd(self.user, self.group, hosts_file)
+        ssh_tool.executeCommand(cmd)
 
     def run(self):
         """

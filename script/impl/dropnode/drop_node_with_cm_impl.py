@@ -444,5 +444,4 @@ class DropNodeWithCmImpl(DropnodeImpl):
         self.clean_del_dss()
         self.restart_new_cluster()
         self.remove_cm_res_backup()
-        self.rewrite_hosts_file()
         self.logger.log("[gs_dropnode] Success to drop the target nodes.")

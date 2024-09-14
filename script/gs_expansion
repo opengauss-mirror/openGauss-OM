@@ -54,6 +54,8 @@ from base_utils.os.env_util import EnvUtil
 from base_utils.os.user_util import UserUtil
 from base_utils.os.cmd_util import CmdUtil
 from base_utils.os.file_util import FileUtil
+from base_utils.os.net_util import NetUtil
+from base_utils.os.hosts_util import HostsUtil
 
 ENV_LIST = ["MPPDB_ENV_SEPARATE_PATH", "GPHOME", "PATH",
             "LD_LIBRARY_PATH", "PYTHONPATH", "GAUSS_WARNING_TYPE",
@@ -342,14 +344,23 @@ General options:
         self.write_new_hosts_to_hosts_file()
 
     def write_new_hosts_to_hosts_file(self):
-        hosts_file = FileUtil.get_hosts_file()
-        contents = FileUtil.read_hosts_file(hosts_file)
-        if os.path.exists(hosts_file):
-            FileUtil.removeFile(hosts_file)
+        # 1.get gphme
+        gp_home = os.environ.get("GPHOME")
+        hosts_file1 = os.path.normpath(os.path.join(gp_home, "hosts"))
+        contents = HostsUtil.read_hosts_file(hosts_file1)
         contents.update(self.new_hostname_ip_map)
-        FileUtil.write_hosts_file(hosts_file, contents)
-        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, hosts_file)
-        FileUtil.changeOwner(self.user, hosts_file)
+        HostsUtil.write_hosts_file(hosts_file1, contents)
+
+        # 2.get gauss_om dir
+        user_home = os.path.expanduser(f"~{self.user}")
+        gauss_om = os.path.normpath(os.path.join(user_home, "gauss_om"))
+        hosts_file2 = os.path.join(gauss_om, "hosts")
+        HostsUtil.write_hosts_file(hosts_file2, contents)
+
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, hosts_file1)
+        FileUtil.changeOwner(self.user, hosts_file1)
+        FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, hosts_file2)
+        FileUtil.changeOwner(self.user, hosts_file2)
 
     def check_env_variable(self):
         """

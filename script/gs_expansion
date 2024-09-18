@@ -435,11 +435,17 @@ General options:
         """
         check parameter node must in xml config file
         """
+        ips_type = []
         backIpList = self.clusterInfo.getClusterBackIps()
         for nodeIp in self.newHostList:
             if nodeIp not in backIpList:
                 GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35702"] %
                     nodeIp)
+            ips_type.append(NetUtil.get_ip_version(nodeIp))
+        if len(set(ips_type)) != 1:
+            GaussLog.exitWithError(ErrorCode.GAUSS_506["GAUSS_50624"] +
+                            "The types of these ip addresses are %s" % ips_type + ". Please "
+                                                                                       "check it.")
 
     def _getBackIpNameMap(self):
         backIpList = self.clusterInfo.getClusterBackIps()

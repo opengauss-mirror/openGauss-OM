@@ -1745,6 +1745,10 @@ Common options:
             basePort = node_info.datanodes[0].port
             FileUtil.writeFile(userProfile, ["export PGPORT=%d" % basePort])
 
+            # set IP_TYPE
+            ip_type = NetUtil.get_ip_version(node_info.backIps[0])
+            FileUtil.writeFile(userProfile, ["export IP_TYPE=%s" % ip_type])
+
             # set PATH
             if userProfile is ClusterConstants.ETC_PROFILE:
                 FileUtil.writeFile(userProfile, [

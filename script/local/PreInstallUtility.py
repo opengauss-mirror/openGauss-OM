@@ -668,7 +668,7 @@ Common options:
             retry += 1
             time.sleep(1)
 
-        hostname_cmd = "pssh -s -H %s 'cat /etc/hostname'" % (node_name)
+        hostname_cmd = "source %s;pssh -s -H %s 'cat /etc/hostname'" % (self.mpprcFile, node_name)
         (status, output) = subprocess.getstatusoutput(hostname_cmd)
         if status == 0 and output.strip() == node_name:
             pass

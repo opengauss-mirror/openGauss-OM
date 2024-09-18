@@ -3346,6 +3346,7 @@ class UpgradeImpl:
                 self.execRollbackUpgradedCatalog(scriptType="rollback")
                 self.execRollbackUpgradedCatalog(scriptType="upgrade")
                 self.pgxcNodeUpdateLocalhost("upgrade")
+                self.rebuild_pg_proc_proname_args_nsp_new_index()
             else:
                 self.context.logger.debug("Post upgrade.")
                 self.waitClusterForNormal()
@@ -3999,7 +4000,31 @@ class UpgradeImpl:
                 self.stopCluster()
         else:
             self.om_stop_cluster()
-            
+
+    def rebuild_pg_proc_proname_args_nsp_new_index(self):
+        self.context.logger.debug("Begin to rebuild pg_proc_proname_args_nsp_new_index.")
+        database_list = self.getDatabaseList()
+        sql = """
+DO $$
+DECLARE
+ans boolean;
+BEGIN
+    select case when count(*)=1 then true else false end as ans from (select indexname from pg_indexes where indexname = 'pg_proc_proname_args_nsp_new_index' limit 1) into ans;
+    if ans = true then
+        alter index pg_proc_proname_args_nsp_new_index rebuild;
+    end if;
+END$$;"""
+        for eachdb in database_list:
+            self.context.logger.debug(f"rebuild_pg_proc_proname_args_nsp_new_index at database {eachdb}")
+            (status, output) = ClusterCommand.remoteSQLCommand(
+                sql, self.context.user,
+                self.dnInst.hostname, self.dnInst.port, False,
+                eachdb, IsInplaceUpgrade=True)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql +
+                                " Error: \n%s" % str(output))
+        self.context.logger.debug("Success to rebuild pg_proc_proname_args_nsp_new_index.")
+
     def rebuild_pg_proc_index(self):
         self.context.logger.debug("Begin to modify pg_proc index.")
         self.setUpgradeMode(2)

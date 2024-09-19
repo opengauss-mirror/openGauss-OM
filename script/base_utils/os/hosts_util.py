@@ -5,6 +5,7 @@ import socket
 
 from base_utils.os.file_util import FileUtil
 from gspylib.common.ErrorCode import ErrorCode
+from base_utils.os.net_util import NetUtil
 
 class HostsUtil:
 
@@ -15,14 +16,20 @@ class HostsUtil:
         input: ip
         output: hostname
         """
+        ip_type = os.environ.get("IP_TYPE")
+        if ip_type == NetUtil.NET_IPV6:
+            socket_family = socket.AF_INET6
+        else:
+            socket_family = socket.AF_INET
         try:
-            host_ip = socket.gethostbyname(hostname)
-            if host_ip == "127.0.0.1":
+            addr_info = socket.getaddrinfo(hostname, None, socket_family)
+            host_ip = addr_info[0][NetUtil.ADDRESS_FAMILY_INDEX][NetUtil.IP_ADDRESS_INDEX]
+            if host_ip == "127.0.0.1" or host_ip == "::1":
                 return ""
         except Exception as e:
             host_ip = ""
         return host_ip
-    
+
     @staticmethod
     def get_hostname_by_ip_from_etc_hosts(ip):
         """
@@ -49,7 +56,7 @@ class HostsUtil:
         host_ip = HostsUtil.get_ip_by_hostname_from_etc_hosts(hostname)
         if host_ip:
             return host_ip
-        
+
         # get ip from custom hosts file
         ip_str = ""
         hosts_file = FileUtil.get_hosts_file()
@@ -157,4 +164,3 @@ class HostsUtil:
         finally:
             lock.release()
         return True
-    

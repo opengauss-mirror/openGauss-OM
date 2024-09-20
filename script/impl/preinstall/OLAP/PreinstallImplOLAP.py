@@ -347,6 +347,8 @@ class PreinstallImplOLAP(PreinstallImpl):
         """
         if "HOST_IP" in os.environ.keys():
             return
+        if not self.context.current_user_root:
+            return
         self.context.logger.log("Setting pssh path", "addStep")
         try:
             pssh_path = os.path.join(os.path.dirname(__file__),
@@ -356,8 +358,7 @@ class PreinstallImplOLAP(PreinstallImpl):
             psshlib_path = os.path.join(
                 os.path.dirname(__file__),
                 "../../../gspylib/pssh/bin/TaskPool.py")
-            # 将pssh放到om tools的bin目录下
-            dest_path = os.path.join(self.context.clusterToolPath, "script")
+            dest_path = "/usr/bin/"
             secbox_path = "/var/chroot/usr/bin/"
             cmd = "cp %s %s %s %s" % (
                 pssh_path, pscp_path, psshlib_path, dest_path)

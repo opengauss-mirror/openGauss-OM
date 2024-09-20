@@ -20,7 +20,7 @@
 class CommConstants:
     """ constants for open gauss."""
     PACKAGE_TYPE = "bz2File"
-    VERSION_PATTERN = r'[0-9]+\.[0-9]+\.[0-9]+'
+    VERSION_PATTERN = r'(\d+\.\d+\.\d+)(-RC\d+)?'
     VERSION_EXAMPLE = "openGauss-1.0"
     
     PKG_SERVER = "Server"

@@ -1280,6 +1280,18 @@ Common options:
                                 + " Command:%s. Error:\n%s" % (
                                     cmd, output))
 
+        crontab_file_1 = "/bin/crontab"
+        if os.path.exists(crontab_file_1):
+            FileUtil.changeOwner("root", crontab_file_1)
+            FileUtil.changeMode(DefaultValue.MAX_DIRECTORY_MODE, crontab_file_1)
+            cmd = "chmod u+s '%s'" % crontab_file_1
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                self.logger.logExit(ErrorCode.GAUSS_501[
+                                        "GAUSS_50107"] % crontab_file_1
+                                    + " Command:%s. Error:\n%s" % (
+                                        cmd, output))
+
         ##2.make sure user have permission to use cron
         cron_allow_file = "/etc/cron.allow"
         if not os.path.isfile(cron_allow_file):

@@ -1657,12 +1657,10 @@ class UpgradeImpl:
                 self.switchBin(const.NEW)
                 self.restore_origin_disaster_user_file()
                 # create CA for CM
-                if len(self.context.nodeNames) == len(self.context.clusterNodes):
+                if len(self.context.nodeNames) == len(self.context.clusterNodes) or self.context.upgrade_remain:
                     self.create_ca_for_cm()
                     # turn off enable_ssl for upgrade
                     self.set_enable_ssl("off")
-                else:
-                    self.createCmCaForRollingUpgrade()
 
                 self.setNewVersionGuc()
                 self.recordNodeStep(GreyUpgradeStep.STEP_UPGRADE_PROCESS)
@@ -1718,7 +1716,7 @@ class UpgradeImpl:
 
         greyNodeNames = self.getUpgradedNodeNames(GreyUpgradeStep.STEP_UPDATE_POST_CATALOG)   
         if len(greyNodeNames) < len(self.context.clusterNodes):
-            self.context.logger.log("The nodes % have been successfully upgraded."
+            self.context.logger.log("The nodes %s have been successfully upgraded."
                                     "Then can upgrade the remaining nodes." % self.context.nodeNames)
         else:                                    
             self.context.logger.log("Successfully upgrade all nodes.")

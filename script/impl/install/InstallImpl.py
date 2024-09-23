@@ -167,7 +167,7 @@ class InstallImpl:
             hostname = syncNode
             if syncNumFirst and syncNum != -1:
                 raise Exception(ErrorCode.GAUSS_530["GAUSS_53011"] % 
-                                "syncNode_hostname and dataNode1 cannot be exist at the same time")
+                                "syncNode_hostname and dataNode1_syncNum cannot be exist at the same time")
                 
             if syncNumFirst and syncNum == -1:
                 syncNumFirstRe = re.sub('[,\s]', '', syncNumFirst)

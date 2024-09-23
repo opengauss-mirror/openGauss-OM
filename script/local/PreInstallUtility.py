@@ -1670,6 +1670,8 @@ Common options:
         FileUtil.deleteLine(userProfile, "^\\s*export\\s*PGDATA*")
         # clean PGPORT
         FileUtil.deleteLine(userProfile, "^\\s*export\\s*PGPORT*")
+        # clean IP_TYPE
+        FileUtil.deleteLine(userProfile, "^\\s*export\\s*IP_TYPE*")
         # clean PGDATABASE
         FileUtil.deleteLine(userProfile, "^\\s*export\\s*PGDATABASE*")
         # clean LD_LIBRARY_PATH
@@ -1691,7 +1693,7 @@ Common options:
                                 "^\\s*export\\s*PATH=\\$PATH:\\$GPHOME\\/script\\/gspylib\\"
                                 "/pssh\\/bin:\\$GPHOME\\/script$")
             FileUtil.deleteLine(userProfile,
-                                "^\\s*export\\s*PATH=\\$PATH:\\/root\\/gauss_om\\/%s\\"
+                                "^\\s*export\\s*PATH=\\$PATH:\\/home\\/%s\\/gauss_om\\"
                                 "/script$" % self.user)
         FileUtil.deleteLine(userProfile,
                           "^\\s*export\\s*PATH=\\$GPHOME\\/pssh-2.3.1\\/bin:"
@@ -1700,7 +1702,7 @@ Common options:
                           "^\\s*export\\s*PATH=\\$GPHOME\\/script\\/gspylib\\"
                           "/pssh\\/bin:\\$GPHOME\\/script:\\$PATH$")
         FileUtil.deleteLine(userProfile,
-                          "^\\s*export\\s*PATH=\\/root\\/gauss_om\\/%s\\"
+                          "^\\s*export\\s*PATH=\\/home\\/%s\\/gauss_om\\"
                           "/script:\\$PATH$" % self.user)
         self.logger.debug("Deleting crash PATH in user environment variables.")
         # clean PYTHONPATH

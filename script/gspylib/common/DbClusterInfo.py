@@ -3358,11 +3358,11 @@ class dbClusterInfo():
         output : NA
         """
         # get backIp
-        dbNode.backIps = self.__readNodeIps(dbNode.name, "backIp")
+        dbNode.backIps = self.compress_ips(self.__readNodeIps(dbNode.name, "backIp"))
         if (len(dbNode.backIps) == 0):
             raise Exception(ErrorCode.GAUSS_512["GAUSS_51207"] % dbNode.name)
         # get sshIp
-        dbNode.sshIps = self.__readNodeIps(dbNode.name, "sshIp")
+        dbNode.sshIps = self.compress_ips(self.__readNodeIps(dbNode.name, "sshIp"))
         if (len(dbNode.sshIps) == 0):
             dbNode.sshIps = dbNode.backIps[:]
         # get virtualIp

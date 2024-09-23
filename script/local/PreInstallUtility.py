@@ -655,7 +655,9 @@ Common options:
         if not self.mpprcFile:
             self.mpprcFile = ProfileFile.get_user_bashrc(self.user)
         retry = 1
-        cmd = "source %s;pssh -s -H %s hostname" % (self.mpprcFile, node_name)
+        node = self.clusterInfo.getDbNodeByName(node_name)
+        node_ip = node.sshIps[0]
+        cmd = "source %s;pssh -s -H %s hostname" % (self.mpprcFile, node_ip)
         while True:
             (status, output) = subprocess.getstatusoutput(cmd)
             self.logger.debug("Checking hostname mapping for node [%s]. output: %s" % (node_name, output))
@@ -668,7 +670,7 @@ Common options:
             retry += 1
             time.sleep(1)
 
-        hostname_cmd = "source %s;pssh -s -H %s 'cat /etc/hostname'" % (self.mpprcFile, node_name)
+        hostname_cmd = "source %s;pssh -s -H %s 'cat /etc/hostname'" % (self.mpprcFile, node_ip)
         (status, output) = subprocess.getstatusoutput(hostname_cmd)
         if status == 0 and output.strip() == node_name:
             pass

@@ -86,6 +86,10 @@ def test_sync_standby_name():
     assert expect_output == check_sync_standby_str(dnlist, output)
     
     # ANY grouping
+    output = "ANY 1 (dn_6002), ANY 1 (dn_6003)"
+    expect_output = "ANY 1 (dn_6002)"
+    assert expect_output.replace(" ", "") == check_sync_standby_str(dnlist, output).replace(" ", "")
+
     output = "ANY 1 (dn_6002, dn_6003)"
     expect_output = "ANY 1 (dn_6002)"
     assert expect_output.replace(" ", "") == check_sync_standby_str(dnlist, output).replace(" ", "")

@@ -118,8 +118,6 @@ class UpgradeCmUtility(object):
         self.cluster_info.initFromStaticConfig(user)
         self.logger = GaussLog(log_file, self.__class__.__name__)
         self.back_dir = os.path.join(tmp_dir, Const.UPGRADE_BACKUP_DIR)
-        decompress_dir = os.path.join(self.back_dir, Const.UPGRADE_CM_DECOMPRESS_DIR)
-        self.upgrade_list_file = os.path.join(decompress_dir, "upgrade_binary_list")
 
     def replace_files(self, src_dir, src_file_list, dest_dir):
         """

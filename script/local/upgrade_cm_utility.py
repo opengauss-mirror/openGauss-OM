@@ -293,7 +293,7 @@ class UpgradeCmPrepareUtility(UpgradeCmUtility):
         """
         self.logger.log("Start to check files of CM package.")
         upgrade_list_file = os.path.join(decompress_dir, Const.UPGRADE_BINARY_LIST_FILE_NAME)
-        if os.path.isfile(upgrade_list_file):
+        if self.upgrade_list_file and os.path.isfile(upgrade_list_file):
             self.logger.debug("Exist upgrade_list_file.")
             file_list = FileUtil.readFile(self.upgrade_list_file)
             check_file_list = [os.path.join(decompress_dir, i.rstrip("\n")) for i in file_list

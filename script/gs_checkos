@@ -1002,7 +1002,7 @@ def checkTimeConsistency():
                     and (outputMap[node].strip().split(',')[0].strip()
                          == str(False))):
                 g_OSCheckOpts['A12'][2] = 'Warning'
-                parRes += "        [%s]\n        The NTPD not detected" \
+                parRes += "        [%s]\n        Neither nptd nor chrony was detected" \
                           " on machine and local time is \"%s\".\n"\
                           % (node,
                              outputMap[node].strip().split(',')[1].strip())
@@ -1044,7 +1044,7 @@ def checkTimeConsistency():
         else:
             nodeValue = list(status.keys())[0].strip()
             keystr = outputMap[nodeValue].strip().split(',')[1].strip()
-            g_OSCheckOpts['A12'][3] = "\n        The ntpd service is " \
+            g_OSCheckOpts['A12'][3] = "\n        The ntpd or chronyd service is " \
                                       "started, local time is \"%s\"." % keystr
         g_OSCheckOpts['A12'][4] = "\n%s" % detail_msg
 

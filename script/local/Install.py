@@ -350,6 +350,21 @@ class Install(LocalBaseOM):
         self.productVersion = None
         self.time_out = None
 
+    def check_clib_bin(self, clib_bin, bin_file):
+        """
+        Check perctrl or cm_persist in GPHOME clib path.
+        If not in, copy if from installPath
+        """
+        if os.path.exists(clib_bin):
+            return
+        tmp_path = os.path.realpath(os.path.join(EnvUtil.getTmpDirFromEnv(g_opts.user), f'dss_app_{VersionInfo.getCommitid()}'))
+        if not os.path.isdir(tmp_path):
+            raise Exception(f"Cannot get {clib_bin}, no such file.")
+        mv_cmd = f"mv {tmp_path}/{bin_file} {clib_bin}"
+        status, output = subprocess.getstatusoutput(mv_cmd)
+        if status != 0:
+            self.logger.logExit(f"Failed to copy {bin_file} from {tmp_path}. Error: \n{str(output)}")
+        self.logger.log(f"Successfully copy {bin_file} from {tmp_path}.")
 
     def link_dss_bin(self):
         '''
@@ -375,6 +390,7 @@ class Install(LocalBaseOM):
         sudo_bin = ['perctrl', 'cm_persist']
         for bin_ in sudo_bin:
             clib_bin = os.path.realpath(os.path.join(clib_app, bin_))
+            self.check_clib_bin(clib_bin, bin_)
             app_bin = os.path.realpath(os.path.join(dss_app, bin_))
             if os.path.isfile(clib_bin):
                 mv_cmd = r'\mv {0} {1}'.format(clib_bin, app_bin)
@@ -391,8 +407,6 @@ class Install(LocalBaseOM):
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % link_cmd +
                             "Error:\n%s." % output)
         self.logger.log("Successfully generated the soft link.")
-
-
 
     def decompress_cm_package(self):
         """
@@ -422,10 +436,26 @@ class Install(LocalBaseOM):
                                 % cm_package + " Error: \n%s" % str(output))
         self.logger.log("Decompress CM package successfully.")
 
+    def generate_dss_path(self):
+        """
+        Generate dss path
+        """
+        dss_app_path = os.path.realpath(
+            os.path.join(os.path.dirname(self.installPath), f'dss_app_{VersionInfo.getCommitid()}'))
+        if os.path.isdir(dss_app_path):
+            self.logger.debug(f"{dss_app_path} is normal. No need to generate dss app directory.")
+            return
+        self.logger.debug("Try to create new dss app path.")
+        FileUtil.createDirectory(dss_app_path, True, DefaultValue.KEY_DIRECTORY_MODE)
+        self.logger.debug("Create dss app path successfully.")
+
+
     def generate_install_path(self):
         """
         Generate install path
         """
+        if self.clusterInfo.enable_dss == "on":
+            self.generate_dss_path()
         if os.path.isdir(self.installPath):
             self.logger.debug("[{0}] is normal. "
                               "No need to generate install directory.".format(self.installPath))

@@ -1507,15 +1507,10 @@ def collectNtpd():
     result = p.communicate()
 
     if p.returncode != 0:  # No ntpd process found
-        g_logger.warn("No ntpd process found, "
-                     "try to execute chrony.")
         p = subprocess.Popen(["pgrep", "chronyd"], shell=False,
                              stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
         result = p.communicate()
-        if p.returncode != 0:  # No chrony process found
-            g_logger.error("The system time synchronization process is not found. "
-                         "Please check whether ntpd or chrony is installed in the system")
 
     if data.errormsg:
         data.errormsg = "%s\n%s" % (data.errormsg, result[1].strip())

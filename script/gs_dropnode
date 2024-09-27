@@ -208,16 +208,6 @@ General options:
             GaussLog.exitWithError(ErrorCode.GAUSS_358["GAUSS_35802"] % \
                                    self.hostIpListForDel)
 
-    def check_repeat_process(self):
-        """
-        Check whether the same gs_dropnode command be run at the same time
-        """
-        cmd = "ps -ef | grep 'gs_dropnode -U %s -G %s' | grep -v grep" \
-              % (self.user, self.group)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status == 0 and len(output.split('\n')) > 1:
-            GaussLog.exitWithError(ErrorCode.GAUSS_358["GAUSS_35810"])
-
     def flagForOnlyPrimaryLeft(self):
         """
         function: Check whether only one node be left in the cluster
@@ -341,7 +331,6 @@ if __name__ == "__main__":
     dropNode.parseCommandLine()
     dropNode.initLogs()
     DefaultValue.check_is_streaming_dr_cluster()
-    dropNode.check_repeat_process()
     dropNode.checkParameters()
     dropNode.checkConnection(list(dropNode.backIpNameMap.keys()),
                              dropNode.envFile)

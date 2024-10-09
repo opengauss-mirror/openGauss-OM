@@ -119,25 +119,25 @@ class LocalPerformanceCheck():
             cmd += "dd if=%s of=/dev/null bs=8M count=2560 iflag=direct" \
                    % tmpFile
             (status, output) = subprocess.getstatusoutput(cmd)
-            if (status == 0):
+            if status == 0 and output:
                 output = output.split("\n")
-                writeInfolist = output[2].strip().split(",")
-                readInfolist = output[5].strip().split(",")
+                write_info_list = convert_read_or_write_info_to_list(output[2])
+                read_info_list = convert_read_or_write_info_to_list(output[5])
                 result = "        %s (%s) Path (%s)\n" \
                          "            %s:    %s\n" \
                          "            %s:    %s\n            %s:    %s\n" \
                          "            %s:    %s\n            %s:    %s" \
-                         % (dev.split('/')[2], dev, diskDir,
+                         % (dev, dev, diskDir,
                             "Data size".ljust(INDENTATION_VALUE),
-                            writeInfolist[0][:-7],
+                            write_info_list[0][:-7],
                             "Write time".ljust(INDENTATION_VALUE),
-                            (writeInfolist[1]).strip(),
+                            (write_info_list[1]).strip(),
                             "Write speed".ljust(INDENTATION_VALUE),
-                            (writeInfolist[2]).strip(),
+                            (write_info_list[2]).strip(),
                             "Read time".ljust(INDENTATION_VALUE),
-                            (readInfolist[1]).strip(),
+                            (read_info_list[1]).strip(),
                             "Read speed".ljust(INDENTATION_VALUE),
-                            (readInfolist[2]).strip())
+                            (read_info_list[2]).strip())
                 g_logger.log(result)
             else:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
@@ -249,6 +249,17 @@ def docheck():
     else:
         g_logger.logExit(ErrorCode.GAUSS_500["GAUSS_50000"] % g_opts.action)
 
+def convert_read_or_write_info_to_list(info_str):
+    """
+    function: read or write info to list
+    input : read or write info str
+    output: read or write info list
+    """
+    # info_str: 21474836480 bytes (21 GB, 20 GiB) copied, 6.59552 s, 3.3 GB/s
+    parts = info_str.split(", ")
+    # parts: ["21474836480 bytes (21 GB", "0 GiB) copied", "6.59552 s", "3.3 GB/s"]
+    # The first two parts are a whole, so merge the first two parts
+    return [parts[0] + ", " + parts[1], parts[2], parts[3]]
 
 if __name__ == '__main__':
     """

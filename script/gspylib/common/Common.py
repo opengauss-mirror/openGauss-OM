@@ -138,6 +138,7 @@ BASE_ID_GTM = 4001
 BASE_ID_DATANODE = 6001
 
 SYSTEM_SSH_ENV = "export LD_LIBRARY_PATH=/usr/lib64"
+CHECK_SSD_CMD = "lsblk -d -o NAME,ROTA | grep '0' | awk '{print $1}'"
 
 def check_content_key(content, key):
     if not (type(content) == bytes):
@@ -944,11 +945,10 @@ class DefaultValue():
         input: NA
         output: True/False
         """
-        cmd = "hio_info"
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if (status != 0):
-            return False
-        return True
+        (status, output) = subprocess.getstatusoutput(CHECK_SSD_CMD)
+        if status == 0 and output:
+            return True
+        return False
 
     @staticmethod
     def Deduplication(listname):
@@ -1660,9 +1660,8 @@ class DefaultValue():
         output : []
         """
         devList = []
-        cmd = "ls -ll /dev/hio? | awk '{print $10}'"
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if (status == 0 and output.find("No such file or directory") < 0):
+        (status, output) = subprocess.getstatusoutput(CHECK_SSD_CMD)
+        if (status == 0 and output):
             devList = output.split("\n")
         else:
             raise Exception(ErrorCode.GAUSS_530["GAUSS_53005"] +

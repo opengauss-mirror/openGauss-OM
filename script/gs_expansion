@@ -224,6 +224,17 @@ General options:
                     >= 2147483647):
                 GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
                                        % "-time-out")
+        
+        # check if the new hosts is in xml file
+        if self.xmlFile and self.newHostList:
+            cluster_info = dbClusterInfo()
+            cluster_info.initFromXml(self.xmlFile)
+            self.newHostList = cluster_info.compress_ips(self.newHostList)
+            
+            node_ips = cluster_info.getClusterSshIps()[0]
+            for host in self.newHostList:
+                if host not in node_ips:
+                    GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35702"] % host)
 
     def _get_node_dn_port(self, node_name):
         """

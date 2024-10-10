@@ -1567,6 +1567,8 @@ class PreinstallImpl:
         # set HOST_IP env
         self.setHostIpEnv()
         self.distributePackages()
+        # set core path
+        self.setPssh()
         # create user and exchange keys for database user
         self.createOSUser()
         # prepare sshd service for user.
@@ -1602,8 +1604,6 @@ class PreinstallImpl:
         self.setLibrary()
         # set core path
         self.setCorePath()
-        # set core path
-        self.setPssh()
         # set cgroup
         self.setCgroup()
 

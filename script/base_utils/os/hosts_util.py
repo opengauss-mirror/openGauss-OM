@@ -19,8 +19,10 @@ class HostsUtil:
         ip_type = os.environ.get("IP_TYPE")
         if ip_type == NetUtil.NET_IPV6:
             socket_family = socket.AF_INET6
-        else:
+        elif ip_type == NetUtil.NET_IPV4:
             socket_family = socket.AF_INET
+        else:
+            return ""
         try:
             addr_info = socket.getaddrinfo(hostname, None, socket_family)
             host_ip = addr_info[0][NetUtil.ADDRESS_FAMILY_INDEX][NetUtil.IP_ADDRESS_INDEX]

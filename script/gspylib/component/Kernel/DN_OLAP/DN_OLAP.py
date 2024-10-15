@@ -548,7 +548,7 @@ class DN_OLAP(Kernel):
                                  % (pg_user, dn_ip, subnet_length, METHOD_TRUST)
                 guc_paras_str += "-h \"host    all    all    %s/%s    %s\" " \
                                  % (dn_ip, subnet_length, METHOD_SHA)
-                ip_segment = '.'.join(dn_ip.split('.')[:2]) + ".0.0/16"
+                ip_segment = NetUtil.get_ip_cidr_segment(dn_ip)
                 guc_paras_str += "-h \"host    replication    all    %s    sha256\" " % ip_segment
 
         if (guc_paras_str != ""):

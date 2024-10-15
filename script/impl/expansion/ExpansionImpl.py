@@ -1462,13 +1462,10 @@ remoteservice={remoteservice}'"\
         check if network delay greater than 1000ms
         """
         backips = self.context.newHostList
+        ping_tool = CmdUtil.get_ping_tool()
         for backip in backips:
-            if NetUtil.get_ip_version(backip) == NetUtil.NET_IPV6:
-                ck_net_delay = "ping6 -s 8192 -c 5 -i 0.3 %s | " \
-                               "awk -F / '{print $5}'| awk '{print $1}'" % backip
-            else:
-                ck_net_delay = "ping -s 8192 -c 5 -i 0.3 %s | "\
-                    "awk -F / '{print $5}'| awk '{print $1}'" % backip
+            ck_net_delay = "%s -s 8192 -c 5 -i 0.3 %s | "\
+                    "awk -F / '{print $5}'| awk '{print $1}'" % (ping_tool, backip)
             (status, output) = subprocess.getstatusoutput(ck_net_delay)
             if status == 0:
                 try:

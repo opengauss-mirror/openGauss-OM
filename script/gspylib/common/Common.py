@@ -1715,7 +1715,7 @@ class DefaultValue():
         """
         ping node with short timeout
         """
-        cmd = "ping %s -c 1 -w 4" % node_ip
+        cmd = "%s %s -c 1 -w 4" % (CmdUtil.get_ping_tool(), node_ip)
         proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
         proc.communicate()
         status = proc.returncode
@@ -1727,7 +1727,8 @@ class DefaultValue():
         """
         Ping on remote node with -I
         """
-        cmd = "ping %s -c 1 -w 4" % on_node
+        ping_tool = CmdUtil.get_ping_tool()
+        cmd = "%s %s -c 1 -w 4" % (ping_tool, on_node)
         proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE,
                          preexec_fn=os.setsid, close_fds=True)
         proc.communicate()
@@ -1736,10 +1737,10 @@ class DefaultValue():
             logger.debug("Node:%s ping failed, can not execute remote check." % on_node)
             return on_node, False
         if on_node == NetUtil.GetHostIpOrName():
-            cmd_remote = "ping %s -I %s -c 1 -w 4" % (to_ip, from_ip)
+            cmd_remote = "%s %s -I %s -c 1 -w 4" % (ping_tool, to_ip, from_ip)
         else:
-            cmd_remote = "source %s && pssh -s -H %s 'ping %s -I %s -c 1 -w 4'" \
-                         % (EnvUtil.getMpprcFile(), on_node, to_ip, from_ip)
+            cmd_remote = "source %s && pssh -s -H %s '%s %s -I %s -c 1 -w 4'" \
+                         % (EnvUtil.getMpprcFile(), on_node, ping_tool, to_ip, from_ip)
         proc = FastPopen(cmd_remote, stdout=PIPE, stderr=PIPE,
                          preexec_fn=os.setsid, close_fds=True)
         proc.communicate()

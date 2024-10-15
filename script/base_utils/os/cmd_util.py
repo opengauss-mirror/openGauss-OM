@@ -45,7 +45,9 @@ class CmdUtil(object):
     ENV_SOURCE_CMD = "source /etc/profile;source ~/.bashrc;" \
                      "if [ $MPPDB_ENV_SEPARATE_PATH ]; " \
                      "then source $MPPDB_ENV_SEPARATE_PATH; fi"
-
+    PING_IPV4_TOOL = "ping"
+    PING_IPV6_TOOL = "ping6"
+    
     @staticmethod
     def execCmd(cmd, noexcept=False):
         """
@@ -200,11 +202,21 @@ class CmdUtil(object):
         input  : host, count, interval, packet_size
         output : str
         """
+        ping_tool = CmdUtil.PING_IPV4_TOOL
+        if os.getenv("IP_TYPE") == "ipv6":
+            ping_tool = CmdUtil.PING_IPV6_TOOL
         opts = " "
         if int(packet_size) != int(56):
             opts = " -s " + str(packet_size)
-        return CmdUtil.findCmdInPath('ping') + BLANK_SPACE + host + " -c " + \
+        return CmdUtil.findCmdInPath(ping_tool) + BLANK_SPACE + host + " -c " + \
                     count + " -i " + interval + opts
+
+    @staticmethod
+    def get_ping_tool():
+        ping_tool = CmdUtil.PING_IPV4_TOOL
+        if os.getenv("IP_TYPE") == "ipv6":
+            ping_tool = CmdUtil.PING_IPV6_TOOL
+        return ping_tool
 
     @staticmethod
     def getWcCmd():

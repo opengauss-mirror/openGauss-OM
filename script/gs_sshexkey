@@ -849,10 +849,10 @@ General options:
         # add hostname when using root user
         for _, hostname in result.items():
             try:
-                host = socket.gethostbyname(hostname)
+                addr_info = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC)
             except Exception as e:
-                host = ""
-            if host:
+                addr_info = ""
+            if addr_info:
                 hostnameList.append(hostname)
         for hostname in hostnameList:
             cmd = '%s;/usr/bin/ssh-keyscan -t ed25519 %s >> %s ' % (SYSTEM_SSH_ENV, hostname, self.known_hosts_fname)

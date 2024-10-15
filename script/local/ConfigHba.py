@@ -230,8 +230,7 @@ class ConfigHba(LocalBaseOM):
         """
         remove dn & cn pg_hba for streaming stop
         """
-        ip_segment_list = list(set(['.'.join(
-            remove_ip.split('.')[:2]) + ".0.0/16" for remove_ip in self.removeIps]))
+        ip_segment_list = list(set([NetUtil.get_ip_cidr_segment(remove_ip) for remove_ip in self.removeIps]))
         for ip_segment in ip_segment_list:
             ip_remove_str = "-h \"host    replication    all    %s\" " % ip_segment
             component.doGUCConfig("set", ip_remove_str, True)

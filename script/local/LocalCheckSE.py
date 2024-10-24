@@ -2767,7 +2767,10 @@ def setUserConnection(data):
     result.db = []
     try:
         for item in data.db:
-            sql_query = """ALTER ROLE %s CONNECTION LIMIT 1024;""" %(item.split("|")[0].strip())
+            user_to_modify = item.split("|")[0].strip()
+            if user_to_modify == getUserInfo().username:
+                continue
+            sql_query = """ALTER ROLE %s CONNECTION LIMIT 1024;""" % user_to_modify
             getDatabaseInfo(result, sql_query)
     except Exception as e:
         data.errormsg = e.__str__()

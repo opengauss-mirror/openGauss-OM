@@ -158,7 +158,7 @@ class DropNodeWithCmImpl(DropnodeImpl):
                 ACTION_DROP_NODE, self.user, del_hosts, self.context.localLog)
         self.logger.debug("Command for updating cm resource file: %s" % cmd)
         CmdExecutor.execCommandWithMode(cmd, self.ssh_tool,
-                                        host_list=self.context.hostMapForExist.keys())
+                                        host_list=list(self.context.hostMapForExist.keys()))
         self.logger.log("Successfully updated cm resource file.")
 
     def update_dss_inst(self):
@@ -181,7 +181,7 @@ class DropNodeWithCmImpl(DropnodeImpl):
 
         update_cmd = "sed -i 's/%s/%s/g' %s" % (old_list, new_list, dss_inst)
         self.logger.debug("Command for update dss_inst.ini: %s" % update_cmd)
-        CmdExecutor.execCommandWithMode(update_cmd, self.ssh_tool, host_list=self.context.hostMapForExist.keys())
+        CmdExecutor.execCommandWithMode(update_cmd, self.ssh_tool, host_list=list(self.context.hostMapForExist.keys()))
         self.logger.log("Successfully update dss_inst.ini on old nodes.")
 
         return new_list
@@ -209,12 +209,14 @@ class DropNodeWithCmImpl(DropnodeImpl):
         """
         del_hosts = [self.context.hostMapForDel[hostName]["ipaddr"] for hostName in self.context.hostMapForDel.keys()]
         del_cmd = ""
-        pgdata_path = EnvUtil.getEnv("PGDATA")
-        hba_file = pgdata_path + os.sep + 'pg_hba.conf'
-        for host in del_hosts:
-            del_cmd += "sed -i '/%s/d' %s; " % (host, hba_file)
-        self.logger.debug("Command for update pg_hba.conf: %s" % del_cmd)
-        CmdExecutor.execCommandWithMode(del_cmd, self.ssh_tool, host_list=self.context.hostMapForExist.keys())
+        for exist_host in self.context.hostMapForExist.keys():
+            host_info = self.context.clusterInfo.getDbNodeByName(exist_host)
+            pgdata_path = host_info.datanodes[0].datadir
+            hba_file = pgdata_path + os.sep + 'pg_hba.conf'
+            for host in del_hosts:
+                del_cmd += "sed -i '/%s/d' %s; " % (host, hba_file)
+            self.logger.debug("Command for update pg_hba.conf on host %s: %s" % (exist_host, del_cmd))
+            CmdExecutor.execCommandWithMode(del_cmd, self.ssh_tool, host_list=[exist_host])
         self.logger.log("Successfully update pg_hba.conf on old nodes.")
 
     def update_dss_info(self):
@@ -393,7 +395,7 @@ class DropNodeWithCmImpl(DropnodeImpl):
         for info in res_infos:
             del_cmd += "cm_ctl res --edit --res_name='dss' --del_inst='%s';" % info
         self.logger.log("Command for del cm_res on old nodes: %s" % del_cmd)
-        CmdExecutor.execCommandWithMode(del_cmd, self.ssh_tool, host_list=self.context.hostMapForExist.keys())
+        CmdExecutor.execCommandWithMode(del_cmd, self.ssh_tool, host_list=list(self.context.hostMapForExist.keys()))
         self.logger.log("Successfully del cm_res on old nodes.")
 
     def ss_restart_cluster(self):

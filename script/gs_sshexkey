@@ -43,6 +43,7 @@ from gspylib.common.ErrorCode import ErrorCode
 from gspylib.threads.parallelTool import parallelTool
 from gspylib.common.Common import DefaultValue, ClusterCommand
 from gspylib.common.ParameterParsecheck import Parameter
+from gspylib.common.Constants import Constants
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.file_util import FileUtil
 from base_utils.os.grep_util import GrepUtil
@@ -172,6 +173,7 @@ class GaussCreateTrust():
         self.secret_word = ""
         self.correct_passwd_map = {}
         self.host_name_list = []
+        self.hosts_file = Constants.TMP_SSH_FILE
 
     def usage(self):
         """
@@ -1161,14 +1163,13 @@ General options:
         """
         contents = copy.deepcopy(result)
         # write hosts file
-        hosts_file = "/tmp/gs_sshexkey_hosts"
-        if os.path.exists(hosts_file):
-            FileUtil.removeFile(hosts_file)
-        FileUtil.createFile(hosts_file)
+        if os.path.exists(self.hosts_file):
+            FileUtil.removeFile(self.hosts_file)
+        FileUtil.createFile(self.hosts_file)
 
-        HostsUtil.write_hosts_file(hosts_file, contents)
-        FileUtil.changeMode(DefaultValue.FILE_MODE, hosts_file, cmd_type="shell")
-        FileUtil.changeOwner(self.user, hosts_file, cmd_type="shell")
+        HostsUtil.write_hosts_file(self.hosts_file, contents)
+        FileUtil.changeMode(DefaultValue.FILE_MODE, self.hosts_file, cmd_type="shell")
+        FileUtil.changeOwner(self.user, self.hosts_file, cmd_type="shell")
 
     def delete_tmp_file(self):
         """
@@ -1176,8 +1177,7 @@ General options:
         input : NA
         output: NA
         """
-        hosts_file = "/tmp/gs_sshexkey_hosts"
-        FileUtil.removeFile(hosts_file)
+        FileUtil.removeFile(self.hosts_file)
 
     def write_hostname_to_list(self, ip_hostname):
         """

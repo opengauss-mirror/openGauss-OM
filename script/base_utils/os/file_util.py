@@ -30,6 +30,7 @@ from subprocess import PIPE
 
 from base_utils.common.constantsbase import ConstantsBase
 from gspylib.common.ErrorCode import ErrorCode
+from gspylib.common.Constants import Constants
 from base_utils.os.cmd_util import CmdUtil
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.user_util import UserUtil
@@ -964,7 +965,7 @@ class FileUtil(object):
         get hosts file
         """
         host_file = ""
-        tmp_hosts_file = "/tmp/gs_sshexkey_hosts"
+        tmp_hosts_file = Constants.TMP_SSH_FILE
         if os.path.exists(tmp_hosts_file):
             host_file = tmp_hosts_file
         if host_file and os.path.exists(host_file) and os.path.isfile(host_file):

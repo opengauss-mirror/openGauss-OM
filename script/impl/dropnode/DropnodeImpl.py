@@ -559,7 +559,10 @@ class OperCommon:
         
         if '(' in output:
             # output: 'ANY 1 (dn_6002, dn_6004), ANY 3 (dn_6003, dn_6005, dn_6006)'
-            output_dn_list = re.findall(r'(?:\w+\s+)?\d+\s+\(.*?\)', output)
+            output_dn_list = re.findall(r'(?:\w+\s+)?\d+\s*\(.*?\)', output)
+            if not output_dn_list:
+                self.logger.logExit(f"The ${output} is not valid, \
+                                    the correct format is 'ANY 1(dn_6002, dn_6004), ANY 1(dn_6003, dn_6005)'")
             # output_dn_list: ['ANY 1 (dn_6002, dn_6004)', 'ANY 3 (dn_6003, dn_6005, dn_6006)']
             output_dn_list = self.delete_sync_node_para(dnlist, output_dn_list)
             output_dn_str = ",".join(output_dn_list)

@@ -118,16 +118,19 @@ class SshTool():
         self._finalizer = weakref.finalize(self, self.clen_ssh_result_files)
         self.__sessions = {}
         self.is_ip = False
+        self.host_ips_names_map = {}
 
         if hostNames:
             # if not ip, convert hostname to ip
             if not SecurityChecker.check_is_ip(hostNames[0]):
                 self.is_ip = False
                 # key:value hostname:ip
-                host_ip_list = HostsUtil.hostname_list_to_ip_list(hostNames)
-                if not host_ip_list:
+                host_ips_list = HostsUtil.hostname_list_to_ip_list(hostNames)
+                if not host_ips_list:
                     raise Exception("Failed to hostname to ip.")
-                self.hostNames = host_ip_list
+                for ip, name in zip(host_ips_list, hostNames):
+                    self.host_ips_names_map[ip] = name
+                self.hostNames = host_ips_list
             else:
                 self.is_ip = True
 
@@ -335,7 +338,8 @@ class SshTool():
             if not self.is_ip:
                 res_map = {}
                 for key, value in resultMap.items():
-                    name = HostsUtil.ip_to_hostname(key)
+                    if key in self.host_ips_names_map:
+                        name = self.host_ips_names_map[key]
                     res_map[name] = value
                 resultMap = res_map
                 
@@ -344,7 +348,8 @@ class SshTool():
                 sshErrorPutFile = "%s/%s" % (self.__errorPath, host)
                 # ip to hostname
                 if not self.is_ip:
-                    host = HostsUtil.ip_to_hostname(host)
+                    if host in self.host_ips_names_map:
+                        host = self.host_ips_names_map[host]
                 if resultMap[host] == DefaultValue.SUCCESS:
                     prefix = "SUCCESS"
                 else:
@@ -451,6 +456,8 @@ class SshTool():
             else:
                 self.is_ip = False
                 host = HostsUtil.hostname_list_to_ip_list(host_list)
+                for ip, name in zip(host, host_list):
+                    self.host_ips_names_map[ip] = name
         return host
 
     def executeCommand(self, cmd, cmdReturn=DefaultValue.SUCCESS,
@@ -570,7 +577,8 @@ class SshTool():
 
             if localMode:
                 if not self.is_ip:
-                    hostList = [HostsUtil.ip_to_hostname(hostList[0])]
+                    if hostList[0] in self.host_ips_names_map:
+                        hostList = [self.host_ips_names_map[hostList[0]]] 
                 resultMap[hostList[0]] = DefaultValue.SUCCESS if status == 0 \
                     else DefaultValue.FAILURE
                 outputCollect = "[%s] %s:\n%s" \
@@ -586,7 +594,8 @@ class SshTool():
         
         for host in hostList:
             if not localMode and not self.is_ip:
-                host = HostsUtil.ip_to_hostname(host)
+                if host in self.host_ips_names_map:
+                    host = self.host_ips_names_map[host]
             if resultMap.get(host) != cmdReturn:
                 if outputCollect.find("GAUSS-5") == -1:
                     raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"]
@@ -713,7 +722,8 @@ class SshTool():
             if localMode:
                 dir_permission = 0o700
                 if not self.is_ip:
-                    hostList = [HostsUtil.ip_to_hostname(hostList[0])]
+                    if hostList[0] in self.host_ips_names_map:
+                        hostList = [self.host_ips_names_map[hostList[0]]]
                 if status == 0:
                     resultMap[hostList[0]] = DefaultValue.SUCCESS
                     outputCollect = "[%s] %s:\n%s" % ("SUCCESS", hostList[0],
@@ -751,7 +761,8 @@ class SshTool():
         
         for host in hostList:
             if not localMode and not self.is_ip:
-                host = HostsUtil.ip_to_hostname(host)
+                if host in self.host_ips_names_map:
+                    host = self.host_ips_names_map[host]
             if resultMap.get(host) != DefaultValue.SUCCESS:
                 if outputCollect.find("GAUSS-5") == -1:
                     outputCollect = ErrorCode.GAUSS_514["GAUSS_51400"] \
@@ -792,7 +803,8 @@ class SshTool():
                 sshErrorPutFile = "%s/%s" % (self.__errorPath, host)
 
                 if not self.is_ip:
-                    host = HostsUtil.ip_to_hostname(host)
+                    if host in self.host_ips_names_map:
+                        host = self.host_ips_names_map[host]
                 if os.path.isfile(sshOutPutFile):
                     with open(sshOutPutFile, "r") as fp:
                         context = fp.read()
@@ -896,7 +908,8 @@ class SshTool():
             if local_mode:
                 dir_permission = 0o700
                 if not self.is_ip:
-                    ssh_hosts = [HostsUtil.ip_to_hostname(ssh_hosts[0])]
+                    if ssh_hosts[0] in self.host_ips_names_map:
+                        ssh_hosts = [self.host_ips_names_map[ssh_hosts[0]]]
                 if status == 0:
                     resultMap[ssh_hosts[0]] = DefaultValue.SUCCESS
                     outputCollect = "[%s] %s:\n%s" % ("SUCCESS", ssh_hosts[0],
@@ -931,7 +944,8 @@ class SshTool():
         
         for host in ssh_hosts:
             if not local_mode and not self.is_ip:
-                host = HostsUtil.ip_to_hostname(host)
+                if host in self.host_ips_names_map:
+                    host = self.host_ips_names_map[host]
             if resultMap.get(host) != DefaultValue.SUCCESS:
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50216"]
                                 % ("file [%s]" % srcFile) +

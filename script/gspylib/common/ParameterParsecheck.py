@@ -98,7 +98,7 @@ gs_checkos = ["-?", "--help", "-V", "--version", "-h:", "-f:", "-o:",
               "-i:", "--detail",
               "-l:", "-X:"]
 gs_checkse = ["-?", "--help", "-V", "--version", "-h:", "-f:", "-o:",
-              "-i:", "--detail",
+              "-i:", "--detail", "--database=",
               "-l:", "-X:"]
 gs_expansion = ["-?", "--help", "-V", "--version", "-U:", "-G:", "-L", 
             "-X:", "-h:", "--sep-env-file=", "--time-out="]
@@ -346,6 +346,7 @@ class Parameter():
                               "-p": "port",
                               "--dn-port": "dn-port",
                               "--dn-ip": "dn-ip",
+                              "--database": "database",
                               "--interval": "interval",
                               "--threshold": "threshold",
                               "--check-count": "check_count",

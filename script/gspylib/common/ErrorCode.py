@@ -291,7 +291,9 @@ class ErrorCode():
         'GAUSS_50501': "[GAUSS-50501] : Shared_buffers must be less than "
                        "shmmax. Please check it.",
         'GAUSS_50502': "[GAUSS-50502] : Failed to obtain %s information.",
-        'GAUSS_50503': "[GAUSS-50503] : %s, program exists abnormally."
+        'GAUSS_50503': "[GAUSS-50503] : %s, program exists abnormally.",
+        'GAUSS_50504': "[GAUSS-50504] : Failed to execute the command: %s.\n"
+                       "ERROR: %s"
     }
 
     ###########################################################################

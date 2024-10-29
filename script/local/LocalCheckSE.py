@@ -176,11 +176,11 @@ def getDatabaseInfo(data, sql_query):
     output : Instantion
     """
     port = int(getValueFromFile('port'))
-    cmd = f"gsql -d postgres -p '{port}' -r -c \"{sql_query}\""
+    database = g_opts.database
+    cmd = f"gsql -d {database} -p '{port}' -r -c \"{sql_query}\""
     status, output = subprocess.getstatusoutput(cmd)
     if status != 0:
-        raise Exception((ErrorCode.GAUSS_505["GAUSS_50502"] % "ConnectionConfiguration") +
-                        ("The cmd is : %s" % cmd))
+        raise Exception(ErrorCode.GAUSS_505["GAUSS_50504"] % (cmd, output))
     if "ERROR:" in output:
         raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % output)
     value = extractRowsCount(output)
@@ -3556,26 +3556,33 @@ def setAdminPrivileges(data):
     result = AdminPrivileges()
     result.db = []
     try:
-        for item in data[0].db:
-            sql_query = """ALTER ROLE %s NOCREATEROLE;""" %(item.split("|")[0].strip())
-            getDatabaseInfo(result, sql_query)
-        for item in data[1].db:
-            sql_query = """ALTER ROLE %s NOCREATEDB;""" %(item.split("|")[0].strip())
-            getDatabaseInfo(result, sql_query)
-        for item in data[2].db:
-            sql_query = """ALTER ROLE %s NOAUDITADMIN;""" %(item.split("|")[0].strip())
-            getDatabaseInfo(result, sql_query)
-        for item in data[3].db:
-            sql_query = """ALTER ROLE %s NOMONADMIN;""" %(item.split("|")[0].strip())
-            getDatabaseInfo(result, sql_query)
-        for item in data[4].db:
-            sql_query = """ALTER ROLE %s NOOPRADMIN;""" %(item.split("|")[0].strip())
-            getDatabaseInfo(result, sql_query)
-        for item in data[5].db:
-            sql_query = """ALTER ROLE %s NOPOLADMIN;""" %(item.split("|")[0].strip())
-            getDatabaseInfo(result, sql_query)
+        alter_role(data, result)
     except Exception as e:
+        data = AdminPrivileges()
         data.errormsg = e.__str__()
+
+def alter_role(data, result):
+    """
+    function : Alter role
+    input  : Instantion, Instantion
+    output : NA
+    """
+    role_actions = [
+        ("NOCREATEROLE", 0),
+        ("NOCREATEDB", 1),
+        ("NOAUDITADMIN", 2),
+        ("NOMONADMIN", 3),
+        ("NOOPRADMIN", 4),
+        ("NOPOLADMIN", 5)
+    ]
+
+    for action, index in role_actions:
+        for item in data[index].db:
+            role_name = item.split("|")[0].strip()
+            if not role_name:
+                continue
+            sql_query = f"ALTER ROLE {role_name} {action};"
+            getDatabaseInfo(result, sql_query)
 
 def setEnableSeparationOfDuty(data):
     """
@@ -4744,6 +4751,7 @@ class CmdOptions():
         self.user = ""
         self.extrachecklist = []
         self.logFile = ""
+        self.database = ""
         self.confFile = ""
         self.mtuValue = ""
         self.hostname = ""
@@ -4796,7 +4804,7 @@ def usage():
     """
 Usage:
  python3 --help | -?
- python3 LocalCheckSE -t action [-l logfile] [-X xmlfile] [-V]
+ python3 LocalCheckSE -t action [-l logfile] [-X xmlfile] [-V] [--database=database]
 Common options:
  -t                                The type of action.
  -s                                the path of MPPDB file
@@ -4804,6 +4812,7 @@ Common options:
  -? --help                         Show this help screen.
  -X --xmlfile = xmlfile            Cluster config file
     --ntp-server                   NTP server node's IP.
+    --database=database            Specify the database to check.
  -V --version
     """
     print(usage.__doc__)
@@ -4818,7 +4827,7 @@ def parseCommandLine():
     try:
         opts, args = getopt.getopt(sys.argv[1:], "t:s:l:X:V?",
                                    ["help", "log-file=", "xmlfile=",
-                                    "MTUvalue=", "hostname=",
+                                    "MTUvalue=", "hostname=", "database=",
                                     "ntp-server=", "version"])
     except Exception as e:
         usage()
@@ -4852,6 +4861,8 @@ def parseCommandLine():
             g_opts.mtuValue = value
         elif (key == "--hostname"):
             g_opts.hostname = value
+        elif (key == "--database"):
+            g_opts.database = value
         Parameter.checkParaVaild(key, value)
 
 

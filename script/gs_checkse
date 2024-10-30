@@ -116,18 +116,19 @@ class CmdOptions():
     """
 
     def __init__(self):
-        self.hostnamestr = ""
-        self.itemstr = ""
-        self.hostlistfile = ""
+        self.hostnamestr = DefaultValue.EMPTY_STR
+        self.itemstr = DefaultValue.EMPTY_STR
+        self.hostlistfile = DefaultValue.EMPTY_STR
         self.hostnameList = []
-        self.outputfile = ""
-        self.logFile = ""
-        self.localLog = ""
+        self.outputfile = DefaultValue.EMPTY_STR
+        self.logFile = DefaultValue.EMPTY_STR
+        self.localLog = DefaultValue.EMPTY_STR
+        self.database = DefaultValue.EMPTY_STR
         self.set = False
         self.detail = False
         self.detail_all = False
         self.item_detail = []
-        self.confFile = ""
+        self.confFile = DefaultValue.EMPTY_STR
         self.localMode = False
         self.skip_cgroup_set = False
 
@@ -172,6 +173,7 @@ General options:
   -h                              Name of the host to connect to.
   -X                              Configuration file of the cluster.
      --detail                     Show detailed information.
+     --database                   Specify the database to check.
   -o                              Save the result to the specified file.
   -l                              Path of log file.
   -? --help                       Show help information for this utility, and exit the command line mode.
@@ -274,6 +276,8 @@ def parseCommandLine():
         g_opts.itemstr = ParaDict.get("itemstr")
     if (ParaDict.__contains__("show_detail")):
         g_opts.detail = ParaDict.get("show_detail")
+    if (ParaDict.__contains__("database")):
+        g_opts.database = ParaDict.get("database")
 
 
 def getUserInfo():
@@ -386,6 +390,14 @@ def setLogFile():
         UserUtil.check_path_owner(g_opts.logFile)
 
 
+def setDatabase():
+    """
+    Set database name
+    """
+    if(g_opts.database == DefaultValue.EMPTY_STR):
+        g_opts.database = DefaultValue.DEFAULT_DB_NAME
+
+
 def checkItems():
     """
     """
@@ -422,6 +434,8 @@ def checkParameter():
     # set logfile
     ############################################
     setLogFile()
+    ##########################################
+    setDatabase()
     ##########################################
     # set items
     ############################################
@@ -522,11 +536,11 @@ def performCheckorSetSE(action_item, flag_str, success_mesg, item_num,
         if command == "":
             command = Local_CheckSe
         if (configFile != ""):
-            cmd = "%s -t %s -X '%s' -l '%s' %s" % (
-                command, action_item, configFile, g_opts.localLog, parameters)
+            cmd = "%s -t %s -X '%s' -l '%s' --database=%s %s" % (
+                command, action_item, configFile, g_opts.localLog, g_opts.database, parameters)
         else:
-            cmd = "%s -t %s -l '%s' %s" % (
-                command, action_item, g_opts.localLog, parameters)
+            cmd = "%s -t %s -l '%s' --database=%s %s" % (
+                command, action_item, g_opts.localLog, g_opts.database, parameters)
         (status, output, outputMap) = getCmdOutput(cmd)
         parRes = ""
         detail_msg = ""

@@ -244,6 +244,7 @@ class DefaultValue():
     CAP_WIO = "CAP_SYS_RAWIO"
     CAP_ADM = "CAP_SYS_ADMIN"
 
+    EMPTY_STR = ""
     # env parameter
     MPPRC_FILE_ENV = "MPPDB_ENV_SEPARATE_PATH"
     SUCCESS = "Success"

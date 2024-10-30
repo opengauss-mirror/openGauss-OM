@@ -2336,8 +2336,6 @@ def  cleanInstallPath():
     delete_bin = os.path.join(appBakPath, f'gaussdb_{commit_id}/bin')
     cmd += " && (if [ -L '{0}' ]; then unlink '{0}'; fi)".format(
         os.path.join(delete_bin, 'perctrl'))
-    cmd += " && (if [ -L '{0}' ]; then unlink '{0}'; fi)".format(
-        os.path.join(delete_bin, 'cm_persist'))
     cmd += " && (if [ -d '%s' ]; then cp -r '%s/' '%s/to_be_delete/'; fi)" % (
         installPath, installPath, tmpDir)
     g_logger.debug(

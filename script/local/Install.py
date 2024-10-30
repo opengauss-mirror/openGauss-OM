@@ -352,7 +352,7 @@ class Install(LocalBaseOM):
 
     def check_clib_bin(self, clib_bin, bin_file):
         """
-        Check perctrl or cm_persist in GPHOME clib path.
+        Check perctrl in GPHOME clib path.
         If not in, copy if from installPath
         """
         if os.path.exists(clib_bin):
@@ -387,7 +387,7 @@ class Install(LocalBaseOM):
         if not os.path.isdir(dss_app):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % dss_app)
 
-        sudo_bin = ['perctrl', 'cm_persist']
+        sudo_bin = ['perctrl']
         for bin_ in sudo_bin:
             clib_bin = os.path.realpath(os.path.join(clib_app, bin_))
             self.check_clib_bin(clib_bin, bin_)
@@ -399,8 +399,7 @@ class Install(LocalBaseOM):
                     raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % mv_cmd +
                                     "Error:\n%s" % output)
 
-        link_cmd = 'ln -snf {0}/cm_persist {0}/perctrl {1}'.format(
-            dss_app, bin_path)
+        link_cmd = 'ln -snf {0}/perctrl {1}'.format(dss_app, bin_path)
         self.logger.debug(f"The cmd of the link: {link_cmd}.")
         status, output = subprocess.getstatusoutput(link_cmd)
         if status != 0:

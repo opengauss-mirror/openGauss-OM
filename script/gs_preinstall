@@ -479,10 +479,8 @@ General options:
         # target tools
         bin_files = ['./bin/encrypt']
         dss_files = []
-        cm_files = []
         memcheck_files = []
         if self.clusterInfo.enable_dss == 'on':
-            cm_files = ['bin/cm_persist']
             dss_files = ['./bin/perctrl', './bin/dsscmd', './lib/libdssapi.so', './bin/dss_clear.sh']
         if self.og_version_cfg['mode'] == 'memcheck':
             memcheck_files = ['./lib/libasan.so', './lib/libasan.so.6', './lib/libasan.so.6.0.0']
@@ -500,10 +498,9 @@ General options:
         # unpack and move tools into target path
         cmd = 'cd {} && '.format(root)
         cmd += 'tar -xpf {}*.tar.bz2  {} && '.format(pkg_prefix, ' '.join(bin_files + dss_files + memcheck_files))
-        if cm_files:
-            cmd += 'tar -xpf {}*.tar.gz  {} && '.format(pkg_prefix.replace("Server", "CM"), ' '.join(cm_files))
+        if dss_files:
             cmd += 'mkdir -p {0} -m u=rwx && '.format(clib_dss)
-            cmd += 'mv {} {} && '.format(' '.join(cm_files + dss_files), clib_dss)
+            cmd += 'mv {} {} && '.format(' '.join(dss_files), clib_dss)
         if memcheck_root_lib != '':
             cmd += 'cp ./lib/libasan.so.6 {} &&'.format(memcheck_root_lib)
         cmd += '\mv {} {} && '.format(' '.join(bin_files + memcheck_files), clib)

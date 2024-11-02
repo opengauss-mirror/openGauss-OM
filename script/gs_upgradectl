@@ -119,6 +119,9 @@ class Upgrade(ParallelBaseOM):
         self.upgradePhaseInfoPath = ""
         self.upgrade_action = ""
         self.upgrade_package = ""
+        
+        # check if upgrade from 3.0.* version with compress table.
+        self.check_compresstbl_compat = True
 
     def usage(self):
         """

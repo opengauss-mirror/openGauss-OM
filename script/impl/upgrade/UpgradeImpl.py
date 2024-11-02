@@ -408,6 +408,58 @@ class UpgradeImpl:
         if self.context.is_grey_upgrade:
             self.getOneDNInst(checkNormal=True)
             self.checkUpgradeMode()
+            self.check_compress_tbl_compatibility()
+            
+    
+    def check_compress_tbl_compatibility(self):
+        """
+        Check if upgrade from 3.0.* version with compressed table.
+        :return:
+        
+        Version 3.0 compression table is not compatible with other versions, it will 
+        be unavailability after upgraded. 
+        We will force the upgrade to exit until the compressed table is compatible
+        with version 3.0.      
+        """
+        
+        UNCOMPAT_VERSION_PRE = "3.0."
+        if not self.context.check_compresstbl_compat or \
+            not self.context.oldClusterVersion.startswith(UNCOMPAT_VERSION_PRE):
+            return
+        
+        dbnames_sql = "select datname from pg_database " \
+            "where datname not in ('template0', 'template1');"
+        relopts_sql = "select relname,reloptions from pg_class where reloptions::text ~ 'compress';"
+            
+        (status, output) = self.execSqlCommandInPrimaryDN(dbnames_sql)
+        if status != 0 or output == "":
+            raise Exception("Failed query database names: Status: {0}. Output: {1}".format(status,
+                                                                                         output))
+        db_list = output.split("\n")
+        for dbname in db_list:
+            self.context.logger.debug("[check_compress_tbl]check database %s" % dbname)
+            (status, output) = self.execSqlCommandInPrimaryDN(relopts_sql, database=dbname)
+            if output != "":
+                reloptinfo_list = output.split("\n")
+                for relinfo in reloptinfo_list:
+                    compressed = self.check_tbl_compressed(relinfo)
+                    if compressed:
+                        self.context.logger.error("ERROR: Database [%s] has compressed table, reloptions [%s]" % 
+                                    (dbname, relinfo))
+                        self.context.logger.warn("WARNNING: Cannot upgrade from %s to %s with compressed tables, " \
+                                                 "Which are incompatible." % 
+                                                 (self.context.oldClusterVersion, self.context.newClusterVersion))
+                        sys.exit(1)
+
+    def check_tbl_compressed(self, reloptinfo):
+        tblinfoarr = reloptinfo.split("|")
+        if len(tblinfoarr) != 2:
+            return
+        relopt = tblinfoarr[1]
+        if re.search(r"compresstype=[1-2]{1}", relopt):
+            return True
+        return False
+
 
     def checkReadOnly(self):
         """
@@ -7519,7 +7571,8 @@ END;"""
         else:
             return False
 
-    def execSqlCommandInPrimaryDN(self, sql, retryTime=3, execHost=None, mode="primary"):
+    def execSqlCommandInPrimaryDN(self, sql, retryTime=3, execHost=None, mode="primary", 
+                                  database=DefaultValue.DEFAULT_DB_NAME):
         """
         execute sql on primary dn
         :return:
@@ -7536,7 +7589,7 @@ END;"""
             (status, output) = ClusterCommand.remoteSQLCommand(sql, self.context.user,
                                                                execHost.hostname, execHost.port,
                                                                False,
-                                                               DefaultValue.DEFAULT_DB_NAME,
+                                                               database,
                                                                IsInplaceUpgrade=True,
                                                                maintenance_mode=mode)
             self.context.logger.debug("Exec sql result "

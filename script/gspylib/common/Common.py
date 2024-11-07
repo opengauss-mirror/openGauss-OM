@@ -2575,7 +2575,7 @@ class DefaultValue():
         return local_ips
 
     @staticmethod
-    def get_pid(desc):
+    def get_pid(desc, width=300):
         """
         function : get the ID of the process
                    that contains the specified content
@@ -2583,7 +2583,7 @@ class DefaultValue():
         output : list
         """
         pids = []
-        cmd = "ps ux | grep '%s' | grep -v grep" % desc
+        cmd = "ps ux --width=%s | grep '%s' | grep -v grep" % (width, desc)
         proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE)
         stdout, stderr = proc.communicate()
         if stderr:

@@ -75,9 +75,7 @@ class VipResAttr():
         self.float_ip = float_ip
 
     def __str__(self):
-        return str(vars(self)).replace(':', '=').replace('\'', '').replace(
-            ' ', '').replace('{', '"').replace('}', '"').replace(';', ' ')
-
+        return f'"resources_type={self.resources_type},float_ip={self.float_ip}"'
 
 class VipInstAttr():
     """
@@ -87,9 +85,7 @@ class VipInstAttr():
         self.base_ip = base_ip
 
     def __str__(self):
-        return str(vars(self)).replace(':', '=').replace('\'', '').replace(
-            ' ', '').replace('{', '"').replace('}', '"').replace(';', ' ')
-
+        return f'"base_ip={self.base_ip}"'
 
 class VipAddInst():
     """

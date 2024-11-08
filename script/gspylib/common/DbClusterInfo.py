@@ -4072,7 +4072,8 @@ class dbClusterInfo():
             ipList_tmp = multiIpList[i].split(",")
             for ip in ipList_tmp:
                 ipList.append(ip.strip())
-            ipList = self.compress_ips(ipList)
+            if prefix != "floatIpMap":
+                ipList = self.compress_ips(ipList)
             ipNum = len(ipList)
             if (ipNum != InstCount):
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"]

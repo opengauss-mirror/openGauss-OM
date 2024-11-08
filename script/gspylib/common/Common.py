@@ -41,6 +41,7 @@ from subprocess import Popen
 from base_utils.os.password_util import PasswordUtil
 from os_platform.common import DEBIAN, UBUNTU
 
+from base_utils.os.hosts_util import HostsUtil
 # The installation starts, but the package is not decompressed completely.
 # The lib64/libz.so.1 file is incomplete, and the hashlib depends on the
 # libz.so.1 file.
@@ -713,7 +714,7 @@ class DefaultValue():
         '''
         function: get local host ip by the hostname
         input : NA
-        output: hostIp
+        output: host_ip
         '''
         # get hostname
         hostname = socket.gethostname()
@@ -723,21 +724,12 @@ class DefaultValue():
               "/etc/hosts | grep -E \" %s \"" % (hostname, hostname)
         (status, output) = subprocess.getstatusoutput(cmd)
         if (status == 0 and output != ""):
-            hostIp = output.strip().split(' ')[0].strip()
-            return hostIp
+            host_ip = output.strip().split(' ')[0].strip()
+            return host_ip
 
-        # get local host by os function
-        addr_info = socket.getaddrinfo(hostname, None)
-        for info in addr_info:
-            # Extract IPv4 or IPv6 addresses from address information
-            hostIp = info[NetUtil.ADDRESS_FAMILY_INDEX][NetUtil.IP_ADDRESS_INDEX]
-        # due to two loopback address in ubuntu, 127.0.1.1 are choosed by hostname.
-        # there is need to choose 127.0.0.1
-        distname, version, idnum = LinuxDistro.linux_distribution()
-        version = LinuxDistro.linux_distribution()[1].split('/')[0]
-        if distname in (UBUNTU, DEBIAN) and hostIp == "127.0.1.1":
-            hostIp = "127.0.0.1"
-        return hostIp
+        # get local host by os function or hosts_file
+        host_ip = HostsUtil.hostname_to_ip(hostname)
+        return host_ip
 
     @staticmethod
     def GetPythonUCS():
@@ -917,7 +909,7 @@ class DefaultValue():
         elif (distname in ("redhat", "centos", "euleros", "openEuler", "FusionOS", "kylin", "h3linux", "ningos") and
               os.path.isfile(initFileRedhat)):
             initFile = initFileRedhat
-        elif (distname == "debian" and
+        elif (distname == "debian" and version == "buster/sid" and
               os.path.isfile(initFileUbuntu)):
             initFile = initFileUbuntu
         else:

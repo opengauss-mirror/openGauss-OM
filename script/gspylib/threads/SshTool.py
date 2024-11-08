@@ -578,7 +578,7 @@ class SshTool():
             if localMode:
                 if not self.is_ip:
                     if hostList[0] in self.host_ips_names_map:
-                        hostList = [self.host_ips_names_map[hostList[0]]] 
+                        hostList = [self.host_ips_names_map[hostList[0]]]
                 resultMap[hostList[0]] = DefaultValue.SUCCESS if status == 0 \
                     else DefaultValue.FAILURE
                 outputCollect = "[%s] %s:\n%s" \
@@ -834,7 +834,6 @@ class SshTool():
         outputCollect = ""
         resultMap = {}
         hosts = []
-        ssh_hosts = []
         local_mode = False
         local_mode = check_local_mode(hostList)
         hostList = self.check_host_ip_list(hostList)
@@ -843,7 +842,7 @@ class SshTool():
                 mpprcFile = env_file
             else:
                 mpprcFile = EnvUtil.getEnv(DefaultValue.MPPRC_FILE_ENV)
-            
+
             if mpprcFile and os.path.isfile(mpprcFile):
                 cmd = "source %s && echo $GPHOME" % mpprcFile
                 (status, output) = subprocess.getstatusoutput(cmd)
@@ -860,37 +859,30 @@ class SshTool():
                 local_mode = check_local_mode(hosts)
             else:
                 hosts = copy.deepcopy(hostList)
-            for host in hosts:
-                if NetUtil.get_ip_version(host) == NetUtil.NET_IPV6:
-                    # scp file is to the ipv6 address, needs to add [] to ipaddress:
-                    # scp a.txt [2407:c080:1200:22a0:613f:8d3b:caa:2335]:/data
-                    ssh_hosts.append("[" + host + "]")
-                else:
-                    # if host is ipv4 or hostname
-                    ssh_hosts.append(host)
             if local_mode and \
-                srcFile != targetDir and \
-                srcFile != os.path.join(targetDir, os.path.split(srcFile)[1]):
+                    srcFile != targetDir and \
+                    srcFile != os.path.join(targetDir, os.path.split(srcFile)[1]):
                 scpCmd = "cp -r %s %s" % (srcFile, targetDir)
             else:
                 # cp file on local node
-                self.cp_file_on_local_node(srcFile, targetDir, resultMap, ssh_hosts)
-                if not ssh_hosts:
+                self.cp_file_on_local_node(srcFile, targetDir, resultMap, hosts)
+                if not hosts:
                     return
+                hosts = [HostsUtil.add_square_bracket_if_ipv6(host) for host in hosts]
                 scpCmd = "%s -r -v -t %s -p %s -H %s -o %s -e %s %s %s" \
-                          " 2>&1 | tee %s" % (pscppre, self.__timeout,
-                                              parallel_num,
-                                              " -H ".join(ssh_hosts),
-                                              self.__outputPath,
-                                              self.__errorPath, srcFile,
-                                              targetDir, self.__resultFile)
+                         " 2>&1 | tee %s" % (pscppre, self.__timeout,
+                                             parallel_num,
+                                             " -H ".join(hosts),
+                                             self.__outputPath,
+                                             self.__errorPath, srcFile,
+                                             targetDir, self.__resultFile)
             (status, output) = subprocess.getstatusoutput(scpCmd)
-
-            # If sending the file fails, we retry  3 * 10s to avoid the 
+            hosts = [HostsUtil.remove_square_bracket_if_exist(host) for host in hosts]
+            # If sending the file fails, we retry  3 * 10s to avoid the
             # failure caused by intermittent network disconnection. such as Broken pipe.
             # If the fails is caused by timeout. no need to retry.
             max_retry_times = 3
-            while(max_retry_times > 0 and status != 0 and output.find("Timed out") < 0):
+            while (max_retry_times > 0 and status != 0 and output.find("Timed out") < 0):
                 max_retry_times -= 1
                 time.sleep(10)
                 (status, output) = subprocess.getstatusoutput(scpCmd)
@@ -908,41 +900,41 @@ class SshTool():
             if local_mode:
                 dir_permission = 0o700
                 if not self.is_ip:
-                    if ssh_hosts[0] in self.host_ips_names_map:
-                        ssh_hosts = [self.host_ips_names_map[ssh_hosts[0]]]
+                    if hosts[0] in self.host_ips_names_map:
+                        hosts = [self.host_ips_names_map[hosts[0]]]
                 if status == 0:
-                    resultMap[ssh_hosts[0]] = DefaultValue.SUCCESS
-                    outputCollect = "[%s] %s:\n%s" % ("SUCCESS", ssh_hosts[0],
+                    resultMap[hosts[0]] = DefaultValue.SUCCESS
+                    outputCollect = "[%s] %s:\n%s" % ("SUCCESS", hosts[0],
                                                       SensitiveMask.mask_pwd(output))
 
                     if not os.path.exists(self.__outputPath):
                         os.makedirs(self.__outputPath, mode=dir_permission)
-                    file_path = os.path.join(self.__outputPath, ssh_hosts[0])
+                    file_path = os.path.join(self.__outputPath, hosts[0])
                     FileUtil.createFileInSafeMode(file_path)
                     with open(file_path, "w") as fp:
                         fp.write(SensitiveMask.mask_pwd(output))
                         fp.flush()
                         fp.close()
                 else:
-                    resultMap[ssh_hosts[0]] = DefaultValue.FAILURE
-                    outputCollect = "[%s] %s:\n%s" % ("FAILURE", ssh_hosts[0],
+                    resultMap[hosts[0]] = DefaultValue.FAILURE
+                    outputCollect = "[%s] %s:\n%s" % ("FAILURE", hosts[0],
                                                       SensitiveMask.mask_pwd(output))
 
                     if not os.path.exists(self.__errorPath):
                         os.makedirs(self.__errorPath, mode=dir_permission)
-                    file_path = os.path.join(self.__errorPath, ssh_hosts[0])
+                    file_path = os.path.join(self.__errorPath, hosts[0])
                     FileUtil.createFileInSafeMode(file_path)
                     with open(file_path, "w") as fp:
                         fp.write(SensitiveMask.mask_pwd(output))
                         fp.flush()
                         fp.close()
             else:
-                resultMap, outputCollect = self.parseSshResult(ssh_hosts)
+                resultMap, outputCollect = self.parseSshResult(hosts)
         except Exception as e:
             self.clen_ssh_result_files()
             raise Exception(str(e))
-        
-        for host in ssh_hosts:
+
+        for host in hosts:
             if not local_mode and not self.is_ip:
                 if host in self.host_ips_names_map:
                     host = self.host_ips_names_map[host]
@@ -951,7 +943,7 @@ class SshTool():
                                 % ("file [%s]" % srcFile) +
                                 " To directory: %s." % targetDir +
                                 " Command: %s.\nError:\n%s" % (SensitiveMask.mask_pwd(scpCmd),
-                                    SensitiveMask.mask_pwd(outputCollect)))
+                                                               SensitiveMask.mask_pwd(outputCollect)))
 
     def cp_file_on_local_node(self, src_file, target_dir, result_map, ssh_hosts):
         """"
@@ -1041,9 +1033,9 @@ class SshTool():
                     continue
 
                 if len(resultPair) >= 4 and resultPair[2] == "[FAILURE]":
-                    resultMap[resultPair[3]] = "Failure"
+                    resultMap[HostsUtil.remove_square_bracket_if_exist(resultPair[3])] = "Failure"
                 if len(resultPair) >= 4 and resultPair[2] == "[SUCCESS]":
-                    resultMap[resultPair[3]] = "Success"
+                    resultMap[HostsUtil.remove_square_bracket_if_exist(resultPair[3])] = "Success"
 
             if len(resultMap) != hostNum:
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51637"]

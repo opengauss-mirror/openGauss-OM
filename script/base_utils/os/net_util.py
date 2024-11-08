@@ -253,8 +253,9 @@ class NetUtil(object):
 
         for iface in interfaces():
             if key in ifaddresses(iface):
-                ip_address = ifaddresses(iface)[key][0]['addr']
-                yield (iface, ip_address)
+                for addr_info in ifaddresses(iface)[key]:
+                    ip_address = addr_info['addr']
+                    yield (iface, ip_address)
 
     @staticmethod
     def getHostNameByIPAddr(ip_address):

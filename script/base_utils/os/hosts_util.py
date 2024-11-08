@@ -142,3 +142,34 @@ class HostsUtil:
         finally:
             lock.release()
         return True
+
+    @staticmethod
+    def add_square_bracket_if_ipv6(host):
+        """
+        function: add square bracket for ipv6 to scpCmd
+        input: host
+        output: scp_host
+        """
+        if not host:
+            return ""
+        if NetUtil.get_ip_version(host) == NetUtil.NET_IPV6:
+            # scp file is to the ipv6 address, needs to add [] to ipaddress:
+            # scp a.txt [2407:c080:1200:22a0:613f:8d3b:caa:2335]:/data
+            scp_host = "[" + host + "]"
+        else:
+            # if host is ipv4 or hostname
+            scp_host = host
+        return scp_host
+
+    @staticmethod
+    def remove_square_bracket_if_exist(host):
+        """
+        function: remove square bracket for ipv6 to scpCmd
+        input: host
+        output: host
+        """
+        if not host:
+            return ""
+        if host[:1] == '[' and host[-1:] == ']':
+            host = host.strip('[]')
+        return host

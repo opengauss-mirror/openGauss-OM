@@ -131,11 +131,23 @@ class DropnodeImpl():
                     self.commonOper.checkStandbyState(hostNameLoop, i,
                                                       sshtool_host,
                                                       self.userProfile, True)
-                    self.commonOper.stopInstance(hostNameLoop, sshtool_host, i,
-                                                 self.userProfile)
                 self.cleanSshToolFile(sshtool_host)
             else:
                 self.logger.log("[gs_dropnode]Cannot connect %s." % (hostNameLoop))
+
+    def stop_del_node(self):
+        """
+        stop the target node
+        """
+        for host in self.context.hostMapForDel.keys():
+            if host not in self.context.failureHosts:
+                sshtool_host = SshTool([host])
+                for i in self.context.hostMapForDel[host]['datadir']:
+                    self.commonOper.stopInstance(host, sshtool_host, i,
+                                                 self.userProfile)
+                self.cleanSshToolFile(sshtool_host)
+            else:
+                self.logger.log("[gs_dropnode]Cannot connect %s." % (host))
 
     def dropNodeOnAllHosts(self):
         """
@@ -376,6 +388,7 @@ class DropnodeImpl():
         self.checkAllStandbyState()
         self.dropNodeOnAllHosts()
         self.operationOnlyOnPrimary()
+        self.stop_del_node()
         self.modifyStaticConf()
         self.restartInstance()
         self.logger.log("[gs_dropnode]Success to drop the target nodes.")

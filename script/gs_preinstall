@@ -25,7 +25,6 @@ import pwd
 import sys
 import grp
 import subprocess
-import readline
 from gspylib.common.CheckPythonVersion import check_python_version, \
     check_python_compiler_option, check_os_and_package_arch
 

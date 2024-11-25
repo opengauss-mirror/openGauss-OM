@@ -344,12 +344,12 @@ class SshTool():
                 resultMap = res_map
                 
             for host in hostList:
+                sshOutPutFile = "%s/%s" % (self.__outputPath, host)
+                sshErrorPutFile = "%s/%s" % (self.__errorPath, host)
                 # ip to hostname
                 if not self.is_ip:
                     if host in self.host_ips_names_map:
                         host = self.host_ips_names_map[host]
-                sshOutPutFile = "%s/%s" % (self.__outputPath, host)
-                sshErrorPutFile = "%s/%s" % (self.__errorPath, host)
                 if resultMap[host] == DefaultValue.SUCCESS:
                     prefix = "SUCCESS"
                 else:
@@ -723,10 +723,12 @@ class SshTool():
                 dir_permission = 0o700
                 if not self.is_ip:
                     if hostList[0] in self.host_ips_names_map:
-                        hostList = [self.host_ips_names_map[hostList[0]]]
+                        hostname = [self.host_ips_names_map[hostList[0]]]
+                else:
+                    hostname = hostList
                 if status == 0:
-                    resultMap[hostList[0]] = DefaultValue.SUCCESS
-                    outputCollect = "[%s] %s:\n%s" % ("SUCCESS", hostList[0],
+                    resultMap[hostname[0]] = DefaultValue.SUCCESS
+                    outputCollect = "[%s] %s:\n%s" % ("SUCCESS", hostname[0],
                                                       SensitiveMask.mask_pwd(output))
 
                     if not os.path.exists(self.__outputPath):
@@ -738,8 +740,8 @@ class SshTool():
                         fp.flush()
                         fp.close()
                 else:
-                    resultMap[hostList[0]] = DefaultValue.FAILURE
-                    outputCollect = "[%s] %s:\n%s" % ("FAILURE", hostList[0],
+                    resultMap[hostname[0]] = DefaultValue.FAILURE
+                    outputCollect = "[%s] %s:\n%s" % ("FAILURE", hostname[0],
                                                       SensitiveMask.mask_pwd(output))
 
                     if not os.path.exists(self.__errorPath):
@@ -760,7 +762,7 @@ class SshTool():
             raise Exception(str(e))
         
         for host in hostList:
-            if not localMode and not self.is_ip:
+            if not self.is_ip:
                 if host in self.host_ips_names_map:
                     host = self.host_ips_names_map[host]
             if resultMap.get(host) != DefaultValue.SUCCESS:
@@ -794,18 +796,17 @@ class SshTool():
           return host info list
         """
         resultMap = {}
-        if not self.is_ip and not SecurityChecker.check_is_ip(hostList[0]):
-            hostList = HostsUtil.hostname_list_to_ip_list(hostList)
         try:
+            if not SecurityChecker.check_is_ip(hostList[0]):
+                hostList = HostsUtil.hostname_list_to_ip_list(hostList)
             for host in hostList:
                 context = ""
-                if not self.is_ip:
-                    if host in self.host_ips_names_map:
-                        host = self.host_ips_names_map[host]
-
                 sshOutPutFile = "%s/%s" % (self.__outputPath, host)
                 sshErrorPutFile = "%s/%s" % (self.__errorPath, host)
 
+                if not self.is_ip:
+                    if host in self.host_ips_names_map:
+                        host = self.host_ips_names_map[host]
                 if os.path.isfile(sshOutPutFile):
                     with open(sshOutPutFile, "r") as fp:
                         context = fp.read()

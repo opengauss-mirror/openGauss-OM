@@ -344,12 +344,12 @@ class SshTool():
                 resultMap = res_map
                 
             for host in hostList:
-                sshOutPutFile = "%s/%s" % (self.__outputPath, host)
-                sshErrorPutFile = "%s/%s" % (self.__errorPath, host)
                 # ip to hostname
                 if not self.is_ip:
                     if host in self.host_ips_names_map:
                         host = self.host_ips_names_map[host]
+                sshOutPutFile = "%s/%s" % (self.__outputPath, host)
+                sshErrorPutFile = "%s/%s" % (self.__errorPath, host)
                 if resultMap[host] == DefaultValue.SUCCESS:
                     prefix = "SUCCESS"
                 else:
@@ -794,17 +794,18 @@ class SshTool():
           return host info list
         """
         resultMap = {}
+        if not self.is_ip and not SecurityChecker.check_is_ip(hostList[0]):
+            hostList = HostsUtil.hostname_list_to_ip_list(hostList)
         try:
-            if not SecurityChecker.check_is_ip(hostList[0]):
-                hostList = HostsUtil.hostname_list_to_ip_list(hostList)
             for host in hostList:
                 context = ""
-                sshOutPutFile = "%s/%s" % (self.__outputPath, host)
-                sshErrorPutFile = "%s/%s" % (self.__errorPath, host)
-
                 if not self.is_ip:
                     if host in self.host_ips_names_map:
                         host = self.host_ips_names_map[host]
+
+                sshOutPutFile = "%s/%s" % (self.__outputPath, host)
+                sshErrorPutFile = "%s/%s" % (self.__errorPath, host)
+
                 if os.path.isfile(sshOutPutFile):
                     with open(sshOutPutFile, "r") as fp:
                         context = fp.read()

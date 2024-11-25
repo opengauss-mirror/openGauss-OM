@@ -346,15 +346,12 @@ class DssInitCfg():
             setattr(self, key, value)
         if dss_nodes_list:
             self.DSS_NODES_LIST = dss_nodes_list
-        self.STORAGE_MODE = "RAID"
+        self.STORAGE_MODE = "SHARE_DISK"
         # _SHM_KEY value range: 1–64
         self._SHM_KEY = os.getuid() % 64 + 1
         self._LOG_LEVEL = '7'
         if exist_so:
             self.DSS_CM_SO_NAME = "libclient.so"
-            if hasattr(self, 'DSS_NODES_LIST') and len(
-                    self.DSS_NODES_LIST.split(',')) > 1:
-                self.STORAGE_MODE = "CLUSTER_RAID"
         else:
             if hasattr(self, 'DSS_CM_SO_NAME'):
                 del self.DSS_CM_SO_NAME

@@ -331,6 +331,7 @@ class DropNodeWithCmImpl(DropnodeImpl):
         lists = (output.split('=')[-1]).split(',')
         res_ids = set()
         for item in lists:
+            item = item.strip()
             res_ids.add(int(item[0]))
 
         getXLog_cmd = "dsscmd ls -p +%s | grep pg_xlog | awk '{print $6}'" % vg_name

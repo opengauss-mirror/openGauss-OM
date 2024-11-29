@@ -724,6 +724,8 @@ class SshTool():
                 if not self.is_ip:
                     if hostList[0] in self.host_ips_names_map:
                         hostname = [self.host_ips_names_map[hostList[0]]]
+                else:
+                    hostname = hostList
                 if status == 0:
                     resultMap[hostname[0]] = DefaultValue.SUCCESS
                     outputCollect = "[%s] %s:\n%s" % ("SUCCESS", hostname[0],

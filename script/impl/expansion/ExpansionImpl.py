@@ -1804,8 +1804,8 @@ remoteservice={remoteservice}'"\
                 self.logger.debug("[%s] rollbackPg_hbaCmd:%s" % (host,
                     rollbackPg_hbaCmd))
                 sshTool.getSshStatusOutput(rollbackPg_hbaCmd, [host])
-                reload_guc_command = "'source %s; gs_ctl reload " \
-                        "-D %s'" % (self.envFile, dataNode)
+                reload_guc_command = "source %s; gs_ctl reload " \
+                        "-D %s" % (self.envFile, dataNode)
                 reload_guc_command = CmdUtil.get_user_exec_cmd(self.context.current_user_root, self.user, reload_guc_command)
                 self.logger.debug(reload_guc_command)
                 resultMap, outputCollect = sshTool.getSshStatusOutput(

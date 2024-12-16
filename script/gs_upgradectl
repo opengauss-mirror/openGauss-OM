@@ -119,7 +119,8 @@ class Upgrade(ParallelBaseOM):
         self.upgradePhaseInfoPath = ""
         self.upgrade_action = ""
         self.upgrade_package = ""
-        
+        self.bypass_stale_check = False
+
         # check if upgrade from 3.0.* version with compress table.
         self.check_compresstbl_compat = True
 
@@ -149,6 +150,7 @@ General options:
   -l                              Path of log file.
   --force                         Force to rollback when cluster status is
                                   not normal
+  --bypass-stale-check            allows upgrading from later releases to earlier releases                                 
   --grey                          Use grey-binary-upgrade
   --upgrade-package               Path of the CM component package
   --inplace-upgrade               Use inplace-upgrade.
@@ -190,6 +192,8 @@ Option for grey upgrade
             print("We no longer support force rollback. and '--force' is no longer in effect.")
         if "upgrade-package" in ParaDict.keys():
             self.upgrade_package = ParaDict.get("upgrade-package")
+        if "bypass_stale_check" in ParaDict.keys():
+            self.bypass_stale_check = True
         self.tmpDir = EnvUtil.getTmpDirFromEnv()
         if self.tmpDir == "":
             raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$PGHOST")

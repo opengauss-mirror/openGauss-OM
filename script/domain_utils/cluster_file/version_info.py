@@ -136,6 +136,120 @@ class VersionInfo(object):
         return version, number, commit_id
 
     @staticmethod
+    def get_release_date_from_app(app):
+        """
+        function: get the infomation of gaussdb release date
+        :param: gaussdb absolute path
+        :return: gaussdb release date
+        """
+        if not os.path.exists(app):
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % app)
+        if not os.path.isfile(app):
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50210"] % app)
+        cmd = app + " -V"
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_501["GAUSS_50110"] % cmd)
+        
+        release_date = re.compile(CommConstants.RELEASE_DATE_PATTERN).search(output)
+        if release_date is None:
+            raise Exception(ErrorCode.GAUSS_501["GAUSS_50110"] % cmd)
+
+        return release_date.group()
+    
+    @staticmethod
+    def get_release_date():
+        """
+        function: Get release date from compressed pack
+        input : NA
+        output: String
+        """
+        def _parse_pkg_prefix(_cfg):
+            _cmd = f'cat {_cfg}'
+            _status, _output = subprocess.getstatusoutput(_cmd)
+            if _status != 0:
+                raise Exception(ErrorCode.GAUSS_502["GAUSS_50217"] %
+                                        "version.cfg" + "The cmd is %s. " % _cmd +
+                                        "The output is %s." % _output)
+            _lines = _output.splitlines()
+            return _lines[0]
+        # obtain gaussdb
+        root = os.path.join(os.path.dirname(os.path.realpath(__file__)), './../../../')
+        version_file = os.path.join(root, 'version.cfg')
+        if not os.path.exists(version_file):
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % version_file)
+        if not os.path.isfile(version_file):
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50210"] % version_file)
+        
+        pkg_prefix = _parse_pkg_prefix(version_file)
+        # upack and read version.cfg of openGauss-server package
+        # the existing om version.cfg will be overwritten
+        cmd = 'cd {} && tar -xpf {}*.tar.bz2 ./bin/gaussdb'.format(root, pkg_prefix)
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            cmd = 'cd {} && tar -xpf `ls openGauss-Server*.tar.bz2 | tail -1` ./bin/gaussdb'.format(root)
+            status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50217"] % "bin/gaussdb" +
+                                   "The cmd is %s. " % cmd +
+                                   "The output is %s." % output)
+        
+        gaussdb_file = os.path.join(root, 'bin/gaussdb')
+        release_date = VersionInfo.get_release_date_from_app(gaussdb_file)
+
+        cmd = 'cd {} && rm bin/gaussdb'.format(root)
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50217"] % "bin/gaussdb" +
+                                   "The cmd is %s. " % cmd +
+                                   "The output is %s." % output)
+        
+        cmd = 'cd {} && rmdir bin'.format(root)
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50217"] % "bin" +
+                                   "The cmd is %s. " % cmd +
+                                   "The output is %s." % output)
+        return release_date
+
+    @staticmethod
+    def cmp_cluster_version(version1, version2):
+        v1_parts = version1.split('.')
+        v2_parts = version2.split('.')
+        
+        if len(v1_parts) != CommConstants.VERSION_LENGTH or len(v2_parts) != CommConstants.VERSION_LENGTH: 
+            raise Exception(ErrorCode.GAUSS_529["GAUSS_52946"])
+        
+        # compare major version
+        if int(v1_parts[CommConstants.MAJOR_IDX]) < int(v2_parts[CommConstants.MAJOR_IDX]):
+            return -1
+        elif int(v1_parts[CommConstants.MAJOR_IDX]) > int(v2_parts[CommConstants.MAJOR_IDX]):
+            return 1
+        
+        # compare minor version
+        if int(v1_parts[CommConstants.MINOR_IDX]) < int(v2_parts[CommConstants.MINOR_IDX]):
+            return -1
+        elif int(v1_parts[CommConstants.MINOR_IDX]) > int(v2_parts[CommConstants.MINOR_IDX]):
+            return 1
+        
+        # compare revision version
+        v1_revision = v1_parts[CommConstants.REVISION_IDX].split('-')
+        v2_revision = v2_parts[CommConstants.REVISION_IDX].split('-')
+
+        if int(v1_revision[0]) < int(v2_revision[0]):
+            return -1
+        elif int(v1_revision[0]) > int(v2_revision[0]):
+            return 1
+        
+        # compare debug version
+        if len(v1_revision) > len(v2_revision):
+            return -1
+        elif len(v1_revision) < len(v2_revision):
+            return 1
+
+        return 0
+
+    @staticmethod
     def getAppVersion(appPath=""):
         """
         function : Get the version of application by $GAUSS_VERSION

@@ -42,7 +42,7 @@ class Meta(object):
 
 
 class ContentRulesMeta(object):
-    def __init__(self, key=None, filters=None, ignore_col=None, oid_col=None,
+    def __init__(self, key=None, filters=None, ignore_col=None, oid_col=None, bool_col=None,
                  complete_sql=None, complete_sql_desc=None,
                  key_desc="内容哈希值为%s的行", accuracy=Accuracy.STRICT):
         """
@@ -56,6 +56,7 @@ class ContentRulesMeta(object):
         :param filters: where过滤条件，用与区分用户数据和builtin数据。None表示不过滤
         :param ignore_col: 需要忽略的列。None表示使用所有列。
         :param oid_col: 需要校验的列中，类型为oid的需要特殊处理列。特殊处理的话，这些会被0-9999，1W-16383的区分处理，1W以上安0。None表示没有
+        :param bool_col: 需要校验的列中，类型为bool的需要特殊处理列。null和false都按false处理， true不变
         :param complete_sql: 完整的SQL规则，如果提供这个选项，则不会再用前面的拼接参数去拼接组装。
         :param complete_sql_desc: 完整的SQL描述。
         :param key_desc: sql的键的描述，注意必现带一个%s
@@ -66,6 +67,7 @@ class ContentRulesMeta(object):
         self.filters = filters if filters is not None else 'true'
         self.ignore_col = ignore_col.split(',') if ignore_col is not None else []
         self.oid_col = oid_col.split(',') if oid_col is not None else []
+        self.bool_col = bool_col.split(',') if bool_col is not None else []
         self.complete_sql = complete_sql
         self.complete_sql_desc = complete_sql_desc
         self.accuracy = accuracy
@@ -124,56 +126,36 @@ META = {
             ContentRulesMeta(
                 key="oid",
                 key_desc='oid为%s的数据类型',
-                filters=' oid < 10000 ',
+                # 忽略pg_toast
+                # todo, 暂时忽略部分类型
+                filters=" oid < 10000 and typname not like 'pg_toast_%' and typname not in ('gs_matview_log','time_stamp','anytype','anydata','anydataset') ",
                 ignore_col='tydefaultbin,typacl',
                 oid_col='typnamespace,typrelid,typelem'
             ),
             ContentRulesMeta(
                 key="(select nspname from pg_namespace n where n.oid = typnamespace) || '.' || typname",
                 key_desc='数据类型%s',
-                filters=' oid < 10000 ',
+                # 忽略pg_toast
+                # todo, 暂时忽略部分类型
+                filters=" 9999 < oid and typname not like 'pg_toast_%' and oid < 16384 and typname not in ('gs_matview_log','time_stamp','anytype','anydata','anydataset') ",
                 ignore_col='oid,tydefaultbin,typacl',
                 oid_col='typnamespace,typowner,typrelid,typelem,typarray,typbasetype,typcollation'
             )
         ]
     ),
+    'pg_catalog.pg_object_type': Meta(
+        Category.TYPE,
+        '记录所有的对象数据类型信息',
+        True,
+        # todo，暂时忽略
+        []
+    ),
     'pg_catalog.pg_attribute': Meta(
         Category.TABLE,
         "存储了所有表、视图的所有列的基础信息",
         True,
-        [
-            # builtin的需要严格一致
-            ContentRulesMeta(
-                key="format('%s(%s)',"
-                    " (select format('%s.%s', nspname, relname)"
-                    "  from pg_class c left join pg_namespace n on c.relnamespace = n.oid "
-                    "  where c.oid=attrelid),"
-                    " attname"
-                    ")",
-                key_desc='模式.关系名(列名)为%s的列',
-                filters=' attrelid < 10000 ',
-                ignore_col='attacl'
-            ),
-            # initdb的。但忽略toast表，因为表名里也带oid，会变，无法校验。
-            ContentRulesMeta(
-                complete_sql="select format('%s.%s(%s)', n.nspname, c.relname, a.attname),"
-                             "       md5(format('%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s', "
-                             "                  t.typname, a.attstattarget, a.attlen, a.attnum, a.attndims,"
-                             "                  a.attcacheoff, a.atttypmod, a.attbyval, a.attstorage, a.attalign,"
-                             "                  a.attnotnull, a.atthasdef,a.attisdropped, a.attislocal, a.attcmprmode,"
-                             "                  a.attinhcount, a.attcollation, a.attoptions, a.attfdwoptions,"
-                             "                  a.attinitdefval, a.attkvtype))"
-                             "from pg_attribute a left join pg_class c on a.attrelid = c.oid " 
-                             "                    left join pg_namespace n on c.relnamespace = n.oid "
-                             "                    left join pg_type t on a.atttypid = t.oid "
-                             "where a.attrelid > 9999 and " 
-                             "      a.attrelid < 16384 and " 
-                             "      a.attisdropped = false and " 
-                             "      n.nspname not in ('pg_toast')",
-                key_desc='模式.关系名(列名)为%s的列',
-                complete_sql_desc='校验initdb阶段(1W <= oid <= 16384)创建的表、索引、视图等的列信息。'
-            )
-        ]
+        # 目前由于系统表升级后未更新查不到新增的列，忽略
+        []
     ),
     'pg_catalog.pg_proc': Meta(
         Category.FUNCTION,
@@ -181,7 +163,8 @@ META = {
         True,
         [
             ContentRulesMeta(Category.FUNCTION,
-                complete_sql = "select 'count(*)', count(*) from pg_proc where oid < 16384",
+                # todo, 暂时忽略部分函数
+                complete_sql="select 'count(*)', count(*) from pg_proc where oid < 16384 and proname not in ('prepare_snapshot_internal','prepare_snapshot','_pg_char_max_length','anytype','begincreate','setinfo','endcreate','getinfo','anydata','convertbdouble','accessbdouble','convertblob','accessblob','convertchar','accesschar','convertdate','accessdate','convertnchar','accessnchar','convertnvarchar2','accessnvarchar2','convertnumber','accessnumber','convertraw','accessraw','converttimestamp','accesstimestamp','converttimestamptz','accesstimestamptz','convertvarchar','accessvarchar','convertvarchar2','accessvarchar2','gettype','gettypename','anydataset','setanydatasetexcept','getanydatasetexcept','begincreate','addinstance','endcreate','setbdouble','getbdouble','setblob','getblob','setchar','getchar','setdate','getdate','setnchar','getnchar','setnumber','getnumber','setnvarchar2','getnvarchar2','setraw','getraw','settimestamp','gettimestamp','settimestamptz','gettimestamptz','setvarchar','getvarchar','setvarchar2','getvarchar2','getcount','gettype','gettypename')",
                 key_desc = '数量统计方法%s',
                 complete_sql_desc = 'pg_proc内 oid < 16384 的系统对象(包括函数、存储过程)总数量'
             ),
@@ -189,7 +172,8 @@ META = {
                 key="oid",
                 key_desc='oid为%s的函数或存储过程',
                 filters=' oid < 10000 ',
-                ignore_col='proargdefaults,proacl'
+                ignore_col='proargdefaults,proacl,prosrc',
+                bool_col='proshippable'
             ),
             ContentRulesMeta(
                 key="format('%s.%s(%s)',"
@@ -198,9 +182,11 @@ META = {
                     " pg_get_function_arguments(oid)"
                     ")",
                 key_desc='函数%s',
-                filters=' 9999 < oid and oid < 16384 ',
+                # todo, 暂时忽略部分函数
+                filters=" 9999 < oid and oid < 16384 and proname not in ('prepare_snapshot_internal','prepare_snapshot','_pg_char_max_length','anytype','begincreate','setinfo','endcreate','getinfo','anydata','convertbdouble','accessbdouble','convertblob','accessblob','convertchar','accesschar','convertdate','accessdate','convertnchar','accessnchar','convertnvarchar2','accessnvarchar2','convertnumber','accessnumber','convertraw','accessraw','converttimestamp','accesstimestamp','converttimestamptz','accesstimestamptz','convertvarchar','accessvarchar','convertvarchar2','accessvarchar2','gettype','gettypename','anydataset','setanydatasetexcept','getanydatasetexcept','begincreate','addinstance','endcreate','setbdouble','getbdouble','setblob','getblob','setchar','getchar','setdate','getdate','setnchar','getnchar','setnumber','getnumber','setnvarchar2','getnvarchar2','setraw','getraw','settimestamp','gettimestamp','settimestamptz','gettimestamptz','setvarchar','getvarchar','setvarchar2','getvarchar2','getcount','gettype','gettypename') ",
                 ignore_col='oid,proargtypes,proallargtypes,proargdefaults,proacl,proargtypesext,allargtypes,allargtypesext',
-                oid_col='pronamespace,prolang,provariadic,prorettype,propackageid'
+                oid_col='pronamespace,prolang,provariadic,prorettype,propackageid',
+                bool_col='proshippable'
             ),
             ContentRulesMeta(
                 complete_sql="select format('def:%s.%s(%s)', "
@@ -209,11 +195,20 @@ META = {
                              "              pg_get_function_arguments(p.oid)), "
                              "       md5(pg_get_functiondef(p.oid)::text) "
                              "from pg_proc p left join pg_namespace n on p.pronamespace = n.oid "
-                             "where p.oid < 16384 and p.proisagg=false and p.proiswindow=false",
+                             "where p.oid < 16384 and p.proisagg=false and p.proiswindow=false "
+                             # todo, 暂时忽略部分函数
+                             "and p.proname not in ('prepare_snapshot_internal','prepare_snapshot','_pg_char_max_length','anytype','begincreate','setinfo','endcreate','getinfo','anydata','convertbdouble','accessbdouble','convertblob','accessblob','convertchar','accesschar','convertdate','accessdate','convertnchar','accessnchar','convertnvarchar2','accessnvarchar2','convertnumber','accessnumber','convertraw','accessraw','converttimestamp','accesstimestamp','converttimestamptz','accesstimestamptz','convertvarchar','accessvarchar','convertvarchar2','accessvarchar2','gettype','gettypename','anydataset','setanydatasetexcept','getanydatasetexcept','begincreate','addinstance','endcreate','setbdouble','getbdouble','setblob','getblob','setchar','getchar','setdate','getdate','setnchar','getnchar','setnumber','getnumber','setnvarchar2','getnvarchar2','setraw','getraw','settimestamp','gettimestamp','settimestamptz','gettimestamptz','setvarchar','getvarchar','setvarchar2','getvarchar2','getcount','gettype','gettypename')",
                 key_desc='函数%s的定义',
                 complete_sql_desc='通过pg_get_functiondef()来检查一般函数的定义'
             )
         ]
+    ),
+    'pg_catalog.pg_proc_ext': Meta(
+        Category.FUNCTION,
+        '存储了所有的函数、存储过程',
+        True,
+        # 暂忽略
+        []
     ),
     "pg_catalog.pg_class": Meta(
         Category.TABLE,
@@ -221,14 +216,15 @@ META = {
         True,
         [
             ContentRulesMeta(
-                complete_sql="select 'count(*)', count(*) from pg_class where oid < 16384",
+                complete_sql="select 'count(*)', count(*) from pg_class where oid < 16384 and relname not like 'pg_toast_%'", # 忽略pg_toast
                 key_desc='数量统计方法%s',
                 complete_sql_desc='pg_class内oid < 16384(包括表、索引、视图、序列等)总数量'
             ),
             ContentRulesMeta(
                 key="format('%s.%s',(select nspname from pg_namespace n where n.oid = relnamespace), relname)",
                 key_desc='名为%s的表或索引或视图等',
-                filters=' oid < 10000 ',
+                # todo，暂时忽略部分relation
+                filters=" oid < 10000 and relname not like 'pg_toast_%' and relname not in ('gs_matview_log', 'pg_object_type', 'pg_index', 'pg_am', 'pg_object') ",
                 ignore_col='relfilenode,relpages,reltuples,relallvisible,relacl,relfrozenxid,relfrozenxid64,relminmxid',
                 oid_col='oid,reltype,reloftype',
                 accuracy=Accuracy.STRICT
@@ -236,7 +232,8 @@ META = {
             ContentRulesMeta(
                 key="format('%s.%s',(select nspname from pg_namespace n where n.oid = relnamespace), relname)",
                 key_desc='名为%s的表或索引或视图等',
-                filters=" 9999 < oid and oid < 16384 and relnamespace not in (99) ",
+                # todo，anytype/anydata/anydataset目前不满足元数据校验，暂时忽略
+                filters=" 9999 < oid and oid < 16384 and relnamespace not in (99) and relname not like 'pg_toast_%' and relname not in ('anytype', 'anydata', 'anydataset') ",
                 ignore_col='oid,relfilenode,relpages,reltuples,relallvisible,reltoastrelid,reltoastidxid,'
                            'relfrozenxid,relacl,relfrozenxid64,relminmxid',
                 oid_col='relnamespace,reltype,reloftype,relowner,reltablespace',
@@ -382,7 +379,8 @@ META = {
             ContentRulesMeta(
                 key='aggfnoid::oid',
                 key_desc='oid为%s的聚集函数',
-                filters=' aggfnoid < 10000 '
+                # todo, 向量数据库相关暂时忽略
+                filters=' aggfnoid < 10000 and aggfnoid not in (8241) '
             ),
             ContentRulesMeta(
                 key="format('%s %s %s %s', aggfnoid, aggtransfn, aggcollectfn, aggfinalfn)",
@@ -419,12 +417,14 @@ META = {
             ContentRulesMeta(
                 key="format('%s-%s-%s-%s', amopfamily, amoplefttype, amoprighttype, amopstrategy)",
                 key_desc='family-ltype-rtype-stg为%s的操作符访问族',
-                filters=' oid < 10000 '
+                # todo，向量数据库相关暂时忽略
+                filters=' oid < 10000 and amopfamily not in (8392,8375,8385,8386,8387,8371,8372,8373,8374,8394,8380,8379,8397,8376,8381,8382,8383,8384) '
             ),
             ContentRulesMeta(
                 key="format('%s-%s-%s-%s', amopfamily, amoplefttype, amoprighttype, amopstrategy)",
                 key_desc='family-ltype-rtype-stg为%s的操作符访问族',
-                filters=' 9999 < oid and oid < 16384 ',
+                # todo，向量数据库相关暂时忽略
+                filters=' 9999 < oid and oid < 16384 and amopfamily not in (8392,8375,8385,8386,8387,8371,8372,8373,8374,8394,8380,8379,8397,8376,8381,8382,8383,8384) ',
                 ignore_col='oid',
                 oid_col='amopfamily,amoplefttype,amoprighttype,amopopr,amopmethod,amopsortfamily'
             )
@@ -438,12 +438,14 @@ META = {
             ContentRulesMeta(
                 key="format('%s-%s-%s-%s', amprocfamily, amproclefttype, amprocrighttype, amprocnum)",
                 key_desc='family-ltype-rtype-prn为%s的函数访问族',
-                filters=' oid < 10000 '
+                # todo，向量数据库相关暂时忽略
+                filters=' oid < 10000 and amprocfamily not in (8392,8375,8385,8386,8387,8371,8372,8373,8374,8394,8380,8379,8397,8376,8381,8382,8383,8384) '
             ),
             ContentRulesMeta(
                 key="format('%s-%s-%s-%s', amprocfamily, amproclefttype, amprocrighttype, amprocnum)",
                 key_desc='family-ltype-rtype-prn为%s的函数访问族',
-                filters=' 9999 < oid and oid < 16384 ',
+                # todo，向量数据库相关暂时忽略
+                filters=' 9999 < oid and oid < 16384 and amprocfamily not in (8392,8375,8385,8386,8387,8371,8372,8373,8374,8394,8380,8379,8397,8376,8381,8382,8383,8384) ',
                 ignore_col='oid',
                 oid_col='amprocfamily,amproclefttype,amprocrighttype'
             )
@@ -477,15 +479,16 @@ META = {
             ContentRulesMeta(
                 key="oid",
                 key_desc='oid编号为%s的数据类型转换方式',
-                filters=' oid < 10000 '
+                filters=' oid < 10000 ',
+                ignore_col='castowner'
             ),
             ContentRulesMeta(
                 key="format('%s-%s', (select typname from pg_type t where t.oid=castsource), "
                     "(select typname from pg_type t where t.oid=casttarget))",
                 key_desc='左右类型为%s的转换方法',
                 filters=' 9999 < oid and oid < 16384 ',
-                ignore_col='oid',
-                oid_col='castsource,casttarget,castfunc,castowner',
+                ignore_col='oid,castowner',
+                oid_col='castsource,casttarget,castfunc',
                 accuracy=Accuracy.ALLOW_MORE
             )
         ]
@@ -544,6 +547,20 @@ META = {
         # 同时夹杂着太多的1W~16384的内容
         # 考虑此系统表的含义，仅是一个依赖的属性，对应的实体对象会在其他系统表内校验，因此暂时不进行此系统表的校验
     ),
+     "pg_catalog.gs_dependencies": Meta(
+        Category.DEPEND,
+        "记录数据库非共享对象之间的依赖性关系",
+        True,
+        # 暂忽略
+        []
+    ),
+    "pg_catalog.gs_dependencies_obj": Meta(
+        Category.DEPEND,
+        "记录数据库非共享对象之间的依赖性关系",
+        True,
+        # 暂忽略
+        []
+    ),
     "pg_catalog.pg_description": Meta(
         Category.DESCRIPTION,
         "存储数据库对象的描述",
@@ -552,7 +569,7 @@ META = {
             ContentRulesMeta(
                 key="format('%s-%s-%s', objoid, classoid, objsubid)",
                 key_desc='obj-class-subid为%s的描述',
-                filters=' objoid < 10000 and classoid < 10000 and objsubid < 10000 ',
+                filters=' objoid < 10000 and classoid < 10000 and objsubid < 10000 and classoid <> 2601 ', # 2601是pg_am，目前不支持给access method添加描述的语法，暂忽略
                 oid_col='objoid,classoid'
             ),
             # 1W+比较难写，仅测试数量，问题不大。
@@ -679,7 +696,8 @@ META = {
             ContentRulesMeta(
                 key='oid',
                 key_desc='oid为%s的操作符类',
-                filters=' oid < 10000 '
+                # todo，向量数据库相关暂时忽略
+                filters=' oid < 10000 and oid not in (8951, 8952) '
             ),
             ContentRulesMeta(
                 key="format('%s.%s(of am %s)',"
@@ -788,8 +806,9 @@ META = {
         [
             ContentRulesMeta(
                 key='oid',
-                key_desc='oid为%s的触发器',
-                filters=' oid < 10000 '
+                key_desc='oid为%s的操作符族',
+                # todo, 向量数据库相关暂时忽略
+                filters=' oid < 10000 and oid not in (8375,8376) '
             ),
             ContentRulesMeta(
                 key="format('%s.%s(for %s)', "

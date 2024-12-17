@@ -111,6 +111,21 @@ class RuleMaker(object):
         for col in columns:
             projections.append("(case when %s < 10000 then %s else 0 end)" % (col, col))
         return projections
+    
+    @staticmethod
+    def process_bool_projection(columns):
+        """
+        将这一系列类型bool的列名加case when，null和false等于false，true不变
+        :param columns: 类型为bool的列。
+        :return:
+        """
+        if isinstance(columns, str):
+            columns = columns.split(",")
+
+        projections = []
+        for col in columns:
+            projections.append("(case when %s = true then true else false end)" % (col))
+        return projections
 
     @staticmethod
     def construct_text_concat_projection(columns):
@@ -184,13 +199,14 @@ class RuleMaker(object):
             # 生成检测列的投影。忽略需要忽略的列，oid类型的列处理后统一放在最前面。
             # 不可用set做删除操作，会导致顺序错乱，进而无法。
             val_columns = []
-            should_ignore = meta.ignore_col + meta.oid_col
+            should_ignore = meta.ignore_col + meta.oid_col + meta.bool_col
             for col in pci.columns:
                 if col in should_ignore:
                     continue
                 val_columns.append(col)
 
             val_columns += RuleMaker.process_oid_projection(meta.oid_col)
+            val_columns += RuleMaker.process_bool_projection(meta.bool_col)
             val_project = RuleMaker.construct_text_concat_projection(val_columns)
             val_project = RuleMaker.construct_md5_projection(val_project)
 

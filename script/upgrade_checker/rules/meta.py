@@ -225,7 +225,7 @@ META = {
                 key_desc='名为%s的表或索引或视图等',
                 # todo，暂时忽略部分relation
                 filters=" oid < 10000 and relname not like 'pg_toast_%' and relname not in ('gs_matview_log', 'pg_object_type', 'pg_index', 'pg_am', 'pg_object') ",
-                ignore_col='relfilenode,relpages,reltuples,relallvisible,relacl,relfrozenxid,relfrozenxid64,relminmxid',
+                ignore_col='relfilenode,relpages,reltuples,relallvisible,relacl,relfrozenxid,relfrozenxid64,relminmxid,relnatts',
                 oid_col='oid,reltype,reloftype',
                 accuracy=Accuracy.STRICT
             ),
@@ -235,7 +235,7 @@ META = {
                 # todo，anytype/anydata/anydataset目前不满足元数据校验，暂时忽略
                 filters=" 9999 < oid and oid < 16384 and relnamespace not in (99) and relname not like 'pg_toast_%' and relname not in ('anytype', 'anydata', 'anydataset') ",
                 ignore_col='oid,relfilenode,relpages,reltuples,relallvisible,reltoastrelid,reltoastidxid,'
-                           'relfrozenxid,relacl,relfrozenxid64,relminmxid',
+                           'relfrozenxid,relacl,relfrozenxid64,relminmxid,relnatts',
                 oid_col='relnamespace,reltype,reloftype,relowner,reltablespace',
                 accuracy=Accuracy.STRICT
             ),

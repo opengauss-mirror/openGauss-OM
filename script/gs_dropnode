@@ -265,7 +265,7 @@ General options:
         else continue
         """
         command = "echo 1"
-        sshTool = SshTool(hostnames, None, -20)
+        sshTool = SshTool(hostnames, None, 0)
         resultMap, outputCollect = sshTool.getSshStatusOutput(command,
                                                               hostnames, env)
         self.logger.debug(outputCollect)

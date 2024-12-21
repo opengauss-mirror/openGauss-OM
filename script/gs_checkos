@@ -990,7 +990,7 @@ def checkTimeConsistency():
         Local_CheckOs, ACTION_CHECK_TIME_CONSISTENCY, g_opts.localLog)
         (status, output, outputMap) = getCmdOutput(cmd)
         parRes = ""
-        detail_msg = ""
+        success_msg = "        The system time is consistent."
         for node in list(status.keys()):
             outputMap[node] = outputMap[node].strip().split("\n")[0].strip()
         for node in list(status.keys()):
@@ -1007,11 +1007,11 @@ def checkTimeConsistency():
                           % (node,
                              outputMap[node].strip().split(',')[1].strip())
 
-        if ((parRes == "") and (len(list(status.keys())) > 1)):
+        if len(list(status.keys())) > 1:
             nodeValue = list(status.keys())[0].strip()
             keystr = outputMap[nodeValue].strip().split(',')[1].strip()
             if (keystr == ""):
-                g_OSCheckOpts['A12'][2] = 'Warning'
+                g_OSCheckOpts['A12'][2] = 'Abnormal'
                 parRes += "        [%s]\n        %s\n" % (
                 nodeValue, "Failed to obtain localtime information.")
             else:
@@ -1029,24 +1029,19 @@ def checkTimeConsistency():
                                                     "%Y-%m-%d %H:%M:%S")
                         if (tmpTime < startTime or tmpTime > endTime):
                             g_OSCheckOpts['A12'][2] = 'Abnormal'
-                            parRes += "        [%s]\n        " \
-                                      "The current system time = (%s)\n"\
-                                      % (node, tmpstr)
-                            detail_msg += "        [%s]\n        Variable:" \
+                            parRes += "        [%s]\n        Variable:" \
                                           "'current system time' RealValue:" \
                                           "'%s' ExpectedValue:'%s' " \
                                           "[Abnormal]\n"\
                                           % (node, tmpstr,
                                              baseTime.strftime("%Y-%m-%d %H:%M:%S"))
 
-        if (g_OSCheckOpts['A12'][2] == 'Warning' or g_OSCheckOpts['A12'][2] == 'Abnormal'):
-            g_OSCheckOpts['A12'][3] = "\n%s" % parRes
+        if (g_OSCheckOpts['A12'][2] == 'Normal'):
+            g_OSCheckOpts['A12'][3] = "\n%s" % success_msg
+            g_OSCheckOpts['A12'][4] = "\n%s" % success_msg
         else:
-            nodeValue = list(status.keys())[0].strip()
-            keystr = outputMap[nodeValue].strip().split(',')[1].strip()
-            g_OSCheckOpts['A12'][3] = "\n        The ntpd or chronyd service is " \
-                                      "started, local time is \"%s\"." % keystr
-        g_OSCheckOpts['A12'][4] = "\n%s" % detail_msg
+            g_OSCheckOpts['A12'][3] = "\n%s" % parRes
+            g_OSCheckOpts['A12'][4] = "\n%s" % parRes
 
     except Exception as e:
         g_logger.debug(str(e))

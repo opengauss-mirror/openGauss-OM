@@ -93,7 +93,7 @@ class RHELPlatform(LinuxPlatform):
         distname, version = LinuxDistro.linux_distribution()[0:2]
         if self.isSupportSystemctl():
             return self.getSystemctlCmd("crond.service", action)
-        elif distname == "debian" and version == "buster/sid":
+        elif distname == "debian":
             return self.getServiceCmd("cron", action)
         return self.getServiceCmd("crond", action)
 
@@ -176,7 +176,7 @@ class RHELPlatform(LinuxPlatform):
                  (dist_name.lower() == H3LINUX) or
                  (dist_name.lower() == NINGOS) or
                  (dist_name.lower() == FUSIONOS) or
-                 (dist_name.lower() == DEBIAN and version == "buster/sid")
+                 (dist_name.lower() == DEBIAN)
             )):
                 return dist_name.lower(), version[0:3]
             elif((bits == BIT_VERSION and

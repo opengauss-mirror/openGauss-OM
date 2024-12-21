@@ -57,6 +57,7 @@ class Uninstall(ParallelBaseOM):
         ParallelBaseOM.__init__(self)
         self.cleanInstance = False
         self.clearDisk = False
+        self.isSingle = False
 
     def usage(self):
         """
@@ -138,6 +139,8 @@ General options:
             # Initialize the self.sshTool variable
             self.initSshTool(self.clusterInfo.getClusterNodeNames(),
                              DefaultValue.TIMEOUT_PSSH_UNINSTALL)
+            if len(self.clusterInfo.getClusterNodeNames()) == 1:
+                self.isSingle = True
         except Exception as e:
             self.logger.logExit(str(e))
 

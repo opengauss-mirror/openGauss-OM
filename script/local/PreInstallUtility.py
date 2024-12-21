@@ -63,6 +63,7 @@ from gspylib.common.aes_cbc_util import AesCbcUtil
 from base_utils.os.user_util import UserUtil
 from gspylib.component.DSS.dss_comp import DssInitCfg, Dss, UdevContext
 from gspylib.component.DSS.dss_checker import DssConfig
+from os_platform.common import DEBIAN, UBUNTU
 
 ACTION_PREPARE_PATH = "prepare_path"
 ACTION_CHECK_OS_VERSION = "check_os_Version"
@@ -1973,6 +1974,13 @@ Common options:
 
     def checkaio(self):
         # check libaio.so file exist
+        distname, version = LinuxDistro.linux_distribution()[0:2]
+        if distname in [UBUNTU, DEBIAN]:
+            cmd = "ls /usr/lib/*-linux-gnu/ | grep '^libaio.so' | wc -l"
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status == 0 and int(output) > 0:
+                return
+        
         cmd = "ls /usr/local/lib | grep '^libaio.so' | wc -l"
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:

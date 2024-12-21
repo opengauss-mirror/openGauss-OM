@@ -56,6 +56,7 @@ class UninstallImpl:
         self.localMode = unstallation.localMode
         self.logger = unstallation.logger
         self.sshTool = unstallation.sshTool
+        self.isSingle = unstallation.isSingle
         self.tmpDir = EnvUtil.getTmpDirFromEnv(self.user)
         try:
             # Initialize the unstallation.clusterInfo variable
@@ -112,7 +113,7 @@ class UninstallImpl:
             cmd += " -d"
         self.logger.debug("Command for checking uninstallation: " + cmd)
         CmdExecutor.execCommandWithMode(cmd,
-                                        self.sshTool, self.localMode,
+                                        self.sshTool, self.localMode or self.isSingle,
                                         self.mpprcFile)
         self.logger.log("Successfully checked uninstallation.", "constant")
 
@@ -192,7 +193,7 @@ class UninstallImpl:
                 self.user, self.clusterInfo.appPath, self.localLog)
             self.logger.debug("Command for stop cluster: %s" % cmd)
             CmdExecutor.execCommandWithMode(cmd, self.sshTool,
-                                            self.localMode, self.mpprcFile)
+                                            self.localMode or self.isSingle, self.mpprcFile)
             self.logger.log("Successfully stopped the cluster.")
         else:
             self.cm_stop_cluster()
@@ -250,7 +251,7 @@ class UninstallImpl:
             self.localLog)
         self.logger.debug("Command for deleting instance: %s" % cmd)
         CmdExecutor.execCommandWithMode(cmd,
-                                        self.sshTool, self.localMode,
+                                        self.sshTool, self.localMode or self.isSingle,
                                         self.mpprcFile)
 
         # clean upgrade temp backup path
@@ -258,7 +259,7 @@ class UninstallImpl:
         cmd = g_file.SHELL_CMD_DICT["cleanDir"] % (
             upgrade_bak_dir, upgrade_bak_dir, upgrade_bak_dir)
         CmdExecutor.execCommandWithMode(cmd,
-                                        self.sshTool, self.localMode,
+                                        self.sshTool, self.localMode or self.isSingle,
                                         self.mpprcFile)
 
         self.logger.log("Successfully deleted instances.", "constant")
@@ -285,14 +286,14 @@ class UninstallImpl:
                     copyPath, copyPath, appPath)
                 CmdExecutor.execCommandWithMode(
                     copyCmd,
-                    self.sshTool, self.localMode,
+                    self.sshTool, self.localMode or self.isSingle,
                     self.mpprcFile)
 
             cmd = g_file.SHELL_CMD_DICT["cleanDir"] % (
                 self.tmpDir, self.tmpDir, self.tmpDir)
             # clean dir of PGHOST
             CmdExecutor.execCommandWithMode(cmd,
-                                            self.sshTool, self.localMode,
+                                            self.sshTool, self.localMode or self.isSingle,
                                             self.mpprcFile)
         except Exception as e:
             self.logger.logExit(str(e))
@@ -312,7 +313,7 @@ class UninstallImpl:
         self.logger.debug("Command for Uninstalling: %s" % cmd)
         # clean application
         CmdExecutor.execCommandWithMode(cmd,
-                                        self.sshTool, self.localMode,
+                                        self.sshTool, self.localMode or self.isSingle,
                                         self.mpprcFile)
         self.logger.log("Successfully uninstalled application.", "constant")
 
@@ -328,7 +329,7 @@ class UninstallImpl:
             # delete bin dir in GAUSSHOME
             CmdExecutor.execCommandWithMode(
                 cmd,
-                self.sshTool, self.localMode,
+                self.sshTool, self.localMode or self.isSingle,
                 self.mpprcFile)
         except Exception as e:
             self.logger.exitWithError(str(e))
@@ -349,7 +350,7 @@ class UninstallImpl:
         if os.path.isfile(rack_conf_file):
             cmd = "rm -f %s" % rack_conf_file
             CmdExecutor.execCommandWithMode(cmd,
-                                            self.sshTool, self.localMode,
+                                            self.sshTool, self.localMode or self.isSingle,
                                             mpprc_file=self.mpprcFile)
             self.logger.debug("Successfully deleted rack information file.")
 
@@ -372,7 +373,7 @@ class UninstallImpl:
                 dss_home, dss_home, dss_home)
             # delete log dir
             CmdExecutor.execCommandWithMode(cmd,
-                                            self.sshTool, self.localMode,
+                                            self.sshTool, self.localMode or self.isSingle,
                                             self.mpprcFile)
         except Exception as e:
             self.logger.exitWithError(str(e))
@@ -398,7 +399,7 @@ class UninstallImpl:
                 userLogDir, userLogDir, userLogDir)
             # delete log dir
             CmdExecutor.execCommandWithMode(cmd,
-                                            self.sshTool, self.localMode,
+                                            self.sshTool, self.localMode or self.isSingle,
                                             self.mpprcFile)
         except Exception as e:
             self.logger.exitWithError(str(e))

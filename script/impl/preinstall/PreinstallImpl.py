@@ -660,7 +660,7 @@ class PreinstallImpl:
                     os.path.isfile(self.context.mpprcFile)
                     and self.context.clusterInfo.enable_dss == 'on'):
                 CmdExecutor.execCommandWithMode(cmd, self.context.sshTool,
-                                                self.context.localMode)
+                                                self.context.localMode or self.context.isSingle)
                 self.context.logger.debug("Command for change env: %s" % cmd)
         except Exception as e:
             raise Exception(str(e))

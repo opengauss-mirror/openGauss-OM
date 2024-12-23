@@ -37,7 +37,7 @@ class CheckRXTX(BaseItem):
             backIP = LocalNodeInfo.backIps[0]
         else:
             backIP = SharedFuncs.getIpByHostName(self.host)
-        allNetworkInfo = NetUtil.getAllNetworkInfo(NetUtil.get_ip_version(backIp))
+        allNetworkInfo = NetUtil.getAllNetworkInfo(NetUtil.get_ip_version(backIP))
         for network in allNetworkInfo:
             if (network.ipAddress == backIP):
                 networkNum = network.NICNum

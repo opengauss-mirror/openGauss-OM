@@ -1871,6 +1871,18 @@ remoteservice={remoteservice}'"\
         ssh_tool.executeCommand(cmd)
         cmd = CmdUtil.getChownCmd(self.user, self.group, hosts_file)
         ssh_tool.executeCommand(cmd)
+    
+    def transmit_upgrade_record(self):
+        """
+        sends the upgrade record file to the expansion nodes to ensure that records are not lost after scaling. 
+        """
+        omPath = EnvUtil.getEnv("GPHOME")
+        upgradeRecord = os.path.join(omPath, "upgradeRecord.txt")
+        if not os.path.exists(upgradeRecord):
+            return
+        sshTool = SshTool(self.context.newHostList)
+        sshTool.scpFiles(upgradeRecord, upgradeRecord, self.context.newHostList)
+        
 
     def run(self):
         """
@@ -1883,6 +1895,9 @@ remoteservice={remoteservice}'"\
 
         self.installAndExpansion()
         self.logger.log("Expansion Finish.")
+        # transmit upgrade records
+        self.transmit_upgrade_record()
+
 
 
 class GsCtlCommon:

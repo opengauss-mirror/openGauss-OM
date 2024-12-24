@@ -27,6 +27,7 @@ from base_utils.os.compress_util import CompressUtil
 from base_utils.os.file_util import FileUtil
 from domain_utils.cluster_file.version_info import VersionInfo
 from os_platform.UserPlatform import g_Platform
+from base_utils.os.env_util import EnvUtil
 
 import impl.upgrade.UpgradeConst as Const
 
@@ -186,3 +187,15 @@ class PackageInfo(object):
                                 " Error: \n%s" % output)
         except Exception as e:
             raise Exception(str(e))
+        
+    @staticmethod
+    def getUpgradePackageSha256(version):
+        """
+        function: get sha256 of the upgrade package. 
+        input: NA
+        output: NA
+        """
+        pkgFile = EnvUtil.getEnv("GPHOME") + '/' + os.path.basename(g_Platform.getPackageFile(version, VersionInfo.PRODUCT_NAME_PACKAGE))
+        return FileUtil.getFileSHA256(pkgFile)
+            
+            

@@ -984,3 +984,10 @@ class FileUtil(object):
         if not os.path.exists(host_file) or not os.path.isfile(host_file):
             raise Exception(ErrorCode.GAUSS_522["GAUSS_52200"] % host_file)
         return host_file
+
+    @staticmethod
+    def writeFormatFile(path, strings, widths, separator='|', mode="a+"):
+        formatted_strings = [s.center(widths[i]) for i, s in enumerate(strings)]
+        context = separator + separator.join(formatted_strings) + separator
+        FileUtil.writeFile(path, [context], mode)
+        

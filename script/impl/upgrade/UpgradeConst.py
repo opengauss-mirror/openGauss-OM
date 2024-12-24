@@ -226,3 +226,5 @@ REMOTE_INFO_GUC = {
 }
 LENGTH_STORAGE_INFO_LEN = 4
 ACTION_CLEAN_GS_SECURE_FILES = "clean_gs_secure_files"
+UPGRADE_INIT_INFO = ["action", "status", "time", "oldVersionInfo", "newVersionInfo", "oldPkgSha256", "newPkgSha256", "details"]
+UPGRADE_RECORD_FORMAT_WIDTH = [19, 20, 22, 50, 50, 70, 70, 70]

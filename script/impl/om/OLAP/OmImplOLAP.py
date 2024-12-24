@@ -476,3 +476,32 @@ class OmImplOLAP(OmImpl):
             self.logger.exitWithError(ErrorCode.GAUSS_502["GAUSS_50205"] % cmd)
         xml_file = output.strip()
         self.logger.log("Successfully generated xml. the xml is %s" % xml_file)
+
+    def do_query_upgrade_records(self):
+        """
+        function: query historical upgrade records.
+        input  : NA
+        output : NA
+        """
+        omPath = EnvUtil.getEnv("GPHOME")
+        upgradeRecord = os.path.join(omPath, "upgradeRecord.txt")
+
+        if not os.path.exists(upgradeRecord):
+            self.logger.log("No upgrade records available.")
+        try:
+            with open(upgradeRecord, 'r', encoding='utf-8') as file:
+                lines = file.readlines()
+                headers = [header.strip() for header in lines[0].split('|') if header.strip()]
+
+                for index, line in enumerate(lines[1:], start=1):
+                    values = [value.strip() for value in line.split('|')]
+                    values = values[1:-1]
+                    print(f"Record[{index}]")
+                    for i, header in enumerate(headers):
+                        value = values[i].strip() if i < len(values) else ''
+                        print(f"{header}: {value}")
+                    print()
+        except Exception as err:
+            raise Exception(err)
+        
+            

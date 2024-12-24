@@ -142,6 +142,8 @@ class UpgradeImpl:
                     self.context.logger.error(msg)
             else:
                 print(msg)
+        status = "success" if succeed else "failure"
+        self.upgradePathRecord(action, status, msg)
         sys.exit(retCode)
 
     def initGlobalInfos(self):
@@ -154,6 +156,7 @@ class UpgradeImpl:
         self.context.sshTool = SshTool(
             self.context.clusterNodes, self.context.localLog,
             DefaultValue.TIMEOUT_PSSH_BINARY_UPGRADE)
+        self.upgradePathRecord(self.context.action, "begin", "")
         self.initVersionInfo()
         self.initClusterConfig()
         self.initClusterType()
@@ -381,8 +384,8 @@ class UpgradeImpl:
                     self.checkBakPathNotExists():
                 if os.path.isfile(self.context.upgradePhaseInfoPath):
                     self.recordDualClusterStage(self.oldCommitId, DualClusterStage.STEP_UPGRADE_END)
-                self.context.logger.log("No need to rollback.")
-                self.exitWithRetCode(action, True)
+                successDetail = "No need to rollback"
+                self.exitWithRetCode(action, True, successDetail)
             else:
                 self.context.logger.error(str(e))
                 self.exitWithRetCode(action, False, str(e))
@@ -1716,11 +1719,10 @@ class UpgradeImpl:
 
         greyNodeNames = self.getUpgradedNodeNames(GreyUpgradeStep.STEP_UPDATE_POST_CATALOG)   
         if len(greyNodeNames) < len(self.context.clusterNodes):
-            self.context.logger.log("The nodes %s have been successfully upgraded."
-                                    "Then can upgrade the remaining nodes." % self.context.nodeNames)
-        else:                                    
-            self.context.logger.log("Successfully upgrade all nodes.")
-        self.exitWithRetCode(self.context.action, True)
+            successDetail = "The nodes %s have been successfully upgraded. Then can upgrade the remaining nodes." % self.context.nodeNames
+        else:
+            successDetail = "Successfully upgrade all nodes."                                
+        self.exitWithRetCode(self.context.action, True, successDetail)
 
     def getOneNodeStep(self, nodeName):
         """
@@ -5967,9 +5969,7 @@ END;"""
         # check cluster nodes wheather all have been upgraded
         grey_node_names = self.getUpgradedNodeNames(GreyUpgradeStep.STEP_UPGRADE_PROCESS)
         if len(grey_node_names) == len(self.context.clusterNodes):
-            self.context.logger.log(
-                "All nodes have been upgrade, no need to upgrade again.")
-            self.exitWithRetCode(self.action, True)
+            self.exitWithRetCode(self.action, True, "All nodes have been upgrade, no need to upgrade again.")
         else:
             self.context.logger.log(
                 "%s node have been upgrade, can upgrade the remaining nodes." 
@@ -6084,10 +6084,8 @@ END;"""
                  % greyNodeNames)
             raise Exception(ErrorCode.GAUSS_529["GAUSS-52944"])
         elif len(greyNodeNames) == len(self.context.clusterNodes):
-            self.context.logger.log(
-                "All nodes have been upgrade, no need to upgrade again "
-                "by --continue.")
-            self.exitWithRetCode(self.action, True)
+            successDetail = "All nodes have been upgrade, no need to upgrade again by --continue."
+            self.exitWithRetCode(self.action, True, successDetail)
 
         if len(greyNodeNames) == len(self.context.clusterInfo.dbNodes):
             self.printPrecommitBanner()
@@ -7909,3 +7907,48 @@ END;"""
             raise Exception(str(er))
         self.context.logger.debug(
             "Successfully to clean gs_secure_files folder in the dn data catalog.")
+    
+    def upgradePathRecord(self, action, status, msg):
+        """
+        Record all upgrade information to a file and distribute it to all nodes in the cluster.
+        """
+        oldClusterVersion = ""
+        oldClusterNumber = ""
+        newClusterVersion = ""
+        newClusterNumber = ""
+        oldCommitId = ""
+        newCommitId = ""
+        newPkgSha256 = ""
+        oldPkgSha256 = ""
+        oldVersionInfo = ""
+        newVersionInfo = ""
+        currentTime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        if status != "begin":
+            oldClusterVersion = self.context.oldClusterVersion
+            oldClusterNumber = self.context.oldClusterNumber
+            newClusterVersion = self.context.newClusterVersion
+            newClusterNumber = self.context.newClusterNumber
+            oldCommitId = self.oldCommitId
+            newCommitId = self.newCommitId
+            newPkgSha256 = PackageInfo.getUpgradePackageSha256(newClusterVersion)
+            oldPkgSha256 = PackageInfo.getUpgradePackageSha256(oldClusterVersion)
+            oldVersionInfo = oldClusterVersion + ' ' + oldClusterNumber + ' ' + oldCommitId
+            newVersionInfo = newClusterVersion + ' ' + newClusterNumber + ' ' + newCommitId
+
+        omPath = EnvUtil.getEnv("GPHOME")
+        upgradeRecord = os.path.join(omPath, "upgradeRecord.txt")
+
+        upgradeInfo = [action, status, currentTime, oldVersionInfo, newVersionInfo, oldPkgSha256, newPkgSha256, msg]
+        if os.path.exists(upgradeRecord):
+            FileUtil.writeFormatFile(upgradeRecord, upgradeInfo, const.UPGRADE_RECORD_FORMAT_WIDTH)
+        else:
+            FileUtil.createFile(upgradeRecord)
+            FileUtil.writeFormatFile(upgradeRecord, const.UPGRADE_INIT_INFO, const.UPGRADE_RECORD_FORMAT_WIDTH)
+            FileUtil.writeFormatFile(upgradeRecord, upgradeInfo, const.UPGRADE_RECORD_FORMAT_WIDTH)
+
+        dbNodes = self.context.clusterInfo.dbNodes
+        for dbNode in dbNodes:
+            for datanode in dbNode.datanodes:
+                host = datanode.listenIps
+                self.context.sshTool.scpFiles(upgradeRecord, upgradeRecord, host)

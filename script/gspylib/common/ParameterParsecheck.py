@@ -128,6 +128,7 @@ gs_om_kerberos = ["-t:", "-?", "--help", "-V", "--version", "-m:", "-U:",
 gs_om_refreshconf = ["-t:", "-?", "--help", "-V", "--version", "-l:"]
 gs_om_killmonitor = ["-t:", "-?", "--help", "-V", "--version", "-l:"]
 gs_om_generate_xml = ["-t:", "-?", "--help", "-V", "--version", "-l:", "--add-hostname=", "--add-hostip="]
+gs_om_query_upgrade_records = ["-t:", "-?", "--help", "-V", "--version"]
 # gs_upgradectl child branch
 # AP and TP are same
 gs_upgradectl_chose_strategy = ["-t:", "-?", "--help", "-V", "--version",
@@ -178,7 +179,8 @@ ParameterDict = {"preinstall": gs_preinstall,
                  "expansion": gs_expansion,
                  "dropnode": gs_dropnode,
                  "killmonitor": gs_om_killmonitor,
-                 "generate_xml": gs_om_generate_xml
+                 "generate_xml": gs_om_generate_xml,
+                 "query_upgrade_records": gs_om_query_upgrade_records
                  }
 
 # List of scripts with the -t parameter
@@ -186,7 +188,7 @@ special_list = ["gs_om", "backup", "upgradectl"]
 
 # The -t parameter list
 action_om = ["start", "stop", "status", "restart", "generateconf", "kerberos",
-             "cert", "view", "query", "refreshconf", "killmonitor", "generate_xml"]
+             "cert", "view", "query", "refreshconf", "killmonitor", "generate_xml", "query_upgrade_records"]
 action_upgradectl = ["chose-strategy", "auto-upgrade", "auto-rollback",
                      "commit-upgrade", "upgrade-cm", "show-step"]
 
@@ -720,6 +722,8 @@ class Parameter():
                 ParameterList = ParameterDict.get("upgrade-cm")
             elif (self.action == "show-step"):
                 ParameterList = ParameterDict.get("show-step")
+            elif (self.action == "query_upgrade_records"):
+                ParameterList = ParameterDict.get("query_upgrade_records")
             else:
                 GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"]
                                        % "t")

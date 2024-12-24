@@ -53,6 +53,7 @@ ACTION_KERBEROS = "kerberos"
 ACTION_REFRESHCONF = "refreshconf"
 ACTION_KILLMONITOR = "killmonitor"
 ACTION_GENERATE_XML = "generate_xml"
+ACTION_QUERY_UPGRADE_RECORDS = "query_upgrade_records"
 
 # postgis
 ACTION_DEL_POSTGIs = "rmlib"
@@ -160,6 +161,7 @@ Usage:
     gs_om -t refreshconf
     gs_om -t killmonitor
     gs_om -t generate_xml [--add-hostname=hostname1,hostname2] [--add-hostip=hostip1,hostip2]
+    gs_om -t query_upgrade_records
 
 General options:
   -t                              Type of the OM command.
@@ -294,7 +296,8 @@ Install options:
         if (self.g_opts.action == ACTION_START or
                 self.g_opts.action == ACTION_STOP or
                 self.g_opts.action == ACTION_STATUS or
-                self.g_opts.action == ACTION_RESTART):
+                self.g_opts.action == ACTION_RESTART or
+                self.g_opts.action == ACTION_QUERY_UPGRADE_RECORDS):
             if (ParaDict.__contains__("nodename")):
                 nodename = ParaDict.get("nodename")
                 self.g_opts.estimateNodeName = nodename
@@ -581,6 +584,8 @@ Install options:
             pass
         elif (self.g_opts.action == ACTION_GENERATE_XML):
             self.check_generate_xml_parameter()
+        elif (self.g_opts.action == ACTION_QUERY_UPGRADE_RECORDS):
+            pass
         else:
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % "t")
 
@@ -839,7 +844,8 @@ def main():
                                           ACTION_QUERY,
                                           ACTION_REFRESHCONF,
                                           ACTION_KILLMONITOR,
-                                          ACTION_GENERATE_XML
+                                          ACTION_GENERATE_XML,
+                                          ACTION_QUERY_UPGRADE_RECORDS
                                           ]):
             raise Exception(ErrorCode.GAUSS_531['GAUSS_53104']
                             % ("gs_om -t " + manager.g_opts.action))
@@ -875,7 +881,8 @@ def main():
             impl.kill_om_monitor()
         elif (manager.g_opts.action == ACTION_GENERATE_XML):
             impl.do_generate_xml()
-
+        elif (manager.g_opts.action == ACTION_QUERY_UPGRADE_RECORDS):
+            impl.do_query_upgrade_records()
         manager.logger.closeLog()
     except Exception as e:
         manager.logger.logExit(str(e))

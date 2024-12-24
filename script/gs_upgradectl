@@ -451,7 +451,7 @@ Option for grey upgrade
             if conflictPara > 1:
                 GaussLog.exitWithError(ErrorCode.Gauss_500["GAUSS_50005"] % (
                                        "--continue", "-h"))
-
+        
 if __name__ == '__main__':
     """
     main function

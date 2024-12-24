@@ -98,6 +98,7 @@ class LocalRestore(LocalBaseOM):
             self.logger.log("Executing the local restoration")
             self.parseConfigFile()
             self.checkRestoreDir()
+            self.checkDirPermissionForDelete()
             self.doRestore()
             self.logger.log("Successfully execute the local restoration.")
             self.logger.closeLog()
@@ -162,6 +163,30 @@ class LocalRestore(LocalBaseOM):
             raise Exception(str(e))
 
         self.logger.log("Successfully checked restored directory.")
+
+    def checkDirPermissionForDelete(self):
+        """
+        function: check directory permission
+        input : NA
+        output: NA
+        """
+        if not self.restoreBin:
+            return
+
+        self.logger.log("Checking installPath directory Permission.")
+
+        try:
+            for root, dirs, files in os.walk(self.installPath):
+                for dir_name in dirs:
+                    dir_path = os.path.join(root, dir_name)
+                    if not os.access(dir_path, os.X_OK | os.W_OK):
+                        self.logger.log(
+                            "Don't have sufficient permissions to deleted %s." % self.installPath)
+                        sys.exit(1)
+        except OSError as e:
+            raise Exception(str(e))
+
+        self.logger.log("Successfully checked installPath directory permission.")
 
     def doRestore(self):
         """

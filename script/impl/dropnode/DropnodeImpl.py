@@ -559,9 +559,14 @@ class OperCommon:
         
         if '(' in output:
             # output: 'ANY 1 (dn_6002, dn_6004), ANY 3 (dn_6003, dn_6005, dn_6006)'
-            output_dn_list = re.findall(r'(?:\w+\s+)?\d+\s+\(.*?\)', output)
+            output_dn_list = re.findall(r'(?:\w+\s+)?\d+\s*\(.*?\)', output)
+            if not output_dn_list:
+                self.logger.logExit(f"The ${output} is not valid, \
+                                    the correct format is 'ANY 1(dn_6002, dn_6004), ANY 1(dn_6003, dn_6005)'")
             # output_dn_list: ['ANY 1 (dn_6002, dn_6004)', 'ANY 3 (dn_6003, dn_6005, dn_6006)']
             output_dn_list = self.delete_sync_node_para(dnlist, output_dn_list)
+            if not output_dn_list:
+                return ""
             output_dn_str = ",".join(output_dn_list)
         else:
             output_dn_list = [item.strip() for item in output.strip().split(',')]
@@ -590,12 +595,16 @@ class OperCommon:
                     init_no -= 1
                     count_dn += 1
 
+                # modify: if output_dn_nospace is empty. then end the loop
                 if output_dn_nospace == "":
-                    continue
-                output_dn_nospace = "(" + output_dn_nospace + ")"
-                res_str += output_dn_pre + output_dn_nospace
-                res_str = self.delete_sync_node_no(output_no, init_no, count_dn, res_str)
-                res_list.append(res_str)
+                    break
+            # modify: if output_dn_nospace is empty. then skip the loop
+            if output_dn_nospace == "":
+                continue 
+            output_dn_nospace = "(" + output_dn_nospace + ")"
+            res_str += output_dn_pre + output_dn_nospace
+            res_str = self.delete_sync_node_no(output_no, init_no, count_dn, res_str)
+            res_list.append(res_str)
         return res_list
 
     def delete_sync_node_para_no_bracket(self, dnlist, origin_list):

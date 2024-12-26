@@ -94,30 +94,6 @@ class HostsUtil:
                 if hostname == name:
                     ip_list.append(ip)
         return ip_list
-
-    @staticmethod
-    def ip_to_hostname(host_ip):
-        if not host_ip:
-            return ""
-        if host_ip[:1] == '[' and host_ip[-1:] == ']':
-            host_ip = host_ip.strip('[]')
-
-        # get hostname from /etc/hosts
-        hostname = HostsUtil.get_hostname_by_ip_from_etc_hosts(host_ip)
-        if hostname:
-            return hostname
-
-        hosts_file = FileUtil.get_hosts_file()
-        if not os.path.isfile(hosts_file):
-            raise Exception("hosts file is not exist")
-        contents = HostsUtil.read_hosts_file(hosts_file)
-        name = ""
-        for ip, hostname in contents.items():
-            if host_ip == ip:
-                name = hostname
-                return name
-        if name == "":
-            return host_ip
         
     @staticmethod
     def read_hosts_file(path, mode='r'):

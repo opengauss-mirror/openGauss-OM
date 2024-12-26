@@ -5,10 +5,18 @@ def check_sync_standby_str(dnlist, output):
         return output.strip()
     
     if '(' in output:
-        # output: 'ANY 1 (dn_6002, dn_6004), ANY 3 (dn_6003, dn_6005, dn_6006)'
-        output_dn_list = re.findall(r'(?:\w+\s+)?\d+\s+\(.*?\)', output)
+        # output: 'ANY 1 (dn_6002, dn_6004), ANY 3(dn_6003, dn_6005, dn_6006)'
+        # (?:\w+\s+)?：可选的单词（如 ANY），后面跟着一个或多个空格。
+        # \d+：一个或多个数字（如 1）。
+        # \s*：零个或多个空格（以处理数字和左括号之间可能存在的空格）。
+        # \(：匹配左括号。
+        # .*?：匹配括号内的任意字符（非贪婪模式），直到遇到右括号。
+        # \)：匹配右括号。
+        output_dn_list = re.findall(r'(?:\w+\s+)?\d+\s*\(.*?\)', output)
         # output_dn_list: ['ANY 1 (dn_6002, dn_6004)', 'ANY 3 (dn_6003, dn_6005, dn_6006)']
         output_dn_list = delete_sync_node_para(dnlist, output_dn_list)
+        if not output_dn_list:
+            return ""
         output_dn_str = ",".join(output_dn_list)
     else:
         output_dn_list = [item.strip() for item in output.strip().split(',')]
@@ -44,13 +52,16 @@ def delete_sync_node_para(dnlist, origin_list):
                 output_dn_nospace = ','.join(output_list)
                 init_no -= 1
                 count_dn += 1
-
+            # modify: if output_dn_nospace is empty. then end the loop
             if output_dn_nospace == "":
-                continue
-            output_dn_nospace = "(" + output_dn_nospace + ")"
-            res_str += output_dn_pre + output_dn_nospace
-            res_str = delete_sync_node_no(output_no, init_no, count_dn, res_str)
-            res_list.append(res_str)
+                break
+        # modify: if output_dn_nospace is empty. then skip the loop
+        if output_dn_nospace == "":
+            continue 
+        output_dn_nospace = "(" + output_dn_nospace + ")"
+        res_str += output_dn_pre + output_dn_nospace
+        res_str = delete_sync_node_no(output_no, init_no, count_dn, res_str)
+        res_list.append(res_str)
     return res_list
 
 def delete_sync_node_no(output_no, init_no, count_dn, output_result):
@@ -76,6 +87,11 @@ def delete_sync_node_no(output_no, init_no, count_dn, output_result):
     return output_result
     
 def test_sync_standby_name():
+    dnlist = ["dn_6002"]
+    output = "ANY 1(dn_6002, dn_6003)"
+    expect_output = "ANY 1(dn_6003)"
+    assert expect_output.replace(" ", "") == check_sync_standby_str(dnlist, output).replace(" ", "")
+
     dnlist = ["dn_6003"]
     output = ""
     expect_output = ""
@@ -132,6 +148,17 @@ def test_sync_standby_name():
     # no backet
     output = "dn_6002, dn_6003"
     expect_output = "dn_6002"
+    assert expect_output.replace(" ", "") == check_sync_standby_str(dnlist, output).replace(" ", "")
+
+    
+    dnlist = ["dn_6002", "dn_6003"]
+    output = "ANY 1(dn_6002, dn_6003)"
+    expect_output = ""
+    assert expect_output.replace(" ", "") == check_sync_standby_str(dnlist, output).replace(" ", "")
+
+    dnlist = ["dn_6002", "dn_6003"]
+    output = "ANY 1(dn_6002), ANY 1(dn_6003)"
+    expect_output = ""
     assert expect_output.replace(" ", "") == check_sync_standby_str(dnlist, output).replace(" ", "")
 
 if __name__ == '__main__':

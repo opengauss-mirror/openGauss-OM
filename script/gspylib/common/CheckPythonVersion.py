@@ -48,14 +48,14 @@ def check_os_and_package_arch():
     package_cmd = "cd " + clib_path + "&& file libcrypto.so.1.1 2>/dev/null"
     (status, output) = subprocess.getstatusoutput(package_cmd)
     if status != 0:
-        raise Exception("%s command faile." % (package_cmd))
+        raise Exception("%s command failed." % (package_cmd))
     package_arch = ""
     if ("x86-64" in output):
         package_arch = "x86_64"
     if ("aarch64" in output):
         package_arch = "aarch64"
 
-    os_cmd = "uname -p"
+    os_cmd = "uname -m"
     (status, output) = subprocess.getstatusoutput(os_cmd)
     if status != 0:
         raise Exception("%s command failed." % (os_cmd))

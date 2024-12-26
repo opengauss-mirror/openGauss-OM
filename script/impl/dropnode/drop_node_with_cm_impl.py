@@ -186,14 +186,31 @@ class DropNodeWithCmImpl(DropnodeImpl):
 
         return new_list
 
+    def wait_reform_finish(self, node_list):
+        """
+        Wait until current stable list is exist hosts.
+        """
+        stable_num = 0
+        nodes = node_list.split(",")
+        for node in nodes:
+            stable_num += 2**(int(node.strip()[0]))
+        stable_list = 0
+        vg_name = EnvUtil.getEnv("VGNAME")
+        cmd = "pg_controldata +%s| grep \"Stable instances list\"" % vg_name
+        while stable_list != stable_num:
+            _, output = subprocess.getstatusoutput(cmd)
+            stable_list = int((output.split(":")[-1]).strip()) if output else stable_list
+
     def update_ss_url(self, node_list):
         """
         Update ss_interconnect_url on old nodes.
         """
+        self.wait_reform_finish(node_list)
         pg_port = EnvUtil.getEnv("PGPORT")
-        get_url_cmd = f"gsql -d postgres -p {pg_port} -c 'show ss_interconnect_url;'"
+        pgdata_path = EnvUtil.getEnv("PGDATA") + os.sep + "postgresql.conf"
+        get_url_cmd = f"grep ss_interconnect_url %s" % pgdata_path
         sta, out = subprocess.getstatusoutput(get_url_cmd)
-        url = out.split('\n')[2]
+        url = (out.split('=')[-1]).strip()
         url_port = (url.split(',')[0]).split(':')[-1]
         dss_port = (node_list.split(',')[0]).split(':')[-1]
         new_url = "ss_interconnect_url='%s'" % node_list.replace(dss_port, url_port)
@@ -227,8 +244,8 @@ class DropNodeWithCmImpl(DropnodeImpl):
             return
 
         node_list = self.update_dss_inst()
-        self.update_ss_url(node_list)
         self.update_hba_conf()
+        return node_list
 
     def _stop_drop_node(self):
         """
@@ -316,11 +333,25 @@ class DropNodeWithCmImpl(DropnodeImpl):
         if os.path.isfile(backup_cm_res):
             FileUtil.cpFile(backup_cm_res, cm_resource)
 
+    def check_one_xlog(self):
+        """
+        Check if current has only one xlog.
+        """
+        vg_name = EnvUtil.getEnv("VGNAME")
+        cmd = "dsscmd ls -p +%s | grep pg_xlog | wc -l" % vg_name
+        status, output = subprocess.getstatusoutput(cmd)
+        xlog_num = int(output)
+        if xlog_num == 1:
+            return True
+        return False
+
     def clean_del_dss(self):
         """
         Clean del_hosts on dss disk.
         """
         if not self.dss_mode:
+            return
+        if self.check_one_xlog():
             return
 
         vg_name = EnvUtil.getEnv("VGNAME")
@@ -438,11 +469,12 @@ class DropNodeWithCmImpl(DropnodeImpl):
         self.dropNodeOnAllHosts()
         self.operationOnlyOnPrimary()
         self.update_cm_res_json()
-        self.update_dss_info()
+        node_list = self.update_dss_info()
         self._stop_drop_node()
         self._generate_flag_file_on_drop_nodes()
         self.modifyStaticConf()
         self.clean_del_dss()
+        self.update_ss_url(node_list)
         self.restart_new_cluster()
         self.remove_cm_res_backup()
         self.logger.log("[gs_dropnode] Success to drop the target nodes.")

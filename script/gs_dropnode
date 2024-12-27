@@ -26,6 +26,7 @@ import subprocess
 import sys
 import pwd
 import grp
+import _thread
 package_path = os.path.dirname(os.path.realpath(__file__))
 ld_path = package_path + "/gspylib/clib"
 if 'LD_LIBRARY_PATH' not in os.environ:
@@ -50,6 +51,7 @@ from impl.dropnode.drop_node_with_cm_impl import DropNodeWithCmImpl
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.net_util import NetUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
+from base_utils.os.file_util import FileUtil
 
 ENV_LIST = ["MPPDB_ENV_SEPARATE_PATH", "GPHOME", "PATH",
             "LD_LIBRARY_PATH", "PYTHONPATH", "GAUSS_WARNING_TYPE",
@@ -75,6 +77,7 @@ class Dropnode(ParallelBaseOM):
         self.failureHosts = []
         self.flagOnlyPrimary = False
         self.enable_dss = False
+        self.drop_tmp_file = ""
         envFile = EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH")
         if envFile:
             self.envFile = envFile
@@ -322,19 +325,44 @@ General options:
             drop_node_impl = DropnodeImpl(self)
         drop_node_impl.run()
 
+    def create_drop_tmp_file(self):
+        """
+        create tmp file
+        """
+        self.tmp_dir = EnvUtil.getTmpDirFromEnv(self.user)
+        if self.tmp_dir == "":
+            raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$PGHOST")
+        self.drop_tmp_file = "%s/gs_dropnode_tmp_file" % self.tmp_dir
+        if os.path.exists(self.drop_tmp_file):
+            raise Exception(ErrorCode.GAUSS_358["GAUSS_35810"])
+        FileUtil.createFile(self.drop_tmp_file)
+    
+    def remove_drop_tmp_file(self):
+        """
+        remove tmp file
+        """
+        if os.path.exists(self.drop_tmp_file):
+            FileUtil.removeFile(self.drop_tmp_file)
 
 if __name__ == "__main__":
     # check if user is root
     if (os.getuid() == 0):
         GaussLog.exitWithError(ErrorCode.GAUSS_501["GAUSS_50105"])
-    dropNode = Dropnode()
-    dropNode.parseCommandLine()
-    dropNode.initLogs()
-    DefaultValue.check_is_streaming_dr_cluster()
-    dropNode.checkParameters()
-    dropNode.checkConnection(list(dropNode.backIpNameMap.keys()),
-                             dropNode.envFile)
-    dropNode.check_cluster_status()
-    dropNode.flagForOnlyPrimaryLeft()
-    dropNode.drop_run()
 
+    try:
+        dropNode = Dropnode()
+        dropNode.parseCommandLine()
+        
+        dropNode.create_drop_tmp_file()
+        dropNode.initLogs()
+        DefaultValue.check_is_streaming_dr_cluster()
+        dropNode.checkParameters()
+        dropNode.checkConnection(list(dropNode.backIpNameMap.keys()),
+                                dropNode.envFile)
+        dropNode.check_cluster_status()
+        dropNode.flagForOnlyPrimaryLeft()
+        dropNode.drop_run()
+    except Exception as e:
+        GaussLog.exitWithError(str(e))
+    finally:
+        dropNode.remove_drop_tmp_file()

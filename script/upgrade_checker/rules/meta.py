@@ -184,10 +184,11 @@ META = {
                 key_desc='函数%s',
                 # todo, 暂时忽略部分函数
                 filters=" 9999 < oid and oid < 16384 and proname not in ('prepare_snapshot_internal','prepare_snapshot','_pg_char_max_length','anytype','begincreate','setinfo','endcreate','getinfo','anydata','convertbdouble','accessbdouble','convertblob','accessblob','convertchar','accesschar','convertdate','accessdate','convertnchar','accessnchar','convertnvarchar2','accessnvarchar2','convertnumber','accessnumber','convertraw','accessraw','converttimestamp','accesstimestamp','converttimestamptz','accesstimestamptz','convertvarchar','accessvarchar','convertvarchar2','accessvarchar2','gettype','gettypename','anydataset','setanydatasetexcept','getanydatasetexcept','begincreate','addinstance','endcreate','setbdouble','getbdouble','setblob','getblob','setchar','getchar','setdate','getdate','setnchar','getnchar','setnumber','getnumber','setnvarchar2','getnvarchar2','setraw','getraw','settimestamp','gettimestamp','settimestamptz','gettimestamptz','setvarchar','getvarchar','setvarchar2','getvarchar2','getcount','gettype','gettypename') ",
-                ignore_col='oid,proargtypes,proallargtypes,proargdefaults,proacl,proargtypesext,allargtypes,allargtypesext',
+                ignore_col='oid,proargtypes,proallargtypes,proargdefaults,proacl,proargtypesext,allargtypes,allargtypesext,prosrc',
                 oid_col='pronamespace,prolang,provariadic,prorettype,propackageid',
                 bool_col='proshippable'
             ),
+            # plpgsql函数存在格式差异，仅校验非plpgsql函数体的函数定义
             ContentRulesMeta(
                 complete_sql="select format('def:%s.%s(%s)', "
                              "              n.nspname, "
@@ -195,7 +196,7 @@ META = {
                              "              pg_get_function_arguments(p.oid)), "
                              "       md5(pg_get_functiondef(p.oid)::text) "
                              "from pg_proc p left join pg_namespace n on p.pronamespace = n.oid "
-                             "where p.oid < 16384 and p.proisagg=false and p.proiswindow=false "
+                             "where p.oid < 16384 and p.proisagg=false and p.proiswindow=false and prolang < 10000 "
                              # todo, 暂时忽略部分函数
                              "and p.proname not in ('prepare_snapshot_internal','prepare_snapshot','_pg_char_max_length','anytype','begincreate','setinfo','endcreate','getinfo','anydata','convertbdouble','accessbdouble','convertblob','accessblob','convertchar','accesschar','convertdate','accessdate','convertnchar','accessnchar','convertnvarchar2','accessnvarchar2','convertnumber','accessnumber','convertraw','accessraw','converttimestamp','accesstimestamp','converttimestamptz','accesstimestamptz','convertvarchar','accessvarchar','convertvarchar2','accessvarchar2','gettype','gettypename','anydataset','setanydatasetexcept','getanydatasetexcept','begincreate','addinstance','endcreate','setbdouble','getbdouble','setblob','getblob','setchar','getchar','setdate','getdate','setnchar','getnchar','setnumber','getnumber','setnvarchar2','getnvarchar2','setraw','getraw','settimestamp','gettimestamp','settimestamptz','gettimestamptz','setvarchar','getvarchar','setvarchar2','getvarchar2','getcount','gettype','gettypename')",
                 key_desc='函数%s的定义',

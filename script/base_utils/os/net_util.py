@@ -172,7 +172,7 @@ class NetUtil(object):
             return NetUtil.IPV4_SUBMASK_LEN
 
     @staticmethod
-    def get_ip_cidr_segment(self, ip_address):
+    def get_ip_cidr_segment(ip_address):
         # Determine the IP type based on the environment variable
         if os.getenv("IP_TYPE") == NetUtil.NET_IPV4:
             ip_split = '.'

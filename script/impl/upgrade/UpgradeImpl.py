@@ -13,6 +13,7 @@
 # EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
 # MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 # See the Mulan PSL v2 for more details.
+
 # ----------------------------------------------------------------------------
 import os
 import sys
@@ -25,6 +26,8 @@ import traceback
 import copy
 import re
 import getpass
+import collections
+import stat
 
 from datetime import datetime, timedelta
 
@@ -39,12 +42,13 @@ from gspylib.common.DbClusterStatus import DbClusterStatus
 from gspylib.os.gsfile import g_file
 from gspylib.inspection.common import SharedFuncs
 from gspylib.component.CM.CM_OLAP.CM_OLAP import CM_OLAP
+from gspylib.threads.SshTool import check_local_mode
 from impl.upgrade.UpgradeConst import GreyUpgradeStep
 from impl.upgrade.UpgradeConst import DualClusterStage
 import impl.upgrade.UpgradeConst as const
 from base_utils.executor.cmd_executor import CmdExecutor
 from base_utils.executor.local_remote_cmd import LocalRemoteCmd
-from base_utils.os.cmd_util import CmdUtil
+from base_utils.os.cmd_util import CmdUtil, FastPopen
 from domain_utils.cluster_file.cluster_dir import ClusterDir
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.file_util import FileUtil
@@ -53,8 +57,9 @@ from domain_utils.cluster_file.version_info import VersionInfo
 from domain_utils.sql_handler.sql_result import SqlResult
 from base_utils.os.net_util import NetUtil
 from gspylib.component.DSS.dss_checker import DssConfig
+from gspylib.component.DSS.dss_comp import DssInst
 
-
+cur_primaryId = 0
 
 class OldVersionModules():
     """
@@ -1292,7 +1297,7 @@ class UpgradeImpl:
         except Exception as e:
             raise Exception(str(e))
 
-    def setUpgradeFromParam(self, cluster_version_number, is_check=True):
+    def setUpgradeFromParam(self, cluster_version_number):
         """
         function: set upgrade_from parameter
         Input : oldClusterNumber
@@ -1302,9 +1307,63 @@ class UpgradeImpl:
             self.context.logger.debug("No need to set cm parameter.")
             return
         self.context.logger.debug("Set upgrade_from guc parameter.")
+        self.add_upgrade_from()
         working_grand_version = int(float(cluster_version_number) * 1000)
-        cmd = "gs_guc set -Z cmagent -N all -I all -c 'upgrade_from=%s'" % working_grand_version
-        self.context.logger.debug("setting cmagent parameter: %s." % cmd)
+        cm_agent_cmd = "gs_guc set -Z cmagent -N all -I all -c 'upgrade_from=%s'" % working_grand_version
+        cm_server_cmd = ("cm_ctl set --param --server -k 'upgrade_from=%s'; "
+                         "cm_ctl reload --param --server") % working_grand_version
+        self.write_upgrade_from(cm_agent_cmd, working_grand_version)
+        self.write_upgrade_from(cm_server_cmd, working_grand_version)
+
+    def add_upgrade_from(self):
+        """
+        function: add upgrade_from in cm_server.conf if the parameter not in cm_server.conf.
+        """
+        cm_nodes = [node for node in self.context.clusterInfo.dbNodes if node.cmservers]
+        for cm_node in cm_nodes:
+            if check_local_mode([cm_node.name]):
+                cms_dir = cm_node.cmservers[0].datadir
+                cms_conf = os.path.join(cms_dir, "cm_server.conf")
+                check_cmd = "grep upgrade_from %s | wc -l" % cms_conf
+                node_ssh = SshTool([cm_node.name])
+                status, output = node_ssh.getSshStatusOutput(check_cmd, [cm_node.name])
+                if status[cm_node.name] == DefaultValue.SUCCESS and output.endswith("0"):
+                    self.add_to_all_node(cm_nodes)
+                    self.context.logger.debug("Successfully find or add upgrade_from in cm_server.conf on all nodes.")
+
+    def add_to_all_node(self, cm_nodes):
+        for node in cm_nodes:
+            temp_file_dir = "%s/upgrade_from" % EnvUtil.getEnv("PGHOST")
+            mkdir_cmd = "mkdir -m a+x -p %s; chown %s:%s %s" % \
+                        (temp_file_dir, self.context.user, self.context.group, temp_file_dir)
+            ssh_tool = SshTool([node.name])
+            ssh_tool.getSshStatusOutput(mkdir_cmd, [node.name])
+            temp_sh_file = "%s/upgradeFrom.sh" % temp_file_dir
+            subprocess.getstatusoutput("touch %s; cat /dev/null > %s" %
+                                       (temp_sh_file, temp_sh_file))
+            cms_dir = node.cmservers[0].datadir
+            cms_conf = os.path.join(cms_dir, "cm_server.conf")
+            cmd = "if [ `grep upgrade_from %s | wc -l` -eq 0 ]; " \
+                  "then echo 'upgrade_from = 0' >> %s; fi" % (cms_conf, cms_conf)
+            with os.fdopen(os.open("%s" % temp_sh_file, os.O_WRONLY | os.O_CREAT,
+                                   stat.S_IWUSR | stat.S_IRUSR), 'w') as fo:
+                fo.write("#bash\n")
+                fo.write(cmd)
+                fo.close()
+            ssh_tool.scpFiles(temp_sh_file, cms_dir, [node.name])
+            status, output = ssh_tool.getSshStatusOutput("sh %s/upgradeFrom.sh" % cms_dir, [node.name])
+            if status[node.name] != DefaultValue.SUCCESS:
+                raise Exception("Failed to add upgrade_from in cm_server.conf on %s." % node.name)
+            self.context.logger.debug("add upgrade_from to %s's cm_server, cmd is %s, result is %s"
+                                      % (node.name, cmd, output))
+
+    def write_upgrade_from(self, cmd, working_grand_version, is_check=True):
+        """
+        function: write upgrade_from to cm_agent.conf or cm_server.conf
+        Input: cmd, working_grand_version, is_check
+        output: NA
+        """
+        self.context.logger.debug("setting parameter: %s." % cmd)
         try:
             (status, output) = CmdUtil.retryGetstatusoutput(cmd)
             if status != 0:
@@ -1315,8 +1374,8 @@ class UpgradeImpl:
             if is_check:
                 gucStr = "%s:%s" % ("upgrade_from", str(working_grand_version).strip())
                 self.checkParam(gucStr, True)
-            self.context.logger.debug("Successfully set cmagent parameter "
-                                      "upgrade_from=%s." % working_grand_version)
+            self.context.logger.debug("Successfully set parameter upgrade_from=%s,"
+                                      "cmd:%s." % (working_grand_version, cmd))
         except Exception as er:
             if self.context.action == const.ACTION_INPLACE_UPGRADE or \
                     not self.context.forceRollback:
@@ -2025,7 +2084,7 @@ class UpgradeImpl:
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
                             "Command:%s. Error:\n%s" % (cmd, output))
-            self.refresh_dynamic_config_file();
+        self.refresh_dynamic_config_file()
         self.context.logger.log("Switching DN processes.")
         is_rolling = False
         start_time = timeit.default_timer()
@@ -2066,6 +2125,10 @@ class UpgradeImpl:
             "Command for switching DN processes: %s." % cmd)
         hostList = copy.deepcopy(self.context.nodeNames)
         self.context.sshTool.executeCommand(cmd, hostList=hostList)
+        if isRollback:
+            self.recover_dss_dirs()
+        else:
+            self.process_dssfiles_onexlog()
         start_cluster_time = timeit.default_timer()
         self.greyStartCluster(upgrade_sep_comps)
         end_cluster_time = timeit.default_timer() - start_cluster_time
@@ -3398,6 +3461,7 @@ class UpgradeImpl:
             if not postUpgrade:
                 self.context.logger.debug("Not post upgrade.")
                 self.setUpgradeFromParam(self.context.oldClusterNumber)
+                self.reload_cm_proc()
                 if self.context.action == const.ACTION_INPLACE_UPGRADE:
                     # Must set guc after start cluster by setUpgradeMode, because checking guc
                     # needs to connect database to execute sql statement.
@@ -4219,6 +4283,381 @@ END;"""
         """
         pass
 
+    @staticmethod
+    def wait_dssserver_start():
+        """
+        Wait dssserver start.
+        """
+        dss_num = 0
+        cmd = "ps ux | grep \"dssserver -D\" | grep -v grep | wc -l"
+        while dss_num < 1:
+            _, output = subprocess.getstatusoutput(cmd)
+            dss_num = int(output)
+
+    @staticmethod
+    def get_primaryid_from_control():
+        """
+        function: get primary id from pg_control reform page
+        input  : NA
+        output : primary id
+        """
+        vg_name = EnvUtil.getEnv("VGNAME")
+        cmd = "pg_controldata +%s | grep \"Primary instance ID\"" % vg_name
+        primary_id = -1
+        while primary_id < 0:
+            status, output = subprocess.getstatusoutput(cmd)
+            sta_flag = "Primary instance ID" in output
+            primary_id = int((output.split(":")[-1]).strip()) if sta_flag else primary_id
+        return primary_id
+
+    @staticmethod
+    def get_xlog_files(ori_dir):
+        """
+        function: get xlog files
+        input  : inst_id
+        output : NA
+        """
+        cmd = "dsscmd ls -p +%s/%s/" % (EnvUtil.getEnv("VGNAME"), ori_dir)
+        status, output = subprocess.getstatusoutput(cmd)
+        xlog_files = []
+        out = output.split('\n')
+        for line in out:
+            data = line.split()
+            for item in data:
+                if re.findall(r"\d{24}", item):
+                    xlog_files.append(item)
+        return xlog_files
+
+    def rename_xlog_dir(self, ori_id, new_id):
+        """
+        function: change pg_xlog(ori_id) to pg_xlog(new_id)
+        """
+        ori_dir = 'pg_xlog' + ori_id
+        new_dir = 'pg_xlog'
+        if new_id:
+            new_dir += new_id
+        if not UpgradeImpl.check_dir_exists(ori_dir):
+            return
+        xlog_files = UpgradeImpl.get_xlog_files(ori_dir)
+        vg_name = EnvUtil.getEnv("VGNAME")
+        pri_index = 0
+        pri_vgname = DssInst.get_private_vgname_by_ini(EnvUtil.get_dss_home(), pri_index)
+        cmd = "dsscmd mkdir -p +%s -d %s; dsscmd ln -s +%s/%s -t +%s/%s;" % (
+               pri_vgname, new_dir, pri_vgname, new_dir, vg_name, new_dir)
+        for xlog in xlog_files:
+            cmd += "dsscmd cp -s +%s/%s/%s -d +%s/%s/%s;" % (pri_vgname, ori_dir, xlog, pri_vgname, new_dir, xlog)
+        cmd += "dsscmd unlink -p +%s/%s; dsscmd rmdir -p +%s/%s -r;" % (vg_name, ori_dir, pri_vgname, ori_dir)
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            self.context.logger.debug(f"Failed to rename pg_xlog dir. Error is: {output}")
+            raise Exception("Failed to rename pg_xlog dir.")
+
+    @staticmethod
+    def get_dw_files(dw_dir):
+        """
+        function: get pg_doublewrite(ori_id) files.
+        input  : ori_primary_id
+        output : NA
+        """
+        cmd = "dsscmd ls -p +%s/%s/ | awk '{print $6}'" % (EnvUtil.getEnv("VGNAME"), dw_dir)
+        status, output = subprocess.getstatusoutput(cmd)
+        out = output.split('\n')
+        dw_files = []
+        for line in out:
+            if "pg_dw_" in line and "pg_dw_ext_chunk" not in line:
+                dw_files.append(line)
+        return dw_files
+
+    def rename_dw_dir(self, ori_id, n_id):
+        """
+        function: rename pg_doublewrite(ori_id) to pg_doublewrite(new_id)
+        input  : ori_primary_id, new_primary_id
+        output : NA
+        """
+        vg_name = EnvUtil.getEnv("VGNAME")
+        ori_dir = "pg_doublewrite" + ori_id
+        if not UpgradeImpl.check_dir_exists(ori_dir):
+            return
+        new_dir = "pg_doublewrite"
+        if n_id:
+            new_dir += n_id
+        dw_files = UpgradeImpl.get_dw_files(ori_dir)
+        chunk_dir = ori_dir + os.sep + "pg_dw_ext_chunk"
+        dw_chunk_files = UpgradeImpl.get_dw_files(chunk_dir)
+        cmd = "dsscmd mkdir -p +%s -d %s; dsscmd mkdir -p +%s/%s -d %s;" % (
+               vg_name, new_dir, vg_name, new_dir, "pg_dw_ext_chunk")
+        for dw_file in dw_files:
+            cmd += "dsscmd cp -s +%s/%s/%s -d +%s/%s/%s;" % (vg_name, ori_dir, dw_file, vg_name, new_dir, dw_file)
+        if dw_files:
+            new_chunk_dir = new_dir + os.sep + "pg_dw_ext_chunk"
+            for dw_file in dw_chunk_files:
+                cmd += "dsscmd cp -s +%s/%s/%s -d +%s/%s/%s;" % (
+                        vg_name, chunk_dir, dw_file, vg_name, new_chunk_dir, dw_file)
+        cmd += "dsscmd rmdir -p +%s/%s -r;" % (vg_name, ori_dir)
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            self.context.logger.debug("Failed to rename %s to %s" % (ori_dir, new_dir))
+
+    def rename_dss_dirs(self, old_id, new_id):
+        """
+        function: rename Dss pg_xlog and pg_doublewrite.
+        input  : old_primary_id, new_primary_id
+        output : NA
+        """
+        self.rename_xlog_dir(old_id, new_id)
+        self.rename_dw_dir(old_id, new_id)
+        self.context.logger.log("Successfully rename dss dirs.")
+
+    def rename_control_file(self, ori_file, new_file):
+        """
+        function: rename pg_control from oriFile to newFile
+        input  : old file name, new file name
+        output : NA
+        """
+        vg_name = EnvUtil.getEnv("VGNAME")
+        cmd = "dsscmd rename -o +%s/%s -n +%s/%s" % (vg_name, ori_file, vg_name, new_file)
+        status, _ = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            self.context.logger.debug("Failed to rename pg_control file from %s to %s" % (ori_file, new_file))
+            raise Exception("Failed to rename pg_control file from %s to %s" % (ori_file, new_file))
+        self.context.logger.log("Successfully rename pg_control file from %s to %s" % (ori_file, new_file))
+
+    def build_new_control_file(self, inst_id):
+        """
+        function: build new control file
+        input  : primary_id
+        output : NA
+        """
+        tmp_path = EnvUtil.getEnv("PGHOST")
+        vg_name = EnvUtil.getEnv("VGNAME")
+        cmd = "dsscmd cp -s +%s/pg_control.upgrade -d %s/pg_control.upgrade" % (vg_name, tmp_path)
+        status, _ = subprocess.getstatusoutput(cmd)
+        source_file = tmp_path + os.sep + 'pg_control.upgrade'
+        dest_file = tmp_path + os.sep + 'pg_control'
+        if not os.path.exists(dest_file):
+            os.mknod(dest_file)
+        index = 0
+        chunk_data = collections.defaultdict(bytes)
+        with open(source_file, 'rb') as f:
+            while index <= DefaultValue.REFORM_INDEX:
+                chunk = f.read(DefaultValue.PAGE_SIZE)
+                if not chunk:
+                    break
+                if index == inst_id:
+                    chunk_data[DefaultValue.ZERO_INDEX] = chunk
+                if index == DefaultValue.REFORM_INDEX:
+                    chunk_data[DefaultValue.REFORM_INDEX] = chunk
+                index += 1
+        with open(dest_file, 'wb') as f:
+            for ind, chunk in chunk_data.items():
+                f.seek(ind * DefaultValue.PAGE_SIZE)
+                f.write(chunk)
+        cmd = "dsscmd cp -s %s -d +%s/pg_control; rm -f %s; rm -f %s;" % (dest_file, vg_name, source_file, dest_file)
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(f"Failed to rebuild pg_control. Error is: {output}")
+        self.context.logger.log("Successfully rebulid pg_control.")
+
+    def copy_control_backup(self, source_file, dest_file):
+        """
+        function: copy pg_control from sourceFile(name) to destFile(name)
+        input  : NA
+        output : NA
+        """
+        vg_name = EnvUtil.getEnv("VGNAME")
+        cmd = "dsscmd cp -s +%s/%s -d +%s/%s" % (vg_name, source_file, vg_name, dest_file)
+        status, _ = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            self.context.logger.debug("Failed to copy pg_control to pg_control.backup.")
+            raise Exception("Failed to copy pg_control to pg_control.backup.")
+        self.context.logger.log("Successfully copy pg_control to pg_control.backup.")
+
+    @staticmethod
+    def start_dssserver():
+        """
+        start dssserver in maintain mode
+        """
+        dss_home = EnvUtil.get_dss_home()
+        cmd = "cm_ctl stop; export DSS_MAINTAIN=TRUE; nohup dssserver -D %s >/dev/null 2>&1 &" % dss_home
+        proc = FastPopen(cmd)
+        out, err = proc.communicate()
+        if proc.returncode != 0:
+            raise Exception("Failed to start dssserver in maintain mode." +
+                            ' Error: {}'.format(str(err + out).strip()))
+        UpgradeImpl.wait_dssserver_start()
+
+    def stop_dssserver(self):
+        """
+        stop dssserver
+        """
+        cmd = "export DSS_MAINTAIN=False;  pkill -U %s -9 dssserver; cm_ctl start" % self.context.user
+        status, _ = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception("Failed to kill dssserver.")
+
+    def need_change_dssfiles(self):
+        """
+        function: check if need to change dss dir(xlog,doublewrite) and pg_control by DB version
+        input  : NA
+        output : T/F
+        """
+        check_version = 92.973
+        if (self.context.newClusterNumber >= str(check_version) and
+           self.context.oldClusterNumber < str(check_version)):
+            return True
+        return False
+
+    def process_dssfiles_onexlog(self):
+        """
+        function: process dss dir and pg_control when only support one xlog
+        input  : NA
+        output : NA
+        """
+        if not EnvUtil.is_dss_mode(self.context.user):
+            return
+        if not self.need_change_dssfiles():
+            return
+
+        global cur_primaryId
+        UpgradeImpl.start_dssserver()
+        primary_id = UpgradeImpl.get_primaryid_from_control()
+        cur_primaryId = primary_id
+        ori_id, new_id = str(primary_id), ''
+        self.rename_dss_dirs(ori_id, new_id)
+        self.rename_control_file('pg_control', 'pg_control.upgrade')
+        self.build_new_control_file(primary_id)
+        self.rename_control_file('pg_control.backup', 'pg_control.backup.upgrade')
+        self.copy_control_backup('pg_control', 'pg_control.backup')
+        self.stop_dssserver()
+
+    def rebuild_control_file(self):
+        """
+        function: process pg_control,pg_control.upgrade,pg_control.backup
+        """
+        if not UpgradeImpl.check_one_controlpage():
+            return
+        vg_name = EnvUtil.getEnv("VGNAME")
+        cmd = "dsscmd rm -p +%s/pg_control; dsscmd rm -p +%s/pg_control.backup.upgrade;" \
+              "dsscmd rename -o +%s/pg_control.upgrade -n +%s/pg_control; " \
+              "dsscmd rm -p +%s/pg_control.backup; dsscmd cp -s +%s/pg_control -d +%s/pg_control.backup;" % (
+              vg_name, vg_name, vg_name, vg_name, vg_name, vg_name, vg_name)
+        status, output = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(f"Failed to rollback pg_control.Error is: {output}")
+        self.context.logger.log("Successfully rollback pg_control.")
+
+    @staticmethod
+    def check_dir_exists(dir_name):
+        """
+        function: check dir exists.
+        """
+        vg_name = EnvUtil.getEnv("VGNAME")
+        cmd = "dsscmd ls -p +%s/%s" % (vg_name, dir_name)
+        status, output = subprocess.getstatusoutput(cmd)
+        if "Succeed" in output:
+            return True
+        return False
+
+    @staticmethod
+    def check_one_controlpage():
+        """
+        function: check control pages num in pg_control
+        """
+        vg_name = EnvUtil.getEnv("VGNAME")
+        cmd = "pg_controldata +%s | grep \"pg_control data\" | wc -l" % vg_name
+        status, output = subprocess.getstatusoutput(cmd)
+        control_num = int(output)
+        if control_num == 1:
+            return True
+        return False
+
+    def copy_control_file(self, pri_id):
+        global cur_primaryId
+        if not UpgradeImpl.check_one_controlpage():
+            return
+        tmp_path = EnvUtil.getEnv("PGHOST")
+        vg_name = EnvUtil.getEnv("VGNAME")
+        cmd = "dsscmd cp -s +%s/pg_control.upgrade -d %s/pg_control.upgrade;dsscmd rm -p +%s/pg_control.upgrade;" \
+              "dsscmd cp -s +%s/pg_control -d %s/pg_control;" % (vg_name, tmp_path, vg_name, vg_name, tmp_path)
+        status, _ = subprocess.getstatusoutput(cmd)
+        source_file = tmp_path + os.sep + "pg_control"
+        dest_file = tmp_path + os.sep + "pg_control.upgrade"
+        chunk_data = collections.defaultdict(bytes)
+        index = 0
+        with open(source_file, 'rb') as f1, open(dest_file, 'rb') as f2:
+            while index <= DefaultValue.REFORM_INDEX:
+                tmp = f1.read(DefaultValue.PAGE_SIZE)
+                tmp1 = f2.read(DefaultValue.PAGE_SIZE)
+                if index == pri_id and pri_id != cur_primaryId:
+                    chunk_data[cur_primaryId] = tmp1
+                elif index == DefaultValue.ZERO_INDEX:
+                    chunk_data[pri_id] = tmp
+                elif index == DefaultValue.REFORM_INDEX:
+                    chunk_data[64] = tmp
+                else:
+                    chunk_data[index] = tmp1
+                index += 1
+        with open(dest_file, 'wb') as f:
+            for ind, chunk in chunk_data.items():
+                f.seek(ind * DefaultValue.PAGE_SIZE)
+                f.write(chunk)
+        cmd = "dsscmd cp -s %s -d +%s/pg_control.upgrade;rm -f %s; rm -f %s" % (
+              dest_file, vg_name, dest_file, source_file)
+        status, _ = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception("Failed to copy control Files.")
+        self.context.logger.log("Successfully copy control file pages.")
+
+    def recover_dss_dirs(self):
+        """
+        function: recover dss dir and pg_control when only support one xlog.
+        input  : NA
+        output : NA
+        """
+        if not EnvUtil.is_dss_mode(self.context.user):
+            return
+        if not self.need_change_dssfiles():
+            return
+
+        global cur_primaryId
+        UpgradeImpl.start_dssserver()
+        cur_id = UpgradeImpl.get_primaryid_from_control()
+        if cur_id != cur_primaryId:
+            self.rename_dss_dirs(str(cur_id), str(cur_primaryId))
+        self.rename_dss_dirs('', str(cur_id))
+        self.copy_control_file(cur_id)
+        self.rebuild_control_file()
+        self.stop_dssserver()
+
+    def del_controlfile_dwdir(self):
+        """
+        function: delete pg_control.upgrade,pg_control.backup.upgrade,pg_doublewrite(n)
+        input  : NA
+        output : NA
+        """
+        if not EnvUtil.is_dss_mode(self.context.user):
+            return
+        if not self.need_change_dssfiles():
+            return
+        vg_name = EnvUtil.getEnv("VGNAME")
+        id_cmd = "dsscmd ls -p +%s | grep pg_doublewrite"
+        sta, out = subprocess.getstatusoutput(id_cmd)
+        dw_dirs = []
+        res_tmp = out.split('\n')
+        for line in res_tmp:
+            data = line.split(' ')
+            for item in data:
+                if re.findall(r"pg_doublewrite", item) and item != "pg_doublewrite":
+                    dw_dirs.append(item)
+
+        del_cmd = "dsscmd rm -p +%s/pg_control.upgrade; dsscmd rm -p +%s/pg_control.backup.upgrade;" % (vg_name, vg_name)
+        for dw_dir in dw_dirs:
+            del_cmd += "dsscmd rmdir -p +%s/%s -r;" % (vg_name, dw_dir)
+        status, output = subprocess.getstatusoutput(del_cmd)
+        if status != 0:
+            raise Exception(f"Failed to delete control files and pg_doublewrite files.Error is: {output}")
+        self.context.logger.log("Successfully delete control files and pg_doublewrite files.")
+
     def setActionFile(self):
         """
         set the action from step file, if not find, set it to large upgrade,
@@ -4403,6 +4842,7 @@ END;"""
             self.cleanConfBakOld()
             self.recordDualClusterStage(self.newCommitId, DualClusterStage.STEP_UPGRADE_END)
             self.cleanBinaryUpgradeBakFiles()
+            self.del_controlfile_dwdir()
             # remove tmp global relmap file
             self.cleanTmpGlobalRelampFile()
             self.context.logger.log("Commit upgrade succeeded.")
@@ -6437,8 +6877,8 @@ END;"""
         try:
             hostList = copy.deepcopy(self.context.clusterNodes)
             self.context.execCommandInSpecialNode(cmd, hostList)
-            # wait the cluster be normal
-            self.waitClusterNormalDegrade()
+            self.context.logger.debug(
+                "No need to wait the cluster be normal when reload cmagent, do it when reload cmserver.")
             self.context.logger.debug("Success to reload cmagent")
         except Exception as er:
             if self.context.action == const.ACTION_INPLACE_UPGRADE or not \
@@ -6470,6 +6910,12 @@ END;"""
         self.context.logger.debug("reloading all cmserver process: %s" % cmd)
         try:
             self.context.execCommandInSpecialNode(cmd, cm_nodes)
+            # restart cm component before waiting cluster be normal
+            cmd = "gs_om -t restart --component=CM"
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
+                            "Command:%s. Error:\n%s" % (cmd, output))
             # wait the cluster be normal
             self.waitClusterNormalDegrade()
             self.context.logger.debug("Success to reload cmserver")

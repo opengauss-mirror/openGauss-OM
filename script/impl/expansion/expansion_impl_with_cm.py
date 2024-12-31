@@ -255,16 +255,20 @@ class ExpansionImplWithCm(ExpansionImpl):
         self.logger.debug("Success to set om_monitor crontab on nodes "
                           "{0}".format(ExpansionImplWithCm.get_node_names(self.new_nodes)))
 
-    def _reghl_new_nodes(self):
+    def _reghl_new_nodes(self, is_reghl=False):
         """
         register dss for new nodes
         """
         if self.xml_cluster_info.enable_dss != 'on':
             return
 
-        self.logger.debug("Start reghl dss for new nodes.")
-        cmd = f"source {self.envFile}; dsscmd reghl;"
-        self.logger.log("Command for reghl new nodes: %s" % cmd)
+        cmd = f"source {self.envFile};"
+        if is_reghl:
+            cmd += "dsscmd reghl;"
+            self.logger.log(f"Command for reg dss is: {cmd}")
+        else:
+            cmd += "dsscmd unreghl;"
+            self.logger.log(f"Command for unreg dss is: {cmd}")
         CmdExecutor.execCommandWithMode(cmd, self.ssh_tool,
                                         host_list=ExpansionImplWithCm.get_node_names(self.new_nodes))
         self.logger.log("Success to register dss on new nodes.")
@@ -475,6 +479,27 @@ class ExpansionImplWithCm(ExpansionImpl):
         CmdExecutor.execCommandWithMode(cmd, self.ssh_tool)
         self.logger.log("Successfully updated cm resource file.")
 
+    def update_guc_param(self):
+        """
+        Keep ss_interconnect_channel_count same with origin node.
+        """
+        port = EnvUtil.getEnv("PGPORT")
+        get_cmd = "gsql -d postgres -p %s -A -t -c 'show ss_interconnect_channel_count;'" % port
+        sta, out = subprocess.getstatusoutput(get_cmd)
+        channel_count = int(out)
+        set_cmd = ""
+        for node in self.new_nodes:
+            ssh_tool = SshTool([node.name], timeout=300)
+            pgdata_path = node.datanodes[0].datadir
+            set_cmd = "gs_guc set -D %s -c 'ss_interconnect_channel_count = %d'" % (pgdata_path, channel_count)
+            self.logger.debug("Command for update guc param: %s" % set_cmd)
+            result_map, _ = ssh_tool.getSshStatusOutput(set_cmd, [])
+            if result_map[node.name] == DefaultValue.SUCCESS:
+                self.logger.log("Update ss_interconnect_channel_count on %s success." % node.name)
+            else:
+                self.logger.log("Update ss_interconnect_channel_count on %s failed." % node.name)
+                raise Exception("Update ss_interconnect_channel_count on %s failed." % node.name)
+
     def _config_instance(self):
         """
         Config instance
@@ -487,6 +512,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         self._update_cm_res_json()
         self._config_pg_hba()
         self.distributeCipherFile()
+        self.update_guc_param()
 
     def _set_expansion_success(self):
         """
@@ -559,7 +585,7 @@ class ExpansionImplWithCm(ExpansionImpl):
 
         return new_list
 
-    def update_guc_url(self, node_list, hosts):
+    def update_guc_url(self, node_list):
         """
         Update ss_interconnect_url on old nodes.
         """
@@ -575,14 +601,18 @@ class ExpansionImplWithCm(ExpansionImpl):
         guc_cmd = "grep -n 'ss_interconnect_url' %s | cut -f1 -d: | xargs -I {} sed -i {}\'s/%s/%s/g' %s" % (
                   conf_file, url, new_url, conf_file)
         self.logger.debug("Command for update ss_interconnect_url: %s" % guc_cmd)
-        for host in hosts:
-            ssh_tool = SshTool([host], timeout=300)
+        for node in self.old_nodes:
+            ssh_tool = SshTool([node.name], timeout=300)
+            pgdata_file = node.datanodes[0].datadir + os.sep + 'postgresql.conf'
+            guc_cmd = "grep -n 'ss_interconnect_url' %s | cut -f1 -d: | xargs -I {} sed -i {}\'s/%s/%s/g' %s" % (
+                  pgdata_file, url, new_url, pgdata_file)
+            self.logger.debug("host %s Command for update ss_interconnect_url: %s" % (node.name, guc_cmd))
             result_map, _ = ssh_tool.getSshStatusOutput(guc_cmd, [])
-            if result_map[host] == DefaultValue.SUCCESS:
-                self.logger.log("Update ss_interconnect_url on %s success." % host)
+            if result_map[node.name] == DefaultValue.SUCCESS:
+                self.logger.log("Update ss_interconnect_url on %s success." % node.name)
             else:
-                self.logger.debug("Failed to update ss_interconnect_url on %s" % host)
-                raise Exception("Failed to update ss_interconnect_url on %s" % host)
+                self.logger.debug("Failed to update ss_interconnect_url on %s" % node.name)
+                raise Exception("Failed to update ss_interconnect_url on %s" % node.name)
         self.logger.log("Successfully update ss_interconnect_url on old nodes.")
 
     def update_old_cm_res(self):
@@ -621,7 +651,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         old_hosts = [node.name for node in self.old_nodes]
         new_hosts = [node.name for node in self.new_nodes]
         node_list = self.update_dss_inst(old_hosts, old_hosts + new_hosts)
-        self.update_guc_url(node_list.split('=')[-1], old_hosts)
+        self.update_guc_url(node_list.split('=')[-1])
 
     def do_preinstall(self):
         """
@@ -659,9 +689,21 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         self._change_user_without_root()
         self._set_om_monitor_cron()
-        self._reghl_new_nodes()
+        self._reghl_new_nodes(is_reghl=True)
         self._init_instance()
         self._config_instance()
+        self._reghl_new_nodes(is_reghl=False)
+        p_value.value = 1
+
+    def do_restart(self, p_value):
+        """
+        Restart cluster when enable_dss to sync params on new standby.
+        """
+        if self.xml_cluster_info.enable_dss != 'on':
+            return
+        self.logger.debug("Ready to restart cluster.")
+        self._change_user_without_root()
+        self.ss_restart_cluster()
         p_value.value = 1
 
     def do_start(self, p_value):
@@ -672,6 +714,8 @@ class ExpansionImplWithCm(ExpansionImpl):
         self._change_user_without_root()
         if self.xml_cluster_info.enable_dss == 'on':
             self.update_old_cm_res()
+            self.check_processes()
+            DefaultValue.remove_metadata_and_dynamic_config_file(self.user, self.ssh_tool, self.logger)
             self.ss_restart_cluster()
             p_value.value = 1
             return
@@ -728,7 +772,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         Recover old nodes dss info when expansion failed.
         """
         node_list = self.update_dss_inst(old_hosts, old_hosts)
-        self.update_guc_url(node_list.split('=')[-1], old_hosts)
+        self.update_guc_url(node_list.split('=')[-1])
         self.logger.debug("Successfully recover dss_nodes_list and ss_interconnect_url on old nodes.")
 
     def recover_new_nodes(self):
@@ -906,8 +950,6 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         if self.xml_cluster_info.enable_dss != "on":
             return
-        self.check_processes()
-        DefaultValue.remove_metadata_and_dynamic_config_file(self.user, self.ssh_tool, self.logger)
         restart_cmd = f"source {self.envFile}; cm_ctl stop; cm_ctl start;"
         status, _ = subprocess.getstatusoutput(restart_cmd)
         if status != 0:
@@ -928,5 +970,6 @@ class ExpansionImplWithCm(ExpansionImpl):
         change_user_executor(self.do_install)
         change_user_executor(self.do_config)
         change_user_executor(self.do_start)
+        change_user_executor(self.do_restart)
         change_user_executor(self.check_tblspc_directory)
         self.check_new_node_state(True)

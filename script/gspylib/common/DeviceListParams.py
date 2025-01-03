@@ -55,6 +55,7 @@ class DeviceListParams:
     LOCAL_STREAM_IP_MAP1 = 'localStreamIpmap1'
     REMOTE_STREAM_IP_MAP1 = 'remoteStreamIpmap1'
     REMOTE_DATA_PORT_BASE = 'remotedataPortBase'
+    SSH_PORT = "sshPort"
 
     @staticmethod
     def get_all_param_names():
@@ -85,7 +86,8 @@ class DeviceListParams:
             DeviceListParams.DATA_PORT_DUMMY_STANDBY,
             DeviceListParams.LOCAL_STREAM_IP_MAP1,
             DeviceListParams.REMOTE_STREAM_IP_MAP1,
-            DeviceListParams.REMOTE_DATA_PORT_BASE
+            DeviceListParams.REMOTE_DATA_PORT_BASE,
+            DeviceListParams.SSH_PORT
         ]
 
     SYNC_NODE_PATTERN = re.compile(r'^syncNode_.*')

@@ -29,12 +29,15 @@ class XmlConstant:
 
     DATABASE_PORT = ""
     CM_SERVER_PORT = ""
+    SSH_PORTS = []
 
     DEFAULT_DATABASE_PORT = "15000"
     DEFAULT_CM_SERVER_PORT = "15400"
 
     KEEP_FILES = ['cluster_tmp.xml', 'resource_en.json', 'resource_zh.json', 'xml_template.py', '__init__.py',
                   'xml_constant,py', "xml_status.py"]
+
+    DEFAULT_SSH_PORT = "22"
 
     DATABASE_INSTALL_DIR = "/opt/openGauss/install"
 

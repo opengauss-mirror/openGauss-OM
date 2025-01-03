@@ -406,7 +406,11 @@ class ErrorCode():
                        "authorized_keys on remote node.",
         'GAUSS_51112': "[GAUSS-51112] : Failed to exchange SSH keys "
                        "for user[%s] using hostname.",
-        'GAUSS_51113': "[GAUSS-51113] : Failed to generate passphrase keyword."
+        'GAUSS_51113': "[GAUSS-51113] : Failed to generate passphrase keyword.",
+        "GAUSS_51114": "[GAUSS-51114] : Failed to obtain %s by %s.",
+        "GAUSS_51115": "[GAUSS-51115] : Failed to obtain hostname by %s.",
+        "GAUSS_51116": "[GAUSS-51116] : The IP address %s or %s is incorrect."
+
     }
 
     ###########################################################################

@@ -707,7 +707,7 @@ class PostUninstallImpl:
         except Exception as e:
             self.logger.logExit(str(e))
 
-    def sshExecWithPwd(self, host):
+    def ssh_exec_with_pwd(self, host, port=DefaultValue.DEFAULT_SSH_PORT):
         """
         function: execute command with root password
         input : host
@@ -717,7 +717,7 @@ class PostUninstallImpl:
               "else rm -rf %s/* && echo 'OKOKOK';fi" % ("%u", gphome, gphome)
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(host, 22, "root", self.sshpwd)
+        ssh.connect(host, port, "root", self.sshpwd)
         stdin, stdout, stderr = ssh.exec_command(cmd)
         output = stdout.read()
         self.logger.debug("%s: %s" % (str(host), str(output)))
@@ -813,7 +813,7 @@ class PostUninstallImpl:
                 else:
                     # clean gphome with specified node
                     self.sshpwd = self.verifyCleanGphome(self.localMode)
-                    parallelTool.parallelExecute(self.sshExecWithPwd,
+                    parallelTool.parallelExecute(self.ssh_exec_with_pwd,
                                                  self.clean_host)
                     self.logger.logExit(
                         "Successfully clean gphome on node %s."
@@ -839,7 +839,7 @@ class PostUninstallImpl:
                 if SSH_TRUST and not self.localMode:
                     # SSH trust has been created
                     self.verifyCleanGphome()
-                    parallelTool.parallelExecute(self.sshExecWithPwd,
+                    parallelTool.parallelExecute(self.ssh_exec_with_pwd,
                                                  self.nodeList)
                 if not SSH_TRUST or self.localMode:
                     # SSH trust has not been created
@@ -893,9 +893,8 @@ class PostUninstallImpl:
             retry_times = 0
             while True:
                 try:
-                    self.sshTool.createTrust(username,
-                                             Ips,
-                                             action='gs_postuninstall')
+                    ssh_ports_map = self.clusterInfo.get_cluster_nodes_ssh_port_by_ips(Ips)
+                    self.sshTool.createTrust(username, Ips, ssh_port=ssh_ports_map, action='gs_postuninstall')
                     break
                 except Exception as err_msg:
                     if retry_times == 2:

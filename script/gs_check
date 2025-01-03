@@ -61,6 +61,7 @@ from base_utils.os.env_util import EnvUtil
 from base_utils.os.file_util import FileUtil
 from base_utils.os.net_util import NetUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
+from base_utils.os.sshd_config import SshdConfig
 
 
 #############################################################################
@@ -184,6 +185,7 @@ class CheckContext():
         self.newItems = []
         self.LCName = None
         self.ShrinkNodes = None
+        self.ssh_port_map = {}
 
     def genCheckID(self):
         '''
@@ -375,7 +377,7 @@ class CheckContext():
             self.tmpPath, self.tmpPath, DefaultValue.KEY_DIRECTORY_MODE)
         SharedFuncs.runSshCmd(cmd, host, self.user)
         SharedFuncs.sendFile(self.getCacheFile(), host, self.user,
-                                 self.tmpPath)
+                                 self.tmpPath, port=g_context.ssh_port_map[host])
 
     def dispatch(self, hosts):
         '''
@@ -642,6 +644,9 @@ def checkuser():
             else:
                 raise CheckException("GAUSS-53057",
                     "Failed to check user trust. Error:/n%s" % output)
+        
+        # get ssh port for all ssh ips
+        g_context.ssh_port_map = SshdConfig.get_ssh_ports_for_hosts(node_ips)
 
 
 def createPath(path, user=""):
@@ -748,7 +753,8 @@ def getRootUserPwd():
                                   % rootuser)
         g_logger.debug("Ask user input password interactive")
         for host in g_context.nodes:
-            isPwdOk = SharedFuncs.verifyPasswd(host, rootuser, rootpwd)
+            ssh_port = g_context.ssh_port_map[host]
+            isPwdOk = SharedFuncs.verifyPasswd(host, rootuser, rootpwd, port=ssh_port)
             if not isPwdOk:
                 # try to connect remote node again
                 rootpwd = __retryConnection(host, rootuser)
@@ -965,7 +971,8 @@ def __retryConnection(host, user):
         passwd = getpass.getpass(
             "Please enter password for user[%s] on the node[%s]:"
             % (user, host))
-        isOK = SharedFuncs.verifyPasswd(host, user, passwd)
+        ssh_port = g_context.ssh_port_map[host]
+        isOK = SharedFuncs.verifyPasswd(host, user, passwd, port=ssh_port)
         if isOK:
             return passwd
         else:
@@ -1177,6 +1184,7 @@ def getMTUValue(node):
     else:
         addr = node
         sshIp = node
+    ssh_port = g_context.ssh_port_map[node]
     # get all network card information
     cmd1 = """printf \"\n\n`/sbin/ifconfig -a`\n\n\" """
     if not g_opts.pwdMap:
@@ -1185,7 +1193,7 @@ def getMTUValue(node):
         username, passwd = g_opts.pwdMap[node]
         if username is None or passwd is None:
             raise CheckException("GAUSS-53067", "Retrive username and password error.")
-        output = SharedFuncs.runSshCmdWithPwd(cmd1, sshIp, username, passwd)
+        output = SharedFuncs.runSshCmdWithPwd(cmd1, sshIp, username, passwd, port=ssh_port)
     # Separate each network card
     networkInfoList = output.strip().split('\n\n')
 
@@ -1476,8 +1484,9 @@ def doRootCheck():
     # prepare the command for running check
     cmd = __prepareCmd(g_context.items, g_context.user, g_context.checkID, True)
     # run root cmd
+    ssh_port = g_context.ssh_port_map[host]
     output = SharedFuncs.runRootCmd(cmd, g_opts.pwdMap[host][0],
-                                    g_opts.pwdMap[host][1], g_context.mpprc)
+                                    g_opts.pwdMap[host][1], g_context.mpprc, port=ssh_port)
     print(output.decode())
 
 
@@ -1518,10 +1527,11 @@ def doLocalCheck(host):
                            g_context.checkID)
     else:
         cmd = __prepareCmd(g_context.newItems, "", g_context.checkID)
+    ssh_port = g_context.ssh_port_map[host]
     if SharedFuncs.is_local_node(host):
         if __hasRootItems():
             SharedFuncs.runRootCmd(cmd, g_opts.pwdMap[host][0],
-                                   g_opts.pwdMap[host][1], g_context.mpprc)
+                                   g_opts.pwdMap[host][1], g_context.mpprc, port=ssh_port)
         else:
             SharedFuncs.runShellCmd(cmd, g_context.user, g_context.mpprc)
     else:
@@ -1531,10 +1541,10 @@ def doLocalCheck(host):
             # get username and password for certain node
             username, passwd = __getUserAndPwd(host)
             if host in g_context.newNodes:
-                SharedFuncs.runSshCmdWithPwd(cmd, host, username, passwd)
+                SharedFuncs.runSshCmdWithPwd(cmd, host, username, passwd, port=ssh_port)
             else:
                 SharedFuncs.runSshCmdWithPwd(cmd, host, username, passwd,
-                                             g_context.mpprc)
+                                             g_context.mpprc, port=ssh_port)
 
 
 def __analysisResult(output, itemName):
@@ -1676,7 +1686,8 @@ def killChildProcess(node):
     if SharedFuncs.is_local_node(node) and not __hasRootItems():
         SharedFuncs.runShellCmd(cmd_current)
     elif __hasRootItems():
-        SharedFuncs.runSshCmdWithPwd(cmd_switch, node, username, passwd)
+        ssh_port = g_context.ssh_port_map[node]
+        SharedFuncs.runSshCmdWithPwd(cmd_switch, node, username, passwd, port=ssh_port)
     else:
         SharedFuncs.runSshCmd(cmd_current, node, g_context.user)
 

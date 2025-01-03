@@ -387,7 +387,7 @@ class ExpansionImpl():
         self.logger.debug("Output for checking enable_availablezone: %s" % output)
         self.logger.debug("ResultMap for checking enable_availablezone: %s" % result_map)
         if result_map[cascade_ip] != DefaultValue.SUCCESS:
-            self.logger.error("Failed to get enable_availablezone on new host %s" % cascade_ip)
+            self.logger.logExit("Failed to get enable_availablezone on new host %s" % cascade_ip)
         self.cleanSshToolFile(ssh_tool)
         if output.find("enable_availablezone=on") > 0:
             self.logger.debug("enable_availablezone is on on new host %s" % cascade_ip)
@@ -725,8 +725,8 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
                 self.envFile)
             resultMap, outputCollect = sshTool.getSshStatusOutput(
                 "sh %s" % tempShFile, [host], self.envFile)
-            self.logger.debug(resultMap)
-            self.logger.debug(outputCollect)
+            self.logger.debug(f"resultMap={resultMap}")
+            self.logger.debug(f"outputCollect={outputCollect}")
             self.cleanSshToolFile(sshTool)
         self.logger.debug("Set guc result: {0}".format(self.expansionSuccess))
         if self._isAllFailed():
@@ -1529,8 +1529,8 @@ remoteservice={remoteservice}'"\
         sshTool = SshTool([primaryName])
         resultMap, outputCollect = sshTool.getSshStatusOutput(cmd,
             [primaryName], self.envFile)
-        self.logger.debug(resultMap)
-        self.logger.debug(outputCollect)
+        self.logger.debug(f"resultMap={resultMap}")
+        self.logger.debug(f"outputCollect={outputCollect}")
         if resultMap[primaryName] != DefaultValue.SUCCESS:
             GaussLog.exitWithError(ErrorCode.GAUSS_516["GAUSS_51600"])
         self.cleanSshToolFile(sshTool)
@@ -1576,8 +1576,8 @@ remoteservice={remoteservice}'"\
             sshTool = SshTool([hostIp])
             resultMap, output = sshTool.getSshStatusOutput(cmd,
                 [hostIp], self.envFile)
-            self.logger.debug(resultMap)
-            self.logger.debug(output)
+            self.logger.debug(f"{cmd} resultMap={resultMap}")
+            self.logger.debug(f"{cmd} output={output}")
             if resultMap[hostIp] != DefaultValue.SUCCESS:
                 GaussLog.exitWithError(ErrorCode.GAUSS_516["GAUSS_51600"])
             self.cleanSshToolFile(sshTool)
@@ -1601,8 +1601,8 @@ remoteservice={remoteservice}'"\
         sshTool = SshTool([curHostName])
         resultMap, outputCollect = sshTool.getSshStatusOutput(command,
             [curHostName], self.envFile)
-        self.logger.debug(resultMap)
-        self.logger.debug(outputCollect)
+        self.logger.debug(f"{command} resultMap={resultMap}")
+        self.logger.debug(f"{command} outputCollect={outputCollect}")
         self.cleanSshToolFile(sshTool)
         if outputCollect.find("Primary Normal") == -1:
             GaussLog.exitWithError((ErrorCode.GAUSS_357["GAUSS_35709"] %

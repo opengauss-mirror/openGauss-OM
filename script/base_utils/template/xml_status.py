@@ -22,9 +22,11 @@ def check_port(port, action='', database_port=''):
     if not str(port).isdigit():
         GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('invalid_num'))
         return False
-    if int(port) > 65535 or int(port) < 1024:
+    if int(port) >= 65535 or int(port) <= 1024:
         GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('invalid_port'))
         return False
+    if action == 'ssh_port' and int(port) == XmlConstant.DEFAULT_SSH_PORT:
+        return True
 
     if action == 'cm':
         if port == database_port:
@@ -89,9 +91,8 @@ def get_ip_hostname(user_input):
     pri_standby_ip = {}
     ip_lists = []
     hostname_lists = []
-    ip_hostname = user_input.split(";")
     # ip_hostname remove empty elements
-    ip_hostname = [tmp for tmp in ip_hostname if tmp]
+    ip_hostname = [tmp.strip() for tmp in user_input.split(";")]
     if (len(ip_hostname) != XmlConstant.PRI_STANDBY_COUNT):
         GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('ip_hostname_not_match'))
         return False
@@ -504,5 +505,36 @@ class PriStandbyIpStatus(TemplateStatus):
                 continue
             if not get_ip_hostname(user_input):
                 continue
+            return SshPortStatus()
+
+def check_ssh_port(user_input, valid_ports):
+    ports = [port.strip() for port in user_input.split(',')]
+    if (len(ports) != XmlConstant.PRI_STANDBY_COUNT):
+        GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('invalid_ssh_port_count'))
+        return False
+    for port in ports:
+        if not check_port(port, action='ssh_port'):
+            return False
+        valid_ports.append(int(port))
+    return True
+
+class SshPortStatus(TemplateStatus):
+
+    def work(self):
+        for i in range(XmlConstant.TRIES):
+            if i == 3:
+                sys.exit(0)
+            user_input = input(XmlConstant.RESOURCE_DATA.get('input_ssh_port')).strip()
+            if user_input.lower() in ('back', 'b'):
+                return PriStandbyIpStatus()
+            if not user_input:
+                XmlConstant.SSH_PORTS = [XmlConstant.DEFAULT_SSH_PORT]
+                GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('finish'))
+                return
+            valid_ports = []
+            if not check_ssh_port(user_input, valid_ports):
+                continue
+            XmlConstant.SSH_PORTS = valid_ports
             GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('finish'))
             return
+        

@@ -38,6 +38,7 @@ import string
 import platform
 import gc
 import copy
+import ipaddress
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.threads.parallelTool import parallelTool
@@ -52,7 +53,6 @@ from base_utils.os.net_util import NetUtil
 from subprocess import PIPE
 from base_utils.common.fast_popen import FastPopen
 from gspylib.common.copy_python_lib import copy_lib
-from base_utils.os.user_util import UserUtil
 from base_utils.os.crontab_util import CrontabUtil
 from base_utils.os.hosts_util import HostsUtil
 
@@ -152,6 +152,8 @@ class GaussCreateTrust():
         self.hostList = []
         self.passwd = []
         self.hosts_paswd_list = []
+        self.hosts_ip_ssh_port_map = {}
+        self.hosts_ip_hostname_map = {}
         self.logFile = ""
         self.localHost = ""
         self.flag = False
@@ -166,13 +168,14 @@ class GaussCreateTrust():
         self.known_hosts_fname = DefaultValue.SSH_KNOWN_HOSTS
         self.id_rsa_fname = DefaultValue.SSH_PRIVATE_KEY
         self.id_rsa_pub_fname = DefaultValue.SSH_PUBLIC_KEY
+        self.ssh_config = DefaultValue.SSH_CONFIG
         self.skipHostnameSet = False
         self.isKeyboardPassword = False
         # init SshTool
         self.ssh_tool = None
         self.secret_word = ""
         self.correct_passwd_map = {}
-        self.host_name_list = []
+        self.hostname_list = []
         self.hosts_file = Constants.TMP_SSH_FILE
 
     def usage(self):
@@ -243,6 +246,28 @@ General options:
         if not self.passwd:
             self.passwd = self.getUserPasswd()
             self.isKeyboardPassword = True
+
+        # set skipHostname param is true if user is not root
+        self.set_skip_hostname_param()
+    
+    def check_ssh_port(self, ip, port):
+        if not str(port).isdigit():
+            GaussLog.exitWithError(f"The input {port} character not be a number!")
+        port = int(port)
+        if port == DefaultValue.DEFAULT_SSH_PORT:
+            return True
+        if port >= 65535 or port <= 1024:
+            GaussLog.exitWithError(f"Invalid SSH port {port} for IP {ip}. Port must be between 1024 and 65535 (excluding 22).")
+        return True
+    
+    def get_ssh_port(self, host_ip_ssh_port_list):
+        if len(host_ip_ssh_port_list) == 1:
+            return DefaultValue.DEFAULT_SSH_PORT
+        else:
+            port = host_ip_ssh_port_list[1]
+            if port and self.check_ssh_port(host_ip_ssh_port_list[0], port):
+                return int(port)
+        return DefaultValue.DEFAULT_SSH_PORT
     
     def readHostFile(self):
         """
@@ -251,15 +276,25 @@ General options:
         output: NA
         """
         inValidIp = []
+        ssh_port = DefaultValue.DEFAULT_SSH_PORT
         try:
             with open(self.hostFile, "r") as f:
                 for readLine in f:
-                    hostname = readLine.strip().split("\n")[0]
-                    if hostname != "" and hostname not in self.hostList:
-                        if not NetUtil.isIpValid(hostname):
-                            inValidIp.append(hostname)
+                    # skip empty lines
+                    if not readLine.strip():
+                        continue
+                    host_ip_ssh_port_list = [item.strip() for item in readLine.strip().split(",")]
+                    host_ip = host_ip_ssh_port_list[0]
+                    ssh_port = self.get_ssh_port(host_ip_ssh_port_list)
+                    
+                    if host_ip != "" and host_ip not in self.hostList:
+                        if not NetUtil.isIpValid(host_ip):
+                            inValidIp.append(host_ip)
                             continue
-                        self.hostList.append(hostname)
+                        # ipv6 need comparessed
+                        host_ip = ipaddress.ip_address(host_ip).compressed
+                        self.hostList.append(host_ip)
+                        self.hosts_ip_ssh_port_map[host_ip] = ssh_port
             if len(inValidIp) > 0:
                 GaussLog.exitWithError(ErrorCode.GAUSS_506["GAUSS_50603"]
                                        + "The IP list is:%s." % inValidIp)
@@ -279,12 +314,12 @@ General options:
         output:Dictionary ipHostname,key is IP  and value is hostname
         hideninfo:NA
         """
-
         ipHostname = {}
+        ssh_port = self.get_ssh_port_by_ip(ip)
         try:
-            ssh = paramiko.Transport((ip, 22))
+            ssh = paramiko.Transport((ip, ssh_port))
         except Exception as e:
-            raise Exception(ErrorCode.GAUSS_512["GAUSS_51220"] % ip
+            raise Exception(ErrorCode.GAUSS_511["GAUSS_51116"] % (ip, ssh_port)
                             + " Error: \n%s" % str(e))
         try:
             ssh.connect(username=self.user, password=self.passwd[0])
@@ -347,9 +382,10 @@ General options:
         boolInvalidIp = False
         for sshIp in sshIps:
             isPasswdOK = False
+            ssh_port = self.hosts_ip_ssh_port_map[sshIp]
             for pswd in self.passwd:
                 try:
-                    ssh = paramiko.Transport((sshIp, 22))
+                    ssh = paramiko.Transport((sshIp, ssh_port))
                 except Exception as e:
                     self.logger.debug(str(e))
                     invalidIP += "Incorrect IP address: %s.\n" % sshIp
@@ -385,7 +421,7 @@ General options:
                                 raise Exception("The password can only contain letters, numbers, and symbols, " \
                                                 "cannot start with a space, and cannot be empty.")
 
-                        ssh = paramiko.Transport((sshIp, 22))
+                        ssh = paramiko.Transport((sshIp, ssh_port))
                         isPasswdOK = self.verifyPasswd(ssh, KeyboardPassword)
                         if isPasswdOK:
                             self.passwd.append(KeyboardPassword)
@@ -397,7 +433,7 @@ General options:
                                 GaussLog.printMessage("The password is incorrect, please input again.")
                             continue
                     except Exception as e:
-                        raise Exception(ErrorCode.GAUSS_512["GAUSS_51220"] % sshIp +
+                        raise Exception(ErrorCode.GAUSS_511["GAUSS_51116"] % (sshIp, ssh_port) +
                                         " Error: \n%s" % str(e))
                     finally:
                         del KeyboardPassword
@@ -482,7 +518,7 @@ General options:
                 self.logger.debug("Successfully get hostnames for all nodes.")
         return result
 
-    def writeLocalHosts(self, result):
+    def writeLocalHosts(self):
         """
         function:
          Write hostname and Ip into /etc/hosts when there's not the same one in /etc/hosts file 
@@ -495,15 +531,19 @@ General options:
         hideninfo:NA
         """
         self._debug("Write local hostname and Ip into /etc/hosts.", "addStep")
+        result = copy.deepcopy(self.hosts_ip_hostname_map)
         hostIPInfo = ""
+        etc_hosts_file = "/etc/hosts"
         if os.getuid() == 0:
             tmpHostIpName = "./tmp_hostsiphostname_%d" % os.getpid()
             # Check if /etc/hosts exists.
-            if not os.path.exists("/etc/hosts"):
+            if not os.path.exists(etc_hosts_file):
                 raise Exception(ErrorCode.GAUSS_512["GAUSS_51221"] +
                                 " Error: \nThe /etc/hosts does not exist.")
-            (status, output) = GrepUtil.getGrepValue("-v", " #Gauss.* IP Hosts Mapping",
-                                                     '/etc/hosts')
+            gauss_map = "#Gauss.* IP Hosts Mapping"
+            cmd = f"grep -v '{gauss_map}' {etc_hosts_file}"
+            (status, output) = subprocess.getstatusoutput(cmd)
+            
             result["::1"] = "localhost"
             result["127.0.0.1"] = "localhost"
             FileUtil.createFile(tmpHostIpName)
@@ -515,7 +555,7 @@ General options:
                 hostIPInfo += '%s  %s  %s\n' % (key, value, HOSTS_MAPPING_FLAG)
             hostIPInfo = hostIPInfo[:-1]
             ipInfoList = [hostIPInfo]
-            FileUtil.writeFile("/etc/hosts", ipInfoList)
+            FileUtil.writeFile(etc_hosts_file, ipInfoList)
         self._debug("Successfully write local hostname and Ip into /etc/hosts.", "constant")
 
     def writeRemoteHostName(self, ip):
@@ -536,8 +576,9 @@ General options:
         tmpHostIpName = "./tmp_hostsiphostname_%d_%s" % (os.getpid(), ip)
         username = pwd.getpwuid(os.getuid()).pw_name
         global ipHostInfo
+        ssh_port = self.get_ssh_port_by_ip(ip)
         try:
-            ssh = paramiko.Transport((ip, 22))
+            ssh = paramiko.Transport((ip, ssh_port))
         except Exception as e:
             raise Exception(ErrorCode.GAUSS_511["GAUSS_51107"] + " Error: \n%s" % str(e))
         try:
@@ -638,14 +679,13 @@ General options:
             self.logger.logExit(str(e))
         self._log("Successfully checked network information.", "constant")
     
-    def check_current_user(self):
+    def set_skip_hostname_param(self):
         """
-        function: Check if the current user is root
+        function: Set skip hostname param is true if user is not root
         input : NA
         output: NA
         """
-        user_info = UserUtil.getUserInfo()
-        if user_info['uid'] != 0:
+        if os.getuid() != 0:
             self.skipHostnameSet = True
         
 
@@ -655,7 +695,6 @@ General options:
         input : NA
         output: NA
         """
-        self.check_current_user()
         self.parseCommandLine()
         self.checkParameter()
         self.localHost = socket.gethostname()
@@ -670,33 +709,120 @@ General options:
                                                                  self.skipHostnameSet))
         Ips = []
         Ips.extend(self.hostList)
-        result = self.getAllHosts(Ips)
+        self.hosts_ip_hostname_map = self.getAllHosts(Ips)
         self.checkNetworkInfo()
         # write hosts file
-        self.write_hosts_file(result)
-
+        self.write_hosts_file(self.hosts_ip_hostname_map)
+        # set hostname list
+        self.set_hostname_list(self.hosts_ip_hostname_map)
         if not self.skipHostnameSet:
-            self.writeLocalHosts(result)
-            self.writeRemoteHosts(result)
-            self.write_hostname_to_list(result)
+            self.writeLocalHosts()
+            self.writeRemoteHosts(self.hosts_ip_hostname_map)
 
         self.logger.log("Creating SSH trust.")
         try:                      
             self.retry_create_public_private_keyfile()
             self.addLocalAuthorized()
-            self.updateKnow_hostsFile(result)
+            # Write SSH configuration files to avoid specifying parameters every time
+            self.write_ssh_config()
+            self.updateKnow_hostsFile()
             self.addRemoteAuthorization()
             self.determinePublicAuthorityFile()
-            self.synchronizationLicenseFile(result)
+            self.synchronizationLicenseFile(self.hosts_ip_hostname_map)
+            self.send_ssh_config_to_other_nodes()
             self.retry_register_other_ssh_agent()
             self.verifyTrust()
-            self.set_user_ssh_crontab(result)
-            self.delete_tmp_file()
+            self.set_user_ssh_crontab()
             self.logger.log("Successfully created SSH trust.")
         except Exception as e:
             self.logger.logExit(str(e))
         finally:
             self.passwd = []
+
+    def get_local_ip(self):
+        """
+        function: get local ip
+        input : NA
+        output: NA
+        """
+        local_name = socket.gethostname()
+        for ip, hostname in self.hosts_ip_hostname_map().items():
+            if hostname == local_name:
+                return ip
+
+    def send_ssh_config_to_other_nodes(self):
+        """
+        function: send ssh config file to other nodes
+        input : NA
+        output: NA
+        """
+        if not self.should_create_ssh_config():
+            return
+        self.logger.debug("Send ssh config file to other nodes.")
+        ssh_client = paramiko.SSHClient()
+        ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        try:
+            for ip in self.hostList:
+                if self.get_hostname_by_ip(ip) == self.localHost:
+                    continue
+                ssh_port = self.get_ssh_port_by_ip(ip)
+                ssh_client.connect(ip, port=ssh_port, username=self.user, password=self.correct_passwd_map[ip])
+                sftp_client = ssh_client.open_sftp()
+                sftp_client.put(self.ssh_config, self.ssh_config)
+        except Exception as e:
+            self.logger.logExit(str(e))
+        finally:
+            ssh_client.close()
+        self.logger.debug("Successfully send ssh config file to other nodes.")
+
+    def write_ssh_config(self):
+        """
+        function: write ssh config file
+        input : NA
+        output: NA
+        """
+        if not self.should_create_ssh_config():
+            return
+        self.logger.log("Write ssh config file.")
+        FileUtil.createFileInSafeMode(self.ssh_config)
+        for ip in self.hostList:
+            ssh_port = self.get_ssh_port_by_ip(ip)
+            FileUtil.delete_pattern_and_next_lines(self.ssh_config, "Host %s" % ip, 5)
+            ssh_config_ip_content = "Host %s\n\tHostName %s\n\tPort %s\n\tUser %s\n\tIdentityFile %s\n" % \
+                                (ip, ip, ssh_port, self.user, self.id_rsa_fname)
+            FileUtil.writeFile(self.ssh_config, [ssh_config_ip_content])
+            
+            hostname = self.get_hostname_by_ip(ip)
+            FileUtil.delete_pattern_and_next_lines(self.ssh_config, "Host %s" % hostname, 5)
+            ssh_config_hostname_content = "Host %s\n\tHostName %s\n\tPort %s\n\tUser %s\n\tIdentityFile %s\n" % \
+                                (hostname, ip, ssh_port, self.user, self.id_rsa_fname)
+            FileUtil.writeFile(self.ssh_config, [ssh_config_hostname_content])
+        self.logger.log("Successfully write ssh config file.")
+
+    def should_create_ssh_config(self):
+        return any(ssh_port != DefaultValue.DEFAULT_SSH_PORT for ssh_port in self.hosts_ip_ssh_port_map.values())
+
+    def get_ssh_port_by_ip(self, ip):
+        """
+        function: get ssh port by ip
+        input : ip
+        output: ssh port
+        """
+        ssh_port = self.hosts_ip_ssh_port_map[ip]
+        if not ssh_port:
+            raise Exception(ErrorCode.GAUSS_511["GAUSS_51114"] % ip)
+        return ssh_port
+    
+    def get_hostname_by_ip(self, ip):
+        """
+        function: get hostname by ip
+        input : ip
+        output: hostname
+        """
+        hostname = self.hosts_ip_hostname_map[ip]
+        if not hostname:
+            raise Exception(ErrorCode.GAUSS_511["GAUSS_51115"] % ip)
+        return hostname
 
     def get_package_dir(self):
         """
@@ -712,7 +838,7 @@ General options:
         gp_home = os.path.join(package_path, '../')
         return gp_home
 
-    def set_user_ssh_crontab(self, hostnames_ips):
+    def set_user_ssh_crontab(self):
         """
         set user cron
         """
@@ -720,12 +846,10 @@ General options:
         if os.getuid() != 0 and not CrontabUtil.check_user_crontab_permission():
             return
         self.logger.log("Start set cron for %s" % self.user)
-        # hostnames_ips  key is ip; value is hostname
-        hostnames = [hostname for hostname in list(hostnames_ips.values()) if hostname != "localhost"]
-
+        
         gp_home = self.get_gp_home()
-
-         # create cron tmp file
+        os.environ["GPHOME"] = gp_home
+        # create cron tmp file
         cron_file = "/tmp/gauss_cron_%s" % self.user
         if os.getuid() == 0:
             set_cron_cmd = "crontab -u %s -l > %s && " % (self.user, cron_file)
@@ -739,10 +863,11 @@ General options:
         else:
             set_cron_cmd += "crontab %s ;" % cron_file
         set_cron_cmd += "rm -f '%s';" % cron_file
+
+        hostnames = list(self.hosts_ip_hostname_map.values())
         ssh_tool = SshTool(hostnames)
-        os.environ['GPHOME'] = gp_home
         self.logger.debug("Command for setting CRON: %s" % set_cron_cmd)
-        ssh_tool.executeCommand(set_cron_cmd, DefaultValue.SUCCESS)
+        ssh_tool.executeCommand(set_cron_cmd, DefaultValue.SUCCESS, env_file=gp_home)
         ssh_tool.clen_ssh_result_files()
         self.logger.log("Successfully to set cron for %s" % self.user)
 
@@ -839,44 +964,76 @@ General options:
             return False, hostname
         return True, hostname
 
-    def updateKnow_hostsFile(self, result):
+    def updateKnow_hostsFile(self):
         """
         function: keyscan all hosts and update known_hosts file
-        input : result
+        input : NA
         output: NA
         """
         self._log("Updating the known_hosts file.", "addStep")
-        hostnameList = []
-        hostnameList.extend(self.hostList)
-        # add hostname when using root user
-        for _, hostname in result.items():
-            try:
-                addr_info = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC)
-            except Exception as e:
-                addr_info = ""
-            if addr_info:
-                hostnameList.append(hostname)
-        for hostname in hostnameList:
-            cmd = '%s;/usr/bin/ssh-keyscan -t ed25519 %s >> %s ' % (SYSTEM_SSH_ENV, hostname, self.known_hosts_fname)
+        hostname_list = []
+        hostname_list.extend(self.hostList)
+        # clean the old key
+        self.delete_known_hosts_old_key_for_host()
+        for hostname in hostname_list:
+            ssh_port = self.get_ssh_port_by_ip(hostname)
+            cmd = '%s;/usr/bin/ssh-keyscan -t ed25519 -p %s %s >> %s ' % (SYSTEM_SSH_ENV, ssh_port, hostname, self.known_hosts_fname)
             cmd += '&& sed -i "$ s/$/ #OM/" %s ' % self.known_hosts_fname
             cmd += "&& chmod %s %s" % (DefaultValue.KEY_FILE_MODE, self.known_hosts_fname)
             (status, output) = subprocess.getstatusoutput(cmd)
-            if status != 0 or "Name or service not known".lower() in output.lower():
+            if status != 0:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error:\n%s" % output)
+        
+        self.add_all_hostname_public_key_to_kown_hosts_file()
         if os.getuid() == 0:
             (status, output) = self.checkAuthentication(self.localHost)
             if not status:
                 raise Exception(ErrorCode.GAUSS_511["GAUSS_51100"] % self.localHost)
         self._log("Successfully updated the known_hosts file.", "constant")
 
-    def tryParamikoConnect(self, hostname, client, pswd = None, silence = False):
+    def delete_known_hosts_old_key(self, host):
+        if os.path.exists(self.known_hosts_fname):
+                FileUtil.deleteLine(self.known_hosts_fname, f"${host}.*#OM")
+
+    def delete_known_hosts_old_key_for_host(self):
+        for hostname in self.hostname_list:
+            self.delete_known_hosts_old_key(hostname)
+
+        for ip in self.hostList:
+            self.delete_known_hosts_old_key(ip)
+
+    def replace_ip_with_hostname(self, ip, hostname):
+        with open(self.known_hosts_fname, 'r') as f:
+            lines = f.readlines()
+
+        new_lines = []
+        for line in lines:
+            if line.find(ip) != -1:
+                line = line.replace(ip, hostname)
+            new_lines.append(line)
+
+        with open(self.known_hosts_fname, 'a') as f:
+            f.writelines(new_lines)
+
+    def add_all_hostname_public_key_to_kown_hosts_file(self):
+        """
+        function: add all hostname publib key to kown_hosts file
+        input : NA
+        output: NA
+        """
+        self.logger.debug("Add all hostname publib key to kown_hosts file.")
+        for ip, hostname in self.hosts_ip_hostname_map.items():
+            self.replace_ip_with_hostname(ip, hostname)
+        self.logger.debug("Successfully add all hostname publib key to kown_hosts file.")
+
+    def tryParamikoConnect(self, hostname, port, client, pswd = None, silence = False):
         """
         function: try paramiko connect
         input : hostname, client, pswd, silence
         output: True/False
         """
         try:
-            client.connect(hostname, password=pswd, allow_agent=False, look_for_keys=False)
+            client.connect(hostname, port=port, password=pswd, allow_agent=False, look_for_keys=False)
             return True
         except paramiko.AuthenticationException as e:
             if not silence: 
@@ -909,23 +1066,24 @@ General options:
             self.logger.logExit(ErrorCode.GAUSS_511["GAUSS_51111"] + " Error:%s." % str(e))
         self._log("Successfully appended authorized_key on all remote node.", "constant")
 
-    def sendRemoteAuthorization(self, hostname): 
+    def sendRemoteAuthorization(self, ip): 
         """
         function: send remote authorization
         input : hostname
         output: NA
         """
-        if hostname != self.localHost:
+        if self.get_hostname_by_ip(ip) != self.localHost:
             p = None
             cin = cout = cerr = None
             try:
                 #ssh Remote Connection other node
                 p = paramiko.SSHClient()
-                p.load_system_host_keys()               
-                ok = self.tryParamikoConnect(hostname, p, self.correct_passwd_map[hostname], silence = True)
+                p.load_system_host_keys() 
+                ssh_port = self.hosts_ip_ssh_port_map[ip]              
+                ok = self.tryParamikoConnect(ip, ssh_port, p, self.correct_passwd_map[ip], silence = True)
                 if not ok:
                     self.incorrectPasswdInfo += "Without this node[%s] of the correct password.\n"\
-                                                % hostname
+                                                % ip
                     return
                 # Create .ssh directory and ensure content meets permission requirements 
                 # for password-less SSH
@@ -965,12 +1123,12 @@ General options:
                 if line.find("ok ok ok") < 0:
                     self.failedToAppendInfo += "...send to %s\nFailed to append local ID to " \
                                                "authorized_keys on remote node %s.\n" % \
-                                               (hostname, hostname)
+                                               (ip, ip)
                     return
                 cout.close()
                 cerr.close()
                 self.logger.debug("Send to %s\nSuccessfully appended authorized_key on"
-                                  " remote node %s." % (hostname, hostname))
+                                  " remote node %s." % (ip, ip))
             finally:
                 if cin:
                     cin.close()
@@ -1179,14 +1337,13 @@ General options:
         """
         FileUtil.removeFile(self.hosts_file)
 
-    def write_hostname_to_list(self, ip_hostname):
+    def set_hostname_list(self, ip_hostname):
         """
-        function: Add hostname to the list
+        function: set hostname list
         input : NA
         output: NA
         """
-        for hostname in ip_hostname.values():
-            self.host_name_list.append(hostname)
+        self.hostname_list = list(ip_hostname.values())
 
     def verify_trust_by_hostname(self):
         """
@@ -1196,7 +1353,7 @@ General options:
         """
         self._log("Verifying SSH trust on all hosts by hostname.", "addStep")
         try:
-            results = parallelTool.parallelExecute(self.checkAuthentication, self.host_name_list)
+            results = parallelTool.parallelExecute(self.checkAuthentication, self.hostname_list)
             hostnames = ""
             for (key, value) in results:
                 if not key:
@@ -1460,9 +1617,9 @@ General options:
         # the hosts have diffirent password.
         if len(self.hosts_paswd_list) == len(all_ips):
             for ip, pswd in self.hosts_paswd_list:
-                self.ssh_tool.create_all_sessions(user, [ip], [pswd])
+                self.ssh_tool.create_all_sessions(user, [ip], [pswd], self.hosts_ip_ssh_port_map)
         else:
-            self.ssh_tool.create_all_sessions(user, all_ips, passwd)
+            self.ssh_tool.create_all_sessions(user, all_ips, passwd, self.hosts_ip_ssh_port_map)
 
     def copy_shell_to_remote_node(self, shell_file, hostname):
         # scp ssh_protect to remote node
@@ -1530,10 +1687,11 @@ if __name__ == '__main__':
         createTrust = GaussCreateTrust()
         createTrust.run()
     except Exception as e:
-        createTrust.delete_tmp_file()
         if str(e).startswith("[GAUSS-"):
             GaussLog.exitWithError(str(e))
         else:
             GaussLog.exitWithError("[GAUSS-50100]:"+str(e))
+    finally:
+        createTrust.delete_tmp_file()
 
     sys.exit(0)

@@ -102,3 +102,14 @@ class UserUtil(object):
     def check_path_owner(path):
         if os.path.exists(path) and os.stat(path).st_uid == 0:
             raise Exception(ErrorCode.GAUSS_512["GAUSS_51251"] % path)
+
+    @staticmethod
+    def is_root_user():
+        """
+        function : check if current user is root
+        input : null
+        output : true or false
+        """
+        if os.getuid() == 0:
+            return True
+        return False

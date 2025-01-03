@@ -530,10 +530,14 @@ class DefaultValue():
     SSH_PUBLIC_KEY = os.path.expanduser("~/.ssh/id_om.pub")
     SSH_AUTHORIZED_KEYS = os.path.expanduser("~/.ssh/authorized_keys")
     SSH_KNOWN_HOSTS = os.path.expanduser("~/.ssh/known_hosts")
+    SSH_CONFIG = os.path.expanduser("~/.ssh/config")
 
     # os parameter
     NOFILE_LIMIT = 640000
     MAX_SEM = 6400000
+
+    # ssh port
+    DEFAULT_SSH_PORT = 22
 
     @staticmethod
     def encodeParaline(cmd, keyword):

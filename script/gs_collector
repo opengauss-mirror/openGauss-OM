@@ -123,7 +123,7 @@ General options:
                                   Example: host1,host2.
   -f                              File listing names of all the hosts to connect to.
       --keyword=KEYWORD           Save log files containing the keyword.
-  -o                              Save the result to the specified file.
+  -o                              Save the result to the specified folder.
   -l                              Path of log file.
   -?, --help                      Show help information for this utility, and exit the command line mode.
   -V, --version                   Show version information.

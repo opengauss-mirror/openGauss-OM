@@ -390,7 +390,6 @@ class UpgradeImpl:
                 successDetail = "No need to rollback"
                 self.exitWithRetCode(action, True, successDetail)
             else:
-                self.context.logger.error(str(e))
                 self.exitWithRetCode(action, False, str(e))
         finally:
             # only used under grey upgrade, grey upgrade commit or grey upgrade rollback

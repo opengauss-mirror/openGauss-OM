@@ -4176,7 +4176,7 @@ END;"""
         pass
 
     @staticmethod
-    def wait_dssserver_start(self):
+    def wait_dssserver_start():
         """
         Wait dssserver start.
         """
@@ -4187,7 +4187,7 @@ END;"""
             dss_num = int(output)
 
     @staticmethod
-    def get_primaryid_from_control(self):
+    def get_primaryid_from_control():
         """
         function: get primary id from pg_control reform page
         input  : NA
@@ -4200,7 +4200,7 @@ END;"""
         return primary_id
 
     @staticmethod
-    def get_xlog_files(self, ori_dir):
+    def get_xlog_files(ori_dir):
         """
         function: get xlog files
         input  : inst_id
@@ -4225,9 +4225,9 @@ END;"""
         new_dir = 'pg_xlog'
         if new_id:
             new_dir += new_id
-        if not self.check_dir_exists(ori_dir):
+        if not UpgradeImpl.check_dir_exists(ori_dir):
             return
-        xlog_files = self.get_xlog_files(ori_dir)
+        xlog_files = UpgradeImpl.get_xlog_files(ori_dir)
         vg_name = EnvUtil.getEnv("VGNAME")
         pri_index = 0
         pri_vgname = DssInst.get_private_vgname_by_ini(EnvUtil.get_dss_home(), pri_index)
@@ -4242,7 +4242,7 @@ END;"""
             raise Exception("Failed to rename pg_xlog dir.")
 
     @staticmethod
-    def get_dw_files(self, dw_dir):
+    def get_dw_files(dw_dir):
         """
         function: get pg_doublewrite(ori_id) files.
         input  : ori_primary_id
@@ -4265,14 +4265,14 @@ END;"""
         """
         vg_name = EnvUtil.getEnv("VGNAME")
         ori_dir = "pg_doublewrite" + ori_id
-        if not self.check_dir_exists(ori_dir):
+        if not UpgradeImpl.check_dir_exists(ori_dir):
             return
         new_dir = "pg_doublewrite"
         if n_id:
             new_dir += n_id
-        dw_files = self.get_dw_files(ori_dir)
+        dw_files = UpgradeImpl.get_dw_files(ori_dir)
         chunk_dir = ori_dir + os.sep + "pg_dw_ext_chunk"
-        dw_chunk_files = self.get_dw_files(chunk_dir)
+        dw_chunk_files = UpgradeImpl.get_dw_files(chunk_dir)
         cmd = "dsscmd mkdir -p +%s -d %s; dsscmd mkdir -p +%s/%s -d %s;" % (
                vg_name, new_dir, vg_name, new_dir, "pg_dw_ext_chunk")
         for dw_file in dw_files:
@@ -4361,7 +4361,8 @@ END;"""
             raise Exception("Failed to copy pg_control to pg_control.backup.")
         self.context.logger.log("Successfully copy pg_control to pg_control.backup.")
 
-    def start_dssserver(self):
+    @staticmethod
+    def start_dssserver():
         """
         start dssserver in maintain mode
         """
@@ -4372,7 +4373,7 @@ END;"""
         if proc.returncode != 0:
             raise Exception("Failed to start dssserver in maintain mode." +
                             ' Error: {}'.format(str(err + out).strip()))
-        self.wait_dssserver_start()
+        UpgradeImpl.wait_dssserver_start()
 
     def stop_dssserver(self):
         """
@@ -4407,8 +4408,8 @@ END;"""
             return
 
         global cur_primaryId
-        self.start_dssserver()
-        primary_id = self.get_primaryid_from_control()
+        UpgradeImpl.start_dssserver()
+        primary_id = UpgradeImpl.get_primaryid_from_control()
         cur_primaryId = primary_id
         ori_id, new_id = str(primary_id), ''
         self.rename_dss_dirs(ori_id, new_id)
@@ -4422,7 +4423,7 @@ END;"""
         """
         function: process pg_control,pg_control.upgrade,pg_control.backup
         """
-        if not self.check_one_controlpage():
+        if not UpgradeImpl.check_one_controlpage():
             return
         vg_name = EnvUtil.getEnv("VGNAME")
         cmd = "dsscmd rm -p +%s/pg_control; dsscmd rm -p +%s/pg_control.backup.upgrade;" \
@@ -4435,19 +4436,19 @@ END;"""
         self.context.logger.log("Successfully rollback pg_control.")
 
     @staticmethod
-    def check_dir_exists(self, dir_name):
+    def check_dir_exists(dir_name):
         """
         function: check dir exists.
         """
         vg_name = EnvUtil.getEnv("VGNAME")
-        cmd = "dsscmd ls -p +%s" % (vg_name)
+        cmd = "dsscmd ls -p +%s/%s" % (vg_name, dir_name)
         status, output = subprocess.getstatusoutput(cmd)
         if "Succeed" in output:
             return True
         return False
 
     @staticmethod
-    def check_one_controlpage(self):
+    def check_one_controlpage():
         """
         function: check control pages num in pg_control
         """
@@ -4461,7 +4462,7 @@ END;"""
 
     def copy_control_file(self, pri_id):
         global cur_primaryId
-        if not self.check_one_controlpage():
+        if not UpgradeImpl.check_one_controlpage():
             return
         tmp_path = EnvUtil.getEnv("PGHOST")
         vg_name = EnvUtil.getEnv("VGNAME")
@@ -4508,8 +4509,8 @@ END;"""
             return
 
         global cur_primaryId
-        self.start_dssserver()
-        cur_id = self.get_primaryid_from_control()
+        UpgradeImpl.start_dssserver()
+        cur_id = UpgradeImpl.get_primaryid_from_control()
         if cur_id != cur_primaryId:
             self.rename_dss_dirs(str(cur_id), str(cur_primaryId))
         self.rename_dss_dirs('', str(cur_id))

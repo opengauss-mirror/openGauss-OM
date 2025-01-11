@@ -129,6 +129,12 @@ class LinuxPlatform(object):
         return file_name
 
     def package_file_path(self, prefix_str, packageVersion, distro, postfix_str):
+        if(packageVersion[0] < '6'):
+            dir_name = os.path.dirname(os.path.realpath(__file__))
+            return os.path.join(dir_name, "./../../", "%s-%s-%s-%s.%s" % (
+                                    prefix_str, packageVersion, distro,
+                                    BIT_VERSION, postfix_str))
+        
         dir_name = os.path.dirname(os.path.realpath(__file__))
         arch = platform.machine()
         fuzzynamestr = os.path.join(dir_name, "./../../", "%s-%s-%s.*-%s.%s" % (
@@ -153,20 +159,25 @@ class LinuxPlatform(object):
         distname = distname.lower()
         dir_name = os.path.dirname(os.path.realpath(__file__))
         prefix_str = productVersion
-        if fileType == "Server":
-            prefix_str = f"{productVersion}-Server"
-            postfix_str = "tar.bz2"
-        elif fileType == "OM":
-            prefix_str = f"{productVersion}-OM"
-            postfix_str = "tar.gz"
-        elif fileType == "CM":
-            prefix_str = f"{productVersion}-CM"
-            postfix_str = "tar.gz"
-        elif fileType == "sha256":
-            prefix_str = f"{productVersion}-Server"
-            postfix_str = "sha256"
+        if(packageVersion[0] < '6'):
+            if fileType == "Server":
+                postfix_str = "tar.bz2"
+        
         else:
-            raise Exception(ErrorCode.GAUSS_500["GAUSS_50024"] % "fileType")
+            if fileType == "Server":
+                prefix_str = f"{productVersion}-Server"
+                postfix_str = "tar.bz2"
+            elif fileType == "OM":
+                prefix_str = f"{productVersion}-OM"
+                postfix_str = "tar.gz"
+            elif fileType == "CM":
+                prefix_str = f"{productVersion}-CM"
+                postfix_str = "tar.gz"
+            elif fileType == "sha256":
+                prefix_str = f"{productVersion}-Server"
+                postfix_str = "sha256"
+            else:
+                raise Exception(ErrorCode.GAUSS_500["GAUSS_50024"] % "fileType")
 
         # RHEL and CentOS have the same kernel version,
         # So RHEL cluster package can run directly on CentOS.

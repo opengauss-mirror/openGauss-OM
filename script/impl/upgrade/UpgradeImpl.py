@@ -387,7 +387,6 @@ class UpgradeImpl:
                 successDetail = "No need to rollback"
                 self.exitWithRetCode(action, True, successDetail)
             else:
-                self.context.logger.error(str(e))
                 self.exitWithRetCode(action, False, str(e))
         finally:
             # only used under grey upgrade, grey upgrade commit or grey upgrade rollback
@@ -1627,7 +1626,7 @@ class UpgradeImpl:
                 errmsg = ErrorCode.GAUSS_529["GAUSS_52934"] + \
                          "You can use --grey to upgrade or manually rollback."
                 self.context.logger.log(errmsg + str(e))
-                self.exitWithRetCode(self.context.action, False)
+                self.exitWithRetCode(self.context.action, False, str(e))
         else:
             self.upgradeAgain()
         self.exitWithRetCode(self.context.action, True)
@@ -7923,6 +7922,7 @@ END;"""
         oldVersionInfo = ""
         newVersionInfo = ""
         currentTime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        msg = msg.replace('\n', ' ')
 
         if status != "begin":
             oldClusterVersion = self.context.oldClusterVersion
@@ -7948,6 +7948,8 @@ END;"""
             FileUtil.writeFormatFile(upgradeRecord, upgradeInfo, const.UPGRADE_RECORD_FORMAT_WIDTH)
 
         dbNodes = self.context.clusterInfo.dbNodes
+        if len(dbNodes) == 1:
+            return
         for dbNode in dbNodes:
             for datanode in dbNode.datanodes:
                 host = datanode.listenIps

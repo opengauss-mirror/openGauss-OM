@@ -2025,7 +2025,7 @@ class UpgradeImpl:
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
                             "Command:%s. Error:\n%s" % (cmd, output))
-        self.refresh_dynamic_config_file();
+            self.refresh_dynamic_config_file();
         self.context.logger.log("Switching DN processes.")
         is_rolling = False
         start_time = timeit.default_timer()

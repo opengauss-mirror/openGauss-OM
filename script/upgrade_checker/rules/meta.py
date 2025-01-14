@@ -772,6 +772,12 @@ META = {
         True
         # 不用校验内容
     ),
+    'pg_catalog.pg_statistic_history': Meta(
+        Category.TYPE,
+        '存储用于优化器行数估算的统计信息的历史记录',
+        True,
+        # 不用校验
+    ),
     "pg_catalog.pg_trigger": Meta(
         Category.TRIGGER,
         "存储触发器信息",

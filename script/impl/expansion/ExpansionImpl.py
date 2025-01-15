@@ -559,6 +559,19 @@ class ExpansionImpl():
         sshTool = SshTool([sshIp], timeout=300)
         self.guc_executor(sshTool, cmd, sshIp)
 
+    def reset_sync_standby_names(self, hostname, ssh_ip):
+        """
+        reset sync standby names
+        """
+        self.logger.debug("Reset sync standby names.")
+        if not self.context.standbyLocalMode:
+            return
+        dn_dir = self.context.clusterInfoDict[hostname]["dataNode"]
+        cmd = "source {0}; gs_guc set -D {1} -c \"synchronous_standby_names=''\"".format(self.envFile, dn_dir)
+        ssh_tool = SshTool([ssh_ip], timeout=300)
+        self.guc_executor(ssh_tool, cmd, ssh_ip)
+        self.logger.debug("Successfully reset sync standby names.")
+
     def preInstallOnHosts(self):
         """
         execute preinstall step
@@ -911,6 +924,7 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
             self.checkTmpDir(hostName)
             # reset current standby's application name before started
             self.resetStandbyAppName(hostName=hostName, sshIp=host)
+            self.reset_sync_standby_names(hostName, host)
             # start new host as standby mode
             self.commonGsCtl.stopInstance(hostName, dataNode, self.envFile)
             result, output = self.commonGsCtl.startInstanceWithMode(host,

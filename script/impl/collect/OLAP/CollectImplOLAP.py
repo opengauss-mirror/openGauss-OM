@@ -832,13 +832,14 @@ class CollectImplOLAP(CollectImpl):
             'Gstack': self.confGstack,
             'Plan': self.planSimulator
         }
+        onetime_collect_list = ["LOG", "XLog", "CoreDump", "Config"]
         double_params = ("Log", "XLog", "CoreDump", "Config", "Gstack")
         info_list = self.context.config[info]
         for inf in info_list:
             if inf.__contains__('Count'):
                 (interval, count) = self.getCycle(inf)
                 print("do %s check " % info + str(interval) + ":" + str(count))
-                if count > 1:
+                if count > 1 and (info in onetime_collect_list):
                     self.context.logger.log(
                         ErrorCode.GAUSS_512["GAUSS_51246"] % info)
                     count = 1

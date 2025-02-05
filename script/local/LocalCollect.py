@@ -558,8 +558,6 @@ def database_check():
     g_logger.debug("Collecting catalog statistics.")
     g_jobInfo.jobName = "Collecting catalog information"
     for dnInst in g_localnodeinfo.datanodes:
-        if dnInst.instanceType == STANDBY_INSTANCE:
-            continue
         sqls = []
         schema = ""
         for s in DefaultValue.DATABASE_CHECK_WHITE_LIST:

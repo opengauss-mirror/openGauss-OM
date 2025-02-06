@@ -58,6 +58,7 @@ from gspylib.component.DSS.dss_checker import DssConfig
 from gspylib.component.DSS.dss_comp import DssInst
 
 cur_primaryId = 0
+MOT_PARAM_VERSION = 93.039 # corresponds to DISABLE_MOT_ENGINE = 93039 in src/common/backend/utils/init/globals.cpp in openGauss-server
 
 class OldVersionModules():
     """
@@ -414,6 +415,7 @@ class UpgradeImpl:
             self.getOneDNInst(checkNormal=True)
             self.checkUpgradeMode()
             self.check_compress_tbl_compatibility()
+            self.check_mot_tables()
             
     
     def check_compress_tbl_compatibility(self):
@@ -526,6 +528,35 @@ class UpgradeImpl:
                                         "please set it manually, "
                                         "or rollback first.")
                 raise Exception(str(e))
+    
+    def check_mot_tables(self):
+        """
+        check if exist mot tables.
+        for upgrade from oldClusterNumber(<MOT_PARAM_VERSION) to newClusterNumber(>=MOT_PARAM_VERSION),
+        need to set guc param enable_mot_server = on when containing mot tables.
+        """
+        self.context.logger.debug("[check_mot_table] check mot tables, oldClusterNumber is %s and newClusterNumber is %s" %
+                                  (self.context.oldClusterNumber, self.context.newClusterNumber))
+        if not (float(self.context.oldClusterNumber) < MOT_PARAM_VERSION and float(self.context.newClusterNumber) >= MOT_PARAM_VERSION):
+            return
+        dbnames_sql = "select datname from pg_database where datname not in ('template0');"
+        mot_sql = "select count(*) from pg_foreign_table ft, pg_foreign_server fs, pg_foreign_data_wrapper fdw, " \
+                  "pg_class c where fs.srvname = 'mot_server' and fs.srvfdw = fdw.oid and ft.ftserver = fs.oid " \
+                  "and ft.ftrelid = c.oid;"
+        (status, output) = self.execSqlCommandInPrimaryDN(dbnames_sql)
+        if status != 0 or output == "":
+            raise Exception("Failed query database names: Status: {0}. Output: {1}".format(status, output))
+        db_list = output.split("\n")
+        for dbname in db_list:
+            self.context.logger.debug("[check_mot_table]check database %s" % dbname)
+            (status, output) = self.execSqlCommandInPrimaryDN(mot_sql, database=dbname)
+            if status != 0:
+                raise Exception("Failed query mot tables for database {0}: Status: {1}. Output: {2}".format(dbname, status, output))
+            self.context.logger.debug("[check_mot_table] the number of mot tables is %s" % output)
+            if int(output) > 0: # has mot tables
+                self.context.logger.debug("[check_mot_table] find mot tables, need to set guc param")
+                self.context.modifyMotParam = True
+                break
 
     def checkBakPathNotExists(self):
         """
@@ -795,7 +826,7 @@ class UpgradeImpl:
             if newCommitId != LastNewCommitId:
                 raise Exception(ErrorCode.GAUSS_529["GAUSS_52935"])
 
-    def setGUCValue(self, guc_key, guc_value, action_type="reload"):
+    def setGUCValue(self, guc_key, guc_value, action_type="reload", upgrade_node=False):
         """
         function: do gs_guc
         input : gucKey - parameter name
@@ -824,6 +855,8 @@ class UpgradeImpl:
                 self.generateDynamicInfoFile(tmp_file)
             self.context.logger.debug("Cmd for setting parameter: %s." % cmd)
             host_list = copy.deepcopy(self.context.clusterNodes)
+            if upgrade_node:
+                host_list = copy.deepcopy(self.context.nodeNames)
             self.context.execCommandInSpecialNode(cmd, host_list)
             self.context.logger.debug("Successfully set guc value.")
         except Exception as er:
@@ -2074,6 +2107,11 @@ class UpgradeImpl:
             self.recover_dss_dirs()
         else:
             self.process_dssfiles_onexlog()
+        
+        if self.context.modifyMotParam and not isRollback:
+            self.context.logger.debug("need to modify mot guc param enable_mot_server = on when upgrade")
+            self.setGUCValue('enable_mot_server', 'on', action_type='set', upgrade_node=True)
+
         start_cluster_time = timeit.default_timer()
         self.greyStartCluster(upgrade_sep_comps)
         end_cluster_time = timeit.default_timer() - start_cluster_time

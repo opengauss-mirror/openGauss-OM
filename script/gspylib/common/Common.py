@@ -40,6 +40,8 @@ from subprocess import PIPE
 from subprocess import Popen
 from base_utils.os.password_util import PasswordUtil
 from base_utils.os.hosts_util import HostsUtil
+from os_platform.common import DEBIAN, UBUNTU
+
 # The installation starts, but the package is not decompressed completely.
 # The lib64/libz.so.1 file is incomplete, and the hashlib depends on the
 # libz.so.1 file.
@@ -638,7 +640,7 @@ class DefaultValue():
                     "redhat", "centos", "euleros", "openeuler", "fusionos", "h3linux", "ningos")):
                 cmd = "find %s -iname 'ifcfg-*-%s' -print" % (
                     RedHatNetWorkConfPath, networkCardNum)
-            elif (distname == "debian" and version == "buster/sid"):
+            elif (distname == "debian"):
                 cmd = "find %s -iname 'ifcfg-*-%s' -print" % (
                     UbuntuNetWorkConfPath, networkCardNum)
             else:
@@ -912,7 +914,7 @@ class DefaultValue():
         elif (distname in ("redhat", "centos", "euleros", "openEuler", "FusionOS", "kylin", "h3linux", "ningos") and
               os.path.isfile(initFileRedhat)):
             initFile = initFileRedhat
-        elif (distname == "debian" and version == "buster/sid" and
+        elif (distname == "debian" and
               os.path.isfile(initFileUbuntu)):
             initFile = initFileUbuntu
         else:

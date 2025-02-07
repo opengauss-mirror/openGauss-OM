@@ -1678,7 +1678,7 @@ def CheckIOSchedulers(isSetting=False):
     # The IO Schedulers in ubuntu system is default value,
     # so that it cannot be modified
     distname, version = LinuxDistro.linux_distribution()[0:2]
-    if distname == "debian" and version == "buster/sid":
+    if distname == "debian":
         return
     data = collectIOschedulers()
     for dev in list(data.devices.keys()):
@@ -1914,7 +1914,8 @@ def CheckPlatformInfo():
                                         data.bits)
             g_logger.log("False %s %s" % (data.distname, platform_str))
             return
-    elif (data.distname == "euleros" or data.distname == "openEuler" or data.distname == "FusionOS" or data.distname == "kylin" or data.distname == "uos" or data.distname == "H3Linux" or data.distname == "NingOS"):
+    elif (data.distname == "euleros" or data.distname == "openEuler" or data.distname == "FusionOS" or data.distname == "kylin" or data.distname == "uos" \
+        or data.distname == "H3Linux" or data.distname == "NingOS" or data.distname == "bclinux"):
         mixed_type = "%s" % data.distname
         platform_str = "%s_%s_%s" % (data.distname, data.version, data.bits)
     elif (data.distname == "debian" or data.version == "buster/sid"):

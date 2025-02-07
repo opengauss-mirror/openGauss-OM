@@ -27,7 +27,7 @@ from os_platform.common import BIT_VERSION, EULEROS, SUPPORT_EULEROS_VERSION_LIS
     FUSIONOS, SUPPORT_RHEL_SERIES_PLATFORM_LIST, \
     SUPPORT_RHEL_SERIES_VERSION_LIST, OPENEULER, CENTOS, H3LINUX, NINGOS, \
     UOS, UNIONTECH, SUPPORT_UOS_VERSION_LIST, \
-    SUPPORT_RHEL7X_VERSION_LIST, DEBIAN, BLANK_SPACE
+    SUPPORT_RHEL7X_VERSION_LIST, DEBIAN, BLANK_SPACE, BCLINUX
 from os_platform.linux_distro import LinuxDistro
 from os_platform.linux_platform import LinuxPlatform
 
@@ -62,7 +62,8 @@ class RHELPlatform(LinuxPlatform):
                 (dist_name.lower() == OPENEULER) or
                 (dist_name.lower() == H3LINUX) or
                 (dist_name.lower() == NINGOS) or
-                (dist_name.lower() == FUSIONOS)
+                (dist_name.lower() == FUSIONOS) or
+                (dist_name.lower() == BCLINUX)
             ):
             return True
         return False
@@ -93,7 +94,7 @@ class RHELPlatform(LinuxPlatform):
         distname, version = LinuxDistro.linux_distribution()[0:2]
         if self.isSupportSystemctl():
             return self.getSystemctlCmd("crond.service", action)
-        elif distname == "debian" and version == "buster/sid":
+        elif distname == "debian":
             return self.getServiceCmd("cron", action)
         return self.getServiceCmd("crond", action)
 
@@ -176,7 +177,8 @@ class RHELPlatform(LinuxPlatform):
                  (dist_name.lower() == H3LINUX) or
                  (dist_name.lower() == NINGOS) or
                  (dist_name.lower() == FUSIONOS) or
-                 (dist_name.lower() == DEBIAN and version == "buster/sid")
+                 (dist_name.lower() == BCLINUX) or
+                 (dist_name.lower() == DEBIAN)
             )):
                 return dist_name.lower(), version[0:3]
             elif((bits == BIT_VERSION and

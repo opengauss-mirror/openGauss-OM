@@ -475,6 +475,27 @@ class ExpansionImplWithCm(ExpansionImpl):
         CmdExecutor.execCommandWithMode(cmd, self.ssh_tool)
         self.logger.log("Successfully updated cm resource file.")
 
+    def update_guc_param(self):
+        """
+        Keep ss_interconnect_channel_count same with origin node.
+        """
+        port = EnvUtil.getEnv("PGPORT")
+        get_cmd = "gsql -d postgres -p %s -A -t -c 'show ss_interconnect_channel_count;'" % port
+        sta, out = subprocess.getstatusoutput(get_cmd)
+        channel_count = int(out)
+        set_cmd = ""
+        for node in self.new_nodes:
+            ssh_tool = SshTool([node.name], timeout=300)
+            pgdata_path = node.datanodes[0].datadir
+            set_cmd = "gs_guc set -D %s -c 'ss_interconnect_channel_count = %d'" % (pgdata_path, channel_count)
+            self.logger.debug("Command for update guc param: %s" % set_cmd)
+            result_map, _ = ssh_tool.getSshStatusOutput(set_cmd, [])
+            if result_map[node.name] == DefaultValue.SUCCESS:
+                self.logger.log("Update ss_interconnect_channel_count on %s success." % node.name)
+            else:
+                self.logger.log("Update ss_interconnect_channel_count on %s failed." % node.name)
+                raise Exception("Update ss_interconnect_channel_count on %s failed." % node.name)
+
     def _config_instance(self):
         """
         Config instance
@@ -487,6 +508,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         self._update_cm_res_json()
         self._config_pg_hba()
         self.distributeCipherFile()
+        self.update_guc_param()
 
     def _set_expansion_success(self):
         """
@@ -664,6 +686,17 @@ class ExpansionImplWithCm(ExpansionImpl):
         self._config_instance()
         p_value.value = 1
 
+    def do_restart(self, p_value):
+        """
+        Restart cluster when enable_dss to sync params on new standby.
+        """
+        if self.xml_cluster_info.enable_dss != 'on':
+            return
+        self.logger.debug("Ready to restart cluster.")
+        self._change_user_without_root()
+        self.ss_restart_cluster()
+        p_value.value = 1
+
     def do_start(self, p_value):
         """
         Start cluster
@@ -672,6 +705,8 @@ class ExpansionImplWithCm(ExpansionImpl):
         self._change_user_without_root()
         if self.xml_cluster_info.enable_dss == 'on':
             self.update_old_cm_res()
+            self.check_processes()
+            DefaultValue.remove_metadata_and_dynamic_config_file(self.user, self.ssh_tool, self.logger)
             self.ss_restart_cluster()
             p_value.value = 1
             return
@@ -907,8 +942,6 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         if self.xml_cluster_info.enable_dss != "on":
             return
-        self.check_processes()
-        DefaultValue.remove_metadata_and_dynamic_config_file(self.user, self.ssh_tool, self.logger)
         restart_cmd = f"source {self.envFile}; cm_ctl stop; cm_ctl start;"
         status, _ = subprocess.getstatusoutput(restart_cmd)
         if status != 0:
@@ -929,5 +962,6 @@ class ExpansionImplWithCm(ExpansionImpl):
         change_user_executor(self.do_install)
         change_user_executor(self.do_config)
         change_user_executor(self.do_start)
+        change_user_executor(self.do_restart)
         change_user_executor(self.check_tblspc_directory)
         self.check_new_node_state(True)

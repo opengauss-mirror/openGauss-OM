@@ -3051,21 +3051,15 @@ class DefaultValue():
             if os.path.isfile(cm_agent_conf_temp_file):
                 with open(cm_agent_conf_temp_file, "r") as cma_conf_file:
                     content = cma_conf_file.read()
-                    ret = re.findall(r'agent_backup_open *= *1|agent_backup_open *= *2', content)
+                    ret = re.findall(r'agent_backup_open *= *1|agent_backup_open *= *1|ss_double_cluster_mode *= *2|ss_double_cluster_mode *= *2', content)
                     g_file.removeFile(cm_agent_conf_temp_file)
-                    if ret:
-                        return True
-                    else:
-                        return False
+                    return True if ret else False
             else:
                 raise Exception(ErrorCode.GAUSS_502['GAUSS_50201'] % cm_agent_conf_file)
         with open(cm_agent_conf_file, "r") as cma_conf_file:
             content = cma_conf_file.read()
-            ret = re.findall(r'agent_backup_open *= *1|agent_backup_open *= *2', content)
-        if ret:
-            return True
-        else:
-            return False
+            ret = re.findall(r'agent_backup_open *= *1|agent_backup_open *= *2|ss_double_cluster_mode *= *1|ss_double_cluster_mode *= *2', content)
+        return True if ret else False
 
     @staticmethod
     def cm_exist_and_is_disaster_cluster(clusterinfo, logger):

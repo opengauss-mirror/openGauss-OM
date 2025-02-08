@@ -327,13 +327,15 @@ class DoradoDisasterRecoveryBase(StreamingBase):
         self.connected_nodes = connected_hosts
         return self.connected_nodes
 
-    def set_ss_enable_doraro(self):
+    def set_ss_disaster_mode(self):
         """
-        guc set ss_enable_dorado value
+        guc set ss_disaster_mode value
+        :ss_disaster_mode:  stream(streaming replication dual-cluster), 
+                            dorado(dorado replication dual-cluster, default value)
         :return:NA
-        """ 
-        self.logger.log("Start open ss_enable_dorado")
-        self.set_datanode_guc("ss_enable_dorado", "on", "set") 
+        """
+        self.logger.log("Start set ss_disaster_mode")
+        self.set_datanode_guc("ss_disaster_mode", self.params.disaster_type, "set")
 
     def update_pg_hba(self):
         """
@@ -496,7 +498,7 @@ class DoradoDisasterRecoveryBase(StreamingBase):
         """
         Start dssserver process 
         """
-        self.logger.log("Start start dssserver in main standby node.")
+        self.logger.log("Start dssserver in main standby node.")
         if only_mode and self.params.mode != only_mode:
             self.logger.debug("Start dssserver step is not for mode:%s." % self.params.mode)
             return
@@ -576,24 +578,7 @@ class DoradoDisasterRecoveryBase(StreamingBase):
                             % "Stop dssserver before start cluster on node:" + main_standby_inst.hostname +
                             ", output:" + str(out).strip())
         self.logger.log("Successfully stop dssserver before start cluster on node [%s] " % main_standby_inst.hostname)
-
-    def __config_dss_cluster_run_mode(self, params_list):
-        """
-        Set dss cluster_run_mode in one dssserver node 
-        """
-        inst, cmd = params_list
-
-        if self.local_host != inst.hostname:
-            cmd = "source %s; pssh -s -t 5 -H %s \"%s\"" % \
-                    (self.mpp_file, inst.hostname, cmd)
-        self.logger.debug("config dss cfg cmd: %s" % cmd)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
-                            "Options:%s, Error: \n%s "
-                            % ("config dss_init.ini for inst:%s" % inst.instanceId, str(output)))
-            
-
+      
     def set_dss_cluster_run_mode(self, mode='cluster_standby', only_mode=None):
         """
         Set dss cluster_run_mode in dss cfg 
@@ -616,9 +601,48 @@ class DoradoDisasterRecoveryBase(StreamingBase):
         params_list = [(inst, cmd_param) for db_node in
                        self.cluster_info.dbNodes for inst in db_node.datanodes]
 
-        rets = parallelTool.parallelExecute(self.__config_dss_cluster_run_mode, params_list)
+        rets = parallelTool.parallelExecute(self.__config_dss_para, params_list)
         self.logger.log(
             "Successfully set dss cfg CLUSTER_RUN_MODE to %s." % mode)
+
+    def __config_dss_para(self, params_list):
+        """
+        Set dss para in dss cfg(dss_init.ini)
+        """
+        inst, cmd = params_list
+
+        if self.local_host != inst.hostname:
+            cmd = "source %s; pssh -s -t 5 -H %s \"%s\"" % \
+                    (self.mpp_file, inst.hostname, cmd)
+        self.logger.debug("config dss cfg cmd: %s" % cmd)
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
+                            "Options:%s, Error: \n%s "
+                            % ("config dss_init.ini for inst:%s" % inst.instanceId, str(output)))
+
+    def set_dss_storage_mode(self, mode='CLUSTER_RAID'):
+        """
+        Set dss storage mode in dss cfg
+        this step, P, S cluster both needs 
+        """
+        self.logger.log("Start set all dss instance STORAGE_MODE.")
+        dss_home = EnvUtil.getEnv('DSS_HOME')
+        cfg = os.path.join(dss_home, 'cfg', 'dss_inst.ini')
+
+        cmd = r"grep -q '^\s*STORAGE_MODE\s*=' %s" % cfg
+        (status, output) = subprocess.getstatusoutput(cmd)
+        self.logger.debug("grep dss cfg STORAGE_MODE cmd: %s" % cmd)
+        if status != 0:
+            cmd_param = r"echo 'STORAGE_MODE = %s' >> %s" % (mode, cfg)
+        else:
+            cmd_param = r"sed -i 's/^\s*STORAGE_MODE\s*=.*/STORAGE_MODE = %s/' %s" % (mode, cfg)
+
+        params_list = [(inst, cmd_param) for db_node in
+                    self.cluster_info.dbNodes for inst in db_node.datanodes]
+
+        rets = parallelTool.parallelExecute(self.__config_dss_para, params_list)
+        self.logger.log("Successfully set dss cfg STORAGE_MODE to %s." % mode)
 
     def __check_one_main_standby_connection(self, param_list):
         """
@@ -878,7 +902,8 @@ class DoradoDisasterRecoveryBase(StreamingBase):
             self.logger.log("Successfully do_first_stage_for_switchover.")
         if self.params.stage is None or int(self.params.stage) == 2:
             if dorado_disaster_step < 1:
-                self.check_input(DoradoDisasterRecoveryConstants.PRIMARY_MSG)
+                if self.params.disaster_type == "dorado":
+                    self.check_input(DoradoDisasterRecoveryConstants.PRIMARY_MSG)
                 self.write_dorado_step("1_set_remote_replication_pairs_for_failover")
             self._failover_config_step(dorado_disaster_step, action_flag)
             self._failover_start_step(dorado_disaster_step, action_flag)
@@ -944,6 +969,7 @@ class DoradoDisasterRecoveryBase(StreamingBase):
             else:
                 self.update_dorado_info(DoradoDisasterRecoveryConstants.ACTION_FAILOVER, "30%")
             self.set_cmagent_guc("ss_double_cluster_mode", "1", "set")
+            self.set_cmserver_guc("ss_double_cluster_mode", "1", "set")
             if not self.params.restart:
                 self.reload_cm_guc()
             self.set_dss_cluster_run_mode("cluster_primary")

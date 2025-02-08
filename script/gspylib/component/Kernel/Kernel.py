@@ -500,8 +500,11 @@ class Kernel(BaseComponent):
         """
         self.logger.debug("Start parse cluster_conf_record.")
         pg_host = EnvUtil.getEnv("PGHOST")
-        config_param_file = os.path.realpath(
-            os.path.join(pg_host, "streaming_cabin", "cluster_conf_record"))
+        stream_file = os.path.realpath(os.path.join(pg_host, "streaming_cabin"))
+        gs_sdr_flag = True if os.path.exists(stream_file) else False
+        gs_sdr_path = os.path.join(pg_host, "streaming_cabin", "cluster_conf_record")
+        gs_ddr_path = os.path.join(pg_host, "ddr_cabin", "cluster_conf_record")
+        config_param_file = os.path.realpath(gs_sdr_path if gs_sdr_flag else gs_ddr_path)
         if not os.path.isfile(config_param_file):
             self.logger.debug("Not found streaming cluster config file.")
             return []

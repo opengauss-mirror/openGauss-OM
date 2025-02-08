@@ -39,6 +39,12 @@ def check_ddr_start_mode(mode):
     if mode not in ["primary", "disaster_standby"]:
         raise ValidationError(ErrorCode.GAUSS_500["GAUSS_50011"] % ('-m', mode))
 
+def check_ddr_start_disaster_type(disaster_type):
+    """
+    Check start para: disaster_type
+    """
+    if disaster_type not in ["dorado", "stream"]:
+        raise ValidationError(ErrorCode.GAUSS_500["GAUSS_50011"] % ('--disaster_type', disaster_type))
 
 def check_xml_file(file):
     """
@@ -102,7 +108,7 @@ def check_local_cluster_conf(value):
 
 def check_remote_cluster_conf(value):
     """
-    Check local cluster conf
+    Check remote cluster conf
     """
     SecurityChecker.check_is_dict("remoteClusterConf", value)
     port = value.get('port')
@@ -120,6 +126,7 @@ def check_remote_cluster_conf(value):
 DORADO_PARAMS_FOR_MODULE = {
     "start": {
         "mode": check_ddr_start_mode,
+        "disaster_type": check_ddr_start_disaster_type,
         "xml_path": check_xml_file,
         "waitingTimeout": check_wait_timeout,
         "localClusterConf": check_local_cluster_conf,
@@ -132,10 +139,12 @@ DORADO_PARAMS_FOR_MODULE = {
         "remoteClusterConf": check_remote_cluster_conf
     },
     "switchover": {
+        "disaster_type": check_ddr_start_disaster_type,
         "mode": check_ddr_start_mode,
         "waitingTimeout": check_wait_timeout
     },
     "failover": {
+        "disaster_type": check_ddr_start_disaster_type,
         "waitingTimeout": check_wait_timeout,
     },
     "query": {}
@@ -209,8 +218,10 @@ class ParamsHandler(object):
                           help='Path of log file.')
         parser.add_option('-r', "--restart", dest='restart', action='store_true',
                           help='restart cluster when do gs_ddr switchover or failover.')
-        parser.add_option('--stage=', dest='stage', default="None", type='string',
+        parser.add_option('--stage=', dest='stage', default=None, type='string',
                           help='[Internal Usage] Stage when do gs_ddr. It could be 1 or 2')
+        parser.add_option('--disaster_type', dest='disaster_type', default="", type='string',
+                          help='Disaster dual-cluster type: It could be "dorado", "stream"')
         return parser
 
     def __print_usage(self):
@@ -304,7 +315,7 @@ class ParamsHandler(object):
             self.__init_default_params()
             for param_name, validate in DORADO_PARAMS_FOR_MODULE[self.params.task].items():
                 check_value = getattr(self.params, param_name)
-                if self.params.task == "stop":
+                if self.params.task == "stop" or self.params.task == "start":
                     if param_name == "xml_path" and not check_value:
                         check_value = getattr(self.params, 'json_path')
                 validate(check_value)

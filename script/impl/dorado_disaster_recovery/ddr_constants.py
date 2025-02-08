@@ -76,6 +76,11 @@ class DoradoDisasterRecoveryConstants:
             "with Replication Mode in \"Synchronous\" state.\n" \
             "Ready to move on (yes/no)? "
     
+    SWITCHOVER_MSG = "Please restore the original \"Remote Replication Pairs\" correctly on "\
+            "the storage management interface.\n"\
+            "And check and grant appropriate permissions to the corresponding device files.\n"\
+            "After completing these steps, start the cluster manually !"
+
     PRIMARY_MSG = "Please ensure that the \"Remote Replication Pairs\" configured correctly, "\
             "and check the \"Local Resource Role\" is Primary."\
             "Ready to move on (yes/no)? "

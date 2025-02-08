@@ -73,11 +73,14 @@ class DisasterRecoverySwitchoverHandler(DoradoDisasterRecoveryBase):
         if self.params.stage is None or int(self.params.stage) == 2:
             if dorado_disaster_step < 2:
                 self.update_dorado_info(DoradoDisasterRecoveryConstants.ACTION_SWITCHOVER, "30%")
-                self.check_input(DoradoDisasterRecoveryConstants.STANDBY_MSG)
+                if self.params.disaster_type == "dorado":
+                    self.check_input(DoradoDisasterRecoveryConstants.STANDBY_MSG)
                 self.write_dorado_step("2_set_remote_replication_pairs_for_switchover")
             if dorado_disaster_step < 3:
                 self.set_cmagent_guc("ss_double_cluster_mode", "2", "set")
-                self.set_dss_cluster_run_mode("cluster_standby",only_mode='disaster_standby')
+                self.set_cmserver_guc("ss_double_cluster_mode", "2", "set")
+                if self.params.disaster_type == "dorado":
+                    self.set_dss_cluster_run_mode("cluster_standby", only_mode='disaster_standby')
                 self.write_dorado_step("3_set_cluster_guc_done")
             if dorado_disaster_step < 4:
                 self.update_dorado_info(DoradoDisasterRecoveryConstants.ACTION_SWITCHOVER, "50%")
@@ -178,18 +181,20 @@ class DisasterRecoverySwitchoverHandler(DoradoDisasterRecoveryBase):
         self.stop_cluster()
         if self.params.mode == "primary":
             self.set_cmagent_guc("ss_double_cluster_mode", "2", "set")
-            self.set_dss_cluster_run_mode("cluster_standby")
+            self.set_cmserver_guc("ss_double_cluster_mode", "2", "set")
+            if self.params.disaster_type == "dorado":
+                self.set_dss_cluster_run_mode("cluster_standby")
         else:
             self.set_cmagent_guc("ss_double_cluster_mode", "1", "set")
-            self.set_dss_cluster_run_mode("cluster_primary")
+            self.set_cmserver_guc("ss_double_cluster_mode", "1", "set")
+            if self.params.disaster_type == "dorado":
+                self.set_dss_cluster_run_mode("cluster_primary")
         self.logger.log("Successfully modify cma and cms parameters to start according to original "
                         "cluster mode")
         if update_query:
             self.update_dorado_info("cluster", "archive")
-        self.logger.log("Please restore the original \"Remote Replication Pairs\" correctly on "
-                        "the storage management interface.\n"
-                        "And check and grant appropriate permissions to the corresponding device files.\n"
-                        "After completing these steps, start the cluster manually !")
+        if self.params.disaster_type == "dorado":
+            self.logger.log(DoradoDisasterRecoveryConstants.SWITCHOVER_MSG) 
         self.logger.log("Successfully Roll back dorado disaster cluster switchover.")
 
     def check_switchover_workable(self):

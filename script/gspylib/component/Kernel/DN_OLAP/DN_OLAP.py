@@ -539,7 +539,6 @@ class DN_OLAP(Kernel):
                 GUCParasStrList.append(guc_paras_str)
                 i = 0
                 guc_paras_str = ""
-        # Used only streaming disaster cluster
         streaming_dn_ips = self.get_streaming_relate_dn_ips(self.instInfo)
         if streaming_dn_ips:
             for dn_ip in streaming_dn_ips:

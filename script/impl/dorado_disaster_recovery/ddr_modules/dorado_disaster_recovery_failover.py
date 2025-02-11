@@ -35,6 +35,9 @@ class DisasterRecoveryFailoverHandler(DoradoDisasterRecoveryBase):
         step = self.check_dorado_failover_workable(check_type_step=3, check_status_step=0)
         self.check_is_under_upgrade()
         self.init_cluster_conf()
+        self.params.disaster_type = DefaultValue.get_ss_disaster_mode()
+        if self.params.disaster_type:
+            self.logger.log("Successfully get the para disaster_type: %s." % self.params.disaster_type)
         try:
             self.dorado_failover_single_inst(step, DoradoDisasterRecoveryConstants.ACTION_FAILOVER)
             self.update_dorado_info("cluster", "normal")

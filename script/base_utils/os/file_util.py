@@ -818,6 +818,20 @@ class FileUtil(object):
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50205"] % file_path +
                             " Error:\n%s" % output + "\nThe cmd is %s" % cmd)
+        
+    @staticmethod
+    def delete_pattern_and_next_lines(file_path, line_info, number_line):
+        """
+        function : delete pattern and next lines in a file
+        input : file_path, line_info, row
+        output : NA
+        """
+        cmd = CmdUtil.getSedCmd()
+        cmd += " -i '/%s/,+%sd' %s" % (line_info, number_line, file_path)
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50205"] % file_path +
+                            " Error:\n%s" % output + "\nThe cmd is %s" % cmd)
 
     @staticmethod
     def rename(old_file_path, new_file_path):

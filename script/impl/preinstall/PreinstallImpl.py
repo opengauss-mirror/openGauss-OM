@@ -222,7 +222,8 @@ class PreinstallImpl:
             retry_times = 0
             while True:
                 try:
-                    self.context.sshTool.createTrust(username, ip_list,
+                    ssh_ports_map = self.context.clusterInfo.get_cluster_nodes_ssh_port_by_ips(ip_list)
+                    self.context.sshTool.createTrust(username, ip_list, ssh_ports_map,
                                                      self.context.skipHostnameSet)
                     break
                 except Exception as err_msg:
@@ -726,7 +727,8 @@ class PreinstallImpl:
             for ips in sshIps:
                 allIps.extend(ips)
             # create trust
-            self.context.sshTool.createTrust(self.context.user, allIps)
+            ssh_ports_map = self.context.clusterInfo.get_cluster_nodes_ssh_port_by_ips(allIps)
+            self.context.sshTool.createTrust(self.context.user, allIps, ssh_ports_map)
             self.context.user_ssh_agent_flag = True
             self.context.logger.debug("{debug exception010} Finished execute sshTool."
                                       "createTrust for common user.")

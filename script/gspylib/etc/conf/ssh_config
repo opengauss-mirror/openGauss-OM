@@ -1,0 +1,35 @@
+Host 192.168.0.141
+        HostName 192.168.0.141
+        Port 8989
+        User lh
+        IdentityFile /home/lh/.ssh/id_om
+
+Host yc-0003
+        HostName 192.168.0.141
+        Port 8989
+        User lh
+        IdentityFile /home/lh/.ssh/id_om
+
+Host 192.168.0.176
+        HostName 192.168.0.176
+        Port 22
+        User lh
+        IdentityFile /home/lh/.ssh/id_om
+
+Host yc-0002
+        HostName 192.168.0.176
+        Port 22
+        User lh
+        IdentityFile /home/lh/.ssh/id_om
+
+Host 192.168.0.64
+        HostName 192.168.0.64
+        Port 8989
+        User lh
+        IdentityFile /home/lh/.ssh/id_om
+
+Host yc-0001
+        HostName 192.168.0.64
+        Port 8989
+        User lh
+        IdentityFile /home/lh/.ssh/id_om

@@ -621,6 +621,7 @@ class instanceInfo():
         self.dcf_data_path = ""
         # uwal_ip
         self.uwal_ip = ""
+        self.ssh_port = 0
 
     def __cmp__(self, target):
         """
@@ -720,6 +721,7 @@ class dbNodeInfo():
         self.cascadeRole = "off"
         # enable_uwal
         self.enable_uwal = ""
+        self.ssh_port = 0
 
     def __cmp__(self, target):
         """
@@ -2668,6 +2670,7 @@ class dbClusterInfo():
             db_inst.syncNumFirst = ""
             db_inst.azName = db_node.azName
             db_inst.azPriority = db_node.azPriority
+            db_inst.ssh_port = db_node.ssh_port
             self.dbNodes[0].datanodes.append(db_inst)
         self.dbNodes[0].appendInstance(1, MIRROR_ID_AGENT, INSTANCE_ROLE_CMAGENT,
                                        INSTANCE_TYPE_UNDEFINED, [], None, "")
@@ -2687,6 +2690,29 @@ class dbClusterInfo():
         output : NA
         """
         return [dbNode.id for dbNode in self.dbNodes]
+
+    def get_cluster_node_ssh_port_by_ip(self, ip):
+        """
+        function : Get the cluster's node ssh port by ip.
+        input : NA
+        output : NA
+        """
+        for node in self.dbNodes:
+            if ip == node.sshIps[0]:
+                return node.ssh_port
+        return 22
+            
+    def get_cluster_nodes_ssh_port_by_ips(self, ips):
+        """
+        function : Get the cluster's node ssh port by ips.
+        input : NA
+        output : NA
+        """
+        ssh_ports_map = {}
+        for ip in ips:
+            ssh_port = self.get_cluster_node_ssh_port_by_ip(ip)
+            ssh_ports_map[ip] = ssh_port
+        return ssh_ports_map
 
     def getdataNodeInstanceType(self, nodeId=-1):
         """
@@ -3367,7 +3393,8 @@ class dbClusterInfo():
             dbNode.sshIps = dbNode.backIps[:]
         # get virtualIp
         dbNode.virtualIp = self.__readVirtualIp(dbNode.name, "virtualIp")
-
+        # get ssh_port
+        dbNode.ssh_port = self.__readNodeIntValue(dbNode.name, "sshPort", True, 22)
         # Get cm_server number
         dbNode.cmsNum = self.__readNodeIntValue(dbNode.name, "cmsNum", True, 0)
         # Get gtm number

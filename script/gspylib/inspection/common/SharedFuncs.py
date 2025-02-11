@@ -97,7 +97,7 @@ def runSshCmd(cmd, host, user="", mpprcFile="", timeout=""):
     return output
 
 
-def runSshCmdWithPwd(cmd, host, user="", passwd="", mpprcFile=""):
+def runSshCmdWithPwd(cmd, host, user="", passwd="", mpprcFile="", port=DefaultValue.DEFAULT_SSH_PORT):
     """
     function: run ssh cmd with password
     input  : cmd, host, user, passwd, mpprcFile
@@ -114,7 +114,7 @@ def runSshCmdWithPwd(cmd, host, user="", passwd="", mpprcFile=""):
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             # Remote Connection
-            ssh.connect(host, 22, user, passwd)
+            ssh.connect(host, port, user, passwd)
             stdout, stderr = ssh.exec_command(cmd)[1:3]
             output = stdout.read()
             error = stderr.read()
@@ -137,7 +137,7 @@ def runSshCmdWithPwd(cmd, host, user="", passwd="", mpprcFile=""):
             ssh.close()
 
 
-def runRootCmd(cmd, rootuser, passwd, mpprcFile=''):
+def runRootCmd(cmd, rootuser, passwd, mpprcFile='', port=DefaultValue.DEFAULT_SSH_PORT):
     """
     function: run root cmd
     input  : cmd, rootuser, passwd, mpprcFile
@@ -151,7 +151,7 @@ def runRootCmd(cmd, rootuser, passwd, mpprcFile=''):
         cmd = "export LC_ALL=C;source /etc/profile 2>/dev/null;export PYTHONIOENCODING=utf-8; %s" % cmd
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect('localhost', 22, rootuser, passwd)
+        ssh.connect('localhost', port, rootuser, passwd)
         stdout, stderr = ssh.exec_command(cmd, get_pty=True)[1:3]
         output = stdout.read()
         error = stderr.read()
@@ -165,7 +165,7 @@ def runRootCmd(cmd, rootuser, passwd, mpprcFile=''):
             ssh.close()
 
 
-def verifyPasswd(host, user, pswd=None):
+def verifyPasswd(host, user, pswd=None, port=DefaultValue.DEFAULT_SSH_PORT):
     """
     function: verify password
         Connect to the remote node
@@ -173,7 +173,7 @@ def verifyPasswd(host, user, pswd=None):
     output : bool
     """
     import paramiko
-    ssh = paramiko.Transport((host, 22))
+    ssh = paramiko.Transport((host, port))
     try:
         ssh.connect(username=user, password=pswd)
         return True
@@ -435,13 +435,13 @@ def readFile(fileName):
     return "\n".join(text)
 
 
-def sendFile(fileName, host, user, path, passwd=None):
+def sendFile(fileName, host, user, path, passwd=None, port=DefaultValue.DEFAULT_SSH_PORT):
     # Copy files remotely
     t = None
     if (passwd):
         try:
             import paramiko
-            t = paramiko.Transport((host, 22))
+            t = paramiko.Transport((host, port))
             t.connect(username=user, password=passwd)
             sftp = paramiko.SFTPClient.from_transport(t)
             sftp.put(fileName, os.path.join(path, os.path.basename(fileName)))
@@ -461,13 +461,13 @@ def sendFile(fileName, host, user, path, passwd=None):
         runShellCmd(cmd)
 
 
-def receiveFile(fileName, host, user, path, passwd=None):
+def receiveFile(fileName, host, user, path, passwd=None, port=DefaultValue.DEFAULT_SSH_PORT):
     # Receive remote files
     t = None
     if (passwd):
         try:
             import paramiko
-            t = paramiko.Transport((host, 22))
+            t = paramiko.Transport((host, port))
             t.connect(username=user, password=passwd)
             sftp = paramiko.SFTPClient.from_transport(t)
             if (type(fileName) == list):

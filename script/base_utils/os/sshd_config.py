@@ -20,14 +20,44 @@
 #############################################################################
 
 import subprocess
+import os
 
 from gspylib.common.ErrorCode import ErrorCode
 
+
+def get_ssh_config_path():
+    ssh_config = os.path.expanduser("~/.ssh/config")
+    if os.path.exists(ssh_config):
+        return ssh_config
+    return ""
+
+def read_ssh_config(ssh_config):
+    with open(ssh_config, 'r') as file:
+        return file.read()
+
+def find_port_for_host(content, host):
+    host_blocks = content.split('Host ')
+    for block in host_blocks:
+        lines = block.strip().splitlines()
+        if not lines:
+            continue
+        current_host = lines[0].strip()
+        if current_host == host:
+            return extract_port_from_lines(lines[1:])
+    return ""
+
+def extract_port_from_lines(lines):
+    for line in lines:
+        line = line.strip()
+        if line.startswith('Port '):
+            return int(line.split(' ', 1)[1].strip())
+    return ""
 
 class SshdConfig:
     """
     sshd config file operation
     """
+    DEFAULT_SSH_PORT = 22
 
     def __init__(self):
         pass
@@ -65,5 +95,28 @@ class SshdConfig:
 
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
-            raise Exception((ErrorCode.GAUSS_503["GAUSS_50320"] % (
-                key, value)) + ("Command: %s, Error: %s" % (cmd, output)))
+            raise Exception((ErrorCode.GAUSS_503["GAUSS_50320"] % (key, value)) + ("Command: %s, Error: %s" % (cmd, output)))
+
+    @staticmethod
+    def get_ssh_port_for_host(host):
+        """
+        function : Get the cluster's node ssh port from config.
+        input : NA
+        output : NA
+        """
+        ssh_config = get_ssh_config_path()
+        content = read_ssh_config(ssh_config)
+        return find_port_for_host(content, host)
+
+    @staticmethod
+    def get_ssh_ports_for_hosts(hosts):
+        """
+        function : Get the cluster's node ssh port from config file.
+        input : NA
+        output : NA
+        """
+        ssh_ports_map = {}
+        for host in hosts:
+            ssh_port = SshdConfig.get_ssh_port_for_host(host)
+            ssh_ports_map[host] = ssh_port if ssh_port else SshdConfig.DEFAULT_SSH_PORT
+        return ssh_ports_map

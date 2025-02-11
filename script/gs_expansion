@@ -56,6 +56,7 @@ from base_utils.os.cmd_util import CmdUtil
 from base_utils.os.file_util import FileUtil
 from base_utils.os.net_util import NetUtil
 from base_utils.os.hosts_util import HostsUtil
+from base_utils.os.sshd_config import SshdConfig
 
 ENV_LIST = ["MPPDB_ENV_SEPARATE_PATH", "GPHOME", "PATH",
             "LD_LIBRARY_PATH", "PYTHONPATH", "GAUSS_WARNING_TYPE",
@@ -101,6 +102,8 @@ class Expansion(ParallelBaseOM):
         self.envFile = EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH")
         self.new_hostname_ip_map = {}
         self.new_hostname_list = []
+        self.ssh_ports_map = {}
+        self.node_ip_list = []
 
     def usage(self):
         """
@@ -333,13 +336,36 @@ General options:
         self.logger.ignoreErr = True
 
         # init cluster info from xml or static file
+        self._init_cluster_info()
+        self._set_ssh_ports_map()
+
+    def _init_cluster_info(self):
+        """
+        Initialize cluster information from XML or static file
+        """
         if self.xmlFile:
             self.initClusterInfo()
         else:
             self.initClusterInfoFromStaticFile(self.user)
-
-        # init node ip list
         self.node_ip_list = self.clusterInfo.getClusterSshIps()[0]
+
+    def _set_ssh_ports_map(self):
+        """
+        Set SSH ports map based on cluster information
+        """
+        if self.xmlFile:
+            self.ssh_ports_map = self.clusterInfo.get_cluster_nodes_ssh_port_by_ips(self.node_ip_list)
+        else:
+            self.ssh_ports_map = SshdConfig.get_ssh_ports_for_hosts(self.node_ip_list)
+            self.add_new_node_to_cluster()
+            self.set_ssh_port_for_new_node()
+
+    def set_ssh_port_for_new_node(self):
+       for ip in self.newHostList:
+           self.ssh_ports_map[ip] = DefaultValue.DEFAULT_SSH_PORT
+        
+    def add_new_node_to_cluster(self):
+        # add new node to cluster
         for ip in self.newHostList:
             if ip not in self.node_ip_list:
                 self.node_ip_list.append(ip)
@@ -410,6 +436,7 @@ General options:
         if not self.envFile:
             self.envFile = os.path.normpath(os.path.join(user_path, ".bashrc"))
         cmd = "source %s; %s -t generate_xml --add-hostname=%s --add-hostip=%s" % (self.envFile, gs_om, hostname_str, hostip_str)
+        self.logger.debug(f"The command to generate xml is {cmd}")
         if os.getuid() == 0:
             cmd = "su - %s -c '%s'" % (self.user, cmd)
         status, output = subprocess.getstatusoutput(cmd)
@@ -514,7 +541,7 @@ General options:
     def create_trust_for_user(self, user, all_ips):
         self.logger.log("Please enter password for %s" % user)
         self.sshTool = SshTool(all_ips, self.logFile, DefaultValue.TIMEOUT_PSSH_PREINSTALL)
-        self.sshTool.createTrust(user, all_ips)
+        self.sshTool.createTrust(user, all_ips, ssh_port=self.ssh_ports_map)
         self.logger.debug("Successfully created SSH trust for the %s" % user)
 
     def check_xml_env_consistent(self):

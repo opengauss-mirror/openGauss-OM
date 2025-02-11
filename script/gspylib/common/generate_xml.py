@@ -27,6 +27,7 @@ import xml.dom.minidom as minidom
 
 from base_utils.os.env_util import EnvUtil
 from gspylib.common.ErrorCode import ErrorCode
+from base_utils.os.sshd_config import SshdConfig
 
 
 class ClusterKey:
@@ -64,6 +65,7 @@ class ClusterKey:
     DATA_PORT_BASE = "dataPortBase"
     DATA_NODE1 = "dataNode1"
     DATA_NODE1_SYNCNUM = "dataNode1_syncNum"
+    SSH_PORT = "sshPort"
 
     # cm
     CMS_NUM = "cmsNum"
@@ -87,7 +89,7 @@ class ClusterKey:
     DCF_LABEL = [ENABLE_DCF, DCF_CONFIG]
 
     DEVICE_LABEL_SN = [NAME, AZNAME, AZPRIORITY, BACKIP1, SSHIP1, DATA_NUM, DATA_PORT_BASE,
-                       DATA_NODE1, DATA_NODE1_SYNCNUM, CASCADEROLE]
+                       DATA_NODE1, DATA_NODE1_SYNCNUM, CASCADEROLE, SSH_PORT]
 
     CM_LABEL_SN = [CMS_NUM, CM_SERVER_PORT_BASE, CM_SERVER_LISTEN_IP1, CM_SERVER_HA_IP1,
                    CM_SERVER_LEVEL, CM_SERVER_RELATION, CM_SERVER_PORT_STANDBY, CM_DIR]
@@ -268,6 +270,7 @@ class GenerateXml:
             hostname_list.append(hostname)
             hostip_list.append(host_ip)
 
+            ssh_port = SshdConfig.get_ssh_port_for_host(hostname) or SshdConfig.DEFAULT_SSH_PORT
             instance_type = node.datanodes[0].instanceType
             cluster_info_dict[hostname] = {
                 ClusterKey.NAME: hostname,
@@ -275,6 +278,7 @@ class GenerateXml:
                 ClusterKey.AZPRIORITY: str(node.azPriority),
                 ClusterKey.BACKIP1: host_ip,
                 ClusterKey.SSHIP1: node.sshIps[0],
+                ClusterKey.SSH_PORT: str(ssh_port),
                 "instance_type": str(instance_type)
             }
 

@@ -7,7 +7,9 @@
     "input_xml_path": "Please enter the path and file name of the XML file(default:./cluster.xml):",
     "input_database_path": "Please enter the database installation directory(default:/opt/openGauss/install):",
     "input_database_port": "Please enter the database port(default:15000):",
-  
+
+    "input_ssh_port": "Please enter the ssh port(default:22):",
+
     "choose_ddes": "Please choose whether to deploy ddes?",
     "input_ddes": "Please enter 1/2 for selection, the default option is 1) Do not deploy",
     "intput_dss_home": "Please enter dss_home dir(default:/opt/openGauss/install/dss_home)",
@@ -36,6 +38,7 @@
     "invalid_ip": "Invalid ipaddress!",
     "ip_hostname_empty": "The input IP and host name cannot be empty",
     "ip_hostname_not_match": "The number of input nodes does not match the corresponding IP addresses and hostnames.",
+    "invalid_ssh_port_count": "SSH port and number of nodes do not match",
     "invalid_xml_dir": "The XML path must be a file",
     "invalid_abs_dir": "The directory entered is not an absolute directory",
     "invalid_dir": "The input must be a directory",

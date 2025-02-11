@@ -202,6 +202,8 @@ class GenerateTemplate:
                     ele.attrib['value'] = XmlConstant.IP_LISTS[i]
                 if ele.attrib['name'] == "sshIp1":
                     ele.attrib['value'] = XmlConstant.IP_LISTS[i]
+                if ele.attrib['name'] == "sshPort":
+                    ele.attrib['value'] = str(XmlConstant.SSH_PORTS[i % len(XmlConstant.SSH_PORTS)])
                 if ele.attrib['name'] == "dataNode1":
                     ele.attrib['value'] = datanode1_value
 

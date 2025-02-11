@@ -8,6 +8,8 @@
     "input_database_path": "请输入数据库安装目录(默认:/opt/openGauss/install):",
     "input_database_port": "请输入数据库端口(默认:15000):",
 
+    "input_ssh_port": "请输入ssh端口(默认:22):",
+
     "choose_ddes": "请选择是否部署资源池化?",
     "input_ddes": "请输入 1/2 进行选择,默认选项是 1)不部署",
     "intput_dss_home": "请输入'dss_home'的路径信息(默认:/opt/openGauss/install/dss_home)",
@@ -36,6 +38,7 @@
     "invalid_ip": "无效的ip!",
     "ip_hostname_empty": "输入的ip和hostname不能为空!",
     "ip_hostname_not_match": "输入节点数量和节点ip,hostname不匹配!",
+    "invalid_ssh_port_count": "输入节点数量和ssh port不匹配!",
     "invalid_xml_dir": "xml路径必须是一个文件",
     "invalid_abs_dir": "输入的目录不是绝对目录",
     "invalid_dir": "输入的必须是目录",

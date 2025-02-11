@@ -202,7 +202,7 @@ class SshTool():
         """
         self._finalizer()
 
-    def createTrust(self, user, ips=[], skipHostnameSet=False, action=''):
+    def createTrust(self, user, ips=None, ssh_port=None, skipHostnameSet=False, action=''):
         """
         function: create trust for specified user with both ip and hostname,
         when using N9000 tool create trust failed
@@ -220,11 +220,16 @@ class SshTool():
         output = ""
         if ips is None:
             ips = []
+        if ssh_port is None:
+            ssh_port = {}
         try:
             FileUtil.removeFile(tmp_hosts)
             # 1.prepare hosts file
             for ip in ips:
-                cmd = "echo %s >> %s 2>/dev/null" % (ip, tmp_hosts)
+                if ssh_port and ip in ssh_port:
+                    cmd = "echo %s,%s >> %s 2>/dev/null" % (ip, ssh_port[ip], tmp_hosts)
+                else:
+                    cmd = "echo %s >> %s 2>/dev/null" % (ip, tmp_hosts)
                 (status, output) = subprocess.getstatusoutput(cmd)
                 if status != 0:
                     raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"]
@@ -653,9 +658,6 @@ class SshTool():
             else:
                 GPHOME = self.getGPHOMEPath(userProfile)
             psshpre = "python3 %s/script/gspylib/pssh/bin/pssh" % GPHOME
-            if ssh_config:
-                if os.path.exists(ssh_config) and os.path.isfile(ssh_config):
-                    psshpre += ' -x "-F %s" ' % ssh_config
 
             if len(hostList) == 0:
                 if os.getuid() == 0 and (mpprcFile == "" or not mpprcFile):
@@ -1069,7 +1071,7 @@ class SshTool():
             return self.__sessions[remote_ip]
         return None
 
-    def create_all_sessions(self, user, all_ips, passwds):
+    def create_all_sessions(self, user, all_ips, passwds, ssh_port_map):
         """
         :param user:
         :param all_ips:
@@ -1077,14 +1079,17 @@ class SshTool():
         :return:
         """
         for ip in all_ips:
-            session = self.create_ssh_session(user, ip, passwds)
+            ssh_port = ssh_port_map[ip]
+            if not ssh_port:
+                raise Exception("%s not found ssh_port." % ip)
+            session = self.create_ssh_session(user, ip, passwds, ssh_port)
             if session:
                 self.__sessions[ip] = session
             if not session:
                 raise Exception(ErrorCode.GAUSS_535["GAUSS_53501"] +"IP is:%s" %ip)
 
 
-    def create_ssh_session(self, user, ip, passwd):
+    def create_ssh_session(self, user, ip, passwd, port):
         """
         create ssh session
         :param user:
@@ -1093,10 +1098,10 @@ class SshTool():
         :return:
         """
         try:
-            ssh = paramiko.Transport((ip, 22))
+            ssh = paramiko.Transport((ip, port))
         except Exception as e:
             raise Exception(
-                ErrorCode.GAUSS_512["GAUSS_51220"] % ip + " Error: \n%s" % str(
+                ErrorCode.GAUSS_511["GAUSS_51116"] % (ip, port) + " Error: \n%s" % str(
                     e))
         try:
             ssh.connect(username=user, password=passwd[0])

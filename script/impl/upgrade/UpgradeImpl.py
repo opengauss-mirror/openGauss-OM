@@ -4521,7 +4521,7 @@ END;"""
         cmd = "dsscmd cp -s +%s/pg_control.upgrade -d %s/pg_control.upgrade;dsscmd rm -p +%s/pg_control.upgrade;" \
               "dsscmd cp -s +%s/pg_control -d %s/pg_control;" % (vg_name, tmp_path, vg_name, vg_name, tmp_path)
         status, _ = subprocess.getstatusoutput(cmd)
-        source_file = tmp_path + os.sep + "pg_control.upgrade"
+        source_file = tmp_path + os.sep + "pg_control"
         dest_file = tmp_path + os.sep + "pg_control.upgrade"
         chunk_data = collections.defaultdict(bytes)
         index = 0

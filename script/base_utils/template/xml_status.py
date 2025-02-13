@@ -22,11 +22,11 @@ def check_port(port, action='', database_port=''):
     if not str(port).isdigit():
         GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('invalid_num'))
         return False
+    if action == 'ssh_port' and int(port) == int(XmlConstant.DEFAULT_SSH_PORT):
+        return True
     if int(port) >= 65535 or int(port) <= 1024:
         GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('invalid_port'))
         return False
-    if action == 'ssh_port' and int(port) == XmlConstant.DEFAULT_SSH_PORT:
-        return True
 
     if action == 'cm':
         if port == database_port:
@@ -491,8 +491,7 @@ class PriStandbyIpStatus(TemplateStatus):
             ip_lists.append(get_localhost_ip())
             XmlConstant.IP_LISTS = ip_lists
             XmlConstant.HOSTNAME_LISTS = hostname_lists
-            GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('finish'))
-            return
+            return SshPortStatus()
 
         for i in range(XmlConstant.TRIES):
             if i == 3:
@@ -509,9 +508,10 @@ class PriStandbyIpStatus(TemplateStatus):
 
 def check_ssh_port(user_input, valid_ports):
     ports = [port.strip() for port in user_input.split(',')]
-    if (len(ports) != XmlConstant.PRI_STANDBY_COUNT):
+    if len(ports) > 1 and (len(ports) != XmlConstant.PRI_STANDBY_COUNT):
         GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('invalid_ssh_port_count'))
         return False
+
     for port in ports:
         if not check_port(port, action='ssh_port'):
             return False

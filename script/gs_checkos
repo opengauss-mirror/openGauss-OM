@@ -883,7 +883,7 @@ def checkBlockDevConfigure():
     g_logger.debug("Checking Pre-read block size value.")
     performCheckorSetOS(ACTION_CHECK_BLOCKDEV_CONFIGURE, "blockdev",
                         "The value about Pre-read block size is correct.",
-                        "A9", "Warning")
+                        "A9", "Warning", g_opts.confFile)
     g_logger.debug("Successfully checked Pre-read block size value.")
 
 

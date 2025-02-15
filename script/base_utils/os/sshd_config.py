@@ -105,6 +105,8 @@ class SshdConfig:
         output : NA
         """
         ssh_config = get_ssh_config_path()
+        if not ssh_config:
+            return ""
         content = read_ssh_config(ssh_config)
         return find_port_for_host(content, host)
 

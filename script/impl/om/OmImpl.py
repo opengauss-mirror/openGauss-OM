@@ -66,7 +66,7 @@ class OmImpl:
         self.newClusterInfo = None
         self.oldClusterInfo = None
         self.utilsPath = None
-        self.mpprcFile = ""
+        self.mpprcFile = OperationManager.g_opts.mpprcFile
         self.nodeId = OperationManager.g_opts.nodeId
         self.time_out = OperationManager.g_opts.time_out
         self.mode = OperationManager.g_opts.mode

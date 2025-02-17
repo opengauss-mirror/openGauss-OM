@@ -23,6 +23,13 @@ class CommConstants:
     VERSION_PATTERN = r'(\d+\.\d+\.\d+)(-RC\d+)?'
     VERSION_EXAMPLE = "openGauss-1.0"
     
+    VERSION_LENGTH = 3
+    MAJOR_IDX = 0
+    MINOR_IDX = 1
+    REVISION_IDX = 2
+
+    RELEASE_DATE_PATTERN = r'\d{4}-\d{2}-\d{2}'
+
     PKG_SERVER = "Server"
     PKG_OM = "OM"
     PKG_CM = "CM"

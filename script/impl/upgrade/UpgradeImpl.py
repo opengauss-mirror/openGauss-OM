@@ -620,6 +620,8 @@ class UpgradeImpl:
                 self.context.logger.debug("Successfully obtained version"
                                           " information of old clusters by %s."
                                           % oldVersionFile)
+                oldAppFile = "%s/bin/gaussdb" % oldPath
+                oldReleaseDate = VersionInfo.get_release_date_from_app(oldAppFile)
             except Exception as e:
                 if os.path.exists(self.context.upgradeBackupPath):
                     # if upgradeBackupPath exist,
@@ -633,6 +635,8 @@ class UpgradeImpl:
                         % possibOldVersionFile)
                     (oldClusterVersion, oldClusterNumber, oldCommitId) = \
                         VersionInfo.get_version_info(possibOldVersionFile)
+                    possibAppFile = "%s/bin/gaussdb" % self.context.upgradeBackupPath
+                    oldReleaseDate = VersionInfo.get_release_date_from_app(possibAppFile)
                 else:
                     raise Exception(str(e))
 
@@ -648,16 +652,23 @@ class UpgradeImpl:
 
             self.canDoRollbackOrCommit()
 
-            if oldClusterVersion > newClusterVersion:
+            if VersionInfo.cmp_cluster_version(oldClusterVersion, newClusterVersion) > 0:
                 raise Exception(ErrorCode.GAUSS_529["GAUSS_52902"]
                                 % (oldClusterVersion, newClusterVersion))
-
+            
             self.checkLastUpgrade(newCommitId)
 
             if float(newClusterNumber) < float(oldClusterNumber):
                 raise Exception(ErrorCode.GAUSS_516["GAUSS_51629"]
                                 % newClusterNumber)
-            elif float(newClusterNumber) == float(oldClusterNumber):
+            
+            if not self.context.bypass_stale_check:
+                newReleaseDate = VersionInfo.get_release_date()
+                if oldReleaseDate > newReleaseDate:
+                    raise Exception(ErrorCode.GAUSS_529["GAUSS_52945"]
+                                % (oldReleaseDate, newReleaseDate))
+            
+            if float(newClusterNumber) == float(oldClusterNumber):
                 if self.context.is_inplace_upgrade:
                     upgradeAction = const.ACTION_INPLACE_UPGRADE
                 else:

@@ -129,7 +129,7 @@ class LinuxPlatform(object):
         return file_name
 
     def package_file_path(self, prefix_str, packageVersion, distro, postfix_str):
-        if(packageVersion[0] < '6'):
+        if(packageVersion[0] < '6' or packageVersion == '6.0.0-RC1'):
             dir_name = os.path.dirname(os.path.realpath(__file__))
             return os.path.join(dir_name, "./../../", "%s-%s-%s-%s.%s" % (
                                     prefix_str, packageVersion, distro,
@@ -159,7 +159,7 @@ class LinuxPlatform(object):
         distname = distname.lower()
         dir_name = os.path.dirname(os.path.realpath(__file__))
         prefix_str = productVersion
-        if(packageVersion[0] < '6'):
+        if(packageVersion[0] < '6' or packageVersion == '6.0.0-RC1'):
             if fileType == "Server":
                 postfix_str = "tar.bz2"
         

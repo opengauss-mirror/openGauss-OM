@@ -139,12 +139,10 @@ DORADO_PARAMS_FOR_MODULE = {
         "remoteClusterConf": check_remote_cluster_conf
     },
     "switchover": {
-        "disaster_type": check_ddr_start_disaster_type,
         "mode": check_ddr_start_mode,
         "waitingTimeout": check_wait_timeout
     },
     "failover": {
-        "disaster_type": check_ddr_start_disaster_type,
         "waitingTimeout": check_wait_timeout,
     },
     "query": {}
@@ -156,7 +154,7 @@ gs_ddr is a utility for dorado disaster recovery fully options.
 Usage:
   gs_ddr -? | --help
   gs_ddr -V | --version
-  gs_ddr -t start -m [primary|disaster_standby] -X XMLFILE [--time-out=SECS] [-l LOGFILE] 
+  gs_ddr -t start -m [primary|disaster_standby] --disaster_type [dorado|stream] -X XMLFILE [--time-out=SECS] [-l LOGFILE] 
   gs_ddr -t stop -X XMLFILE|--json JSONFILE [-l LOGFILE] 
   gs_ddr -t switchover -m [primary|disaster_standby] [-r | --restart] [--time-out=SECS] [-l LOGFILE]
   gs_ddr -t failover [-r | --restart] [-l LOGFILE]
@@ -176,6 +174,8 @@ General options:
   -r, --restart                  Restart the cluster when do "switchover" or "failover" 
   --time-out=SECS                Maximum waiting time when Main standby connect to the primary dn,
                                     default value is 1200s.
+  --disaster_type                Set the type of dual-cluster, It could be:
+                                 "dorado", "stream", the default value is "dorado".
 """
 
 
@@ -220,7 +220,7 @@ class ParamsHandler(object):
                           help='restart cluster when do gs_ddr switchover or failover.')
         parser.add_option('--stage=', dest='stage', default=None, type='string',
                           help='[Internal Usage] Stage when do gs_ddr. It could be 1 or 2')
-        parser.add_option('--disaster_type', dest='disaster_type', default="", type='string',
+        parser.add_option('--disaster_type', dest='disaster_type', default="dorado", type='string',
                           help='Disaster dual-cluster type: It could be "dorado", "stream"')
         return parser
 

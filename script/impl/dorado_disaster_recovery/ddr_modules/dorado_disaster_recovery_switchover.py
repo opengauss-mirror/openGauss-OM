@@ -50,6 +50,9 @@ class DisasterRecoverySwitchoverHandler(DoradoDisasterRecoveryBase):
             self.init_cluster_conf()
             self.check_dn_instance_params()
             self.check_is_under_upgrade()
+            self.params.disaster_type = DefaultValue.get_ss_disaster_mode()
+            if self.params.disaster_type:
+                self.logger.log("Successfully get the para disaster_type: %s." % self.params.disaster_type)
         try:
             self.dorado_switchover_single_inst()
             if (self.params.stage is None or int(self.params.stage) == 2):

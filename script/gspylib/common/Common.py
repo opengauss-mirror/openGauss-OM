@@ -3057,7 +3057,7 @@ class DefaultValue():
             if os.path.isfile(cm_agent_conf_temp_file):
                 with open(cm_agent_conf_temp_file, "r") as cma_conf_file:
                     content = cma_conf_file.read()
-                    ret = re.findall(r'agent_backup_open *= *1|agent_backup_open *= *1|ss_double_cluster_mode *= *2|ss_double_cluster_mode *= *2', content)
+                    ret = re.findall(r'agent_backup_open *= *1|agent_backup_open *= *2|ss_double_cluster_mode *= *1|ss_double_cluster_mode *= *2', content)
                     g_file.removeFile(cm_agent_conf_temp_file)
                     return True if ret else False
             else:
@@ -3066,6 +3066,22 @@ class DefaultValue():
             content = cma_conf_file.read()
             ret = re.findall(r'agent_backup_open *= *1|agent_backup_open *= *2|ss_double_cluster_mode *= *1|ss_double_cluster_mode *= *2', content)
         return True if ret else False
+
+    @staticmethod
+    def get_ss_disaster_mode():
+        """
+        function: get the DN para(ss_disaster_mode) from postgresql.conf
+        input: NA
+        output: NA
+        """
+        self.logger.log("Start get the key para: disaster_type")
+        cmd = "source %s; gs_guc check -c 'ss_disaster_mode' " % EnvUtil.getMpprcFile()
+        proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE)
+        stdout, stderr = proc.communicate()
+        if proc.returncode != 0:
+            raise Exception(ErrorCode.GAUSS_514['GAUSS_51400'] % cmd + "Error:\n%s" % stderr)
+        ret = re.findall(r'ss_disaster_mode=(\S+)', stdout)
+        return ret[2]
 
     @staticmethod
     def cm_exist_and_is_disaster_cluster(clusterinfo, logger):

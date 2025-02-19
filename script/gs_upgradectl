@@ -123,6 +123,9 @@ class Upgrade(ParallelBaseOM):
 
         # check if upgrade from 3.0.* version with compress table.
         self.check_compresstbl_compat = True
+        # check if exists mot table and need to modify guc param
+        self.modifyMotParam = False
+
 
     def usage(self):
         """

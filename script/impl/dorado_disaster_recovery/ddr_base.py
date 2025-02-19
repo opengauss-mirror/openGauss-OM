@@ -667,8 +667,11 @@ class DoradoDisasterRecoveryBase(StreamingBase):
             self.logger.debug("The primary dn does not exist on current cluster.")
             return
         self.primary_dn_ids = p_inst_list
-        sql_check = "select 1 from pg_catalog.pg_stat_get_wal_senders() where " \
+        sql_check_dorado = "select 1 from pg_catalog.pg_stat_get_wal_senders() where " \
                     "sync_state='Async' and peer_role='StandbyCluster_Standby' and peer_state='Normal';"
+        sql_check_stream = "select 1 from pg_catalog.pg_stat_get_wal_senders() where " \
+                    "peer_role='Standby' and peer_state='Normal';"
+        sql_check = sql_check_dorado if self.params.disaster_type == "dorado" else sql_check_stream
         param_list = [(dn_inst, sql_check) for db_node in self.cluster_info.dbNodes
                       for dn_inst in db_node.datanodes if dn_inst.instanceId in self.primary_dn_ids]
 

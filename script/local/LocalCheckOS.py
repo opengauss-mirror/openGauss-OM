@@ -827,11 +827,8 @@ def CheckNetWorkBonding(serviceIP, bondMode=False):
                     and os.path.exists(bondingConfFile)):
                 networkCardNumList = networkCardNumList + \
                                      checkBondMode(bondingConfFile, bondMode)
-            elif os.path.exists(teamConfFile):
-                networkCardNumList = networkCardNumList + checkTeamMode(teamConfFile, bondMode)
-            else:
-                g_logger.logExit(ErrorCode.GAUSS_506["GAUSS_50611"] +
-                                 "The cmd is " + cmd)
+        elif os.path.exists(teamConfFile) and check_team(networkCardNum):
+            networkCardNumList = networkCardNumList + checkTeamMode(teamConfFile, bondMode, networkCardNum)
         else:
             g_logger.log("BondMode Null")
     else:
@@ -840,11 +837,10 @@ def CheckNetWorkBonding(serviceIP, bondMode=False):
             if os.path.exists(bondingConfFile):
                 networkCardNumList = networkCardNumList + \
                                      checkBondMode(bondingConfFile, bondMode)
-            elif os.path.exists(teamConfFile):
-                networkCardNumList = networkCardNumList + checkTeamMode(teamConfFile, bondMode)
+            elif os.path.exists(teamConfFile) and check_team(networkCardNum):
+                networkCardNumList = networkCardNumList + checkTeamMode(teamConfFile, bondMode, networkCardNum)
             else:
-                g_logger.logExit(ErrorCode.GAUSS_506["GAUSS_50611"]
-                                 + "Without NetWorkConfFile mode.")
+                g_logger.log("Without NetWorkConfFile mode.")
         else:
             g_logger.log("BondMode Null")
     if (len(networkCardNumList) != 1):
@@ -888,36 +884,35 @@ def checkBondMode(bondingConfFile, isCheck):
             netWorkBondInfo.nums = netWorkBondInfo.nums + 1
     return netNameList
 
-def checkTeamMode(teamConfFile, isCheck):
+def checkTeamMode(teamConfFile, isCheck, network_card_num):
     """
     function : Check Team mode
     input  : String, bool
     output : List
     """
     teamModeList = []
-    networkCardNum = NetUtil.getNICNum(serviceIP)
+    teamMode = ""
 
-    cmd = "grep -w 'DEVICE' %s | awk  -F ':' '{print $NF}'" \
-          % teamConfFile
-    (status, output) = subprocess.getstatusoutput(cmd)
-    if (status != 0 or output.strip() == ""):
-        g_logger.debug("Failed to obtain network card teaming information."
-                       " Commands for getting: %s." % cmd)
-        g_logger.logExit(ErrorCode.GAUSS_506["GAUSS_50611"]
-                         + " Error: \n%s" % output)
+    if teamConfFile:
+        cmd = "grep -w 'DEVICETYPE' %s | awk  -F '=' '{print $NF}'" \
+            % teamConfFile
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if (status != 0 or output.strip() == ""):
+            g_logger.warn("Failed to obtain network card teaming information."
+                        " Commands for getting: %s." % cmd)
+            return []
 
     teamMode = output.strip()
 
     if isCheck:
         g_logger.log("Teaming Mode: %s" % teamMode)
     else:
-        cmd = "teamdctl %s state" % networkCardNum
+        cmd = "teamdctl %s state" % network_card_num
         (status, output) = subprocess.getstatusoutput(cmd)
         if (status != 0):
-            g_logger.debug("Failed to obtain network card teaming "
+            g_logger.warn("Failed to obtain network card teaming "
                            "information. Commands for getting: %s." % cmd)
-            g_logger.logExit(ErrorCode.GAUSS_506["GAUSS_50611"]
-                             + " Error: \n%s" % output)
+            return []
             
         match = re.search(r"active port: (\w+)", output)
         if match:
@@ -925,6 +920,15 @@ def checkTeamMode(teamConfFile, isCheck):
             teamModeList.append(active_port)
     return teamModeList
 
+def check_team(network_card_num):
+    """
+    function : check team
+    input  : NA
+    output : NA
+    """
+    cmd = f"nmcli conn show {network_card_num} | grep connection.type | awk -F ':' '{{print $2}}'"
+    (status, output) = subprocess.getstatusoutput(cmd)
+    return status == 0 and output.strip().lower() == "team"
 
 def getNetWorkTXRXValue(networkCardNum, valueType):
     """
@@ -936,7 +940,7 @@ def getNetWorkTXRXValue(networkCardNum, valueType):
                                                             valueType)
     (status, output) = subprocess.getstatusoutput(cmd)
     if (output.find("Operation not supported") >= 0
-            and DefaultValue.checkDockerEnv()):
+            and DefaultValue.checkDockerEnv() or check_team(networkCardNum)):
         g_logger.log("        Warning reason: Failed to obtain the"
                      " network card TXRX value in docker container. Commands "
                      "for obtain the network card TXRX: %s. Error: \n%s"
@@ -1300,7 +1304,7 @@ def CheckNetWorkCardPara(serviceIP, isSetting=False):
         expectMTUValue = netParameterList['mtu'].strip()
 
     # set network card mtu and queue length
-    networkCardNumList = DefaultValue.CheckNetWorkBonding(serviceIP)
+    networkCardNumList = CheckNetWorkBonding(serviceIP, True)
 
     # if len=1, it means that there is no bonding
     if (len(networkCardNumList) == 1):

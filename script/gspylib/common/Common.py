@@ -3074,7 +3074,6 @@ class DefaultValue():
         input: NA
         output: NA
         """
-        self.logger.log("Start get the key para: disaster_type")
         cmd = "source %s; gs_guc check -c 'ss_disaster_mode' " % EnvUtil.getMpprcFile()
         proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE)
         stdout, stderr = proc.communicate()

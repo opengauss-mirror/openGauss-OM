@@ -59,8 +59,7 @@ class DoradoQueryHandler(DoradoDisasterRecoveryBase):
         if self.main_standby_ids or (not self.primary_dn_ids):
             self.logger.debug("Ignore update archive for disaster_standby cluster.")
             return archive_status
-        sql_check = "select 1 from pg_catalog.pg_stat_get_wal_senders() where sync_state" \
-                    "='Async' and peer_role='StandbyCluster_Standby' and peer_state='Normal';"
+        sql_check = "select * from pg_catalog.pg_stat_get_wal_senders();"
         dn_instances = [inst for node in self.cluster_info.dbNodes for inst in node.datanodes
                         if inst.instanceId in self.primary_dn_ids]
         self.logger.debug("Check archive with cmd:%s." % sql_check)

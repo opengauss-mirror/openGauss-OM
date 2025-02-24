@@ -2313,7 +2313,8 @@ def  cleanInstallPath():
     if commit_id:
         dss_app = os.path.realpath(
             os.path.join(os.path.dirname(installPath), f'dss_app_{commit_id}'))
-        cmd = "(if [ -d '%s' ]; then mv '%s' %s; fi)" % (dss_app, dss_app, tmpDir)
+        cmd = "(if [ -d '%s/%s' ]; then rm -rf %s/%s; fi; if [ -d '%s' ]; then mv '%s' %s; fi)" % (
+            tmpDir, f'dss_app_{commit_id}', tmpDir, f'dss_app_{commit_id}', dss_app, dss_app, tmpDir)
         g_logger.debug("Command for cleaning install path: %s." % cmd)
         CmdExecutor.execCommandLocally(cmd)
 

@@ -3455,6 +3455,7 @@ class UpgradeImpl:
             if not postUpgrade:
                 self.context.logger.debug("Not post upgrade.")
                 self.setUpgradeFromParam(self.context.oldClusterNumber)
+                self.reload_cm_proc()
                 if self.context.action == const.ACTION_INPLACE_UPGRADE:
                     # Must set guc after start cluster by setUpgradeMode, because checking guc
                     # needs to connect database to execute sql statement.

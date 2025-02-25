@@ -337,6 +337,27 @@ class DoradoDisasterRecoveryBase(StreamingBase):
         self.logger.log("Start set ss_disaster_mode")
         self.set_datanode_guc("ss_disaster_mode", self.params.disaster_type, "set")
 
+    def judge_ss_cluster_role(self):
+        """
+        function: determine the role of the current cluster
+        input: NA
+        output: "single","disaster_standby","primary"
+        """
+        cluster_current_role = "single"
+        cmd = "source %s; cm_ctl view | grep cmDataPath | awk -F [:] '{print $2}' | head -n 1" % EnvUtil.getMpprcFile()
+        stdout = DefaultValue.execute_command(cmd)
+        cm_agent_conf_file = stdout + "/cm_agent/cm_agent.conf"
+
+        content = DefaultValue.get_cm_agent_conf_content(self.cluster_info, cm_agent_conf_file)
+        ret_standby = re.findall(r'ss_double_cluster_mode *= *2', content)
+        ret_primary = re.findall(r'ss_double_cluster_mode *= *1', content)
+
+        if ret_standby:
+            return "disaster_standby"
+        elif ret_primary:
+            return "primary"
+        return cluster_current_role
+
     def update_pg_hba(self):
         """
         update pg_hba.conf, read config_param.json file and set other cluster ip

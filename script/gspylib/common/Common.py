@@ -3023,42 +3023,54 @@ class DefaultValue():
         return True
 
     @staticmethod
+    def execute_command(cmd):
+        """
+        function: execute corresponding command(cmd)
+        input: NA
+        output: NA
+        """
+        proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE)
+        stdout, stderr = proc.communicate()
+        if proc.returncode != 0:
+            raise Exception(ErrorCode.GAUSS_514['GAUSS_51400'] % cmd + "Error:\n%s" % stderr)
+        return stdout.strip()
+
+    @staticmethod
+    def get_cm_agent_conf_content(clusterinfo, cm_agent_conf_file):
+        """
+        function: get content of the cm_agent.conf or cm_agent_tmp.conf
+        input: NA
+        output: NA
+        """
+        if os.path.isfile(cm_agent_conf_file):
+            with open(cm_agent_conf_file, "r") as cma_conf_file:
+                return cma_conf_file.read()
+
+        host_list = clusterinfo.getClusterNodeNames()
+        cm_agent_conf_temp_file = os.path.join(EnvUtil.getTmpDirFromEnv(), "cm_agent_tmp.conf")
+        for host_ip in host_list:
+            get_file_cmd = g_file.SHELL_CMD_DICT["scpFileFromRemote"] % \
+                           (host_ip, NetUtil.GetHostIpOrName(), cm_agent_conf_file, cm_agent_conf_temp_file)
+            DefaultValue.execute_command(get_file_cmd)
+            if os.path.isfile(cm_agent_conf_temp_file):
+                with open(cm_agent_conf_temp_file, "r") as cma_conf_file:
+                    content = cma_conf_file.read()
+                g_file.removeFile(cm_agent_conf_temp_file)
+                return content
+        raise Exception(ErrorCode.GAUSS_502['GAUSS_50201'] % cm_agent_conf_file)
+
+    @staticmethod
     def is_disaster_cluster(clusterinfo):
         """
         function: determine cluster status normal or disaster
         input: NA
         output: NA
         """
-        cmd = "source %s; cm_ctl view | grep cmDataPath | awk -F [:] '{print $2}' | head -n 1" % \
-              EnvUtil.getMpprcFile()
-        proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE)
-        stdout, stderr = proc.communicate()
-        if proc.returncode != 0:
-            raise Exception(ErrorCode.GAUSS_514['GAUSS_51400'] % cmd + "Error:\n%s" % stderr)
-        cm_agent_conf_file = stdout.strip() + "/cm_agent/cm_agent.conf"
-        if not os.path.isfile(cm_agent_conf_file):
-            host_list = clusterinfo.getClusterNodeNames()
-            cm_agent_conf_temp_file = os.path.join(EnvUtil.getTmpDirFromEnv(), "cm_agent_tmp.conf")
-            for host_ip in host_list:
-                get_file_cmd = g_file.SHELL_CMD_DICT["scpFileFromRemote"] % \
-                  (host_ip, NetUtil.GetHostIpOrName(), cm_agent_conf_file, cm_agent_conf_temp_file)
-                proc = FastPopen(get_file_cmd, stdout=PIPE, stderr=PIPE)
-                stdout, stderr = proc.communicate()
-                if not os.path.isfile(cm_agent_conf_temp_file):
-                    continue
-                else:
-                    break
-            if os.path.isfile(cm_agent_conf_temp_file):
-                with open(cm_agent_conf_temp_file, "r") as cma_conf_file:
-                    content = cma_conf_file.read()
-                    ret = re.findall(r'agent_backup_open *= *1|agent_backup_open *= *2|ss_double_cluster_mode *= *1|ss_double_cluster_mode *= *2', content)
-                    g_file.removeFile(cm_agent_conf_temp_file)
-                    return True if ret else False
-            else:
-                raise Exception(ErrorCode.GAUSS_502['GAUSS_50201'] % cm_agent_conf_file)
-        with open(cm_agent_conf_file, "r") as cma_conf_file:
-            content = cma_conf_file.read()
-            ret = re.findall(r'agent_backup_open *= *1|agent_backup_open *= *2|ss_double_cluster_mode *= *1|ss_double_cluster_mode *= *2', content)
+        cmd = "source %s; cm_ctl view | grep cmDataPath | awk -F [:] '{print $2}' | head -n 1" % EnvUtil.getMpprcFile()
+        stdout = DefaultValue.execute_command(cmd)
+        cm_agent_conf_file = stdout + "/cm_agent/cm_agent.conf"
+        content = DefaultValue.get_cm_agent_conf_content(clusterinfo, cm_agent_conf_file)
+        ret = re.findall(r'agent_backup_open *= *1|agent_backup_open *= *2|ss_double_cluster_mode *= *1|ss_double_cluster_mode *= *2', content)
         return True if ret else False
 
     @staticmethod

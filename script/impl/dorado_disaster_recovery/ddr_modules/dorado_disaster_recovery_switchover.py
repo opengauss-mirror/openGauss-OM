@@ -50,6 +50,12 @@ class DisasterRecoverySwitchoverHandler(DoradoDisasterRecoveryBase):
             self.init_cluster_conf()
             self.check_dn_instance_params()
             self.check_is_under_upgrade()
+            cluster_current_role = self.judge_ss_cluster_role()
+            if cluster_current_role == self.params.mode or cluster_current_role == "single":
+                self.logger.log("Switchover operation for SS dual_cluster should be: \n"
+                                "primary --demote--> disaster_standby & disaster_standby --promote--> primary, \n"
+                                "please check your switchover cmd & make sure your cmd correct.")
+                return
             self.params.disaster_type = DefaultValue.get_ss_disaster_mode()
             if self.params.disaster_type:
                 self.logger.log("Successfully get the para disaster_type: %s." % self.params.disaster_type)

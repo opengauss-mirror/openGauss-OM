@@ -446,6 +446,26 @@ class OmImplOLAP(OmImpl):
 
         self.logger.log("Successfully generated dynamic configuration file.")
 
+    def query_node_role(self, name, data_dir):
+        """
+        function: query node role
+        input  : NA
+        output : NA
+        """
+        cmd = "source %s; gs_ctl query -D %s" % (self.mpprcFile, data_dir)
+        if NetUtil.GetHostIpOrName() != name:
+            cmd = "pssh -s -H %s \'%s\'" % (name, cmd)
+
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            self.logger.logExit("Failed to get cluster status. The cmd is: %s; \noutput is: %s" % (cmd, output))
+    
+        local_role = re.findall(r"local_role.*: (.*?)\n", output)
+        if len(local_role) < 1:
+            self.logger.logExit("Failed to get local_role. Error: %s" % output)
+        
+        return local_role[0]
+
     def do_generate_xml(self):
         """
         function: Generate XML based on cluster
@@ -454,6 +474,13 @@ class OmImplOLAP(OmImpl):
         """
         self.logger.log("Start generate xml.")
         gen_xml = GenerateXml()
+
+        for node in self.context.clusterInfo.dbNodes:
+            local_role = self.query_node_role(node.name, node.datanodes[0].datadir)
+            if local_role == "Primary":
+                node.datanodes[0].instanceType = 0
+            else:
+                node.datanodes[0].instanceType = 1
         try:
             if not self.context.g_opts.add_hostnames:
                 gen_xml.do_generate_xml(self.context.clusterInfo)

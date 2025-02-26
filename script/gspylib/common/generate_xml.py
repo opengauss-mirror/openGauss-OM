@@ -254,7 +254,9 @@ class GenerateXml:
         datanode = cluster_info.dbNodes[0].datanodes[0].datadir
         datanode1_list = []
         datanode1_list.append(datanode)
-        for node in cluster_info.dbNodes[1:]:
+        for node in cluster_info.dbNodes:
+            if node.datanodes[0].instanceType == 0:
+                continue
             datanode1_list.append(node.name)
             datanode1_list.append(datanode)
         datanode1 = ",".join(datanode1_list)

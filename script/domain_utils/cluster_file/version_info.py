@@ -136,7 +136,7 @@ class VersionInfo(object):
         return version, number, commit_id
 
     @staticmethod
-    def get_release_date_from_app(app):
+    def get_release_date_from_app(app, lib_path=""):
         """
         function: get the infomation of gaussdb release date
         :param: gaussdb absolute path
@@ -146,7 +146,12 @@ class VersionInfo(object):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % app)
         if not os.path.isfile(app):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50210"] % app)
-        cmd = app + " -V"
+        cmd = ""
+        if lib_path == "":
+            cmd = app + " -V"
+        else:
+            cmd = "export LD_LIBRARY_PATH={}:$LD_LIBRARY_PATH && {} -V".format(lib_path, app)
+        
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_501["GAUSS_50110"] % cmd)
@@ -184,32 +189,27 @@ class VersionInfo(object):
         pkg_prefix = _parse_pkg_prefix(version_file)
         # upack and read version.cfg of openGauss-server package
         # the existing om version.cfg will be overwritten
-        cmd = 'cd {} && tar -xpf {}*.tar.bz2 ./bin/gaussdb'.format(root, pkg_prefix)
+        cmd = 'cd {} && mkdir temp && cd temp && tar -xpf ../{}*.tar.bz2 ./bin/gaussdb ./lib'.format(root, pkg_prefix)
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
-            cmd = 'cd {} && tar -xpf `ls openGauss-Server*.tar.bz2 | tail -1` ./bin/gaussdb'.format(root)
+            cmd = 'cd {} && mkdir temp && cd temp && tar -xpf `ls ../openGauss-Server*.tar.bz2 | tail -1` ./bin/gaussdb ./lib'.format(root)
             status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50217"] % "bin/gaussdb" +
                                    "The cmd is %s. " % cmd +
                                    "The output is %s." % output)
         
-        gaussdb_file = os.path.join(root, 'bin/gaussdb')
-        release_date = VersionInfo.get_release_date_from_app(gaussdb_file)
+        gaussdb_file = os.path.join(root, 'temp/bin/gaussdb')
+        lib_path = os.path.join(root, 'temp/lib')
+        release_date = VersionInfo.get_release_date_from_app(gaussdb_file, lib_path)
 
-        cmd = 'cd {} && rm bin/gaussdb'.format(root)
+        cmd = 'cd {} && rm -rf temp'.format(root)
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50217"] % "bin/gaussdb" +
                                    "The cmd is %s. " % cmd +
                                    "The output is %s." % output)
-        
-        cmd = 'cd {} && rmdir bin'.format(root)
-        status, output = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50217"] % "bin" +
-                                   "The cmd is %s. " % cmd +
-                                   "The output is %s." % output)
+
         return release_date
 
     @staticmethod

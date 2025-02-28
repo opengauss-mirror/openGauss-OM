@@ -22,12 +22,14 @@
 
 import os
 import sys
+import pwd
 import json
 import optparse
 import getpass
 from impl.streaming_disaster_recovery.streaming_base import StreamingConstants
 from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.ErrorCode import ErrorCode
+from base_utils.os.env_util import EnvUtil
 from base_utils.security.security_checker import SecurityChecker, ValidationError
 from domain_utils.cluster_file.version_info import VersionInfo
 
@@ -222,6 +224,8 @@ class ParamsHandler(object):
                           help='[Internal Usage] Stage when do gs_ddr. It could be 1 or 2')
         parser.add_option('--disaster_type', dest='disaster_type', default="dorado", type='string',
                           help='Disaster dual-cluster type: It could be "dorado", "stream"')
+        parser.add_option('-f', dest='force', action='store_true',
+                          help='-f|Force remove the last time start process file.')                  
         return parser
 
     def __print_usage(self):
@@ -240,6 +244,22 @@ class ParamsHandler(object):
             print("%s %s" % (sys.argv[0].split("/")[-1],
                              VersionInfo.COMMON_VERSION))
             sys.exit(0)
+
+    def __force_remove_start_file(self):
+        """
+        Remove the last start process file
+        """
+        user = pwd.getpwuid(os.getuid()).pw_name
+        dorado_file_dir = EnvUtil.getEnvironmentParameterValue("PGHOST", user)
+        if self.params.force:
+            self.logger.debug("Remove ddr start process file for start.")
+            process_file_primary = os.path.realpath(os.path.join(dorado_file_dir, "ddr_cabin/.ddr_start_primary.step"))
+            process_file_standby = os.path.realpath(os.path.join(dorado_file_dir, "ddr_cabin/.ddr_start_standby.step"))
+            if os.path.exists(process_file_primary):
+                os.remove(process_file_primary)
+            if os.path.exists(process_file_standby):
+                os.remove(process_file_standby)
+            self.logger.debug("Successfully remove start process file on all connected nodes.")
 
     def __cluster_conf_parser(self, file_path):
         """
@@ -295,6 +315,8 @@ class ParamsHandler(object):
         self.params, _ = parser.parse_args()
         self.__print_usage()
         self.__print_version_info()
+        if self.params.force:
+            self.__force_remove_start_file()
         if not hasattr(self.params, 'task') or not self.params.task:
             raise ValidationError(ErrorCode.GAUSS_500["GAUSS_50001"] % 't' + ".")
         if self.params.task not in StreamingConstants.STREAMING_JSON_PARAMS.keys():

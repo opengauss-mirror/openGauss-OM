@@ -188,7 +188,8 @@ Usage:
   gs_sshexkey -f HOSTFILE [--skip-hostname-set] [...] [-l LOGFILE]
 
 General options:
-  -f                          Host file containing the IP address of nodes.
+  -f                          Host file containing the IP address or both Ip address and port of nodes. 
+                              (eg: ip1,port1)
   -l                          Path of log file.
       --skip-hostname-set     Whether to skip hostname setting. (The default value is set.)
   -?, --help                  Show help information for this utility,

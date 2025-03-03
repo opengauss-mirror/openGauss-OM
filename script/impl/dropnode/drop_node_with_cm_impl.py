@@ -370,6 +370,8 @@ class DropNodeWithCmImpl(DropnodeImpl):
         xlog_list = out.split('\n')
         del_cmd = ""
         for xlog_n in xlog_list:
+            if xlog_n == "pg_xlog":
+                continue
             if int(xlog_n[-1]) not in res_ids:
                 dw_path = 'pg_doublewrite' + xlog_n[-1]
                 pri_vgname = DssInst.get_private_vgname_by_ini(dss_home, int(xlog_n[-1]))

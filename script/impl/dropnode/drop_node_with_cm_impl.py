@@ -205,6 +205,9 @@ class DropNodeWithCmImpl(DropnodeImpl):
         """
         Update ss_interconnect_url on old nodes.
         """
+        if not self.dss_mode:
+            return
+
         self.wait_reform_finish(node_list)
         pg_port = EnvUtil.getEnv("PGPORT")
         pgdata_path = EnvUtil.getEnv("PGDATA") + os.sep + "postgresql.conf"
@@ -285,13 +288,19 @@ class DropNodeWithCmImpl(DropnodeImpl):
             self.ss_restart_cluster()
             return
 
+        gaussHome = EnvUtil.getEnv("GAUSSHOME")
+        gaussLog = EnvUtil.getEnv("GAUSSLOG")
+        hostList = [node.name for node in self.context.clusterInfo.dbNodes]
+
+        # Cancelling om_monitor crontab on all nodes
+        self.logger.log("Cancelling om_monitor crontab on all nodes ...")
+        cancleOmMonitorCmd = "crontab -l | sed '/om_monitor/s/^/#/' | crontab -".format(user=self.user)
+        CmdExecutor.execCommandWithMode(cancleOmMonitorCmd, self.ssh_tool, host_list=hostList)
+
         self.logger.log("Restarting cm_server cluster ...")
         stopCMProcessesCmd = "pkill -9 om_monitor -U {user}; pkill -9 cm_agent -U {user}; " \
             "pkill -9 cm_server -U {user};".format(user=self.user)
         self.logger.debug("stopCMProcessesCmd: " + stopCMProcessesCmd)
-        gaussHome = EnvUtil.getEnv("GAUSSHOME")
-        gaussLog = EnvUtil.getEnv("GAUSSLOG")
-        hostList = [node.name for node in self.context.clusterInfo.dbNodes]
         CmdExecutor.execCommandWithMode(stopCMProcessesCmd, self.ssh_tool, host_list=hostList)
         # for flush dcc configuration
         DefaultValue.remove_metadata_and_dynamic_config_file(self.user, self.ssh_tool, self.logger)
@@ -300,6 +309,12 @@ class DropNodeWithCmImpl(DropnodeImpl):
         gsctlReloadCmd = "source %s; gs_ctl reload -N all -D %s" % (self.envFile, dataPath)
         self.logger.debug("gsctlReloadCmd: " + gsctlReloadCmd)
         CmdExecutor.execCommandWithMode(gsctlReloadCmd, self.ssh_tool, host_list=[self.localhostname])
+
+        # Restoring om_monitor crontab on all nodes
+        self.logger.log("Restoring om_monitor crontab on all nodes ...")
+        restoreOmMonitorCmd = "crontab -l | sed '/om_monitor/s/^#//' | crontab -".format(user=self.user)
+        CmdExecutor.execCommandWithMode(restoreOmMonitorCmd, self.ssh_tool, host_list=hostList)
+
         # start CM processes
         startCMProcessedCmd = "source %s; nohup %s/bin/om_monitor -L %s/cm/om_monitor >> /dev/null 2>&1 &" % \
             (self.envFile, gaussHome, gaussLog)

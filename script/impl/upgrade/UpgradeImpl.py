@@ -1373,6 +1373,54 @@ class UpgradeImpl:
             self.context.logger.log("NOTICE: Failed to set upgrade_from, "
                                     "please set it manually with command: \n%s" % str(cmd))
 
+    def add_upgrade_from(self):
+        """
+        function: add upgrade_from in cm_server.conf if the parameter not in cm_server.conf.
+        """
+        cm_nodes = [node for node in self.context.clusterInfo.dbNodes if node.cmservers]
+        for node in cm_nodes:
+            cms_dir = node.cmservers[0].datadir
+            cms_conf = os.path.join(cms_dir, "cm_server.conf")
+            ssh_tool = SshTool([node.name])
+            cmd = "if [ `grep upgrade_from cm_server.conf | wc -l` -eq 0 ]; " \
+                  "then echo 'upgrade_from = 0' >> %s; fi" % cms_conf
+            status, output = ssh_tool.getSshStatusOutput(cmd, [node.name])
+            if status[node.name] != DefaultValue.SUCCESS:
+                raise Exception("Failed to add upgrade_from in cm_server.conf on %s." % node.name)
+        self.context.logger.debug("Successfully find or add ugprade_from in cm_server.conf on all nodes.")
+
+    def set_cm_server_upgradefrom(self, cluster_version_number, is_roll_back):
+        """
+        function: set upgrade_from cm_server parameter
+        Input: rollbackflag
+        output: NA
+        """
+        if not DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) > 0:
+            self.context.logger.debug("No need to set cm parameter.")
+            return
+        if is_roll_back:
+            return
+        self.context.logger.debug("Set upgrade_from guc parameter.")
+        self.add_upgrade_from()
+        working_grand_version = int(float(cluster_version_number) * 1000)
+        cmd = "cm_ctl set --param --server -k 'upgrade_from=%s';cm_ctl reload --param --server" % working_grand_version
+        self.context.logger.debug("setting cmserver parameter: %s." % cmd)
+        try:
+            (status, output) = CmdUtil.retryGetstatusoutput(cmd)
+            if status != 0:
+                self.context.logger.debug("Set upgrade_from failed. "
+                                          "cmd:%s\nOutput:%s" % (cmd, str(output)))
+                raise Exception(
+                    ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + "Error: \n%s" % str(output))
+            self.context.logger.debug("Successfully set cmserver parameter "
+                                      "upgrade_from=%s." % working_grand_version)
+        except Exception as er:
+            if self.context.action == const.ACTION_INPLACE_UPGRADE or \
+                    not self.context.forceRollback:
+                raise Exception(str(er))
+            self.context.logger.log("NOTICE: Failed to set upgrade_from, "
+                                    "please set it manually with command: \n%s" % str(cmd))
+
     def setUpgradeMode(self, mode, set_type="reload"):
         """
         function: set upgrade_mode parameter
@@ -1939,6 +1987,7 @@ class UpgradeImpl:
         
         if DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) > 0:
             self.setUpgradeFromParam(self.context.oldClusterNumber)
+            self.set_cm_server_upgradefrom(self.context.oldClusterNumber, isRollback)
             self.reloadCmAgent()
             self.reload_cmserver()
         self.createCheckpoint()
@@ -6864,8 +6913,8 @@ END;"""
         try:
             hostList = copy.deepcopy(self.context.clusterNodes)
             self.context.execCommandInSpecialNode(cmd, hostList)
-            # wait the cluster be normal
-            self.waitClusterNormalDegrade()
+            self.context.logger.debug(
+                "No need to wait the cluster be normal when reload cmagent, do it when reload cmserver.")
             self.context.logger.debug("Success to reload cmagent")
         except Exception as er:
             if self.context.action == const.ACTION_INPLACE_UPGRADE or not \

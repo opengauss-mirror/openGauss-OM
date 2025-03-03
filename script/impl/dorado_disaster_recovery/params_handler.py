@@ -300,7 +300,7 @@ class ParamsHandler(object):
         """
         Init params if need default value
         """
-        if not self.params.timeout.isdigit():
+        if not self.params.timeout.isdigit() or int(self.params.timeout) == 0:
             raise ValidationError(ErrorCode.GAUSS_500["GAUSS_50004"] % "--time-out")
         self.params.waitingTimeout = int(self.params.timeout)
 

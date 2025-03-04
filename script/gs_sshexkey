@@ -785,7 +785,7 @@ General options:
         if not self.should_create_ssh_config():
             return
         self.logger.log("Write ssh config file.")
-        FileUtil.createFileInSafeMode(self.ssh_config)
+        FileUtil.createFile(self.ssh_config, True, DefaultValue.KEY_FILE_MODE)
         for ip in self.hostList:
             ssh_port = self.get_ssh_port_by_ip(ip)
             FileUtil.delete_pattern_and_next_lines(self.ssh_config, "Host %s" % ip, 5)

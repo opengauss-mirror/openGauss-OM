@@ -1179,7 +1179,7 @@ class UpgradeImpl:
             self.context.logger.debug("Command for killing all cm_server child process: %s." % cmd)
             self.context.logger.debug("The result of kill cm_server child process commands. "
                                       "Status:%s, Output:%s." % (status, output))
-            self.waitClusterNormalDegrade(waitTimeOut=60)
+            self.waitClusterNormalDegrade(waitTimeOut=120)
 
             self.context.logger.debug("Successfully closed the CMServer parameters.", "constant")
         except Exception as er:
@@ -7394,7 +7394,7 @@ END;"""
                                 "or degrade.")
         endTime = datetime.now() + timedelta(seconds=int(waitTimeOut))
         while True:
-            cmd = "source %s;gs_om -t status --detail" % \
+            cmd = "source %s;gs_om -t status --detail --time-out=5" % \
                   self.context.userProfile
             (status, output) = subprocess.getstatusoutput(cmd)
             if status == 0 and (output.find("Normal") >= 0 or

@@ -590,8 +590,8 @@ class DoradoDisasterRecoveryBase(StreamingBase):
         if self.local_host == main_standby_inst.hostname:
             kill_cmd = "source %s; dsscmd stopdss" % (self.mpp_file)
         else:
-            kill_cmd = "source %s; pssh -s -t 3 -H %s \"dsscmd stopdss\"" \
-                       % (self.mpp_file, main_standby_inst.hostname)
+            kill_cmd = "source %s; pssh -s -t 3 -H %s \"source %s; dsscmd stopdss\"" \
+                       % (self.mpp_file, main_standby_inst.hostname, self.mpp_file)
         self.logger.debug("Stop dssserver on node [%s],cmd: %s." % (main_standby_inst.hostname, kill_cmd))
         sts, out = CmdUtil.getstatusoutput_by_fast_popen(kill_cmd)
         if sts not in [0, 1]:

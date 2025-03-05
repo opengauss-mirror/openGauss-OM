@@ -6946,6 +6946,12 @@ END;"""
         self.context.logger.debug("reloading all cmserver process: %s" % cmd)
         try:
             self.context.execCommandInSpecialNode(cmd, cm_nodes)
+            # restart cm component before waiting cluster be normal
+            cmd = "gs_om -t restart --component=CM"
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
+                            "Command:%s. Error:\n%s" % (cmd, output))
             # wait the cluster be normal
             self.waitClusterNormalDegrade()
             self.context.logger.debug("Success to reload cmserver")

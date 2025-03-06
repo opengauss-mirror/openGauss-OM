@@ -609,6 +609,8 @@ def checkuser():
         if not isClusterUser:
             raise CheckException("GAUSS-53055",
                 "The user %s is not valid cluster user" % g_context.user)
+        node_ips = g_opts.cluster.getClusterSshIps()[0]
+        g_context.ssh_port_map = SshdConfig.get_ssh_ports_for_hosts(node_ips)
         if g_opts.localMode or g_opts.distributing:
             return
 
@@ -617,7 +619,6 @@ def checkuser():
         if (len(dbNameList) == 1 and
                 dbNameList[0] == NetUtil.GetHostIpOrName()):
             return
-        node_ips = g_opts.cluster.getClusterSshIps()[0]
         appPath = EnvUtil.getEnv('GPHOME', g_opts.cluster.appPath)
         psshPath = os.path.join(appPath, 'script/gspylib/pssh/bin/pssh')
         cmd = "%s -H %s 'id' " % (psshPath, " -H ".join(node_ips))
@@ -645,9 +646,6 @@ def checkuser():
                 raise CheckException("GAUSS-53057",
                     "Failed to check user trust. Error:/n%s" % output)
         
-        # get ssh port for all ssh ips
-        g_context.ssh_port_map = SshdConfig.get_ssh_ports_for_hosts(node_ips)
-
 
 def createPath(path, user=""):
     if path == ClusterConstants.DEV_NULL:

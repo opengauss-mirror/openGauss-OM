@@ -127,18 +127,18 @@ META = {
                 key="oid",
                 key_desc='oid为%s的数据类型',
                 # 忽略pg_toast
-                # todo, 暂时忽略部分类型
-                filters=" oid < 10000 and typname not like 'pg_toast_%' and typname not in ('gs_matview_log','time_stamp','anytype','anydata','anydataset') ",
-                ignore_col='tydefaultbin,typacl',
+                # todo gs_matview_log
+                filters=" oid < 10000 and typname not like 'pg_toast_%' and typname not in ('gs_matview_log')",
+                ignore_col='typdefaultbin,typacl',
                 oid_col='typnamespace,typrelid,typelem'
             ),
             ContentRulesMeta(
                 key="(select nspname from pg_namespace n where n.oid = typnamespace) || '.' || typname",
                 key_desc='数据类型%s',
                 # 忽略pg_toast
-                # todo, 暂时忽略部分类型
-                filters=" 9999 < oid and typname not like 'pg_toast_%' and oid < 16384 and typname not in ('gs_matview_log','time_stamp','anytype','anydata','anydataset') ",
-                ignore_col='oid,tydefaultbin,typacl',
+                # todo gs_matview_log
+                filters=" 9999 < oid and oid < 16384 and typname not like 'pg_toast_%' and typname not in ('gs_matview_log')",
+                ignore_col='oid,typdefaultbin,typacl',
                 oid_col='typnamespace,typowner,typrelid,typelem,typarray,typbasetype,typcollation'
             )
         ]
@@ -147,7 +147,6 @@ META = {
         Category.TYPE,
         '记录所有的对象数据类型信息',
         True,
-        # todo，暂时忽略
         []
     ),
     'pg_catalog.pg_attribute': Meta(
@@ -163,8 +162,7 @@ META = {
         True,
         [
             ContentRulesMeta(Category.FUNCTION,
-                # todo, 暂时忽略部分函数
-                complete_sql="select 'count(*)', count(*) from pg_proc where oid < 16384 and proname not in ('prepare_snapshot_internal','prepare_snapshot','_pg_char_max_length','anytype','begincreate','setinfo','endcreate','getinfo','anydata','convertbdouble','accessbdouble','convertblob','accessblob','convertchar','accesschar','convertdate','accessdate','convertnchar','accessnchar','convertnvarchar2','accessnvarchar2','convertnumber','accessnumber','convertraw','accessraw','converttimestamp','accesstimestamp','converttimestamptz','accesstimestamptz','convertvarchar','accessvarchar','convertvarchar2','accessvarchar2','gettype','gettypename','anydataset','setanydatasetexcept','getanydatasetexcept','begincreate','addinstance','endcreate','setbdouble','getbdouble','setblob','getblob','setchar','getchar','setdate','getdate','setnchar','getnchar','setnumber','getnumber','setnvarchar2','getnvarchar2','setraw','getraw','settimestamp','gettimestamp','settimestamptz','gettimestamptz','setvarchar','getvarchar','setvarchar2','getvarchar2','getcount','gettype','gettypename')",
+                complete_sql="select 'count(*)', count(*) from pg_proc where oid < 16384 ",
                 key_desc = '数量统计方法%s',
                 complete_sql_desc = 'pg_proc内 oid < 16384 的系统对象(包括函数、存储过程)总数量'
             ),
@@ -182,8 +180,7 @@ META = {
                     " pg_get_function_arguments(oid)"
                     ")",
                 key_desc='函数%s',
-                # todo, 暂时忽略部分函数
-                filters=" 9999 < oid and oid < 16384 and proname not in ('prepare_snapshot_internal','prepare_snapshot','_pg_char_max_length','anytype','begincreate','setinfo','endcreate','getinfo','anydata','convertbdouble','accessbdouble','convertblob','accessblob','convertchar','accesschar','convertdate','accessdate','convertnchar','accessnchar','convertnvarchar2','accessnvarchar2','convertnumber','accessnumber','convertraw','accessraw','converttimestamp','accesstimestamp','converttimestamptz','accesstimestamptz','convertvarchar','accessvarchar','convertvarchar2','accessvarchar2','gettype','gettypename','anydataset','setanydatasetexcept','getanydatasetexcept','begincreate','addinstance','endcreate','setbdouble','getbdouble','setblob','getblob','setchar','getchar','setdate','getdate','setnchar','getnchar','setnumber','getnumber','setnvarchar2','getnvarchar2','setraw','getraw','settimestamp','gettimestamp','settimestamptz','gettimestamptz','setvarchar','getvarchar','setvarchar2','getvarchar2','getcount','gettype','gettypename') ",
+                filters=" 9999 < oid and oid < 16384 ",
                 ignore_col='oid,proargtypes,proallargtypes,proargdefaults,proacl,proargtypesext,allargtypes,allargtypesext,prosrc',
                 oid_col='pronamespace,prolang,provariadic,prorettype,propackageid',
                 bool_col='proshippable'
@@ -197,8 +194,7 @@ META = {
                              "       md5(pg_get_functiondef(p.oid)::text) "
                              "from pg_proc p left join pg_namespace n on p.pronamespace = n.oid "
                              "where p.oid < 16384 and p.proisagg=false and p.proiswindow=false and prolang < 10000 "
-                             # todo, 暂时忽略部分函数
-                             "and p.proname not in ('prepare_snapshot_internal','prepare_snapshot','_pg_char_max_length','anytype','begincreate','setinfo','endcreate','getinfo','anydata','convertbdouble','accessbdouble','convertblob','accessblob','convertchar','accesschar','convertdate','accessdate','convertnchar','accessnchar','convertnvarchar2','accessnvarchar2','convertnumber','accessnumber','convertraw','accessraw','converttimestamp','accesstimestamp','converttimestamptz','accesstimestamptz','convertvarchar','accessvarchar','convertvarchar2','accessvarchar2','gettype','gettypename','anydataset','setanydatasetexcept','getanydatasetexcept','begincreate','addinstance','endcreate','setbdouble','getbdouble','setblob','getblob','setchar','getchar','setdate','getdate','setnchar','getnchar','setnumber','getnumber','setnvarchar2','getnvarchar2','setraw','getraw','settimestamp','gettimestamp','settimestamptz','gettimestamptz','setvarchar','getvarchar','setvarchar2','getvarchar2','getcount','gettype','gettypename')",
+                             "and p.proname not in ('_pg_char_max_length')", # 格式差异忽略
                 key_desc='函数%s的定义',
                 complete_sql_desc='通过pg_get_functiondef()来检查一般函数的定义'
             )
@@ -217,15 +213,16 @@ META = {
         True,
         [
             ContentRulesMeta(
-                complete_sql="select 'count(*)', count(*) from pg_class where oid < 16384 and relname not like 'pg_toast_%'", # 忽略pg_toast
+                # todo 'gs_matview_log', 'pg_object_type'
+                complete_sql="select 'count(*)', count(*) from pg_class where oid < 16384 and relname not like 'pg_toast_9815%' ",
                 key_desc='数量统计方法%s',
                 complete_sql_desc='pg_class内oid < 16384(包括表、索引、视图、序列等)总数量'
             ),
             ContentRulesMeta(
                 key="format('%s.%s',(select nspname from pg_namespace n where n.oid = relnamespace), relname)",
                 key_desc='名为%s的表或索引或视图等',
-                # todo，暂时忽略部分relation
-                filters=" oid < 10000 and relname not like 'pg_toast_%' and relname not in ('gs_matview_log', 'pg_object_type', 'pg_index', 'pg_am', 'pg_object') ",
+                # todo 'gs_matview_log', 'pg_object_type'
+                filters=" oid < 10000 and relname not like 'pg_toast_%' and relname not in ('gs_matview_log', 'pg_object_type')",
                 ignore_col='relfilenode,relpages,reltuples,relallvisible,relacl,relfrozenxid,relfrozenxid64,relminmxid,relnatts',
                 oid_col='oid,reltype,reloftype',
                 accuracy=Accuracy.STRICT
@@ -233,8 +230,7 @@ META = {
             ContentRulesMeta(
                 key="format('%s.%s',(select nspname from pg_namespace n where n.oid = relnamespace), relname)",
                 key_desc='名为%s的表或索引或视图等',
-                # todo，anytype/anydata/anydataset目前不满足元数据校验，暂时忽略
-                filters=" 9999 < oid and oid < 16384 and relnamespace not in (99) and relname not like 'pg_toast_%' and relname not in ('anytype', 'anydata', 'anydataset') ",
+                filters=" 9999 < oid and oid < 16384 and relname not like 'pg_toast_%' ",
                 ignore_col='oid,relfilenode,relpages,reltuples,relallvisible,reltoastrelid,reltoastidxid,'
                            'relfrozenxid,relacl,relfrozenxid64,relminmxid,relnatts',
                 oid_col='relnamespace,reltype,reloftype,relowner,reltablespace',

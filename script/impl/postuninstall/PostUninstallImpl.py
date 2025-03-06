@@ -62,6 +62,8 @@ ACTION_CLEAN_SYSLOG_CONFIG = 'clean_syslog_config'
 ACTION_CLEAN_DEPENDENCY = "clean_dependency"
 ACTION_DELETE_CGROUP = "delete_cgroup"
 
+SYSTEM_SSH_ENV = "export LD_LIBRARY_PATH=/usr/lib64"
+
 class PostUninstallImpl:
     """
     init the command options
@@ -939,6 +941,8 @@ class PostUninstallImpl:
         delete_shell_cmd = " && rm -rf %s" % tmp_path
         delete_shell_cmd += " && rm -rf %s" % DefaultValue.SSH_PRIVATE_KEY
         delete_shell_cmd += " && rm -rf %s" % DefaultValue.SSH_PUBLIC_KEY
+        if os.path.exists(DefaultValue.SSH_CONFIG):
+            delete_shell_cmd += " && rm -rf %s" % DefaultValue.SSH_CONFIG
         cmd = "%s" + delete_line_cmd + delete_shell_cmd
 
         # get remote node and local node
@@ -947,9 +951,13 @@ class PostUninstallImpl:
 
         # delete remote root mutual trust
         kill_remote_ssh_agent_cmd = DefaultValue.killInstProcessCmd("ssh-agent", True)
-        current_dir = os.path.dirname(os.path.realpath(__file__))
-        path = os.path.join(current_dir, "../../../")
-        self.sshTool.getSshStatusOutput(cmd % kill_remote_ssh_agent_cmd, host_list, gp_path=path)
+
+        for host in host_list:
+            remote_cmd = "%s;/usr/bin/ssh root@%s \"rm -rf %s\"" % (SYSTEM_SSH_ENV, host, cmd % kill_remote_ssh_agent_cmd)
+            (status, output) = subprocess.getstatusoutput(remote_cmd)
+            if status != 0:
+                self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % remote_cmd
+                    + " Error:\n%s" % output)
         # delete local root mutual trust
         CmdExecutor.execCommandLocally(cmd % kill_ssh_agent_cmd)
         self.logger.debug("Delete root mutual trust successfully.")

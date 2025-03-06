@@ -588,6 +588,15 @@ class StreamingBase(object):
         else:
             self.logger.debug("Checked cluster status is: %s." % cluster_status)
         return True
+    
+    def check_cluster_cm_is_down(self):
+        """
+        check cm is running
+        """
+        check_cmd = "source %s && cm_ctl query -Cvipdw" % self.mpp_file
+        status, output = CmdUtil.retryGetstatusoutput(check_cmd)
+        cm_ret = re.findall(r'Maybe cm_server is not running', output)
+        return True if cm_ret else False
 
     def check_is_under_upgrade(self):
         """

@@ -67,7 +67,6 @@ class DoradoDisasterRecoveryBase(object):
             ClusterLog.getOMLogPath(DoradoDisasterRecoveryConstants.DDR_LOG_FILE, self.user)
         self.logger = GaussLog(self.log_file, self.params.task, trace_id=self.trace_id)
 
-
 if __name__ == '__main__':
     if os.getuid() == 0:
         GaussLog.exitWithError(ErrorCode.GAUSS_501["GAUSS_50105"])
@@ -75,6 +74,8 @@ if __name__ == '__main__':
     base = DoradoDisasterRecoveryBase()
     handler = HANDLER_MAPPING[base.params.task](base.params, base.user,
                                                 base.logger, base.trace_id, base.log_file)
+    if handler.check_cluster_cm_is_down():
+        handler.start_cluster()
     handler.handle_lock_file(handler.trace_id, 'create')
     try:
         if base.params.task in DoradoDisasterRecoveryConstants.TASK_EXIST_CHECK:

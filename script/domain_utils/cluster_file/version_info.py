@@ -150,7 +150,10 @@ class VersionInfo(object):
         if lib_path == "":
             cmd = app + " -V"
         else:
-            cmd = "export LD_LIBRARY_PATH={}:$LD_LIBRARY_PATH && {} -V".format(lib_path, app)
+            old_ldpath = os.environ['LD_LIBRARY_PATH']
+            if old_ldpath:
+                lib_path = lib_path + ":" + old_ldpath
+            cmd = f"export LD_LIBRARY_PATH={lib_path}:$LD_LIBRARY_PATH && {app} -V"
         
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:

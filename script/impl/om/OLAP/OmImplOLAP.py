@@ -465,6 +465,23 @@ class OmImplOLAP(OmImpl):
             self.logger.logExit("Failed to get local_role. Error: %s" % output)
         
         return local_role[0]
+    
+    def single_mode(self):
+        if len(self.context.clusterInfo.dbNodes) == 1:
+            return True
+        return False
+    
+    def set_instance_type(self):
+        if self.single_mode():
+            return
+        # set instance type 
+        for node in self.context.clusterInfo.dbNodes:
+            # query local role because the nodes can switchover
+            local_role = self.query_node_role(node.name, node.datanodes[0].datadir)
+            if local_role == "Primary":
+                node.datanodes[0].instanceType = 0
+            else:
+                node.datanodes[0].instanceType = 1
 
     def do_generate_xml(self):
         """
@@ -475,12 +492,8 @@ class OmImplOLAP(OmImpl):
         self.logger.log("Start generate xml.")
         gen_xml = GenerateXml()
 
-        for node in self.context.clusterInfo.dbNodes:
-            local_role = self.query_node_role(node.name, node.datanodes[0].datadir)
-            if local_role == "Primary":
-                node.datanodes[0].instanceType = 0
-            else:
-                node.datanodes[0].instanceType = 1
+        # set instance type
+        self.set_instance_type()
         try:
             if not self.context.g_opts.add_hostnames:
                 gen_xml.do_generate_xml(self.context.clusterInfo)

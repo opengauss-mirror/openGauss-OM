@@ -8462,33 +8462,36 @@ END;"""
         currentTime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         msg = msg.replace('\n', ' ')
 
-        if status != "begin":
-            oldClusterVersion = self.context.oldClusterVersion
-            oldClusterNumber = self.context.oldClusterNumber
-            newClusterVersion = self.context.newClusterVersion
-            newClusterNumber = self.context.newClusterNumber
-            oldCommitId = self.oldCommitId
-            newCommitId = self.newCommitId
-            newPkgSha256 = PackageInfo.getUpgradePackageSha256(newClusterVersion)
-            oldPkgSha256 = PackageInfo.getUpgradePackageSha256(oldClusterVersion)
-            oldVersionInfo = oldClusterVersion + ' ' + oldClusterNumber + ' ' + oldCommitId
-            newVersionInfo = newClusterVersion + ' ' + newClusterNumber + ' ' + newCommitId
+        try:
+            if status != "begin":
+                oldClusterVersion = self.context.oldClusterVersion
+                oldClusterNumber = self.context.oldClusterNumber
+                newClusterVersion = self.context.newClusterVersion
+                newClusterNumber = self.context.newClusterNumber
+                oldCommitId = self.oldCommitId
+                newCommitId = self.newCommitId
+                newPkgSha256 = PackageInfo.getUpgradePackageSha256(newClusterVersion)
+                oldPkgSha256 = PackageInfo.getUpgradePackageSha256(oldClusterVersion)
+                oldVersionInfo = oldClusterVersion + ' ' + oldClusterNumber + ' ' + oldCommitId
+                newVersionInfo = newClusterVersion + ' ' + newClusterNumber + ' ' + newCommitId
 
-        omPath = EnvUtil.getEnv("GPHOME")
-        upgradeRecord = os.path.join(omPath, "upgradeRecord.txt")
+            omPath = EnvUtil.getEnv("GPHOME")
+            upgradeRecord = os.path.join(omPath, "upgradeRecord.txt")
 
-        upgradeInfo = [action, status, currentTime, oldVersionInfo, newVersionInfo, oldPkgSha256, newPkgSha256, msg]
-        if os.path.exists(upgradeRecord):
-            FileUtil.writeFormatFile(upgradeRecord, upgradeInfo, const.UPGRADE_RECORD_FORMAT_WIDTH)
-        else:
-            FileUtil.createFile(upgradeRecord)
-            FileUtil.writeFormatFile(upgradeRecord, const.UPGRADE_INIT_INFO, const.UPGRADE_RECORD_FORMAT_WIDTH)
-            FileUtil.writeFormatFile(upgradeRecord, upgradeInfo, const.UPGRADE_RECORD_FORMAT_WIDTH)
+            upgradeInfo = [action, status, currentTime, oldVersionInfo, newVersionInfo, oldPkgSha256, newPkgSha256, msg]
+            if os.path.exists(upgradeRecord):
+                FileUtil.writeFormatFile(upgradeRecord, upgradeInfo, const.UPGRADE_RECORD_FORMAT_WIDTH)
+            else:
+                FileUtil.createFile(upgradeRecord)
+                FileUtil.writeFormatFile(upgradeRecord, const.UPGRADE_INIT_INFO, const.UPGRADE_RECORD_FORMAT_WIDTH)
+                FileUtil.writeFormatFile(upgradeRecord, upgradeInfo, const.UPGRADE_RECORD_FORMAT_WIDTH)
 
-        dbNodes = self.context.clusterInfo.dbNodes
-        if len(dbNodes) == 1:
-            return
-        for dbNode in dbNodes:
-            for datanode in dbNode.datanodes:
-                host = datanode.listenIps
-                self.context.sshTool.scpFiles(upgradeRecord, upgradeRecord, host)
+            dbNodes = self.context.clusterInfo.dbNodes
+            if len(dbNodes) == 1:
+                return
+            for dbNode in dbNodes:
+                for datanode in dbNode.datanodes:
+                    host = datanode.listenIps
+                    self.context.sshTool.scpFiles(upgradeRecord, upgradeRecord, host)
+        except Exception as e:
+            print(f"Warning: An error occurred {e} while recording the upgrade record file. This will not affect the upgrade.")

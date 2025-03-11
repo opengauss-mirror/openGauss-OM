@@ -138,7 +138,7 @@ class UpgradeImpl:
         else:
             retCode = 1
 
-        if msg != "":
+        if msg:
             if self.context.logger is not None:
                 if succeed:
                     self.context.logger.log(msg)
@@ -367,9 +367,9 @@ class UpgradeImpl:
                     self.exitWithRetCode(const.ACTION_AUTO_ROLLBACK,
                                          self.doInplaceBinaryRollback())
                 else:
+                    status, errmsg = self.doGreyBinaryRollback()
                     self.exitWithRetCode(const.ACTION_AUTO_ROLLBACK,
-                                         self.doGreyBinaryRollback(
-                                             const.ACTION_AUTO_ROLLBACK))
+                                        status, errmsg)
             elif self.context.action == const.ACTION_COMMIT_UPGRADE:
                 self.context.action = self.choseStrategy()
                 if self.context.action == const.ACTION_INPLACE_UPGRADE:
@@ -389,7 +389,7 @@ class UpgradeImpl:
                 if os.path.isfile(self.context.upgradePhaseInfoPath):
                     self.recordDualClusterStage(self.oldCommitId, DualClusterStage.STEP_UPGRADE_END)
                 successDetail = "No need to rollback"
-                self.exitWithRetCode(action, True, successDetail)
+                self.exitWithRetCode(action, False, successDetail)
             else:
                 self.exitWithRetCode(action, False, str(e))
         finally:
@@ -652,7 +652,8 @@ class UpgradeImpl:
                                           " information of old clusters by %s."
                                           % oldVersionFile)
                 oldAppFile = "%s/bin/gaussdb" % oldPath
-                oldReleaseDate = VersionInfo.get_release_date_from_app(oldAppFile)
+                oldLibPath = os.path.join(oldPath, 'lib')
+                oldReleaseDate = VersionInfo.get_release_date_from_app(oldAppFile, oldLibPath)
             except Exception as e:
                 if os.path.exists(self.context.upgradeBackupPath):
                     # if upgradeBackupPath exist,
@@ -667,7 +668,8 @@ class UpgradeImpl:
                     (oldClusterVersion, oldClusterNumber, oldCommitId) = \
                         VersionInfo.get_version_info(possibOldVersionFile)
                     possibAppFile = "%s/bin/gaussdb" % self.context.upgradeBackupPath
-                    oldReleaseDate = VersionInfo.get_release_date_from_app(possibAppFile)
+                    libpath = os.path.join(self.context.upgradeBackupPath, 'lib')
+                    oldReleaseDate = VersionInfo.get_release_date_from_app(possibAppFile, libpath)
                 else:
                     raise Exception(str(e))
 
@@ -1724,8 +1726,9 @@ class UpgradeImpl:
 
         if not upgradeAgain:
             try:
-                if not self.doGreyBinaryRollback():
-                    self.exitWithRetCode(const.ACTION_AUTO_ROLLBACK, False)
+                status, errmsg = self.doGreyBinaryRollback()
+                if not status:
+                    self.exitWithRetCode(const.ACTION_AUTO_ROLLBACK, False, errmsg)
                 self.removeOmRollbackProgressFile()
                 self.recordDualClusterStage(self.oldCommitId,
                                             DualClusterStage.STEP_UPGRADE_UNFINISHED)
@@ -5072,13 +5075,13 @@ END;"""
                 self.cleanBinaryUpgradeBakFiles(True)
                 self.recordDualClusterStage(self.oldCommitId, DualClusterStage.STEP_UPGRADE_END)
                 self.context.logger.log("No need to rollback.")
-                return True
+                return True, None
 
             elif maxStep == GreyUpgradeStep.STEP_BEGIN_COMMIT:
-                self.context.logger.log(
-                    ErrorCode.GAUSS_529["GAUSS_52919"] +
-                    " Please commit again! Can not rollback any more.")
-                return False
+                errinfo = ErrorCode.GAUSS_529["GAUSS_52919"] + \
+                    " Please commit again! Can not rollback any more."
+                self.context.logger.log(errinfo)
+                return False, errinfo
 
             # Mark that we leave pre commit status,
             # so that if we fail at the first few steps,
@@ -5149,9 +5152,9 @@ END;"""
             self.context.logger.debug(str(e))
             self.context.logger.debug(traceback.format_exc())
             self.context.logger.log("Rollback failed. Error: %s" % str(e))
-            return False
+            return False, str(e)
         self.context.logger.log("Rollback succeeded.")
-        return True
+        return True, None
 
     def setReadStepFromFile(self):
         readFromFileFlag = os.path.join(self.context.upgradeBackupPath,
@@ -8449,6 +8452,7 @@ END;"""
         """
         Record all upgrade information to a file and distribute it to all nodes in the cluster.
         """
+        MAX_MSG_LEN = 512
         oldClusterVersion = ""
         oldClusterNumber = ""
         newClusterVersion = ""
@@ -8460,7 +8464,12 @@ END;"""
         oldVersionInfo = ""
         newVersionInfo = ""
         currentTime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        msg = msg.replace('\n', ' ')
+        if not msg:
+            msg = ""
+        else:
+            msg = msg.replace('\n', ' ')
+        if len(msg) > MAX_MSG_LEN:
+            msg = msg[:MAX_MSG_LEN] + "......"
 
         try:
             if status != "begin":

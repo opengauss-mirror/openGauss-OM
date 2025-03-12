@@ -27,6 +27,7 @@ import copy
 import re
 import getpass
 import collections
+import stat
 
 from datetime import datetime, timedelta
 
@@ -41,6 +42,7 @@ from gspylib.common.DbClusterStatus import DbClusterStatus
 from gspylib.os.gsfile import g_file
 from gspylib.inspection.common import SharedFuncs
 from gspylib.component.CM.CM_OLAP.CM_OLAP import CM_OLAP
+from gspylib.threads.SshTool import check_local_mode
 from impl.upgrade.UpgradeConst import GreyUpgradeStep
 from impl.upgrade.UpgradeConst import DualClusterStage
 import impl.upgrade.UpgradeConst as const
@@ -1343,7 +1345,7 @@ class UpgradeImpl:
         except Exception as e:
             raise Exception(str(e))
 
-    def setUpgradeFromParam(self, cluster_version_number, is_check=True):
+    def setUpgradeFromParam(self, cluster_version_number):
         """
         function: set upgrade_from parameter
         Input : oldClusterNumber
@@ -1353,9 +1355,63 @@ class UpgradeImpl:
             self.context.logger.debug("No need to set cm parameter.")
             return
         self.context.logger.debug("Set upgrade_from guc parameter.")
+        self.add_upgrade_from()
         working_grand_version = int(float(cluster_version_number) * 1000)
-        cmd = "gs_guc set -Z cmagent -N all -I all -c 'upgrade_from=%s'" % working_grand_version
-        self.context.logger.debug("setting cmagent parameter: %s." % cmd)
+        cm_agent_cmd = "gs_guc set -Z cmagent -N all -I all -c 'upgrade_from=%s'" % working_grand_version
+        cm_server_cmd = ("cm_ctl set --param --server -k 'upgrade_from=%s'; "
+                         "cm_ctl reload --param --server") % working_grand_version
+        self.write_upgrade_from(cm_agent_cmd, working_grand_version)
+        self.write_upgrade_from(cm_server_cmd, working_grand_version)
+
+    def add_upgrade_from(self):
+        """
+        function: add upgrade_from in cm_server.conf if the parameter not in cm_server.conf.
+        """
+        cm_nodes = [node for node in self.context.clusterInfo.dbNodes if node.cmservers]
+        for cm_node in cm_nodes:
+            if check_local_mode([cm_node.name]):
+                cms_dir = cm_node.cmservers[0].datadir
+                cms_conf = os.path.join(cms_dir, "cm_server.conf")
+                check_cmd = "grep upgrade_from %s | wc -l" % cms_conf
+                node_ssh = SshTool([cm_node.name])
+                status, output = node_ssh.getSshStatusOutput(check_cmd, [cm_node.name])
+                if status[cm_node.name] == DefaultValue.SUCCESS and output.endswith("0"):
+                    self.add_to_all_node(cm_nodes)
+                    self.context.logger.debug("Successfully find or add upgrade_from in cm_server.conf on all nodes.")
+
+    def add_to_all_node(self, cm_nodes):
+        for node in cm_nodes:
+            temp_file_dir = "%s/upgrade_from" % EnvUtil.getEnv("PGHOST")
+            mkdir_cmd = "mkdir -m a+x -p %s; chown %s:%s %s" % \
+                        (temp_file_dir, self.context.user, self.context.group, temp_file_dir)
+            ssh_tool = SshTool([node.name])
+            ssh_tool.getSshStatusOutput(mkdir_cmd, [node.name])
+            temp_sh_file = "%s/upgradeFrom.sh" % temp_file_dir
+            subprocess.getstatusoutput("touch %s; cat /dev/null > %s" %
+                                       (temp_sh_file, temp_sh_file))
+            cms_dir = node.cmservers[0].datadir
+            cms_conf = os.path.join(cms_dir, "cm_server.conf")
+            cmd = "if [ `grep upgrade_from %s | wc -l` -eq 0 ]; " \
+                  "then echo 'upgrade_from = 0' >> %s; fi" % (cms_conf, cms_conf)
+            with os.fdopen(os.open("%s" % temp_sh_file, os.O_WRONLY | os.O_CREAT,
+                                   stat.S_IWUSR | stat.S_IRUSR), 'w') as fo:
+                fo.write("#bash\n")
+                fo.write(cmd)
+                fo.close()
+            ssh_tool.scpFiles(temp_sh_file, cms_dir, [node.name])
+            status, output = ssh_tool.getSshStatusOutput("sh %s/upgradeFrom.sh" % cms_dir, [node.name])
+            if status[node.name] != DefaultValue.SUCCESS:
+                raise Exception("Failed to add upgrade_from in cm_server.conf on %s." % node.name)
+            self.context.logger.debug("add upgrade_from to %s's cm_server, cmd is %s, result is %s"
+                                      % (node.name, cmd, output))
+
+    def write_upgrade_from(self, cmd, working_grand_version, is_check=True):
+        """
+        function: write upgrade_from to cm_agent.conf or cm_server.conf
+        Input: cmd, working_grand_version, is_check
+        output: NA
+        """
+        self.context.logger.debug("setting parameter: %s." % cmd)
         try:
             (status, output) = CmdUtil.retryGetstatusoutput(cmd)
             if status != 0:
@@ -1366,56 +1422,8 @@ class UpgradeImpl:
             if is_check:
                 gucStr = "%s:%s" % ("upgrade_from", str(working_grand_version).strip())
                 self.checkParam(gucStr, True)
-            self.context.logger.debug("Successfully set cmagent parameter "
-                                      "upgrade_from=%s." % working_grand_version)
-        except Exception as er:
-            if self.context.action == const.ACTION_INPLACE_UPGRADE or \
-                    not self.context.forceRollback:
-                raise Exception(str(er))
-            self.context.logger.log("NOTICE: Failed to set upgrade_from, "
-                                    "please set it manually with command: \n%s" % str(cmd))
-
-    def add_upgrade_from(self):
-        """
-        function: add upgrade_from in cm_server.conf if the parameter not in cm_server.conf.
-        """
-        cm_nodes = [node for node in self.context.clusterInfo.dbNodes if node.cmservers]
-        for node in cm_nodes:
-            cms_dir = node.cmservers[0].datadir
-            cms_conf = os.path.join(cms_dir, "cm_server.conf")
-            ssh_tool = SshTool([node.name])
-            cmd = "if [ `grep upgrade_from cm_server.conf | wc -l` -eq 0 ]; " \
-                  "then echo 'upgrade_from = 0' >> %s; fi" % cms_conf
-            status, output = ssh_tool.getSshStatusOutput(cmd, [node.name])
-            if status[node.name] != DefaultValue.SUCCESS:
-                raise Exception("Failed to add upgrade_from in cm_server.conf on %s." % node.name)
-        self.context.logger.debug("Successfully find or add ugprade_from in cm_server.conf on all nodes.")
-
-    def set_cm_server_upgradefrom(self, cluster_version_number, is_roll_back):
-        """
-        function: set upgrade_from cm_server parameter
-        Input: rollbackflag
-        output: NA
-        """
-        if not DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) > 0:
-            self.context.logger.debug("No need to set cm parameter.")
-            return
-        if is_roll_back:
-            return
-        self.context.logger.debug("Set upgrade_from guc parameter.")
-        self.add_upgrade_from()
-        working_grand_version = int(float(cluster_version_number) * 1000)
-        cmd = "cm_ctl set --param --server -k 'upgrade_from=%s';cm_ctl reload --param --server" % working_grand_version
-        self.context.logger.debug("setting cmserver parameter: %s." % cmd)
-        try:
-            (status, output) = CmdUtil.retryGetstatusoutput(cmd)
-            if status != 0:
-                self.context.logger.debug("Set upgrade_from failed. "
-                                          "cmd:%s\nOutput:%s" % (cmd, str(output)))
-                raise Exception(
-                    ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + "Error: \n%s" % str(output))
-            self.context.logger.debug("Successfully set cmserver parameter "
-                                      "upgrade_from=%s." % working_grand_version)
+            self.context.logger.debug("Successfully set parameter upgrade_from=%s,"
+                                      "cmd:%s." % (working_grand_version, cmd))
         except Exception as er:
             if self.context.action == const.ACTION_INPLACE_UPGRADE or \
                     not self.context.forceRollback:
@@ -1990,7 +1998,6 @@ class UpgradeImpl:
         
         if DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) > 0:
             self.setUpgradeFromParam(self.context.oldClusterNumber)
-            self.set_cm_server_upgradefrom(self.context.oldClusterNumber, isRollback)
             self.reloadCmAgent()
             self.reload_cmserver()
         self.createCheckpoint()

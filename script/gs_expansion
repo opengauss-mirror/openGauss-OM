@@ -35,8 +35,6 @@ if not os.environ.get('LD_LIBRARY_PATH').startswith(ld_path):
     os.execve(os.path.realpath(__file__), sys.argv, os.environ)
 
 sys.path.append(sys.path[0])
-from gspylib.common.copy_python_lib import copy_lib
-copy_lib()
 from gspylib.common.DbClusterInfo import dbClusterInfo, \
     checkPathVaild, dbNodeInfo, instanceInfo
 from gspylib.common.GaussLog import GaussLog
@@ -520,11 +518,13 @@ General options:
                 (status, output) = subprocess.getstatusoutput(check_user_trust_cmd)
                 if status != 0:
                     create_ssh = True
+                    break
             # check current user's trust
             check_user_trust_cmd = "%s -s -H %s 'pwd'" % (psshPath, host)
             (status, output) = subprocess.getstatusoutput(check_user_trust_cmd)
             if status != 0:
                 create_ssh = True
+                break
         
         # output ssh exception info if ssh connect failed
         if create_ssh:

@@ -5,6 +5,9 @@ import subprocess
 
 def copy_lib():
     current_path = os.path.dirname(os.path.abspath(__file__))
+    bcrypt_lib = os.path.join(current_path, "../../../lib/bcrypt/_bcrypt.abi3.so")
+    if os.path.exists(bcrypt_lib):
+        return
     source = os.path.join(current_path, '../../../lib/bcrypt/lib3.' + \
                           str(sys.version_info[1]), '_bcrypt.abi3.so')
     dest = os.path.join(current_path, '../../../lib/bcrypt/')

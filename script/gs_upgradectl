@@ -180,7 +180,7 @@ Option for grey upgrade
         # get action information
         if "action" in ParaDict.keys():
             self.action = ParaDict.get("action")
-            if self.action == "auto_upgrade" and "bypass_stale_check" not in ParaDict.keys():
+            if self.action == "auto-upgrade" and "bypass_stale_check" not in ParaDict.keys():
                 self.bypass_stale_check = False
         if "confFile" in ParaDict.keys():
             self.xmlFile = ParaDict.get("confFile")

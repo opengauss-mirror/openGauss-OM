@@ -6410,8 +6410,9 @@ END;"""
         if not self.context.forceRollback:
             if self.context.oldClusterNumber >= \
                     const.ENABLE_STREAM_REPLICATION_VERSION:
-                self.check_gucval_is_inval_given(
-                    const.ENABLE_STREAM_REPLICATION_NAME, const.VALUE_ON)
+                if not self.check_gucval_is_inval_given(const.ENABLE_STREAM_REPLICATION_NAME, 
+                                                        const.VALUE_ON):
+                    raise Exception("Invalid value for GUC parameter: {0}".format(const.ENABLE_STREAM_REPLICATION_NAME))
         try:
             if self.context.action == const.ACTION_INPLACE_UPGRADE:
                 self.context.logger.log(
@@ -6436,10 +6437,13 @@ END;"""
         self.context.logger.debug("checks whether the parameter:{0} is "
                                   "the value:{1}.".format(guc_name, val_list))
         guc_str = "{0}:{1}".format(guc_name, ",".join(val_list))
-        self.checkParam(guc_str)
-        self.context.logger.debug("Success to check the parameter:{0} value "
-                                  "is in the value:{1}.".format(guc_name,
-                                                                val_list))
+        try:
+            self.checkParam(guc_str)
+            self.context.logger.debug("Success to check the parameter:{0} value "
+                                    "is in the value:{1}.".format(guc_name, val_list))
+            return True
+        except Exception as _:
+            return False
 
     def checkDifferentVersion(self):
         """

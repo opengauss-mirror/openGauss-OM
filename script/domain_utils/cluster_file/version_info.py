@@ -192,10 +192,10 @@ class VersionInfo(object):
         pkg_prefix = _parse_pkg_prefix(version_file)
         # upack and read version.cfg of openGauss-server package
         # the existing om version.cfg will be overwritten
-        cmd = 'cd {} && mkdir temp && cd temp && tar -xpf ../{}*.tar.bz2 ./bin/gaussdb ./lib'.format(root, pkg_prefix)
+        cmd = 'cd {} && rm -rf temp && mkdir temp && cd temp && tar -xpf ../{}*.tar.bz2 ./bin/gaussdb ./lib'.format(root, pkg_prefix)
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
-            cmd = 'cd {} && mkdir temp && cd temp && tar -xpf `ls ../openGauss-Server*.tar.bz2 | tail -1` ./bin/gaussdb ./lib'.format(root)
+            cmd = 'cd {} && rm -rf temp && mkdir temp && cd temp && tar -xpf `ls ../openGauss-Server*.tar.bz2 | tail -1` ./bin/gaussdb ./lib'.format(root)
             status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50217"] % "bin/gaussdb" +

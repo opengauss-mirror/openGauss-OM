@@ -1997,10 +1997,9 @@ def checkGucValue():
         else:
             checkGucValueByShowing()
     except Exception as e:
-        g_logger.debug("Failed to check dn guc paramter by "
-                        "showing. Error is:{0}."
-                        "Trying to check form file".format(str(e)))
-        checkGucValueFromFile()
+        err_msg = "Warning: Failed to check guc value. Error is: {0}".format(str(e))
+        g_logger.debug(err_msg)
+        raise Exception(err_msg)
 
 
 def checkGucValueByShowing():

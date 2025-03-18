@@ -1611,7 +1611,7 @@ def GetMountInfo(file_path):
     """
     try:
         dev = os.stat(file_path).st_dev
-    except FileNotFoundError:
+    except Exception:
         return None
 
     for partition in psutil.disk_partitions(all=True):

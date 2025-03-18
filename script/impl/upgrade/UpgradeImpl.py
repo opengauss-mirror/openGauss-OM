@@ -1381,29 +1381,28 @@ class UpgradeImpl:
 
     def add_to_all_node(self, cm_nodes):
         for node in cm_nodes:
-            temp_file_dir = "%s/upgrade_from" % EnvUtil.getEnv("PGHOST")
-            mkdir_cmd = "mkdir -m a+x -p %s; chown %s:%s %s" % \
-                        (temp_file_dir, self.context.user, self.context.group, temp_file_dir)
-            ssh_tool = SshTool([node.name])
-            ssh_tool.getSshStatusOutput(mkdir_cmd, [node.name])
-            temp_sh_file = "%s/upgradeFrom.sh" % temp_file_dir
+            temp_sh_file = "%s/upgrade_from.sh" % EnvUtil.getEnv("PGHOST")
             subprocess.getstatusoutput("touch %s; cat /dev/null > %s" %
                                        (temp_sh_file, temp_sh_file))
             cms_dir = node.cmservers[0].datadir
             cms_conf = os.path.join(cms_dir, "cm_server.conf")
             cmd = "if [ `grep upgrade_from %s | wc -l` -eq 0 ]; " \
                   "then echo 'upgrade_from = 0' >> %s; fi" % (cms_conf, cms_conf)
-            with os.fdopen(os.open("%s" % temp_sh_file, os.O_WRONLY | os.O_CREAT,
+            with os.fdopen(os.open(temp_sh_file, os.O_WRONLY | os.O_CREAT,
                                    stat.S_IWUSR | stat.S_IRUSR), 'w') as fo:
                 fo.write("#bash\n")
                 fo.write(cmd)
                 fo.close()
+            ssh_tool = SshTool([node.name])
             ssh_tool.scpFiles(temp_sh_file, cms_dir, [node.name])
-            status, output = ssh_tool.getSshStatusOutput("sh %s/upgradeFrom.sh" % cms_dir, [node.name])
+            status, output = ssh_tool.getSshStatusOutput("sh %s/upgrade_from.sh" % cms_dir, [node.name])
             if status[node.name] != DefaultValue.SUCCESS:
                 raise Exception("Failed to add upgrade_from in cm_server.conf on %s." % node.name)
             self.context.logger.debug("add upgrade_from to %s's cm_server, cmd is %s, result is %s"
                                       % (node.name, cmd, output))
+            subprocess.getstatusoutput("rm -rf %s" % temp_sh_file)
+            delete_temp_cmd = "rm -rf %s/upgrade_from.sh;" % cms_dir
+            ssh_tool.getSshStatusOutput(delete_temp_cmd, [node.name])
 
     def write_upgrade_from(self, cmd, working_grand_version, is_check=True):
         """

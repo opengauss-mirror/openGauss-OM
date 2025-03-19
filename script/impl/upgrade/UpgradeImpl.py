@@ -4355,8 +4355,11 @@ END;"""
         """
         vg_name = EnvUtil.getEnv("VGNAME")
         cmd = "pg_controldata +%s | grep \"Primary instance ID\"" % vg_name
-        status, output = subprocess.getstatusoutput(cmd)
-        primary_id = int((output.split(":")[-1]).strip())
+        primary_id = -1
+        while primary_id < 0:
+            status, output = subprocess.getstatusoutput(cmd)
+            sta_flag = "Primary instance ID" in output
+            primary_id = int((output.split(":")[-1]).strip()) if sta_flag else primary_id
         return primary_id
 
     @staticmethod

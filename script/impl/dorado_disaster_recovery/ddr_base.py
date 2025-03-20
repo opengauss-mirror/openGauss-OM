@@ -552,7 +552,9 @@ class DoradoDisasterRecoveryBase(StreamingBase):
         if only_mode and self.params.mode != only_mode:
             self.logger.debug("Build Main standby step is not for mode:%s." % self.params.mode)
             return
-        self.logger.log("Start build main standby datanode in disaster standby cluster.")
+        cmd = "gs_ddr -t start -m primary [-X /path/of/xml | --json /path/of/json] --disaster_type [dorado|stream]"
+        self.logger.log("Start build main standby datanode in disaster standby cluster.\n" 
+                        "And now, on the primary cluster exectue the command: \n %s" % cmd)
         primary_dn = [dn_inst for db_node in self.cluster_info.dbNodes for dn_inst in
                       db_node.datanodes if dn_inst.instanceId in self.primary_dn_ids]
         main_standby_inst = primary_dn[0]

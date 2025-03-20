@@ -1499,7 +1499,10 @@ class StreamingBase(object):
         if only_mode and self.params.mode != only_mode:
             self.logger.debug("Start cluster is not for mode:%s." % self.params.mode)
             return
+        start_cmd = "gs_ddr -t start -m disaster_standby [-X /path/of/xml | --json /path/of/json] --disaster_type [dorado|stream]"
         self.logger.log("Waiting for the main standby connection.")
+        if self.params.task == "start":
+            self.logger.log("And now, on the standby cluster exectue the command: \n %s" % start_cmd)
         end_time = datetime.now() + timedelta(seconds=self.params.waitingTimeout)
         while True:
             p_inst_list = [int(i) for i in DefaultValue.get_primary_dn_instance_id("Primary",

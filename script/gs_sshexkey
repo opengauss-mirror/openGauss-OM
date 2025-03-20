@@ -747,7 +747,7 @@ General options:
         output: NA
         """
         local_name = socket.gethostname()
-        for ip, hostname in self.hosts_ip_hostname_map().items():
+        for ip, hostname in self.hosts_ip_hostname_map.items():
             if hostname == local_name:
                 return ip
 
@@ -809,9 +809,9 @@ General options:
         input : ip
         output: ssh port
         """
-        ssh_port = self.hosts_ip_ssh_port_map[ip]
-        if not ssh_port:
-            raise Exception(ErrorCode.GAUSS_511["GAUSS_51114"] % ip)
+        ssh_port = DefaultValue.DEFAULT_SSH_PORT
+        if ip in self.hosts_ip_ssh_port_map:
+            ssh_port = self.hosts_ip_ssh_port_map[ip]
         return ssh_port
     
     def get_hostname_by_ip(self, ip):
@@ -820,7 +820,9 @@ General options:
         input : ip
         output: hostname
         """
-        hostname = self.hosts_ip_hostname_map[ip]
+        hostname = ""
+        if ip in self.hosts_ip_hostname_map:
+            hostname = self.hosts_ip_hostname_map[ip]
         if not hostname:
             raise Exception(ErrorCode.GAUSS_511["GAUSS_51115"] % ip)
         return hostname
@@ -994,7 +996,7 @@ General options:
 
     def delete_known_hosts_old_key(self, host):
         if os.path.exists(self.known_hosts_fname):
-                FileUtil.deleteLine(self.known_hosts_fname, f"${host}.*#OM")
+                FileUtil.deleteLine(self.known_hosts_fname, f"{host}.*#OM")
 
     def delete_known_hosts_old_key_for_host(self):
         for hostname in self.hostname_list:

@@ -216,13 +216,18 @@ class Dss(BaseComponent):
     @staticmethod
     def start_dss_server(logger=None,
                          bin_path='',
+                         dss_config='',
                          kill_server=True,
                          unrej=False,
                          exist_so=False):
         '''
         The OM manually starts the DSS server to obtain the socket file.
         '''
-        Dss.write_dss_context_with_file(exist_so=exist_so)
+        dss_nodes_list = ''
+        if dss_config:
+            dss_nodes_list = DssConfig.get_value_b64_handler(
+                    'dss_nodes_list', dss_config, action='decode')
+        Dss.write_dss_context_with_file(dss_nodes_list=dss_nodes_list, exist_so=exist_so)
 
         if kill_server:
             Dss.kill_dss_server()
@@ -235,7 +240,7 @@ class Dss(BaseComponent):
         else:
             dss_cmd = 'dssserver'
 
-        cmd = 'sh -c "source {} && nohup {} -D {} >/dev/null 2>&1 & "'.format(
+        cmd = 'sh -c "source {} && nohup {} -M -D {} >/dev/null 2>&1 & "'.format(
             EnvUtil.getMpprcFile(), dss_cmd, dss_home)
         proc = FastPopen(cmd)
         out, err = proc.communicate()
@@ -249,7 +254,7 @@ class Dss(BaseComponent):
         '''
         om init dss server
         '''
-        Dss.start_dss_server(self.logger, self.binPath)
+        Dss.start_dss_server(self.logger, self.binPath, self.dss_config)
         if not DssConfig.check_process_available(
                 self.logger, 'dssserver'):
             raise Exception(ErrorCode.GAUSS_512["GAUSS_51252"])
@@ -355,8 +360,6 @@ class DssInitCfg():
         else:
             if hasattr(self, 'DSS_CM_SO_NAME'):
                 del self.DSS_CM_SO_NAME
-            if hasattr(self, 'DSS_NODES_LIST'):
-                del self.DSS_NODES_LIST
         if dss_ssl:
             self.SSL_CA = os.path.join(cert_path, 'cacert.pem')
             self.SSL_KEY = os.path.join(cert_path, 'server.key')

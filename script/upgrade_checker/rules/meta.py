@@ -127,8 +127,7 @@ META = {
                 key="oid",
                 key_desc='oid为%s的数据类型',
                 # 忽略pg_toast
-                # todo gs_matview_log
-                filters=" oid < 10000 and typname not like 'pg_toast_%' and typname not in ('gs_matview_log')",
+                filters=" oid < 10000 and typname not like 'pg_toast_%' ",
                 ignore_col='typdefaultbin,typacl',
                 oid_col='typnamespace,typrelid,typelem'
             ),
@@ -136,8 +135,7 @@ META = {
                 key="(select nspname from pg_namespace n where n.oid = typnamespace) || '.' || typname",
                 key_desc='数据类型%s',
                 # 忽略pg_toast
-                # todo gs_matview_log
-                filters=" 9999 < oid and oid < 16384 and typname not like 'pg_toast_%' and typname not in ('gs_matview_log')",
+                filters=" 9999 < oid and oid < 16384 and typname not like 'pg_toast_%' ",
                 ignore_col='oid,typdefaultbin,typacl',
                 oid_col='typnamespace,typowner,typrelid,typelem,typarray,typbasetype,typcollation'
             )
@@ -213,17 +211,24 @@ META = {
         True,
         [
             ContentRulesMeta(
-                # todo 'gs_matview_log', 'pg_object_type'
-                complete_sql="select 'count(*)', count(*) from pg_class where oid < 16384 and relname not like 'pg_toast_9815%' ",
+                complete_sql="select 'count(*)', count(*) from pg_class where oid < 16384 ",
                 key_desc='数量统计方法%s',
                 complete_sql_desc='pg_class内oid < 16384(包括表、索引、视图、序列等)总数量'
             ),
             ContentRulesMeta(
                 key="format('%s.%s',(select nspname from pg_namespace n where n.oid = relnamespace), relname)",
                 key_desc='名为%s的表或索引或视图等',
-                # todo 'gs_matview_log', 'pg_object_type'
-                filters=" oid < 10000 and relname not like 'pg_toast_%' and relname not in ('gs_matview_log', 'pg_object_type')",
+                filters=" oid < 10000 and relname not like 'pg_toast_%' ",
                 ignore_col='relfilenode,relpages,reltuples,relallvisible,relacl,relfrozenxid,relfrozenxid64,relminmxid,relnatts',
+                oid_col='oid,reltype,reloftype',
+                accuracy=Accuracy.STRICT
+            ),
+            # pg_toast表忽略relhaspkey, 内核代码中该字段被写死为true，但初始化时不一定
+            ContentRulesMeta(
+                key="format('%s.%s',(select nspname from pg_namespace n where n.oid = relnamespace), relname)",
+                key_desc='名为%s的表或索引或视图等',
+                filters=" oid < 10000 and relname like 'pg_toast_%' ",
+                ignore_col='relfilenode,relpages,reltuples,relallvisible,relacl,relfrozenxid,relfrozenxid64,relminmxid,relnatts,relhaspkey',
                 oid_col='oid,reltype,reloftype',
                 accuracy=Accuracy.STRICT
             ),
@@ -376,8 +381,7 @@ META = {
             ContentRulesMeta(
                 key='aggfnoid::oid',
                 key_desc='oid为%s的聚集函数',
-                # todo, 向量数据库相关暂时忽略
-                filters=' aggfnoid < 10000 and aggfnoid not in (8241) '
+                filters=' aggfnoid < 10000 '
             ),
             ContentRulesMeta(
                 key="format('%s %s %s %s', aggfnoid, aggtransfn, aggcollectfn, aggfinalfn)",
@@ -414,14 +418,12 @@ META = {
             ContentRulesMeta(
                 key="format('%s-%s-%s-%s', amopfamily, amoplefttype, amoprighttype, amopstrategy)",
                 key_desc='family-ltype-rtype-stg为%s的操作符访问族',
-                # todo，向量数据库相关暂时忽略
-                filters=' oid < 10000 and amopfamily not in (8392,8375,8385,8386,8387,8371,8372,8373,8374,8394,8380,8379,8397,8376,8381,8382,8383,8384) '
+                filters=' oid < 10000 '
             ),
             ContentRulesMeta(
                 key="format('%s-%s-%s-%s', amopfamily, amoplefttype, amoprighttype, amopstrategy)",
                 key_desc='family-ltype-rtype-stg为%s的操作符访问族',
-                # todo，向量数据库相关暂时忽略
-                filters=' 9999 < oid and oid < 16384 and amopfamily not in (8392,8375,8385,8386,8387,8371,8372,8373,8374,8394,8380,8379,8397,8376,8381,8382,8383,8384) ',
+                filters=' 9999 < oid and oid < 16384 ',
                 ignore_col='oid',
                 oid_col='amopfamily,amoplefttype,amoprighttype,amopopr,amopmethod,amopsortfamily'
             )
@@ -435,14 +437,12 @@ META = {
             ContentRulesMeta(
                 key="format('%s-%s-%s-%s', amprocfamily, amproclefttype, amprocrighttype, amprocnum)",
                 key_desc='family-ltype-rtype-prn为%s的函数访问族',
-                # todo，向量数据库相关暂时忽略
-                filters=' oid < 10000 and amprocfamily not in (8392,8375,8385,8386,8387,8371,8372,8373,8374,8394,8380,8379,8397,8376,8381,8382,8383,8384) '
+                filters=' oid < 10000 '
             ),
             ContentRulesMeta(
                 key="format('%s-%s-%s-%s', amprocfamily, amproclefttype, amprocrighttype, amprocnum)",
                 key_desc='family-ltype-rtype-prn为%s的函数访问族',
-                # todo，向量数据库相关暂时忽略
-                filters=' 9999 < oid and oid < 16384 and amprocfamily not in (8392,8375,8385,8386,8387,8371,8372,8373,8374,8394,8380,8379,8397,8376,8381,8382,8383,8384) ',
+                filters=' 9999 < oid and oid < 16384 ',
                 ignore_col='oid',
                 oid_col='amprocfamily,amproclefttype,amprocrighttype'
             )
@@ -604,7 +604,7 @@ META = {
                     " (select relname from pg_class c where c.oid=indexrelid)"
                     ")",
                 key_desc='表名-索引名为%s的索引',
-                filters=" 9999 < indexrelid and  indexrelid < 16384 and "
+                filters=" 9999 < indexrelid and indexrelid < 16384 and "
                         "(select relkind from pg_class c where c.oid=indrelid) != 't'",
                 ignore_col='indcollation,indclass',
                 oid_col='indexrelid,indrelid'
@@ -693,8 +693,7 @@ META = {
             ContentRulesMeta(
                 key='oid',
                 key_desc='oid为%s的操作符类',
-                # todo，向量数据库相关暂时忽略
-                filters=' oid < 10000 and oid not in (8951, 8952) '
+                filters=' oid < 10000 '
             ),
             ContentRulesMeta(
                 key="format('%s.%s(of am %s)',"
@@ -810,8 +809,7 @@ META = {
             ContentRulesMeta(
                 key='oid',
                 key_desc='oid为%s的操作符族',
-                # todo, 向量数据库相关暂时忽略
-                filters=' oid < 10000 and oid not in (8375,8376) '
+                filters=' oid < 10000 '
             ),
             ContentRulesMeta(
                 key="format('%s.%s(for %s)', "

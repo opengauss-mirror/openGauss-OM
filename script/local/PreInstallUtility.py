@@ -131,6 +131,8 @@ class PreInstall(LocalBaseOM):
         self.preparePath = ""
         self.checkEmpty = False
         self.envParams = []
+        self.warningType = 5
+        self.warningIp = ""
         self.logFile = ""
         self.mpprcFile = ""
         self.user_env_file = ""
@@ -197,6 +199,8 @@ Common options:
     -e "envpara=value"                The OS user environment variable.
     --check_empty                     Check path empty.
     -s                                The path of MPP environment file.
+    -T                                The type of warning.
+    -w                                The ip of warning server.
     -l                                The path of log file.
     -R                                The path of cluster install path.
     -C                                The path of cluster core path.
@@ -211,7 +215,7 @@ Common options:
         output: NA
         """
         try:
-            opts, args = getopt.getopt(sys.argv[1:], "t:u:g:X:P:Q:e:s:l:f:R:C:",
+            opts, args = getopt.getopt(sys.argv[1:], "t:u:g:T:w:X:P:Q:e:s:l:f:R:C:",
                                        ["check_empty", "help"])
         except Exception as e:
             self.usage()
@@ -222,6 +226,7 @@ Common options:
                 ErrorCode.GAUSS_500["GAUSS_50000"] % str(args[0]))
 
         parameter_map = {"-t": self.action, "-u": self.user, "-g": self.group,
+                         "-T": self.warningType, "-w":self.warningIp,
                          "-X": self.clusterConfig,
                          "-P": self.preparePath, "-Q": self.clusterToolPath,
                          "-s": self.mpprcFile, "-f": self.tmpFile,
@@ -253,6 +258,8 @@ Common options:
         self.tmpFile = parameter_map["-f"]
         self.clusterAppPath = parameter_map["-R"]
         self.cluster_core_path = parameter_map["-C"]
+        self.warningType = parameter_map["-T"]
+        self.warningIp = parameter_map["-w"]
 
     def checkParameter(self):
         """
@@ -1673,6 +1680,8 @@ Common options:
         FileUtil.deleteLine(userProfile, "^\\s*export\\s*PGPORT*")
         # clean IP_TYPE
         FileUtil.deleteLine(userProfile, "^\\s*export\\s*IP_TYPE*")
+        # clean GAUSS_WARNING_TYPE
+        FileUtil.deleteLine(userProfile, "^\\s*export\\s*GAUSS_WARNING_TYPE*")
         # clean PGDATABASE
         FileUtil.deleteLine(userProfile, "^\\s*export\\s*PGDATABASE*")
         # clean LD_LIBRARY_PATH
@@ -1765,6 +1774,9 @@ Common options:
             # set IP_TYPE
             ip_type = NetUtil.get_ip_version(node_info.backIps[0])
             FileUtil.writeFile(userProfile, ["export IP_TYPE=%s" % ip_type])
+
+            # set GAUSS_WARNING_TYPE
+            FileUtil.writeFile(userProfile, ["export GAUSS_WARNING_TYPE=%s" % self.warningType])
 
             # set PATH
             if userProfile is ClusterConstants.ETC_PROFILE:

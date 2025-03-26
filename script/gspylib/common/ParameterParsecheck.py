@@ -63,7 +63,7 @@ VALUE_CHECK_LIST = ["|", ";", "&", "$", "<", ">", "`", "\\", "'", "\"", "{",
 # append '=' after long options if it required parameter
 # no child branch
 gs_preinstall = ["-?", "--help", "-V", "--version", "-U:", "-G:", "-L",
-                 "--skip-os-set", "-X:",
+                 "--skip-os-set", "-X:", "--alarm-type=", "--alarm-server-addr=",
                  "--env-var=", "--sep-env-file=", "--skip-hostname-set", "--skip-cgroup-set",
                  "-l:", "--non-interactive", "--delete-root-trust", "--unused-third-party",
                  "--enable-perf-config", "--one-stop-install"]

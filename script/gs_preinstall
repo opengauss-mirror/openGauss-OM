@@ -79,13 +79,15 @@ from base_utils.os.hosts_util import HostsUtil
 # Global variables
 #############################################################################
 userNameFirtChar = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
-
+# warning type
+g_warningType = [5]
 
 class Preinstall(ParallelBaseOM):
     def __init__(self):
         ParallelBaseOM.__init__(self)
         self.password = ""
         self.envParams = []
+        self.warningType = "5"
         self.rootUser = ""
         self.rootPasswd = ""
         self.create_user_ssh_trust = True
@@ -117,7 +119,7 @@ gs_preinstall is a utility to create an installation environment for a cluster.
 Usage:
     gs_preinstall -? | --help
     gs_preinstall -V | --version
-    gs_preinstall -U USER -G GROUP -X XMLFILE
+    gs_preinstall -U USER -G GROUP -X XMLFILE --alarm-type=ALARMTYPE [--alarm] [--alarm-server-addr=HOSTADDR]
       [-L]  [--skip-os-set] [--env-var="ENVVAR" [...]]
       [--sep-env-file=ENVFILE] [--skip-hostname-set] [-l LOGFILE]
       [--non-interactive] [--delete-root-trust] [--unused-third-party]
@@ -126,6 +128,8 @@ General options:
     -U                                 Cluster user.
     -G                                 Group of the cluster user.
     -X                                 Path of the XML configuration file.
+        --alarm-type=ALARMTYPE         Default value is 5, the PublicCloudScene format is used.
+        --alarm-server-addr=HOSTADDR   IP address of the warning server.
     -L                                 Only perform preinstallation on local
                                        nodes.
         --skip-os-set                  Whether to skip OS parameter setting.
@@ -204,6 +208,12 @@ General options:
         if (ParaDict.__contains__("mpprcFile")):
             self.mpprcFile = ParaDict.get("mpprcFile")
             DefaultValue.checkPathVaild(self.mpprcFile)
+        # parameter --alarm-type
+        if (ParaDict.__contains__("warningType")):
+            self.warningType = ParaDict.get("warningType")
+        # parameter --alarm-server-addr
+        if (ParaDict.__contains__("warningserverip")):
+            self.warningserverip = ParaDict.get("warningserverip")
         # parameter --skip-hostname-set
         if (ParaDict.__contains__("skipHostnameSet")):
             self.skipHostnameSet = ParaDict.get("skipHostnameSet")
@@ -334,6 +344,16 @@ General options:
                                    % self.logFile)
         UserUtil.check_path_owner(self.logFile)
 
+    def checkWarningType(self):
+        """
+        """
+        if self.warningType == "":
+            raise Exception(ErrorCode.GAUSS_500["GAUSS_50001"] %'-alarm-type' + ".")
+        if not self.warningType.isdigit():
+            raise Exception(ErrorCode.GAUSS_500["GAUSS_50003"] %('-alarm-type', "a number"))
+        self.warningType = int(self.warningType)
+        if self.warningType not in g_warningType:
+            raise Exception(ErrorCode.GAUSS_500["GAUSS_50004"] % "-alarm-type")
 
     def checkMpprcFile(self):
         """
@@ -411,6 +431,8 @@ General options:
         self.check_local_node_info()
         # check env-val
         self.checkEnvValueParameter()
+        # check alarm type
+        self.checkWarningType()
         # check mpprc file
         self.checkMpprcFile()
         # check log file

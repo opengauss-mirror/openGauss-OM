@@ -1355,31 +1355,16 @@ class UpgradeImpl:
             self.context.logger.debug("No need to set cm parameter.")
             return
         self.context.logger.debug("Set upgrade_from guc parameter.")
-        self.add_upgrade_from()
         working_grand_version = int(float(cluster_version_number) * 1000)
         cm_agent_cmd = "gs_guc set -Z cmagent -N all -I all -c 'upgrade_from=%s'" % working_grand_version
-        cm_server_cmd = ("cm_ctl set --param --server -k 'upgrade_from=%s'; "
-                         "cm_ctl reload --param --server") % working_grand_version
-        self.write_upgrade_from(cm_agent_cmd, working_grand_version)
-        self.write_upgrade_from(cm_server_cmd, working_grand_version)
+        self.write_to_cma(cm_agent_cmd, working_grand_version)
+        self.write_to_cms(working_grand_version)
 
-    def add_upgrade_from(self):
+    def write_to_cms(self, working_grand_version):
         """
         function: add upgrade_from in cm_server.conf if the parameter not in cm_server.conf.
         """
         cm_nodes = [node for node in self.context.clusterInfo.dbNodes if node.cmservers]
-        for cm_node in cm_nodes:
-            if check_local_mode([cm_node.name]):
-                cms_dir = cm_node.cmservers[0].datadir
-                cms_conf = os.path.join(cms_dir, "cm_server.conf")
-                check_cmd = "grep upgrade_from %s | wc -l" % cms_conf
-                node_ssh = SshTool([cm_node.name])
-                status, output = node_ssh.getSshStatusOutput(check_cmd, [cm_node.name])
-                if status[cm_node.name] == DefaultValue.SUCCESS and output.endswith("0"):
-                    self.add_to_all_node(cm_nodes)
-                    self.context.logger.debug("Successfully find or add upgrade_from in cm_server.conf on all nodes.")
-
-    def add_to_all_node(self, cm_nodes):
         for node in cm_nodes:
             temp_sh_file = "%s/upgrade_from.sh" % EnvUtil.getEnv("PGHOST")
             subprocess.getstatusoutput("touch %s; cat /dev/null > %s" %
@@ -1387,7 +1372,9 @@ class UpgradeImpl:
             cms_dir = node.cmservers[0].datadir
             cms_conf = os.path.join(cms_dir, "cm_server.conf")
             cmd = "if [ `grep upgrade_from %s | wc -l` -eq 0 ]; " \
-                  "then echo 'upgrade_from = 0' >> %s; fi" % (cms_conf, cms_conf)
+                  "then echo 'upgrade_from = %s' >> %s;" \
+                  "else sed -i 's/^[[:space:]]*upgrade_from[[:space:]]*=.*/upgrade_from = %s/' %s;" \
+                  "fi" % (cms_conf, working_grand_version, cms_conf, working_grand_version, cms_conf)
             with os.fdopen(os.open(temp_sh_file, os.O_WRONLY | os.O_CREAT,
                                    stat.S_IWUSR | stat.S_IRUSR), 'w') as fo:
                 fo.write("#bash\n")
@@ -1404,13 +1391,13 @@ class UpgradeImpl:
             delete_temp_cmd = "rm -rf %s/upgrade_from.sh;" % cms_dir
             ssh_tool.getSshStatusOutput(delete_temp_cmd, [node.name])
 
-    def write_upgrade_from(self, cmd, working_grand_version, is_check=True):
+    def write_to_cma(self, cmd, working_grand_version, is_check=True):
         """
         function: write upgrade_from to cm_agent.conf or cm_server.conf
         Input: cmd, working_grand_version, is_check
         output: NA
         """
-        self.context.logger.debug("setting parameter: %s." % cmd)
+        self.context.logger.debug("setting upgrade_from to cm_agent, cmd is: %s." % cmd)
         try:
             (status, output) = CmdUtil.retryGetstatusoutput(cmd)
             if status != 0:

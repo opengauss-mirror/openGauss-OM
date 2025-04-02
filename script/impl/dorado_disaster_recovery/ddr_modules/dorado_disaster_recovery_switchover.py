@@ -59,6 +59,7 @@ class DisasterRecoverySwitchoverHandler(DoradoDisasterRecoveryBase):
             self.params.disaster_type = DefaultValue.get_ss_disaster_mode()
             if self.params.disaster_type:
                 self.logger.log("Successfully get the para disaster_type: %s." % self.params.disaster_type)
+            self.logger.log("And now, on the %s cluster exectue the command: \ngs_ddr -t switchover -m %s" % (self.params.mode, cluster_current_role))
         try:
             self.dorado_switchover_single_inst()
             if (self.params.stage is None or int(self.params.stage) == 2):

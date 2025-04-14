@@ -148,8 +148,14 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         if step >= 8:
             return
         self.logger.debug("Start eighth step of ddr start.")
+        start_cmd = "gs_ddr -t start -m disaster_standby [-X /path/of/xml | --json /path/of/json] --disaster_type [dorado|stream]"
+        if self.params.mode == "primary":
+            self.logger.log("Now, make sure that the command has been executed on the standby cluster: \n %s" % start_cmd)
         if self.params.disaster_type == "dorado":
-            self.check_input(DoradoDisasterRecoveryConstants.START_MSG)
+            if self.params.mode == "disaster_standby":
+                self.check_input(DoradoDisasterRecoveryConstants.START_STANDBY_MSG)
+            else:
+                self.check_input(DoradoDisasterRecoveryConstants.START_PRIMARY_MSG)
         self.start_cluster(cm_timeout=DoradoDisasterRecoveryConstants.STANDBY_START_TIMEOUT,
                            only_mode='disaster_standby')
         self.update_dorado_info("cluster", "full_backup", only_mode='primary')

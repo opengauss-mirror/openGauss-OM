@@ -71,7 +71,13 @@ class DoradoDisasterRecoveryConstants:
     # log remark
     LOG_REMARK = "-" * 80
 
-    START_MSG = "Please ensure that the \"Remote Replication Pairs\" configured correctly "\
+    START_PRIMARY_MSG = "Please ensure that disaster_standby finish build and "\
+            "the \"Remote Replication Pairs\" configured correctly "\
+            "between the primary cluster and the disaster recovery cluster, "\
+            "with Replication Mode in \"Synchronous\" state.\n" \
+            "Ready to move on (yes/no)? "
+
+    START_STANDBY_MSG = "Please ensure that the \"Remote Replication Pairs\" configured correctly "\
             "between the primary cluster and the disaster recovery cluster, "\
             "with Replication Mode in \"Synchronous\" state.\n" \
             "Ready to move on (yes/no)? "

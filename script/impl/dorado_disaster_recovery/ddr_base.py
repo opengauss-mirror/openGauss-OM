@@ -727,7 +727,7 @@ class DoradoDisasterRecoveryBase(StreamingBase):
                                 % "check action and mode, the step files %s already exist, "
                                   "please ensure the action %s is finished before "
                                   "doing current options" % (exist_step_file_names, exist_action))
-        self.logger.debug("clean_global_configSuccessfully checked action and mode.")
+        self.logger.debug("Successfully checked action and mode.")
 
     def __remove_cross_cluster_replinfo(self, params):
         """

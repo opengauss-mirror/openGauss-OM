@@ -29,6 +29,7 @@ from impl.dorado_disaster_recovery.ddr_constants import DoradoDisasterRecoveryCo
 
 
 class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
+    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -58,7 +59,8 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
                                 "check cm_ctl is available for current cluster")
         self.check_is_under_upgrade()
         self.check_dn_instance_params()
-        self.write_dorado_step("2_check_cluster_step")
+        extra_start_info = ", type: %s" % self.params.disaster_type
+        self.write_dorado_step("2_check_cluster_step" + extra_start_info)
 
     def common_step_for_ddr_start(self):
         """
@@ -80,7 +82,8 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         self.config_cross_cluster_repl_info()
         self.set_application_name()
         self.set_ha_module_mode()
-        self.write_dorado_step("3_set_datanode_guc_step")
+        extra_start_info = ", type: %s" % self.params.disaster_type
+        self.write_dorado_step("3_set_datanode_guc_step" + extra_start_info)
 
     def fourth_step_stop_cluster(self, step):
         """
@@ -90,7 +93,8 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
             return
         self.logger.debug("Start fourth step of ddr start.")
         self.stop_cluster()
-        self.write_dorado_step("4_stop_cluster_step")
+        extra_start_info = ", type: %s" % self.params.disaster_type
+        self.write_dorado_step("4_stop_cluster_step" + extra_start_info)
 
     def fifth_step_start_cluster(self, step):
         """
@@ -104,7 +108,8 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         if self.params.disaster_type == "dorado":
             self.set_dss_storage_mode("CLUSTER_RAID")
         self.start_cluster(only_mode="primary")
-        self.write_dorado_step("5_start_primary_cluster_step")
+        extra_start_info = ", type: %s" % self.params.disaster_type
+        self.write_dorado_step("5_start_primary_cluster_step" + extra_start_info)
         self.logger.log("Successfully set ss_double_cluster_mode")
 
     def sixth_step_build_main_standby(self, step):
@@ -123,7 +128,8 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51632"] % "build dns" + "Error:%s" % error)
         finally:
             self.stop_dss_instance(only_mode='disaster_standby')
-        self.write_dorado_step("6_build_dn_instance_step")
+        extra_start_info = ", type: %s" % self.params.disaster_type
+        self.write_dorado_step("6_build_dn_instance_step" + extra_start_info)
         
 
     def seventh_step_set_cm_guc(self, step):
@@ -138,7 +144,8 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         if self.params.disaster_type == "dorado":
             self.set_dss_storage_mode("CLUSTER_RAID")
             self.set_dss_cluster_run_mode("cluster_standby", only_mode='disaster_standby')
-        self.write_dorado_step("7_set_cm_guc_step")
+        extra_start_info = ", type: %s" % self.params.disaster_type
+        self.write_dorado_step("7_set_cm_guc_step" + extra_start_info)
         
 
     def eighth_step_wait_main_standby(self, step):
@@ -163,7 +170,8 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         query_status = "recovery" if ret else "recovery_fail"
         self.update_dorado_info("cluster", query_status, only_mode='disaster_standby')
         self.update_dorado_info("cluster", "archive", only_mode='primary')
-        self.write_dorado_step("8_start_cluster_step")
+        extra_start_info = ", type: %s" % self.params.disaster_type
+        self.write_dorado_step("8_start_cluster_step" + extra_start_info)
 
     def ninth_step_clean(self, step):
         """

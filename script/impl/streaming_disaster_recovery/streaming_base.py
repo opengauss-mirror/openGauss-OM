@@ -415,6 +415,10 @@ class StreamingBase(object):
         Streaming step
         """
         step = -1
+        is_gs_ddr = False
+        pg_host = EnvUtil.getEnv("PGHOST")
+        if os.path.isdir(os.path.join(pg_host, "ddr_cabin")):
+            is_gs_ddr = True
         if os.path.isfile(self.step_file_path):
             step_list = FileUtil.readFile(self.step_file_path)
             if step_list:
@@ -422,10 +426,27 @@ class StreamingBase(object):
         if step == -1:
             self.logger.log("Got the step for action:[%s]." % self.params.task)
         else:
+            if is_gs_ddr:
+                self.check_param("type")
             self.logger.log("Got the continue step:[%s] for action:[%s]." %
                             (step, self.params.task))
         return step
 
+    def check_param(self, para):
+        """
+        Check the param of the start process when reentry dual_cluster start process(gs_sdr, gs_ddr both)
+        """
+        self.logger.debug("Start check para when reentry the start process of the dual_cluster.")
+        with open(self.step_file_path, 'r') as file:
+            content = file.read()
+            para_in_file = re.search(f'{para}: (\w+)', content)
+            if para == "type" and para_in_file.group(1) != self.params.disaster_type:
+                self.logger.logExit("The parameter [--disaster_type] for this start is different from those of the previously unfinished start. \n"
+                                    "Check the parameter of your cmd, please ensure your cmd parameter [--disaster_type] is correctly input. \n "
+                                    "Then, add the '-f' parameter to the start cmd for this time. \n"
+                                    "For example: \n gs_ddr -t %s -m %s --disaster_type %s -X %s -f" 
+                                    % (self.params.task, self.params.mode, self.params.disaster_type, self.params.xml_path))
+    
     def write_streaming_step(self, step):
         """
         write streaming step

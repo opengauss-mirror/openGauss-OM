@@ -1537,35 +1537,30 @@ remoteservice={remoteservice}'"\
         check datanodes
         """
         self.logger.debug("Checking the consistence of datanodes.")
-        primaryName = self.getPrimaryHostName()
+        primary_name = self.getPrimaryHostName()
         cmd = "source %s;gs_om -t status --detail" % (self.envFile)
         cmd = CmdUtil.get_user_exec_cmd(self.context.current_user_root, self.user, cmd)
-        sshTool = SshTool([primaryName])
-        resultMap, outputCollect = sshTool.getSshStatusOutput(cmd,
-            [primaryName], self.envFile)
-        self.logger.debug(f"resultMap={resultMap}")
-        self.logger.debug(f"outputCollect={outputCollect}")
-        if resultMap[primaryName] != DefaultValue.SUCCESS:
+        ssh_tool = SshTool([primary_name])
+        result_map, output_collect = ssh_tool.getSshStatusOutput(cmd,
+            [primary_name], self.envFile)
+        self.logger.debug(f"resultMap={result_map}")
+        self.logger.debug(f"outputCollect={output_collect}")
+        if result_map[primary_name] != DefaultValue.SUCCESS:
             GaussLog.exitWithError(ErrorCode.GAUSS_516["GAUSS_51600"])
-        self.cleanSshToolFile(sshTool)
-        pos = outputCollect.rfind("-----")
-        pos += len("-----") + 1
-        allNodesState = outputCollect[pos:]
-        nodeStates = re.split('(?:\|)|(?:\n)', allNodesState)
-        dataNodes = {}
-        for nodeState in nodeStates:
-            pattern = re.compile(r"[ ]+[^ ]+[ ]+((?:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})|(?:[0-9a-fA-F:]+))[ ]+[^ ]+[ ]+[^ ]+[ ]+([^ ]+)[ ]+")
-            result = pattern.findall(nodeState)
-            if len(result) != 0:
-                result = result[0]
-                if len(result) != 0:
-                    dataNodes[result[0]] = result[1]
+        self.cleanSshToolFile(ssh_tool)
+        node_states = str(output_collect).splitlines()
+        data_nodes = {}
+        pattern = re.compile(r"[ ]+[^ ]+[ ]+((?:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})|(?:[0-9a-fA-F:]+))[ ]+[^ ]+[ ]+[^ ]+[ ]+([^ ]+)[ ]+")
+        for node_state in node_states:
+            result = pattern.findall(node_state.strip())
+            if result:
+                data_nodes[result[0][0]] = result[0][1]
         clusterInfoDict = self.context.clusterInfoDict
         backIpNameMap = self.context.backIpNameMap
         for hostIp in self.existingHosts:
-            hostName = backIpNameMap[hostIp]
-            dataNode = clusterInfoDict[hostName]["dataNode"]
-            if dataNode != dataNodes[hostIp]:
+            host_name = backIpNameMap[hostIp]
+            data_node = clusterInfoDict[host_name]["dataNode"]
+            if data_node != data_nodes.get(hostIp):
                 GaussLog.exitWithError(ErrorCode.GAUSS_357["GAUSS_35711"] %
                     ("dataNode of %s" % hostIp))
 

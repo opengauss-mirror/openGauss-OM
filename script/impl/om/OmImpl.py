@@ -181,12 +181,15 @@ class OmImpl:
                 node_head = temp_lines[-3].split("|")[0]
                 node_split = "-" * len(node_head)
                 node_info = [info.strip() for info in temp_lines[-1].split("|")]
-                self.logger.log("\n".join(temp_lines[:-3] + [node_head] + [node_split] +
-                                          node_info))
+                result = "\n".join(temp_lines[:-3] + [node_head] + [node_split] + node_info)
+                print(result)
+                self.logger.debug(result)
             else:
-                self.logger.log(output)
+                print(output)
+                self.logger.debug(output)
             if node_status_line:
-                self.logger.log(node_status_line)
+                print(node_status_line)
+                self.logger.debug(node_status_line)
         else:
             if node_status_line:
                 FileUtil.createFileInSafeMode(self.context.g_opts.outFile)

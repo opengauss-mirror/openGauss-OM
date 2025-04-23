@@ -141,7 +141,7 @@ class ExpansionImpl():
             primaryHostIp, self.envFile, primaryDataNode, "wal_keep_segments", self.user)
         if status != DefaultValue.SUCCESS:
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50021"] % "wal_keep_segments")
-        return walKeepSegments
+        return eval(walKeepSegments)
 
     def rollbackPrimaryWalKeepSegments(self):
         """

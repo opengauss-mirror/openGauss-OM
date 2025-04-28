@@ -2272,6 +2272,33 @@ def readDeleteGuc():
     return gucContent
 
 
+def clean_opts_old_clusternum():
+    """ 
+    function clean old version in postmaster.opts
+    input  : NA
+    output : NA
+    """
+    if not g_opts.oldclusternum:
+        g_logger.debug("No oldclusternum need to clean.")
+        return
+    
+    all_instances = g_dbNode.datanodes
+    for instance in all_instances:
+        if instance.instanceRole == DefaultValue.INSTANCE_ROLE_DATANODE:
+            optfile = "%s/postmaster.opts" % instance.datadir
+            if not os.path.exists(optfile):
+                continue
+        
+            cmd = "sed -i 's/\"-u\"[[:space:]]\"%d\"[[:space:]]//g' %s" % \
+                (int(float(g_opts.oldclusternum) * 1000), optfile)
+            g_logger.debug("Clean old cluster number cmd: %s" % cmd)
+            status, output = subprocess.getstatusoutput(cmd)
+            if status == 0:
+                g_logger.debug("Clean old cluster number success.")
+            else:
+                g_logger.debug("Clean old cluster number failed: %s" % str(output))
+    
+
 def  cleanInstallPath():
     """
     function: clean install path
@@ -4612,6 +4639,8 @@ def cleanConfBakOld():
     """
     clean conf.bak.old files
     """
+    clean_opts_old_clusternum()
+    
     allInstances = g_dbNode.datanodes
     pool = ThreadPool(DefaultValue.getCpuSet())
     pool.map(cleanOneInstanceConfBakOld, allInstances)

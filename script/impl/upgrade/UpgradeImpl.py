@@ -5004,10 +5004,11 @@ END;"""
         output : NA
         """
         try:
-            cmd = "%s -t %s -U %s -l %s" % \
+            cmd = "%s -t %s -U %s --oldcluster_num='%s' -l %s" % \
                   (OMCommand.getLocalScript("Local_Upgrade_Utility"),
                    const.ACTION_CLEAN_CONF_BAK_OLD,
                    self.context.user,
+                   self.context.oldClusterNumber,
                    self.context.localLog)
             hostList = copy.deepcopy(self.context.nodeNames)
             self.context.sshTool.executeCommand(cmd, hostList=hostList)

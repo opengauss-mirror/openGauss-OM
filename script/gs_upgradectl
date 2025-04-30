@@ -46,6 +46,7 @@ import grp
 import copy
 import re
 import json
+import subprocess
 
 from gspylib.common.Common import DefaultValue
 from gspylib.common.GaussLog import GaussLog
@@ -125,7 +126,9 @@ class Upgrade(ParallelBaseOM):
         self.check_compresstbl_compat = True
         # check if exists mot table and need to modify guc param
         self.modifyMotParam = False
-
+        self.enable_pre_upgrade_check = False
+        self.only_pre_upgrade_check = False
+        self.skip_resource_check = False
 
     def usage(self):
         """
@@ -135,7 +138,7 @@ Usage:
   gs_upgradectl -? | --help
   gs_upgradectl -V | --version
   gs_upgradectl -t chose-strategy [-l LOGFILE]
-  gs_upgradectl -t auto-upgrade -X XMLFILE [-l LOGFILE] [--grey] [--inplace-upgrade]
+  gs_upgradectl -t auto-upgrade -X XMLFILE [-l LOGFILE] [--grey] [--inplace-upgrade] [--skip-resource-check]
   gs_upgradectl -t auto-rollback -X XMLFILE [-l LOGFILE] [--force]
   gs_upgradectl -t commit-upgrade -X XMLFILE [-l LOGFILE]
   gs_upgradectl -t upgrade-cm --upgrade-package PACKAGE_PATH
@@ -157,6 +160,9 @@ General options:
   --grey                          Use grey-binary-upgrade
   --upgrade-package               Path of the CM component package
   --inplace-upgrade               Use inplace-upgrade.
+  --enable-pre-upgrade-check      Enable pre upgrade check.
+  --only-pre-upgrade-check        Only do pre upgrade check.
+  --skip-resouce-check            Skip resource check.
 Option for grey upgrade
   -h                              Under grey upgrade, specified nodes name.
   --continue                      Under grey upgrade, continue to upgrade
@@ -197,6 +203,12 @@ Option for grey upgrade
             print("We no longer support force rollback. and '--force' is no longer in effect.")
         if "upgrade-package" in ParaDict.keys():
             self.upgrade_package = ParaDict.get("upgrade-package")
+        if "enable-pre-upgrade-check" in ParaDict.keys():
+            self.enable_pre_upgrade_check = True
+        if "only-pre-upgrade-check" in ParaDict.keys():
+            self.only_pre_upgrade_check = True
+        if "skip-resource-check" in ParaDict.keys():
+            self.skip_resource_check = True
         self.tmpDir = EnvUtil.getTmpDirFromEnv()
         if self.tmpDir == "":
             raise Exception(ErrorCode.GAUSS_518["GAUSS_51800"] % "$PGHOST")
@@ -259,7 +271,12 @@ Option for grey upgrade
                 self.checkCommandConflicts(inplace=False)
             else:
                 self.checkCommandConflicts()
-        
+
+        if self.enable_pre_upgrade_check and self.only_pre_upgrade_check:
+            raise Exception(
+                ErrorCode.GAUSS_500["GAUSS_50001"] % "only-pre-upgrade-check" + "."
+            )
+
         # check mpprc file path
         # get mpprcFile by MPPDB_ENV_SEPARATE_PATH. Even if the return value
         # is "" or None, no need to pay attention
@@ -461,6 +478,32 @@ Option for grey upgrade
             if conflictPara > 1:
                 GaussLog.exitWithError(ErrorCode.Gauss_500["GAUSS_50005"] % (
                                        "--continue", "-h"))
+
+    def do_check_pre_upgrade(self):
+        """
+        do check pre upgrade
+        """
+        self.logger.log("Start check pre upgrade.")
+        env_value = EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH")
+        if not env_value and not os.path.isfile(env_value):
+            env_value = "~/.bashrc"
+        cmd = "source %s; gs_preupgradechk -i A" % env_value
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception("Failed to check pre upgrade. Output: %s" % output)
+        
+        if "All items have been completed" in output:
+            self.logger.logExit("Fiailed to check pre upgrade. the reason is: %s" % output.split('Error:')[1])
+        else:
+            self.logger.log("Successfully checked pre upgrade.")
+
+    def check_pre_upgrade(self):
+        if self.skip_resource_check:
+            self.logger.debug("Skip pre upgrade source check.")
+            return
+
+        self.do_check_pre_upgrade()
+        
         
 if __name__ == '__main__':
     """
@@ -474,6 +517,9 @@ if __name__ == '__main__':
         upgrade = Upgrade()
         upgrade.parseCommandLine()
         upgrade.checkParameter()
+
+        # check resource before upgrade
+        upgrade.check_pre_upgrade()
 
         # set action flag file
         DefaultValue.setActionFlagFile("gs_upgradectl")

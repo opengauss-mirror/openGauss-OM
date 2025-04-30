@@ -102,6 +102,8 @@ class OMCommand():
                 Current_Path + "/../../local/LocalCheckOS.py"),
             "Local_CheckSE": os.path.normpath(
                 Current_Path + "/../../local/LocalCheckSE.py"),
+            "Local_Check_Pre_Upgrade": os.path.normpath(
+                Current_Path + "/../../local/local_check_pre_upgrade.py"),
             "Local_Check": os.path.normpath(
                 Current_Path + "/../../local/LocalCheck.py"),
             "LOCAL_PERFORMANCE_CHECK": os.path.normpath(

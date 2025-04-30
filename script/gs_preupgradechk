@@ -1,0 +1,478 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+#############################################################################
+# Copyright (c) 2025 Huawei Technologies Co.,Ltd.
+#
+# openGauss is licensed under Mulan PSL v2.
+# You can use this software according to the terms
+# and conditions of the Mulan PSL v2.
+# You may obtain a copy of Mulan PSL v2 at:
+#
+#          http://license.coscl.org.cn/MulanPSL2
+#
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS,
+# WITHOUT WARRANTIES OF ANY KIND,
+# EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+# MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+# See the Mulan PSL v2 for more details.
+# ----------------------------------------------------------------------------
+# Description  : gs_preupgradechk is a utility to check system resoures before upgrade.
+#############################################################################
+
+import os
+import sys
+import subprocess
+
+from gspylib.threads.SshTool import SshTool
+from gspylib.common.GaussLog import GaussLog
+from gspylib.common.Common import DefaultValue
+from gspylib.common.OMCommand import OMCommand
+from gspylib.common.DbClusterInfo import dbClusterInfo
+from gspylib.common.ErrorCode import ErrorCode
+from gspylib.common.ParameterParsecheck import Parameter
+from base_utils.os.net_util import NetUtil
+from base_utils.os.user_util import UserUtil
+from base_utils.os.env_util import EnvUtil
+from domain_utils.domain_common.cluster_constants import ClusterConstants
+from domain_utils.cluster_file.cluster_log import ClusterLog
+
+# check item
+CHECK_ITEMNUMLIST = ["A1", "A2", "A3", "A4", "A5", "A6", "A7"]
+ACTION_CHECK_ALL = "Check_All"
+ACTION_CHECK_CPU = "Check_Cpu"
+ACTION_CHECK_MEM = "Check_Mem"
+ACTION_CHECK_DISK = "Check_Disk"
+ACTION_CHECK_PROCESS = "Check_Process"
+ACTION_CHECK_NETWORK = "Check_Network"
+ACTION_CHECK_DATABASE = "Check_Database"
+ACTION_CHECK_REPLAYGAY = "Check_Replaygay"
+
+DEFAULT_INTERVAL = 60
+
+g_pre_upgrade_check_opts = {
+    "A1": ["Checking items", "[ cpu used status ]", "Normal", "OK"],
+    "A2": ["Checking items", "[ mem used status ]", "Normal", "OK"],
+    "A3": ["Checking items", "[ disk used status ]", "Normal", "OK"],
+    "A4": ["Checking items", "[ process status ]", "Normal", "OK"],
+    "A5": ["Checking items", "[ network status ]", "Normal", "OK"],
+    "A6": ["Checking items", "[ database status ]", "Normal", "OK"],
+    "A7": ["Checking items", "[ replaygay status ]", "Normal", "OK"],
+}
+
+
+class CmdOptions:
+    """
+    command-line options
+    """
+
+    def __init__(self):
+        # initialize variable
+        self.user = ""
+        self.nodes = []
+        self.local_mode = False
+        self.is_single = False
+        self.log_file = ""
+        self.local_log = ""
+        self.conf_file = ""
+        self.item_str = ""
+        self.hostname_list = []
+        self.item_detail = []
+        self.is_dss = False
+
+
+def usage():
+    """
+    gs_preupgradechk is a utility to check system resoures before upgrade.
+
+        Usage:
+          gs_preupgradechk -? | --help
+          gs_preupgradechk -V | --version
+          gs_preupgradechk -i ITEM [-l LOGFILE]
+
+        General options:
+          -i                              Item number. To check all items, enter  "-i A"
+          -l                              Path of log file.
+          -?, --help                      Show help information for this utility, and exit the command line mode.
+          -V --version                    Show version information.
+        Item number description:
+          'A1':[ cpu idle status ]
+          'A2':[ mem used status ]
+          'A3':[ disk used status ]
+          'A4':[ process status ]
+          'A5':[ network status ]
+          'A6':[ database status ]
+          'A7':[ replaygay status ]
+    """
+    print(usage.__doc__)
+
+
+def parse_command_lines():
+    """
+    function: Parse command line and save to global variable
+    input : NA
+    output: NA
+    """
+    global g_opts
+    g_opts = CmdOptions()
+
+    ParaObj = Parameter()
+    ParaDict = ParaObj.ParameterCommandLine("preupgradecheck")
+    if ParaDict.__contains__("helpFlag"):
+        usage()
+        sys.exit(0)
+    if ParaDict.__contains__("logFile"):
+        g_opts.log_file = ParaDict.get("logFile")
+    if ParaDict.__contains__("itemstr"):
+        g_opts.item_str = ParaDict.get("itemstr")
+
+
+def check_parameter():
+    """
+    Check parameter from command line
+    """
+    get_user_info()
+    check_items()
+    parse_item_opts(g_opts.item_str)
+    is_dss_mode()
+
+
+def is_dss_mode():
+    """
+    function: is dss mode
+    input: NA
+    output: NA
+    """
+    if EnvUtil.getEnv("DSS_HOME"):
+        g_opts.is_dss = True
+
+
+def get_user_info():
+    """
+    function: get user
+    input: NA
+    output: NA
+    """
+    if os.getuid() != 0:
+        user_info = UserUtil.getUserInfo()
+        g_opts.user = user_info.get("name")
+        DefaultValue.checkPathVaild(g_opts.user)
+
+
+def check_items():
+    """
+    check items
+    input: NA
+    output: NA
+    """
+    if g_opts.item_str == "":
+        GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % "i" + ".")
+
+
+def parse_item_opts(item_list):
+    """
+    parse item
+    input: item list
+    output: NA
+    """
+    # Flatten list by splitting comma-separated values
+    items = []
+    for item in item_list:
+        items.extend(item.split(","))
+
+    # Process each item
+    for item in items:
+        item = item.strip().upper()
+        # Validate item is either in CHECK_ITEMNUMLIST or is 'A'
+        if item not in CHECK_ITEMNUMLIST and item != "A":
+            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % "i")
+
+        # Add unique valid items to detail list
+        if item not in g_opts.item_detail:
+            g_opts.item_detail.append(item)
+
+
+def init_globals():
+    """
+    init the global parameter g_logger and g_sshTool
+    """
+    global g_logger
+    global g_sshTool
+    global g_clusterInfo
+    if g_opts.log_file == "":
+        g_opts.log_file = ClusterLog.getOMLogPath(
+            ClusterConstants.GS_PREUPGRADECHK_LOG_FILE, g_opts.user
+        )
+    g_logger = GaussLog(g_opts.log_file, ClusterConstants.GS_PREUPGRADECHK_LOG_FILE)
+    dir_name = os.path.dirname(g_opts.log_file)
+    g_opts.local_log = os.path.join(dir_name, ClusterConstants.LOCAL_LOG_FILE)
+    g_clusterInfo = dbClusterInfo()
+    g_clusterInfo.initFromStaticConfig(g_opts.user)
+    g_opts.hostname_list = g_clusterInfo.getClusterNodeNames()
+    if (
+        len(g_opts.hostname_list) == 1
+        and g_opts.hostname_list[0] == NetUtil.GetHostIpOrName()
+    ):
+        g_opts.local_mode = True
+
+    if not g_opts.local_mode:
+        g_sshTool = SshTool(g_opts.hostname_list, g_logger.logFile)
+
+
+def check_system_resource(resource_type):
+    """
+    Check system resource usage.
+
+    Args:
+        resource_type (str): Type of resource to check ('cpu', 'mem', 'disk', 'process')
+
+    Returns:
+        bool: True if check passed, False otherwise
+    """
+    if resource_type == "A":
+        check_all()
+    elif resource_type == "A1":
+        check_cpu_usage()
+    elif resource_type == "A2":
+        check_mem_usage()
+    elif resource_type == "A3":
+        check_disk_usage()
+    elif resource_type == "A4":
+        check_process_usage()
+    elif resource_type == "A5":
+        check_network_usage()
+    elif resource_type == "A6":
+        check_database()
+    elif resource_type == "A7":
+        check_replaygay()
+
+
+def format_check_result(raw_result):
+    lines = raw_result.strip().splitlines()
+    output = []
+    node = None
+    for line in lines:
+        if line.startswith("[") and line.endswith("]"):
+            node = line
+            output.append("\n" + node)
+        else:
+            if "[" in line and "]" in line:
+                msg, status = line.rsplit("[", 1)
+                status = status.rstrip("]")
+                output.append(f"    {msg.strip():<55} [{status}]")
+            else:
+                output.append(f"    {line}")
+    return "\n".join(output).lstrip()
+
+
+def check_all():
+    g_logger.log("Checking all item")
+    try:
+        failed_flag = False
+        result_msg = ""
+        cmd = "%s -t %s -U %s -l %s" % (
+            Local_Check_Pre_Upgrade,
+            ACTION_CHECK_ALL,
+            g_opts.user,
+            g_opts.log_file,
+        )
+        (status, output, output_map) = get_cmd_output(cmd)
+        g_logger.debug("The cmd is %s, output is %s" % (cmd, output_map))
+
+        for node in list(status.keys()):
+            if status[node] != DefaultValue.SUCCESS:
+                g_logger.logExit(
+                    "[%s]: \n" % node
+                    + ErrorCode.GAUSS_516["GAUSS_51632"] % cmd
+                    + " Error: \n%s" % output_map[node].strip()
+                )
+            else:
+                lines = output_map[node].strip().split("\n")
+                result_msg += "[%s]\n" % node
+                for line in lines:
+                    if "," in line:
+                        res_status, res_output = line.split(",", 1)
+                        res_status = res_status.strip()
+                        res_output = res_output.strip()
+                    else:
+                        res_status = "Normal"
+                        res_output = line.strip()
+                    result_msg += "    %s [%s]\n" % (res_output, res_status)
+                    if res_status == "Error":
+                        failed_flag = True
+
+        result_msg = format_check_result(result_msg)
+        if failed_flag:
+            g_logger.log(
+                "All items have been completed, but there have been failures.Error: \n%s"
+                % result_msg
+            )
+        else:
+            g_logger.log("Successfully checked all item, result is \n%s" % result_msg)
+    except Exception as e:
+        g_logger.debug(str(e))
+
+
+def check_resource_usage(action, item_key, log_msg):
+    g_logger.log(log_msg)
+    try:
+        detail_msg = ""
+        cmd = "%s -t %s -U %s -l %s" % (
+            Local_Check_Pre_Upgrade,
+            action,
+            g_opts.user,
+            g_opts.local_log,
+        )
+        (status, output, output_map) = get_cmd_output(cmd)
+        g_logger.debug("The cmd is %s, output is %s" % (cmd, output_map))
+
+        for node in status:
+            if status[node] != DefaultValue.SUCCESS:
+                g_logger.logExit(
+                    "[%s]: \n%s Error: \n%s"
+                    % (
+                        node,
+                        ErrorCode.GAUSS_516["GAUSS_51632"] % cmd,
+                        output_map[node].strip(),
+                    )
+                )
+            else:
+                lines = [line for line in output_map[node].split("\n") if line.strip()]
+                detail_msg += "[%s]\n" % node
+                for line in lines:
+                    res_status = line.split(",")[0]
+                    res_output = line.split(",")[1]
+                    detail_msg += "%s [%s]\n" % (res_output.strip(), res_status)
+
+        if "Error" in detail_msg:
+            g_pre_upgrade_check_opts[item_key][2] = "Error"
+        elif "Warning" in detail_msg:
+            g_pre_upgrade_check_opts[item_key][2] = "Warning"
+        else:
+            g_pre_upgrade_check_opts[item_key][2] = "Normal"
+
+        g_pre_upgrade_check_opts[item_key][3] = "\n%s" % detail_msg
+    except Exception as e:
+        g_logger.debug(str(e))
+    g_logger.log("Successfully checked %s." % log_msg.lower())
+
+
+def check_cpu_usage():
+    check_resource_usage(ACTION_CHECK_CPU, "A1", "CPU usage status")
+
+
+def check_mem_usage():
+    check_resource_usage(ACTION_CHECK_MEM, "A2", "mem usage status")
+
+
+def check_disk_usage():
+    check_resource_usage(ACTION_CHECK_DISK, "A3", "disk usage status")
+
+
+def check_process_usage():
+    check_resource_usage(ACTION_CHECK_PROCESS, "A4", "process usage status")
+
+
+def check_network_usage():
+    check_resource_usage(ACTION_CHECK_NETWORK, "A5", "network usage status")
+
+
+def check_database():
+    check_resource_usage(ACTION_CHECK_DATABASE, "A6", "database usage status")
+
+
+def check_replaygay():
+    check_resource_usage(ACTION_CHECK_REPLAYGAY, "A7", "replaygay usage status")
+
+
+def get_cmd_output(cmd, ssh_conf=""):
+    """
+    function: execute the cmd and get the output
+    input: cmd
+    output:status, output, outputMap
+    """
+    local_host = NetUtil.GetHostIpOrName()
+    if g_opts.local_mode == True:
+        status = {}
+        output_map = {}
+        (status_str, output) = subprocess.getstatusoutput(cmd)
+        if status_str != 0:
+            status[local_host] = "Failure"
+        else:
+            status[local_host] = "Success"
+        output_map[local_host] = output
+    else:
+        gp_path = os.path.dirname(os.path.realpath(__file__))
+        (status, output) = g_sshTool.getSshStatusOutput(
+            cmd, [], "", "%s/../" % gp_path, ssh_config=ssh_conf
+        )
+        output_map = g_sshTool.parseSshOutput(g_opts.hostname_list)
+
+    return (status, output, output_map)
+
+
+def display_result_information(item):
+    """
+    Display formatted check result information.
+
+    Args:
+        Item: The check item identifier (e.g. 'A1', 'A2')
+        output: Output file object or sys.stdout
+    """
+
+    def format_item_line(item):
+        """Helper function to format a single item line"""
+        # Format the item identifier and description
+        item_header = (
+            "%s%s" % (("%s." % item).ljust(4), g_pre_upgrade_check_opts[item][1])
+        ).ljust(DEFAULT_INTERVAL)
+
+        # Get the appropriate detail column based on mode
+        detail_col = g_pre_upgrade_check_opts[item][3]
+        title = "%s:\n    " % g_pre_upgrade_check_opts[item][0]
+
+        return "%s%s: %s %s" % (
+            title,
+            item_header,
+            g_pre_upgrade_check_opts[item][2].ljust(10),
+            detail_col.ljust(DEFAULT_INTERVAL),
+        )
+
+    print(format_item_line(item))
+
+
+def main():
+    """
+    main function
+    """
+    if os.getuid() == 0:
+        GaussLog.exitWithError(ErrorCode.GAUSS_501["GAUSS_50105"])
+
+    try:
+        parse_command_lines()
+        check_parameter()
+        init_globals()
+        global Local_Check_Pre_Upgrade
+        Local_Check_Pre_Upgrade = OMCommand.getLocalScript("Local_Check_Pre_Upgrade")
+
+    except Exception as e:
+        GaussLog.exitWithError(str(e))
+
+    if "A" in g_opts.item_detail:
+        item_list = "A"
+    else:
+        sort_list = sorted(g_opts.item_detail)
+        item_list = sort_list
+
+    try:
+        if "A" == item_list:
+            check_system_resource(item_list)
+        else:
+            for item in item_list:
+                check_system_resource(item)
+                display_result_information(item)
+    except Exception as ex:
+        g_logger.logExit("Error: %s" % str(ex))
+
+
+if __name__ == "__main__":
+    main()

@@ -2,7 +2,7 @@
 
 declare binarylib_dir='None'
 declare module_name="openGauss"
-declare version_number='5.0.3'
+declare version_number='5.0.5'
 declare version_Kernel='92.298'
 ROOT_DIR=$(cd $(dirname "${BASH_SOURCE[0]}") && pwd)
 echo "ROOT_DIR : $ROOT_DIR"

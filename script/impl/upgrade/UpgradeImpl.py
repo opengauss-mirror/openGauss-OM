@@ -331,7 +331,6 @@ class UpgradeImpl:
             self.initGlobalInfos()
             self.removeOmRollbackProgressFile()
             self.commonCheck()
-            self.check_package_installed()
             
             # record operate action when gs_upgradectl
             self.operate_action = self.context.action
@@ -470,20 +469,6 @@ class UpgradeImpl:
             return True
         return False
 
-    def check_package_installed(self):
-
-        packages_to_check = ['openssl-devel', 'jemalloc-devel', 'libcgroup-devel', 'libcurl-devel', 'zstd',
-                             'libedit-devel', 'libxml2-devel', 'lz4-devel', 'numactl-devel', 'unixODBC-devel',
-                             'java-1.8.0-openjdk-devel']
-
-        try:
-            cmd = "rpm -q %s" % ' '.join(packages_to_check)
-            CmdExecutor.execCommandWithMode(cmd, self.context.sshTool,
-                                            self.context.isSingle, self.context.mpprcFile)
-        except Exception as e:
-            error_msg = str(e) + "\nPlease download the missing dependencies."
-            self.exitWithRetCode(self.context.action, False, error_msg)
-        self.context.logger.log("All dependencies are already installed.")
 
     def checkReadOnly(self):
         """

@@ -45,7 +45,7 @@ def check_os_and_package_arch():
     """
     clib_path = os.path.realpath(
                 os.path.join(os.path.realpath(__file__), "../../clib"))
-    package_cmd = "cd " + clib_path + "&& file libcrypto.so.1.1 2>/dev/null"
+    package_cmd = "cd " + clib_path + "&& file libstdc++.so.6 2>/dev/null"
     (status, output) = subprocess.getstatusoutput(package_cmd)
     if status != 0:
         raise Exception("%s command failed." % (package_cmd))

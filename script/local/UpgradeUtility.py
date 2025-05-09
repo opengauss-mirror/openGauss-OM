@@ -1822,16 +1822,6 @@ def restoreConfig():
         g_logger.debug("Restore command: %s" % cmd)
         CmdExecutor.execCommandLocally(cmd)
 
-        # restore javaUDF
-        # lib/postgresql/java/pljava.jar use new package, no need to restore.
-        javadir = "%s/java" % bakPath
-        desPath = "%s/lib/postgresql/" % clusterAppPath
-        cmd = "if [ -d '%s' ];" \
-              "then rm -f '%s/pljava.jar'&&cp -r '%s' '%s' ;fi" % (
-                  javadir, javadir, javadir, desPath)
-        g_logger.debug("Restore command: %s" % cmd)
-        CmdExecutor.execCommandLocally(cmd)
-
         # restore postGIS
         cmdPostGis = ""
         machineType = platform.machine()
@@ -4067,15 +4057,6 @@ def greyUpgradeSyncConfig():
     cmd = "(if [ -d '%s' ];then cp -r '%s' '%s';fi)" % (
     grpcOldpath, grpcOldpath, grpcNewDir)
     g_logger.debug("Inplace restore command: %s" % cmd)
-    CmdExecutor.execCommandLocally(cmd)
-
-    # sync java UDF
-    javadir = "%s/lib/postgresql/java" % srcDir
-    desPath = "%s/lib/postgresql/" % destDir
-    cmd = "(if [ -d '%s' ];then mv '%s/java/pljava.jar' " \
-          "'%s'&&cp -r '%s' '%s'&&mv '%s/pljava.jar' '%s/java/';fi)" % \
-          (javadir, desPath, desPath, javadir, desPath, desPath, desPath)
-    g_logger.debug("Grey upgrade sync command: %s" % cmd)
     CmdExecutor.execCommandLocally(cmd)
 
     # sync postGIS

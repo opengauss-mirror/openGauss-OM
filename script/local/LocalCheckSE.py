@@ -4598,7 +4598,7 @@ def checkHidepid():
     output : NA
     """
     data = collectHidepid()
-    pattern = r'hidepid=2'
+    pattern = r'hidepid=(2|invisible)'
     if not (data.output and re.search(pattern, data.output)):
         g_logger.log(
             "        Warning reason:Ensure process information is hidden from other users.This ensures that only the root user can view all processes, while regular users can only see their own processes. This helps prevent the leakage of user process information and enhances the security of the database operating environment.")

@@ -30,6 +30,8 @@ from impl.streaming_disaster_recovery.streaming_constants import StreamingConsta
 from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.ErrorCode import ErrorCode
 from base_utils.security.security_checker import SecurityChecker, ValidationError
+from base_utils.os.env_util import EnvUtil
+from base_utils.os.user_util import UserUtil
 from domain_utils.cluster_file.version_info import VersionInfo
 
 
@@ -160,6 +162,7 @@ General options:
   -W                             Disaster recovery user password.
   -X                             Path of the XML configuration file.
   -l                             Path of log file.
+  -f                             Force remove the last time start process file.         
   --json                         Path of params file for streaming options.
   --time-out=SECS                Maximum waiting time when Main standby connect to the primary dn,
                                     default value is 1200s.
@@ -207,6 +210,8 @@ class ParamsHandler(object):
                           help='time out.')
         parser.add_option("-l", dest='logFile', type='string',
                           help='Path of log file.')
+        parser.add_option("-f", dest='force', action='store_true',
+                          help='-f|Force remove the last time start process file.')
         return parser
 
     def __print_usage(self):
@@ -269,6 +274,45 @@ class ParamsHandler(object):
             raise ValidationError(ErrorCode.GAUSS_500["GAUSS_50004"] % "--time-out")
         self.params.waitingTimeout = int(self.params.timeout)
 
+    def __force_remove_step_file(self):
+        """
+        Remove the last process file
+        """
+        if not self.params.force:
+            return
+        self.logger.debug("remove the last process file on all connected nodes.")
+        user = UserUtil.getUserInfo().get("name")
+        pg_host = EnvUtil.getEnvironmentParameterValue("PGHOST", user)
+        streaming_file_dir = os.path.join(pg_host, StreamingConstants.STREAMING_FILES_DIR)
+        self.__do_remove_step_file(streaming_file_dir)
+        self.logger.debug("Successfully remove the last process file on all connected nodes.")
+
+    def __do_remove_step_file(self, streaming_file_dir):
+        """
+        remove step file
+        """
+        if not os.path.isdir(streaming_file_dir):
+            self.logger.debug(f"Invalid directory: {streaming_file_dir}")
+            return
+        
+        task_file_map = {
+            StreamingConstants.ACTION_START: ("start_primary", "start_standby")
+        }
+
+        file_keys = task_file_map.get(self.params.task)
+        if not file_keys:
+            self.logger.logExit(f"Unknown task: {self.params.task}")
+            return
+        
+        for key in file_keys:
+            file_path = os.path.realpath(os.path.join(streaming_file_dir, StreamingConstants.STREAMING_STEP_FILES.get(key)))
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    self.logger.debug(f"Removed file: {file_path}")
+            except Exception as e:
+                self.logger.logExit(f"Failed to remove file {file_path}: {str(e)}")
+
     def __parse_args(self):
         """
         Parse arguments
@@ -277,6 +321,7 @@ class ParamsHandler(object):
         self.params, _ = parser.parse_args()
         self.__print_usage()
         self.__print_version_info()
+        self.__force_remove_step_file()
         if not hasattr(self.params, 'task') or not self.params.task:
             raise ValidationError(ErrorCode.GAUSS_500["GAUSS_50001"] % 't' + ".")
         if self.params.task not in StreamingConstants.STREAMING_JSON_PARAMS.keys():

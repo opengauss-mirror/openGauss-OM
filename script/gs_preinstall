@@ -26,7 +26,7 @@ import sys
 import grp
 import subprocess
 from gspylib.common.CheckPythonVersion import check_python_version, \
-    check_python_compiler_option, check_os_and_package_arch
+    check_python_compiler_option, check_os_and_package_arch, check_package_name
 
 package_path = os.path.dirname(os.path.realpath(__file__))
 lib_path = os.path.join(package_path, "..", "lib")
@@ -51,6 +51,7 @@ else:
     check_os_and_package_arch()
     check_python_version()
     check_python_compiler_option()
+    check_package_name()
     from gspylib.common.copy_python_lib import copy_lib
     copy_lib()
 

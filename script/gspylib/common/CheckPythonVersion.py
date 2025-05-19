@@ -23,6 +23,11 @@ import os
 import subprocess
 
 
+from os_platform.linux_distro import LinuxDistro
+from domain_utils.cluster_file.package_info import PackageInfo
+from base_diff.comm_constants import CommConstants
+
+
 def check_python_version():
     python_version = sys.version_info[0:2]
     dist_name = platform.platform()
@@ -65,6 +70,19 @@ def check_os_and_package_arch():
         return
     raise Exception("System and software package architecture mismatch.\n" +  
         "Error: os architecture is %s, package architecture is %s" % (os_arch, package_arch))
+
+def check_package_name():
+    """
+    check package name
+    """
+    # if os is openeuler, check package name
+    dist_name, version, _ = LinuxDistro.linux_distribution()
+    if dist_name.lower() != "openeuler":
+        return
+    server_file = PackageInfo.getPackageFile(CommConstants.PKG_SERVER)
+    server_file_name = os.path.basename(server_file)
+    if version not in server_file_name:
+        raise Exception("Error: package name is %s, the os version is %s" % (server_file_name, version))
 
 if __name__ == '__main__':
     try:

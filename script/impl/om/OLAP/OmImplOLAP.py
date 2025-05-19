@@ -193,9 +193,7 @@ class OmImplOLAP(OmImpl):
         """
         self.logger.debug("Operating: Starting.")
         # if has cm, will start cluster by cm_ctl command
-        if ((not self.context.clusterInfo.hasNoCm())
-            and DefaultValue.isgreyUpgradeNodeSpecify(self.context.user,
-            DefaultValue.GREY_UPGRADE_STEP_UPGRADE_PROCESS, None, self.context.logger)):
+        if not self.context.clusterInfo.hasNoCm():
             self.context.logger.debug("Have CM configuration, upgrade all"
                                       " nodes together.")
             self.doStartClusterByCm()

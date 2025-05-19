@@ -1809,6 +1809,8 @@ class UpgradeImpl:
                     self.set_enable_ssl("off")
 
                 self.setNewVersionGuc()
+                # set enable_pbe_optimization default to off from version 93.044
+                self.check_guc_default_value("enable_pbe_optimization", "93.044", "off")
                 self.recordNodeStep(GreyUpgradeStep.STEP_UPGRADE_PROCESS)
             self.progressReport()
             if currentStep < GreyUpgradeStep.STEP_UPDATE_POST_CATALOG:
@@ -1866,6 +1868,30 @@ class UpgradeImpl:
         else:
             successDetail = "Successfully upgrade all nodes."                                
         self.exitWithRetCode(self.context.action, True, successDetail)
+
+    def check_guc_default_value(self, guc_name, version, new_default_val):
+        """
+        Check if guc's default value is changed.
+
+        For upgrade from oldClusterNumber(<version) to newClusterNumber(>=version), 
+        if the old value is different from new_default_val, set it to old value, else do nothing.
+        """
+
+        if self.context.oldClusterNumber >= version:
+            return
+        guc_value = self.get_guc_value(guc_name)
+        if guc_value != new_default_val:
+            self.context.logger.debug("guc {0} value is {1}, new version default value is {2}, set it to {1}"
+                                      .format(guc_name, guc_value, new_default_val))
+            try:
+                self.setGUCValue(guc_name, guc_value, "reload")
+                self.context.logger.debug("Successfully reload guc {0} to {1}".format(guc_name, guc_value))
+            except Exception as _:
+                try:
+                    self.setGUCValue(guc_name, guc_value, "set")
+                    self.context.logger.debug("Successfully set guc {0} to {1}".format(guc_name, guc_value))
+                except Exception as e:
+                    raise Exception(str(e))
 
     def getOneNodeStep(self, nodeName):
         """
@@ -8056,6 +8082,22 @@ END;"""
             return True
         else:
             return False
+
+    def get_guc_value(self, guc_name, database=DefaultValue.DEFAULT_DB_NAME):
+        """
+        Get guc value.
+        """
+        sql = "show {0};".format(guc_name)
+        self.getPrimaryDN(True)
+        mode = "primary"
+        is_disaster = DefaultValue.cm_exist_and_is_disaster_cluster(self.context.clusterInfo,
+                                                                    self.context.logger)
+        if is_disaster:
+            mode = "standby"
+        (status, output) = self.execSqlCommandInPrimaryDN(sql, mode=mode, database=database)
+        if status != 0 or output == "":
+            raise Exception("Failed to get guc value {0}.".format(guc_name))
+        return output
 
     def execSqlCommandInPrimaryDN(self, sql, retryTime=3, execHost=None, mode="primary", 
                                   database=DefaultValue.DEFAULT_DB_NAME):

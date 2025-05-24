@@ -96,7 +96,7 @@ gs_checkperf = ["-?", "--help", "-V", "--version", "--detail", "-o:",
 gs_ssh = ["-?", "--help", "-V", "--version", "-c:"]
 gs_checkos = ["-?", "--help", "-V", "--version", "-h:", "-f:", "-o:",
               "-i:", "--detail",
-              "-l:", "-X:"]
+              "-l:", "-X:", "--skip-item-num="]
 gs_checkse = ["-?", "--help", "-V", "--version", "-h:", "-f:", "-o:",
               "-i:", "--detail", "--database=",
               "-l:", "-X:"]
@@ -361,6 +361,7 @@ class Parameter():
                               "--add-hostip": "add_hostip",
                               "--security-mode": "security_mode",
                               "--cluster-number": "cluster_number",
+                              "--skip-item-num": "skip_item_num",
                               "--component": "component"
                               }
         parameterNeedValue_keys = parameterNeedValue.keys()

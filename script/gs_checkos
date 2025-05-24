@@ -159,6 +159,8 @@ class CmdOptions():
         self.confFile = ""
         self.localMode = False
         self.skip_cgroup_set = False
+        self.skip_item_num_str = ""
+        self.skip_item_num_list = []
 
     #########################################################
 
@@ -192,7 +194,7 @@ gs_checkos is a utility to check and set cluster OS information.
 Usage:
   gs_checkos -? | --help
   gs_checkos -V | --version
-  gs_checkos -i ITEM [-f HOSTFILE] [-h HOSTNAME] [-X XMLFILE] [--detail] [-o OUTPUT] [-l LOGFILE]
+  gs_checkos -i ITEM [-f HOSTFILE] [-h HOSTNAME] [-X XMLFILE] [--detail] [-o OUTPUT] [-l LOGFILE] [--skip-item-num=ITEMNUM]
 
 General options:
   -i                              Item number. To check all items, enter  "-i A". To set all parameters, enter "-i B".
@@ -201,6 +203,7 @@ General options:
   -h                              Name of the host to connect to.
   -X                              Configuration file of the cluster.
      --detail                     Show detailed information.
+     --skip-item-num=ITEMNUM      Skip the specified item number.
   -o                              Save the result to the specified file.
   -l                              Path of log file.
   -? --help                       Show help information for this utility, and exit the command line mode.
@@ -304,6 +307,8 @@ def parseCommandLine():
         g_opts.itemstr = ParaDict.get("itemstr")
     if (ParaDict.__contains__("show_detail")):
         g_opts.detail = ParaDict.get("show_detail")
+    if (ParaDict.__contains__("skip_item_num")):
+        g_opts.skip_item_num_str = ParaDict.get("skip_item_num")
 
 def get_user_info():
     """
@@ -479,6 +484,28 @@ def checkParameter():
     # check output file
     ############################################
     checkOutputFile()
+    # remove skip item number
+    parse_item_opts(g_opts.skip_item_num_str)
+
+def parse_item_opts(item_str):
+    """
+    parse item string
+    """
+    if (item_str == ""):
+        return
+    
+    for item in item_str.split(','):
+        if (item.strip() not in CHECK_ITEMNUMLIST):
+            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % "-skip-item-num")
+        g_opts.skip_item_num_list.append(item.strip())
+
+def remove_skip_num(item_list):
+    """
+    remove skip item number
+    """
+    if not g_opts.skip_item_num_list:
+        return item_list
+    return [item for item in item_list if item not in g_opts.skip_item_num_list]
 
 def is_root_user():
     """
@@ -1555,6 +1582,9 @@ def main():
     else:
         sortList = sorted(g_opts.item_detail)
         itemList = sortList
+
+    # remove skip item
+    itemList = remove_skip_num(itemList)
 
     fp = None
     dirName = "%s/gspylib/etc/conf" % os.path.dirname(

@@ -1096,10 +1096,8 @@ class PreinstallImpl:
             if self.context.current_user_root and not self.context.skipOSSet:
                 # set and check parameters
                 self.setOSParameter(namelist)
-                # check the OS parameters
-                self.checkOSParameter(namelist)
-            else:
-                self.checkOSParameter(namelist)
+            # check the OS parameters
+            self.checkOSParameter(namelist)
         except Exception as e:
             raise Exception(str(e))
         self.context.logger.log("Set and check OS parameter completed.",
@@ -1136,7 +1134,7 @@ class PreinstallImpl:
         self.context.logger.debug("Checking OS parameters.")
         try:
             # check the OS parameters
-            cmd = "%s -h %s -i A -l '%s' -X '%s'" % (
+            cmd = "%s -h %s -i A -l '%s' -X '%s' --skip-item-num=A11" % (
                 OMCommand.getLocalScript("Gauss_CheckOS"),
                 namelist,
                 self.context.localLog,
@@ -1178,14 +1176,14 @@ class PreinstallImpl:
                 raise Exception(
                     ErrorCode.GAUSS_524["GAUSS_52400"]
                     + "\nPlease get more details by \"%s "
-                      "-i A -h %s -X %s --detail\"."
+                      "-i A -h %s -X %s --skip-item-num=A11 --detail\"."
                     % (gs_checkos_path, namelist, self.context.xmlFile))
             if warning_num > 0:
                 self.context.logger.log(
                     "Warning: Installation environment "
                     "contains some warning messages." + \
                     "\nPlease get more details by \"%s "
-                    "-i A -h %s -X %s --detail\"."
+                    "-i A -h %s -X %s --skip-item-num=A11 --detail\"."
                     % (gs_checkos_path, namelist, self.context.xmlFile))
 
         except Exception as e:

@@ -834,7 +834,7 @@ class StreamingBase(object):
             return
         self.logger.log("Starting %s wal_keep_segments value: %s." % (opt_type, value))
         if restore_flag and isinstance(value, dict):
-            params_list = [(inst, opt_type, value.get(inst.instanceId, 128), self.mpp_file) for
+            params_list = [(inst, opt_type, value.get(str(inst.instanceId), 128), self.mpp_file) for
                            node in self.cluster_info.dbNodes for inst in node.datanodes
                            if inst.instanceId in self.primary_dn_ids]
         else:
@@ -1823,7 +1823,7 @@ class StreamingBase(object):
         Distribute key files
         """
         if only_mode and self.params.mode != only_mode:
-            self.logger.debug("Wal keep segment opts not for mode:%s." % self.params.mode)
+            self.logger.debug("build and distribute key files not for mode:%s." % self.params.mode)
             return
         self.logger.log("Start build key files from remote cluster.")
         # build file

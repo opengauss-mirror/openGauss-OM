@@ -179,8 +179,6 @@ class CheckNodeEnv(LocalBaseOM):
             # change log file mode
             FileUtil.getchangeFileModeCmd(user_dir)
             self.logger.debug("Command to change the obs log setting.")
-            # change the obs log setting file  distribute package
-            self.changeObsLogSetting()
         except Exception as e:
             self.logger.logExit(str(e))
 

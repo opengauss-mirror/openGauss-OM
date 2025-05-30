@@ -553,7 +553,7 @@ class DoradoDisasterRecoveryBase(StreamingBase):
             self.logger.debug("Build Main standby step is not for mode:%s." % self.params.mode)
             return
         cmd = "gs_ddr -t start -m primary [-X /path/of/xml | --json /path/of/json] --disaster_type [dorado|stream]"
-        self.logger.log("Now, make sure that the command has been executed on the primary cluste: \n %s"
+        self.logger.log("Now, make sure that the command has been executed on the primary cluste: \n %s \n"
                         "Start build main standby datanode in disaster standby cluster.\n" 
                         "Waiting build main standby success." % cmd)
         primary_dn = [dn_inst for db_node in self.cluster_info.dbNodes for dn_inst in
@@ -891,6 +891,39 @@ class DoradoDisasterRecoveryBase(StreamingBase):
             self.logger.logExit(
                 ErrorCode.GAUSS_516["GAUSS_51602"])
         self.logger.debug("Successfully wait for gs_ctl query status become Normal.", "constant")
+
+    def get_sync_status(self):
+        sender_replay_location = ''
+        receiver_replay_location = ''
+        cmd = "source %s && gs_ctl query" % self.mpp_file
+        (status, query_msg) = subprocess.getstatusoutput(cmd)
+        test_list = query_msg.strip().splitlines()
+        for ts in test_list:
+            if 'sender_replay_location' in ts:
+                sender_replay_location = ts.split(':')[-1].strip()
+            elif 'receiver_replay_location' in ts:
+                receiver_replay_location = ts.split(':')[-1].strip()
+
+        return sender_replay_location, receiver_replay_location
+
+    def check_data_consistency(self):
+        start_time = time.time()
+        while True:
+            sender_replay_location, receiver_replay_location = \
+                self.get_sync_status()
+            if len(sender_replay_location) > 0 and \
+                    len(receiver_replay_location) > 0:
+                if sender_replay_location == receiver_replay_location:
+                    self.logger.debug(
+                        f'sender_replay_location: {sender_replay_location}')
+                    self.logger.debug(
+                        f'receiver_replay_location: {sender_replay_location}')
+                    return True
+            time.sleep(10)
+            end_time = time.time()
+            if end_time - start_time > 10:
+                self.logger.error('Gs_ctl query info is Lost.')
+                return False
 
     def check_input(self, msg_print):
         flag = input(msg_print)

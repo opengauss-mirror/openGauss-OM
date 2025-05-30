@@ -225,7 +225,10 @@ class ParamsHandler(object):
         parser.add_option('--disaster_type', dest='disaster_type', default="dorado", type='string',
                           help='Disaster dual-cluster type: It could be "dorado", "stream"')
         parser.add_option('-f', dest='force', action='store_true',
-                          help='-f|Force remove the last time start process file.')                  
+                          help='-f|Force remove the last time start process file.')
+        parser.add_option('--mix', dest='mix', action='store_true',
+                          help='Allow gs_ddr to operate on manually built dual clusters. '
+                          'Including failover, switchover, stop and query operations.')                  
         return parser
 
     def __print_usage(self):

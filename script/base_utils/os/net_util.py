@@ -172,6 +172,19 @@ class NetUtil(object):
             return NetUtil.IPV4_SUBMASK_LEN
 
     @staticmethod
+    def get_ip_cidr_segment(self, ip_address):
+        # Determine the IP type based on the environment variable
+        if os.getenv("IP_TYPE") == NetUtil.NET_IPV4:
+            ip_split = '.'
+            cidr_segment = ".0.0/16"  # IPv4 Default subnet segment
+        elif os.getenv("IP_TYPE") == NetUtil.NET_IPV6:
+            ip_split = ':'
+            cidr_segment = "::/64"  # IPv6 Default subnet segment
+        else:
+            return ""
+        return ip_split.join(ip_address.split(ip_split)[:2]) + cidr_segment
+
+    @staticmethod
     def executePingCmd(ip_address):
         """
         function : Send the network command of ping.

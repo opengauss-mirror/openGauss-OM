@@ -2903,8 +2903,6 @@ Common options:
             FileUtil.changeMode(DefaultValue.BIN_FILE_MODE,
                                 os.path.join(clib_app, file_))
 
-        FileUtil.change_caps(DefaultValue.CAP_WIO,
-                             os.path.join(clib_app, 'cm_persist'))
         FileUtil.change_caps('{},{}'.format(DefaultValue.CAP_ADM, DefaultValue.CAP_WIO),
                              os.path.join(clib_app, 'perctrl'))
         self.logger.debug("Successfully modified dss cap permissions.")

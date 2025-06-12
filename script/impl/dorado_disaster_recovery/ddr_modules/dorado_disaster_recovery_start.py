@@ -52,7 +52,8 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
             return
         self.logger.debug("Start second step of ddr start.")
         self.check_cluster_status(status_allowed=['Normal'])
-        self.check_cluster_is_common()
+        if not self.params.mix:
+            self.check_cluster_is_common()
         cm_exist = DefaultValue.check_is_cm_cluster(self.logger)
         if not cm_exist:
             self.logger.logExit(ErrorCode.GAUSS_516["GAUSS_51632"] %
@@ -69,6 +70,15 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         self.logger.debug("Start common config step of ddr start.")
         self.distribute_cluster_conf()
         
+    def enable_hybrid_mode(self):
+        if self.check_data_consistency():
+            self.update_dorado_info("cluster", "recovery", only_mode='disaster_standby')
+            self.update_dorado_info("cluster", "archive", only_mode='primary')
+            self.logger.log("Successfully enabled the hybrid mode.")
+            self.clean_step_file()
+        else:
+            self.logger.warn("The setup of the dual-cluster is not completed.\n" 
+                             "Please remove the [--mix] parameter from the start command and set up again.")
 
     def third_step_set_guc_param(self, step):
         """
@@ -197,6 +207,9 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
             self.parse_cluster_status()
             self.second_step_check_cluster_status(step)
             self.common_step_for_ddr_start()
+            if self.params.mix:
+                self.enable_hybrid_mode()
+                return
             self.third_step_set_guc_param(step)
             self.fourth_step_stop_cluster(step)
             self.fifth_step_start_cluster(step)

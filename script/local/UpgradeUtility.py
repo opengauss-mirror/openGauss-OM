@@ -2313,7 +2313,8 @@ def  cleanInstallPath():
     if commit_id:
         dss_app = os.path.realpath(
             os.path.join(os.path.dirname(installPath), f'dss_app_{commit_id}'))
-        cmd = "(if [ -d '%s' ]; then mv '%s' %s; fi)" % (dss_app, dss_app, tmpDir)
+        cmd = "(if [ -d '%s/%s' ]; then rm -rf %s/%s; fi; if [ -d '%s' ]; then mv '%s' %s; fi)" % (
+            tmpDir, f'dss_app_{commit_id}', tmpDir, f'dss_app_{commit_id}', dss_app, dss_app, tmpDir)
         g_logger.debug("Command for cleaning install path: %s." % cmd)
         CmdExecutor.execCommandLocally(cmd)
 
@@ -3851,29 +3852,35 @@ def greySyncInstanceGuc(dbInstance):
     g_logger.debug("Successfully dealt with %s." % oldConfig)
 
 
-def config_cm_agent_instance(cluster_info_file):
+def config_cm_instance(cluster_info_file):
     """
     Config cm_agent.conf
     """
-    g_logger.log("Start to config cm_agent.conf")
+    g_logger.log("Start to config cm_agent.conf and cm_server.conf")
     cluster_info_obj = dbClusterInfo()
     cluster_info_obj.initFromStaticConfig(g_opts.user, cluster_info_file)
     local_node = cluster_info_obj.get_local_node_info()
     space_count = 17
     cm_agent_conf = os.path.realpath(os.path.join(local_node.cmagents[0].datadir,
                                                   "cm_agent.conf"))
-    g_logger.log("Local cm_agent config file path [{0}]".format(cm_agent_conf))
+    cm_server_conf = os.path.realpath(os.path.join(local_node.cmservers[0].datadir,
+                                                   "cm_server.conf"))
+    config_upgrade_from(space_count, cm_agent_conf)
+    config_upgrade_from(space_count, cm_server_conf)
+
+
+def config_upgrade_from(space_count, file_name):
+    g_logger.log("Local cm_agent config file path [{0}]".format(file_name))
     replace_str = "upgrade_from = {0}{1}# the version number of the cluster " \
                   "before upgrade".format(g_opts.oldVersion,
                                           " " * (space_count - len(str(g_opts.oldVersion))))
     config_cmd = "sed -i 's/^upgrade_from =.*/{0}/g' {1} && " \
-                 "grep 'upgrade_from' {1}".format(replace_str, cm_agent_conf)
+                 "grep 'upgrade_from' {1}".format(replace_str, file_name)
     _, output = subprocess.getstatusoutput(config_cmd)
     if not "upgrade_from = {0}".format(g_opts.oldVersion) in output:
-        g_logger.debug("Config cm_agent.conf failed. Output: {0}".format(output))
-        raise Exception("Config cm_agent.conf failed. Output: {0}".format(output))
-
-    g_logger.log("Local cm_agent config file set seccessfully.")
+        g_logger.debug("Config {0} failed. Output: {1}".format(file_name, output))
+        raise Exception("Config {0} failed. Output: {1}".format(file_name, output))
+    g_logger.log("Local {0} file set seccessfully, cmd is {1}".format(file_name, config_cmd))
 
 
 def greyUpgradeSyncConfig():
@@ -3897,7 +3904,7 @@ def greyUpgradeSyncConfig():
                         os.path.realpath(new_static_config_file))
     if DefaultValue.check_add_cm(old_static_config_file, new_static_config_file, g_logger):
         install_cm_instance(new_static_config_file)
-        config_cm_agent_instance(new_static_config_file)
+        config_cm_instance(new_static_config_file)
         cmd = ""
     else:
         g_logger.debug("No need to install CM component for grey upgrade sync config.")

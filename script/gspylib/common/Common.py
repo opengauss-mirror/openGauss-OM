@@ -397,6 +397,10 @@ class DefaultValue():
     BASE_ENCODE = "encode"
     BASE_DECODE = "decode"
 
+    PAGE_SIZE = 8192
+    ZERO_INDEX = 0
+    REFORM_INDEX = 64
+
     # Default name of the byte stream file which contain the disabled features.
     DEFAULT_DISABLED_FEATURE_FILE_NAME = "gaussdb.version"
     # Default license control file name.

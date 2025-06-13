@@ -197,7 +197,8 @@ class LinuxPlatform(object):
             else:
                 file_name_list = [
                     self.package_file_path(prefix_str, packageVersion, PAK_EULER, postfix_str),
-                    self.package_file_path(prefix_str, packageVersion, PAK_CENTOS, postfix_str)
+                    self.package_file_path(prefix_str, packageVersion, PAK_CENTOS, postfix_str),
+                    self.package_file_path(prefix_str, packageVersion, PAK_OPENEULER, postfix_str)
                     ]
 
         elif distname == CENTOS:

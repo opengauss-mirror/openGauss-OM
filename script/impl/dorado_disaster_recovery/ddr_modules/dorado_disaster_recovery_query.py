@@ -99,7 +99,8 @@ class DoradoQueryHandler(DoradoDisasterRecoveryBase):
         return "recovery"
 
     def run(self):
-        self.logger.log("Start dorado disaster query.")
+        self.logger.log(DoradoDisasterRecoveryConstants.TASK_START_MSG % 
+                            (self.params.disaster_type, self.params.task))
         cluster_info = self.query_cluster_info()
         if cluster_info:
             self.parse_cluster_status(current_status=cluster_info)
@@ -125,6 +126,7 @@ class DoradoQueryHandler(DoradoDisasterRecoveryBase):
         values["ddr_cluster_stat"] = ddr_cluster_stat
         values["ddr_failover_stat"] = ddr_failover_stat
         values["ddr_switchover_stat"] = ddr_switchover_stat
-        self.logger.log("Successfully executed dorado disaster "
-                        "recovery query, result:\n%s" % values)
+        self.logger.log(DoradoDisasterRecoveryConstants.TASK_FINISH_MSG % 
+                            (self.params.disaster_type, self.params.task) + 
+                            "\nresult:\n%s" % values)
 

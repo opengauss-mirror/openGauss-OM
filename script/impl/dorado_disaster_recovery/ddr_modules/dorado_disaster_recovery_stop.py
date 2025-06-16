@@ -20,7 +20,7 @@
 # dorado disaster recovery on primary cluster.
 
 from impl.dorado_disaster_recovery.ddr_base import DoradoDisasterRecoveryBase
-
+from impl.dorado_disaster_recovery.ddr_constants import DoradoDisasterRecoveryConstants
 
 class DisasterRecoveryStopHandler(DoradoDisasterRecoveryBase):
     def __init__(self, *args, **kwargs):
@@ -72,11 +72,14 @@ class DisasterRecoveryStopHandler(DoradoDisasterRecoveryBase):
         self.clean_streaming_dir()
 
     def run(self):
-        self.logger.log("Start remove dorado disaster recovery relationship.")
+        self.logger.log(DoradoDisasterRecoveryConstants.TASK_START_MSG % 
+                            (self.params.disaster_type, self.params.task) + 
+                            " Remove disaster recovery relationship.")
         step = self.query_dorado_step()
         self.first_step_init_and_check(step)
         self.parse_cluster_status()
         self.second_step_check_cluster_status(step)
         self.third_step_remove_ddr_config(step)
         self.fourth_step_clean_dir(step)
-        self.logger.log("Successfully do dorado disaster recovery stop.")
+        self.logger.log(DoradoDisasterRecoveryConstants.TASK_FINISH_MSG % 
+                            (self.params.disaster_type, self.params.task))

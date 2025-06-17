@@ -236,12 +236,15 @@ class EnvUtil(object):
         '''
         If gauss_env is 2 or the $GAUSSHOME/bin is exist, is upgrade.
         '''
-        app_bin = os.path.realpath(
-            os.path.join(
-                EnvUtil.getEnvironmentParameterValue('GAUSSHOME',
+        gauss_home = EnvUtil.getEnvironmentParameterValue('GAUSSHOME',
                                                      user,
-                                                     env_file=env_file),
-                'bin'))
+                                                     env_file=env_file)
+        if gauss_home == "":
+            if logger:
+                logger.debug("The $GAUSSHOME is not exist.")
+            return False
+
+        app_bin = os.path.normpath(os.path.join(gauss_home, 'bin'))
         gauss_env = EnvUtil.getEnvironmentParameterValue('GAUSS_ENV',
                                                          user,
                                                          env_file=env_file)

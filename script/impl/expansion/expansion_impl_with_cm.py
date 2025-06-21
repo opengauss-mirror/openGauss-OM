@@ -686,7 +686,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         existingHosts = [host for host in hostList if host not in newNodesList]
         gaussHome = EnvUtil.getEnv("GAUSSHOME")
         gaussLog = EnvUtil.getEnv("GAUSSLOG")
-        CmdExecutor.execCommandWithMode(stopCMProcessesCmd, self.ssh_tool, host_list=existingHosts)
+        CmdExecutor.execCommandWithMode(stopCMProcessesCmd, self.ssh_tool, host_list=hostList)
         DefaultValue.remove_metadata_and_dynamic_config_file(self.user, self.ssh_tool, self.logger)
         # execute gs_guc reload
         self._gsctlReload()

@@ -224,6 +224,8 @@ class ParamsHandler(object):
                           help='[Internal Usage] Stage when do gs_ddr. It could be 1 or 2')
         parser.add_option('--disaster_type', dest='disaster_type', default="dorado", type='string',
                           help='Disaster dual-cluster type: It could be "dorado", "stream"')
+        parser.add_option('--disaster_storage_type', dest='disaster_storage_type', default="dorado", type='string',
+                          help='Disaster dual-cluster storage type: It could be "dorado", "ocean_pacific"')
         parser.add_option('-f', dest='force', action='store_true',
                           help='-f|Force remove the last time start process file.')
         parser.add_option('--mix', dest='mix', action='store_true',

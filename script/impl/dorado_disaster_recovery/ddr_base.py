@@ -20,6 +20,7 @@
 #############################################################################
 import json
 import os
+import pwd
 import re
 import subprocess
 import sys
@@ -55,6 +56,8 @@ class DoradoDisasterRecoveryBase(StreamingBase):
         self.streaming_file_dir = self.dorado_file_dir
         self.dss_home_dir = self.cluster_info.dss_home
         self.init_step_file_path()
+        self.cluster_node_names = self.cluster_info.getClusterNodeNames()
+        self.ssh_tool = SshTool(self.cluster_node_names)
 
     def init_step_file_path(self):
         """
@@ -378,6 +381,33 @@ class DoradoDisasterRecoveryBase(StreamingBase):
                                 " Error: \n%s " % output)
             self.logger.debug("Successfully update pg_hba config with remote datanode ip:%s."
                               % remote_ips)
+
+    def update_dss_control_file(self):
+        current_user = pwd.getpwuid(os.getuid()).pw_name
+        gauss_home = EnvUtil.getEnvironmentParameterValue('GAUSSHOME', current_user)
+        if gauss_home == "":
+            if logger:
+                logger.debug("The $GAUSSHOME is not exist.")
+            return False
+
+        app_bin = os.path.normpath(os.path.join(gauss_home, 'bin'))
+        dss_control_file = app_bin + '/dss_contrl.sh'
+
+        self.logger.debug("Command for update dss_control_file.")
+        update_cmd = "sed -i '/Reg/{N; /exit 0/{s/Reg/#Reg/; s/exit 0/exit 0/}}' %s" % (dss_control_file)
+        self.ssh_tool.executeCommand(update_cmd)
+        self.logger.debug("Command for update dss_control_file: %s" % update_cmd)
+        
+        update_cmd = "sed -i '/Unreg/{N; /exit 0/{s/Unreg/#Unreg/; s/exit 0/exit 0/}}' %s" % (dss_control_file)
+        self.ssh_tool.executeCommand(update_cmd)
+
+        update_cmd = "sed -i '/Isreg/{N; /exit 0/{s/Isreg/#Isreg/; s/exit 0/exit 11/}}' %s" % (dss_control_file)
+        self.ssh_tool.executeCommand(update_cmd)
+
+        update_cmd = "sed -i '/ScandCheck/{N; /nohup/{s/ScandCheck/#ScandCheck/; s/nohup/nohup/}}' %s" % \
+                     (dss_control_file)
+        self.ssh_tool.executeCommand(update_cmd)
+        self.logger.log("Successfully update dss_control_file on standby cluster.")
 
     def __get_remote_ips(self):
         """

@@ -4566,7 +4566,7 @@ END;"""
         input  : NA
         output : T/F
         """
-        check_version = 93.029
+        check_version = 92.973
         if (self.context.newClusterNumber >= str(check_version) and
            self.context.oldClusterNumber < str(check_version)):
             return True

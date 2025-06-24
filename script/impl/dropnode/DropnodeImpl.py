@@ -667,6 +667,73 @@ class OperCommon:
             "[gs_dropnode]End to parse backup parameter config file %s." % host)
         return resultDict
 
+    def reorder_replconninfo(self, host, dn_dir, envfile, ssh_tool):
+        """
+        Reorder replconninfo to ensure continuous numbering starting from 1
+        """
+        self.logger.log("[gs_dropnode]Start to reorder replconninfo on %s." % host)
+        # Get all replconninfo values and their current numbers
+        cmd = "grep -o '^replconninfo.*' %s/postgresql.conf" % dn_dir
+        self.logger.debug("[gs_dropnode]get all replconninfo values command: %s" % cmd)
+        (status_map, output) = ssh_tool.getSshStatusOutput(cmd, [host], envfile)
+        if status_map[host] != 'Success':
+            self.logger.debug("[gs_dropnode]Failed to get replconninfo values: %s" % output)
+            raise Exception("Failed to get replconninfo values")
+
+        # Parse existing replconninfo values and their numbers
+        origin_repl_dict = {}
+        max_num = 0
+        for line in output.splitlines():
+            if not line.strip():
+                continue
+            # Extract number and value 
+            match = re.match(r'replconninfo(\d+)\s*=\s*\'(.*)\'', line)
+            if match:
+                num = int(match.group(1))
+                value = match.group(2).strip()
+                max_num = max(max_num, num)
+                origin_repl_dict[num] = value
+
+        # Filter empty values
+        replconninfo_dict = {}
+        for key, value in origin_repl_dict.items():
+            if value:
+                replconninfo_dict[key] = value
+
+        if not replconninfo_dict:
+            self.logger.log("[gs_dropnode]No replconninfo values to reorder.")
+            return
+
+        # Prepare the new values to set, sorted by index
+        sorted_values = []
+        for _, value in sorted(replconninfo_dict.items()):
+            sorted_values.append(value)
+        new_num = len(sorted_values)
+
+        # Build the clear command for redundant replconninfo entries
+        # Only clear indices greater than the new values count
+        clear_value = ""
+        for i in range(new_num + 1, max_num + 1):
+            clear_value += " -c \"replconninfo%d = ''\"" % i
+
+        # Build the set command for the new replconninfo values
+        set_value = ""
+        for i, value in enumerate(sorted_values, 1):
+            set_value += " -c \"replconninfo%d = '%s'\"" % (i, value)
+
+        finally_value = clear_value + set_value
+        # Combine clear and set commands, and execute only once if needed
+        if finally_value:
+            cmd = "[need_replace_quotes] source %s;gs_guc reload -D %s%s" % (
+                envfile, dn_dir, finally_value)
+            self.logger.debug("[gs_dropnode]Clearing and setting replconninfo entries on %s, cmd is %s" % (host, cmd))
+            (status_map, output) = ssh_tool.getSshStatusOutput(cmd, [host], envfile)
+            if status_map[host] != 'Success' or "Failure to perform gs_guc" in output:
+                self.logger.debug("[gs_dropnode]Failed to clear and set replconninfo entries: %s" % output)
+                raise Exception("Failed to clear and set replconninfo entries")
+            
+        self.logger.log("[gs_dropnode]End of reorder replconninfo on %s." % host)
+
     def SetPgsqlConf(self, replNo, host, dndir, syncStandbyValue, sshTool, envfile,
                      replValue='', singleLeft=False):
         """
@@ -699,6 +766,9 @@ class OperCommon:
                 self.logger.debug(
                     "[gs_dropnode]Failed to set pgsql by guc on %s:%s" % (host, output))
                 raise ValueError(output)
+        
+        # Reorder replconninfo to ensure continuous numbering starting from 1
+        self.reorder_replconninfo(host, dndir, envfile, sshTool)
         self.logger.log(
             "[gs_dropnode]End of set openGauss config file on %s." % host)
 
@@ -715,11 +785,7 @@ class OperCommon:
             ip_entries = pgHbaValue[:-1].split('|')
             for entry in ip_entries:
                 entry = entry.strip()
-                v = entry[0:len(entry) - 9]
-                if not flagRollback:
-                    cmd += "gs_guc set -D %s -h '%s';" % (data_dir[0], v)
-                else:
-                    cmd += "gs_guc set -D %s -h '%s';" % (data_dir[0], v)
+                cmd += "gs_guc set -D %s -h '%s';" % (data_dir[0], entry)
             (status, output) = ssh_tool.getSshStatusOutput(cmd, [host])
             if status[host] != DefaultValue.SUCCESS:
                 self.logger.debug(

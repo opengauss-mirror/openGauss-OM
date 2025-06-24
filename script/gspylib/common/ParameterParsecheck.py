@@ -135,7 +135,7 @@ gs_upgradectl_chose_strategy = ["-t:", "-?", "--help", "-V", "--version",
                                 "-l:"]
 # auto-upgrade parameter lists
 gs_upgradectl_auto_upgrade = ["-t:", "-?", "--help", "-V", "--version", "-l:",
-                              "-X:", "--grey", "-h:", "--continue", "--inplace-upgrade", "--bypass-stale-check"]
+                              "-X:", "--grey", "-h:", "--continue", "--inplace-upgrade", "--bypass-stale-check", "--skip-resource-check"]
 # auto-rollback parameter lists
 gs_upgradectl_auto_rollback = ["-t:", "-?", "--help", "-V", "--version",
                                "-l:", "-X:", "--force"]
@@ -147,6 +147,11 @@ gs_upgradectl_commit = ["-t:", "-?", "--help", "-V", "--version", "-l:", "-X:"]
 
 # upgrade cm component
 gs_upgradectl_upgrade_cm = ["-t:", "-?", "--help", "-V", "--version", "-l", "--upgrade-package="]
+
+# gs_preupgradechk
+gs_preupgradechk = ["-i:", "-?", "--help", "-V", "--version", "-l:"]
+
+
 
 ParameterDict = {"preinstall": gs_preinstall,
                  "install": gs_install,
@@ -180,7 +185,8 @@ ParameterDict = {"preinstall": gs_preinstall,
                  "dropnode": gs_dropnode,
                  "killmonitor": gs_om_killmonitor,
                  "generate_xml": gs_om_generate_xml,
-                 "query_upgrade_records": gs_om_query_upgrade_records
+                 "query_upgrade_records": gs_om_query_upgrade_records,
+                 "preupgradecheck": gs_preupgradechk
                  }
 
 # List of scripts with the -t parameter
@@ -412,7 +418,10 @@ class Parameter():
                            "--unused-third-party": "unused_third_party",
                            "--enable-perf-config": "enable_perf_config",
                            "--inplace-upgrade": "inplace_upgrade",
-                           "--bypass-stale-check": "bypass_stale_check"
+                           "--bypass-stale-check": "bypass_stale_check",
+                           "--enable-pre-upgrade-check": "--enable_pre_upgrade_check",
+                           "--only-pre-upgrade-check": "--only_pre_upgrade_check",
+                           "--skip-resource-check": "skip_resource_check"
                            }
         parameterIsBool_keys = parameterIsBool.keys()
 

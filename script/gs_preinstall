@@ -693,6 +693,20 @@ General options:
             self.skipOSSet = True
             self.skip_cgroup_set = True
 
+    def check_upgrade_finish(self):
+        """
+        function: check upgrade finish
+        input: NA
+        output: NA
+        """
+        gp_host = ClusterConfigFile.getOneClusterConfigItem("GPHOST", self.xmlFile)
+        if not os.path.exists(gp_host):
+            return
+        upgrade_dir = os.path.dirname(os.path.join(gp_host, "binary_upgrade"))
+        if os.path.exists(gp_host):
+            GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50240"] % gp_host)
+
+
 def remove_mpp_env():
     mpprc = os.environ.get('MPPDB_ENV_SEPARATE_PATH')
     if mpprc:
@@ -719,6 +733,8 @@ if __name__ == '__main__':
         preinstall.checkParameter()
         # check if the path between dss and datanode is nested
         preinstall.checkIfNest()
+        # check if the upgrade is complete
+        preinstall.check_upgrade_finish()
         # check expect
         preinstall.check_expect()
         # init global variables

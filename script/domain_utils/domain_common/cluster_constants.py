@@ -44,4 +44,5 @@ class ClusterConstants:
     HOTPATCH_LOG_FILE = "gs_hotpatch.log"
     GS_CHECKOS_LOG_FILE = "gs_checkos.log"
     GS_CHECKSE_LOG_FILE = "gs_checkse.log"
+    GS_PREUPGRADECHK_LOG_FILE = "gs_preupgradechk.log"
 

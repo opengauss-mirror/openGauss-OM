@@ -20,9 +20,11 @@
 
 try:
     import os
+    import time
     import subprocess
     import sys
     import multiprocessing
+    from decimal import Decimal, getcontext
     from enum import Enum
     sys.path.append(sys.path[0] + "/../../")
     from base_utils.common.constantsbase import ConstantsBase
@@ -215,3 +217,38 @@ class CpuUtil(object):
             numa_list.append(CpuUtil.cpuRangeStrToCpuList(p))
 
         return numa_list
+    
+    @staticmethod
+    def get_cpu_idle(num=5):
+        """
+        function: get cpu idle
+        input: num
+        output: cpu idle list
+        """
+        cpu_idle_list = []
+        for i in range(num):
+            cmd = "top -bn1 | grep 'Cpu(s)'"
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
+                                " Error: \n%s" % str(output))
+            cpu_info_list = output.split(',')
+            for cpu_info in cpu_info_list:
+                # get the cpu idle
+                if 'id' in cpu_info:
+                    cpu_idle_list.append(cpu_info.split()[0].strip())
+            time.sleep(0.5)
+            
+        return cpu_idle_list
+
+    @staticmethod
+    def get_cpu_uesd():
+        """
+        function: get cpu used
+        input: NA
+        output: cpu used list
+        """
+        getcontext().prec = 2
+        cpu_idle_list = CpuUtil.get_cpu_idle()
+        cpu_uesd_list = [float(Decimal('100') - Decimal(idle)) for idle in cpu_idle_list]
+        return cpu_uesd_list

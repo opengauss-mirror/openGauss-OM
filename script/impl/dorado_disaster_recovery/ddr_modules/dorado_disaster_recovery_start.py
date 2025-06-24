@@ -93,6 +93,10 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         self.set_application_name()
         self.set_ha_module_mode()
         extra_start_info = ", type: %s" % self.params.disaster_type
+
+        cluster_current_role = self.params.mode
+        if cluster_current_role == "disaster_standby" and self.params.disaster_storage_type == "ocean_pacific":
+            self.update_dss_control_file()
         self.write_dorado_step("3_set_datanode_guc_step" + extra_start_info)
 
     def fourth_step_stop_cluster(self, step):
@@ -115,8 +119,6 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         self.logger.debug("Start fifth step of ddr start.")
         self.set_cmagent_guc("ss_double_cluster_mode", "1", "set", only_mode='primary')
         self.set_cmserver_guc("ss_double_cluster_mode", "1", "set", only_mode='primary')
-        if self.params.disaster_type == "dorado":
-            self.set_dss_storage_mode("CLUSTER_RAID")
         self.start_cluster(only_mode="primary")
         extra_start_info = ", type: %s" % self.params.disaster_type
         self.write_dorado_step("5_start_primary_cluster_step" + extra_start_info)
@@ -152,7 +154,6 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         self.set_cmagent_guc("ss_double_cluster_mode", "2", "set", only_mode='disaster_standby')
         self.set_cmserver_guc("ss_double_cluster_mode", "2", "set", only_mode='disaster_standby')
         if self.params.disaster_type == "dorado":
-            self.set_dss_storage_mode("CLUSTER_RAID")
             self.set_dss_cluster_run_mode("cluster_standby", only_mode='disaster_standby')
         extra_start_info = ", type: %s" % self.params.disaster_type
         self.write_dorado_step("7_set_cm_guc_step" + extra_start_info)

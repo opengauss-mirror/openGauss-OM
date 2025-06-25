@@ -496,6 +496,7 @@ General options:
         """
         self._debug("Write local hostname and Ip into /etc/hosts.", "addStep")
         hostIPInfo = ""
+        all_ip_host_map = copy.deepcopy(result)
         if os.getuid() == 0:
             tmpHostIpName = "./tmp_hostsiphostname_%d" % os.getpid()
             # Check if /etc/hosts exists.
@@ -504,14 +505,14 @@ General options:
                                 " Error: \nThe /etc/hosts does not exist.")
             (status, output) = GrepUtil.getGrepValue("-v", " #Gauss.* IP Hosts Mapping",
                                                      '/etc/hosts')
-            result["::1"] = "localhost"
-            result["127.0.0.1"] = "localhost"
+            all_ip_host_map["::1"] = "localhost"
+            all_ip_host_map["127.0.0.1"] = "localhost"
             FileUtil.createFile(tmpHostIpName)
             FileUtil.changeMode(DefaultValue.KEY_FILE_MODE, tmpHostIpName)
             FileUtil.writeFile(tmpHostIpName, [output])
             shutil.copyfile(tmpHostIpName, '/etc/hosts')
             FileUtil.removeFile(tmpHostIpName)
-            for (key, value) in list(result.items()):
+            for (key, value) in list(all_ip_host_map.items()):
                 hostIPInfo += '%s  %s  %s\n' % (key, value, HOSTS_MAPPING_FLAG)
             hostIPInfo = hostIPInfo[:-1]
             ipInfoList = [hostIPInfo]

@@ -342,6 +342,10 @@ def check_parameter():
     if EnvUtil.getEnv("DSS_HOME"):
         g_opts.is_dss = True
 
+    g_opts.mppdbfile = EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH")
+    if not g_opts.mppdbfile or not os.path.exists(g_opts.mppdbfile):
+        g_opts.mppdbfile = "~/.bashrc"
+
 
 def collect_cpu_info():
     """
@@ -515,10 +519,7 @@ def check_process(timeout=None):
     if not timeout:
         timeout = 10
     try:
-        cmd = "source %s; timeout %ss bash -c 'gs_om -t status'" % (
-            EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH"),
-            timeout,
-        )
+        cmd = "source %s; timeout %ss bash -c 'gs_om -t status'" % (g_opts.mppdbfile, timeout)
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0 or "Normal" not in output:
             g_logger.log("Error, process is not normal")

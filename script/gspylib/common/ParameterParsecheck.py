@@ -419,8 +419,6 @@ class Parameter():
                            "--enable-perf-config": "enable_perf_config",
                            "--inplace-upgrade": "inplace_upgrade",
                            "--bypass-stale-check": "bypass_stale_check",
-                           "--enable-pre-upgrade-check": "--enable_pre_upgrade_check",
-                           "--only-pre-upgrade-check": "--only_pre_upgrade_check",
                            "--skip-resource-check": "skip_resource_check"
                            }
         parameterIsBool_keys = parameterIsBool.keys()

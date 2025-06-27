@@ -951,12 +951,13 @@ def check_active_connections():
 
     if int(data.active_connection) > MAX_ACTIVE_CONNECTIONS:
         g_logger.log(
-            "Error, The number of active connections is %s which exceeds the threshold of 20!"
+            "Warning, The number of active connections is %s. There are currently many business executions, \
+            it is recommended to perform the upgrade during low business periods."
             % data.active_connection
         )
     else:
         g_logger.log(
-            "Normal, The number of active connections is %s" % data.active_connection
+            "Normal, The number of active connections is %s." % data.active_connection
         )
 
 

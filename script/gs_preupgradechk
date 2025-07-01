@@ -352,6 +352,8 @@ def check_resource_usage(action, item_key, log_msg):
 
         g_pre_upgrade_check_opts[item_key][3] = "\n%s" % detail_msg
     except Exception as e:
+        g_pre_upgrade_check_opts[item_key][2] = "Error"
+        g_pre_upgrade_check_opts[item_key][3] = "\n%s" % str(e)
         g_logger.debug(str(e))
     g_logger.log("Successfully checked %s." % log_msg.lower())
 

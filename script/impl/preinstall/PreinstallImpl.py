@@ -78,6 +78,8 @@ ACTION_INIT_GAUSSLOG = "init_gausslog"
 ACTION_CHECK_ENVFILE = "check_envfile"
 # check os software
 ACTION_CHECK_OS_SOFTWARE = "check_os_software"
+# check os software dependency
+ACTION_CHECK_SOFTWARE_DEPENDENCY = "check_software_dependency"
 # change tool env
 ACTION_CHANGE_TOOL_ENV = "change_tool_env"
 #check config
@@ -1639,6 +1641,24 @@ class PreinstallImpl:
         self.context.logger.log("Successfully check OS software.",
                                 "constant")
 
+    def verify_software_dependencies(self):
+        """
+        function: Detect whether the software dependencies are installed
+        input : NA
+        output: NA
+        """
+        cmd = "%s -t %s -u %s -l %s " % \
+            (OMCommand.getLocalScript("Local_PreInstall"),
+            ACTION_CHECK_SOFTWARE_DEPENDENCY,
+            self.context.user,
+            self.context.localLog)
+        self.context.logger.debug("Checking OS software: %s" % cmd)
+        CmdExecutor.execCommandWithMode(
+            cmd,
+            self.context.sshTool,
+            self.context.localMode or self.context.isSingle,
+            self.context.mpprcFile)
+
     def get_package_path(self):
         """
         get package path, then can get script path, /package_path/script/
@@ -1737,6 +1757,8 @@ class PreinstallImpl:
         # the end of functions which do not use in in local mode
         #check software
         self.checkOSSoftware()
+        # check software dependencies
+        self.verify_software_dependencies()
         # check os version
         self.checkOSVersion()
         # check cpu instructions

@@ -413,12 +413,31 @@ class UpgradeImpl:
         :return:
         """
         self.checkReadOnly()
+        self.verify_software_dependencies()
         if self.context.is_grey_upgrade:
             self.getOneDNInst(checkNormal=True)
             self.checkUpgradeMode()
             self.check_compress_tbl_compatibility()
             self.check_mot_tables()
-            
+
+    def verify_software_dependencies(self):
+        """
+        function: Detect whether the software dependencies are installed
+        input : NA
+        output: NA
+        """
+        ACTION_CHECK_SOFTWARE_DEPENDENCY = "check_software_dependency"
+        cmd = "%s -t %s -u %s -l %s " % (
+            OMCommand.getLocalScript("Local_PreInstall"),
+            ACTION_CHECK_SOFTWARE_DEPENDENCY,
+            self.context.user,
+            self.context.localLog)
+        self.context.logger.debug("Checking OS software: %s" % cmd)
+        CmdExecutor.execCommandWithMode(
+            cmd,
+            self.context.sshTool,
+            self.context.localMode or self.context.isSingle,
+            self.context.mpprcFile)
     
     def check_compress_tbl_compatibility(self):
         """

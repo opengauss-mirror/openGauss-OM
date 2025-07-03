@@ -84,6 +84,7 @@ ACTION_SET_ARM_OPTIMIZATION = "set_arm_optimization"
 ACTION_CHECK_DISK_SPACE = "check_disk_space"
 ACTION_SET_WHITELIST = "set_white_list"
 ACTION_CHECK_OS_SOFTWARE = "check_os_software"
+ACTION_CHECK_SOFTWARE_DEPENDENCY = "check_software_dependency"
 ACTION_FIX_SERVER_PACKAGE_OWNER = "fix_server_package_owner"
 ACTION_CHANGE_TOOL_ENV = "change_tool_env"
 ACTION_SET_CGROUP = "set_cgroup"
@@ -286,7 +287,7 @@ Common options:
                           ACTION_PREPARE_USER_SSHD_SERVICE, \
                           ACTION_SET_VIRTUALIP, ACTION_INIT_GAUSSLOG,
                           ACTION_CHECK_ENVFILE, ACTION_CHECK_OS_SOFTWARE, \
-                          ACTION_SET_ARM_OPTIMIZATION,
+                          ACTION_CHECK_SOFTWARE_DEPENDENCY, ACTION_SET_ARM_OPTIMIZATION,
                           ACTION_CHECK_DISK_SPACE, ACTION_SET_WHITELIST,
                           ACTION_FIX_SERVER_PACKAGE_OWNER, ACTION_DSS_NIT,
                           ACTION_CHANGE_TOOL_ENV, ACTION_CHECK_CONFIG, ACTION_CHECK_CPU_INSTRUCTIONS,
@@ -2652,6 +2653,45 @@ Common options:
                                 + " Error: \n%s" % output)
         self.logger.debug("Clear %s in iptables success." % chain_type)
 
+    def verify_software_dependencies(self):
+        """
+        function: Check whether software meets the installation requirements
+        input : logger
+        output: NA
+        """
+        self.logger.debug("Checking os software.")
+        if not self.is_rpm_available():
+            return
+        no_install_soft_list = []
+        for softname in DefaultValue.SOFTWARE_LIST:
+            cmd = "rpm -qa | grep -c " + softname
+            self.logger.debug("Check dependency %s by %s" \
+                              % (softname, cmd))
+            # output is num of softname
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                self.logger.debug(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
+                                  + "Error: output is '%s'." % output)
+                no_install_soft_list.append(softname)
+        if len(no_install_soft_list) > 0:
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51405"] % \
+                            str(no_install_soft_list))
+        self.logger.debug("Successfully check software dependencies.")
+
+    def is_rpm_available(self):
+        """
+        function: Check if the rpm command is available on the system
+        input : NA
+        output: True if rpm is available, False otherwise
+        """
+        self.logger.debug("Checking if rpm command is available.")
+        (status, output) = subprocess.getstatusoutput("rpm --version")
+        if status != 0:
+            self.logger.debug("rpm command is not available.")
+            return False
+        self.logger.debug("rpm command is available.")
+        return True
+
     def clearIptablesChain(self, tables_str, chain_type):
         """
         function: clear ip tables chain
@@ -3208,6 +3248,8 @@ Common options:
                                       " skip set white list.")
             elif self.action == ACTION_CHECK_OS_SOFTWARE:
                 self.checkOSSoftware()
+            elif self.action == ACTION_CHECK_SOFTWARE_DEPENDENCY:
+                self.verify_software_dependencies()
             elif self.action == ACTION_FIX_SERVER_PACKAGE_OWNER:
                 self.fix_server_pkg_permission()
             elif self.action == ACTION_DSS_NIT:

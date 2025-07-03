@@ -200,7 +200,9 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         self.clean_step_file()
 
     def run(self):
-        self.logger.log("Start create dorado storage disaster relationship.")
+        self.logger.log(DoradoDisasterRecoveryConstants.TASK_START_MSG % 
+                            (self.params.disaster_type, self.params.task) + 
+                            " Create disaster recovery relationship.")
         self.logger.log("param.stage = %s." % self.params.stage)
         step = self.query_dorado_step()
         if self.params.stage is None or int(self.params.stage) == 1:
@@ -220,5 +222,6 @@ class DisasterRecoveryStartHandler(DoradoDisasterRecoveryBase):
         if self.params.stage is None or int(self.params.stage) == 2:
             self.eighth_step_wait_main_standby(step)
             self.ninth_step_clean(step)
-            self.logger.log("Successfully do dorado disaster recovery start.")
+            self.logger.log(DoradoDisasterRecoveryConstants.TASK_FINISH_MSG % 
+                                (self.params.disaster_type, self.params.task))
  

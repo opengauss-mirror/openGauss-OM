@@ -30,7 +30,8 @@ class DisasterRecoveryFailoverHandler(DoradoDisasterRecoveryBase):
         super().__init__(*args, **kwargs)
 
     def run(self):
-        self.logger.log("Start dorado disaster recovery failover.")
+        self.logger.log(DoradoDisasterRecoveryConstants.TASK_START_MSG % 
+                            (self.params.disaster_type, self.params.task))
         self.check_action_and_mode()
         step = self.check_dorado_failover_workable(check_type_step=3, check_status_step=0)
         self.check_is_under_upgrade()
@@ -50,7 +51,8 @@ class DisasterRecoveryFailoverHandler(DoradoDisasterRecoveryBase):
             raise Exception(
                 ErrorCode.GAUSS_516["GAUSS_51632"] % "centralize failover" + "Error:%s" % error)
         self.clean_streaming_dir()
-        self.logger.log("Successfully do dorado disaster recovery failover.")
+        self.logger.log(DoradoDisasterRecoveryConstants.TASK_FINISH_MSG % 
+                            (self.params.disaster_type, self.params.task))
 
     def check_dorado_failover_workable(self, check_type_step=0, check_status_step=0):
         """

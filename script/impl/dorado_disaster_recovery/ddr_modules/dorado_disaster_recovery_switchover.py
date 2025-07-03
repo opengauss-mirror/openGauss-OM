@@ -45,7 +45,8 @@ class DisasterRecoverySwitchoverHandler(DoradoDisasterRecoveryBase):
         dorado disaster recovery switchover
         """
         if (self.params.stage is None or int(self.params.stage) == 1):
-            self.logger.log("Start dorado disaster switchover.")
+            self.logger.log(DoradoDisasterRecoveryConstants.TASK_START_MSG % 
+                                (self.params.disaster_type, self.params.task))
             self.check_action_and_mode()
             self.init_cluster_conf()
             self.check_dn_instance_params()
@@ -71,7 +72,8 @@ class DisasterRecoverySwitchoverHandler(DoradoDisasterRecoveryBase):
                 ErrorCode.GAUSS_516["GAUSS_51632"] % "switchover" + "Error:%s" % str(error))
         
         if (self.params.stage is None or int(self.params.stage) == 2):
-            self.logger.log("Successfully do dorado disaster recovery switchover.")
+            self.logger.log(DoradoDisasterRecoveryConstants.TASK_FINISH_MSG % 
+                                (self.params.disaster_type, self.params.task))
 
     def handle_standby_inst_cfg(self, dorado_disaster_step):
         if self.params.stage is None or int(self.params.stage) == 1:

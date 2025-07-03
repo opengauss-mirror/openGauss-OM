@@ -27,6 +27,7 @@ import json
 import optparse
 import getpass
 from impl.streaming_disaster_recovery.streaming_base import StreamingConstants
+from gspylib.common.Common import DefaultValue
 from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.common.ErrorCode import ErrorCode
 from base_utils.os.env_util import EnvUtil
@@ -337,7 +338,10 @@ class ParamsHandler(object):
         try:
             self.__parse_args()
             self.logger.log(StreamingConstants.LOG_REMARK)
-            self.logger.log('Dorado disaster recovery ' + self.params.task + ' ' + self.trace_id)
+            if self.params.task != "start":
+                self.params.disaster_type = DefaultValue.get_ss_disaster_mode()
+            self.logger.log('SS DUAL-CLUSTER [%s]' % self.params.disaster_type + 
+                            ' disaster recovery ' + self.params.task + ' ' + self.trace_id)
             self.logger.log(StreamingConstants.LOG_REMARK)
             self.__init_default_params()
             for param_name, validate in DORADO_PARAMS_FOR_MODULE[self.params.task].items():

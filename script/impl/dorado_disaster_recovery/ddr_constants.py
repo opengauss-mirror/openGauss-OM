@@ -96,3 +96,6 @@ class DoradoDisasterRecoveryConstants:
             "and ensure the \"Local Resource Role\" is Secondary."\
             "Ready to move on (yes/no)? "
 
+    TASK_START_MSG = "Start [%s] disaster [%s]."
+
+    TASK_FINISH_MSG = "Successfully do [%s] disaster recovery [%s]."

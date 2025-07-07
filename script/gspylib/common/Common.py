@@ -522,6 +522,15 @@ class DefaultValue():
         "Plan": "*"
     }
 
+    SOFTWARE_LIST = [
+        "libedit",
+        "libxml2",
+        "lz4",
+        "numactl",
+        "unixODBC",
+        "java"
+    ]
+
     DATABASE_CHECK_WHITE_LIST = ["dbe_perf", "pg_catalog"]
     # Default retry times of SQL query attempts after successful
     # operation "gs_ctl start".

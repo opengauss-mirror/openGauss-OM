@@ -426,7 +426,7 @@ class StreamingBase(object):
         if step == -1:
             self.logger.log("Got the step for action:[%s]." % self.params.task)
         else:
-            if is_gs_ddr:
+            if is_gs_ddr and self.params.task == "start":
                 self.check_param("type")
             self.logger.log("Got the continue step:[%s] for action:[%s]." %
                             (step, self.params.task))
@@ -434,7 +434,7 @@ class StreamingBase(object):
 
     def check_param(self, para):
         """
-        Check the param of the start process when reentry dual_cluster start process(gs_sdr, gs_ddr both)
+        Check the param of the start process when reentry dual_cluster start process
         """
         self.logger.debug("Start check para when reentry the start process of the dual_cluster.")
         with open(self.step_file_path, 'r') as file:

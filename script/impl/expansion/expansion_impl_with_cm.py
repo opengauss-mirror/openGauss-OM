@@ -700,6 +700,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         Restart cluster when enable_dss to sync params on new standby.
         """
         if self.xml_cluster_info.enable_dss != 'on':
+            p_value.value = 1
             return
         self.logger.debug("Ready to restart cluster.")
         self._change_user_without_root()

@@ -16,7 +16,7 @@
 # MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------
-# Description : LocalCheckPreUpgrade.py is a utility to check OS info on local node.
+# Description : local_check_pre_upgrade.py is a utility to check OS info on local node.
 #############################################################################
 
 import os
@@ -59,12 +59,10 @@ ACTION_CHECK_REPLAYGAY = "Check_Replaygay"
 # Global variables
 #############################################################################
 MASTER_INSTANCE = 0
-STANDBY_INSTANCE = 1
 
 g_logger = None
 g_opts = None
 g_clusterInfo = None
-g_replication_stats = {}
 
 CPU_ERROR_VALUE = 95
 CPU_WARNING_VALUE = 85
@@ -125,8 +123,6 @@ class DiskInfo:
         self.tmp_dir_avail = 0
         self.home_dir_avail = 0
         self.gauss_home_dir_avail = 0
-        self.dss_log_value = 0
-        self.dss_data_value = 0
 
 
 class DssInfo:
@@ -233,7 +229,7 @@ class CmdOptions:
         self.hostname = ""
         self.mppdbfile = ""
         self.is_dss = False
-        self.lsn_speed = ""
+        self.is_single_node = False
 
 
 #########################################################
@@ -247,11 +243,16 @@ def init_globals():
     """
     global g_logger
     global g_clusterInfo
+    global g_local_name
 
     g_logger = GaussLog(g_opts.log_file, "LocalCheckPreUpgrade")
     g_clusterInfo = dbClusterInfo()
     g_clusterInfo.initFromStaticConfig(g_opts.user)
 
+    g_local_name = NetUtil.GetHostIpOrName()
+    if len(g_clusterInfo.getClusterNodeNames()) == 1 and \
+            g_local_name == g_clusterInfo.getClusterNodeNames()[0]:
+        g_opts.is_single_node = True
 
 def usage():
     """
@@ -306,8 +307,6 @@ def parse_command_line():
             g_opts.mppdbfile = value
         elif key == "-l" or key == "--log-file":
             g_opts.log_file = os.path.realpath(value)
-        elif key == "--lsn-speed":
-            g_opts.lsn_speed = value
         Parameter.checkParaVaild(key, value)
 
 
@@ -480,9 +479,9 @@ def check_disk_used():
         )
 
     # check dss
-    if not g_opts.is_dss:
+    if not g_opts.is_dss or g_opts.is_single_node:
         if error_msgs:
-            g_logger.log("Error, " + "\n".join(error_msgs))
+            g_logger.log("Error, " + "".join(error_msgs))
         else:
             g_logger.log("Normal, %s" % success_msgs_str)
         return
@@ -490,22 +489,22 @@ def check_disk_used():
     status, data = query_dss_info()
     if not status:
         error_msgs.append("Query dss info failed, output is %s." % data)
-        g_logger.log("Error, " + "\n".join(error_msgs))
+        g_logger.log("Error, " + "".join(error_msgs))
         return
 
     dss_threshold = get_dss_log_or_data_threshold()
     if float(data.dss_data_value) > float(dss_threshold):
         error_msgs.append(
-            f"Dss data dir available space is not enough, the disk utilization rate is {data.dss_data_value}."
+            f"Dss data dir available space is not enough, the disk utilization rate is {data.dss_data_value}%."
         )
 
     if float(data.dss_log_value) > float(dss_threshold):
         error_msgs.append(
-            f"Dss log dir available space is not enough, the disk utilization rate is {data.dss_log_value}."
+            f"Dss log dir available space is not enough, the disk utilization rate is {data.dss_log_value}%."
         )
 
     if error_msgs:
-        g_logger.log("Error, " + "\n".join(error_msgs))
+        g_logger.log("Error, " + "".join(error_msgs))
     else:
         g_logger.log("Normal, %s" % success_msgs_str)
 
@@ -547,23 +546,21 @@ def get_primary_hostname():
     """
     for db_node in g_clusterInfo.dbNodes:
         for dn_inst in db_node.datanodes:
-            if dn_inst.instanceType == 0:
+            if dn_inst.instanceType == MASTER_INSTANCE:
                 return dn_inst.hostname
     return None
 
 
 def is_primary_node():
-    local_node = NetUtil.GetHostIpOrName()
     primary_home = get_primary_hostname()
-    if local_node != primary_home or g_opts.is_dss:
+    if g_local_name != primary_home or g_opts.is_dss:
         return False
     return True
 
 
 def get_node_port():
     try:
-        local_node = NetUtil.GetHostIpOrName()
-        node = g_clusterInfo.getDbNodeByName(local_node)
+        node = g_clusterInfo.getDbNodeByName(g_local_name)
         port = node.datanodes[0].port
         return port
     except Exception as e:
@@ -608,9 +605,7 @@ def lsn_diff_python(lsn1: str, lsn2: str) -> int:
     return lsn_to_int(lsn2) - lsn_to_int(lsn1)
 
 
-def parse_replication_stats(
-    first_stat_replication_str, second_stat_replication_str, time_diff
-):
+def parse_replication_stats(first_stat_replication_str, second_stat_replication_str, time_diff):
     """
     Parse replication stats and calculate the minimum LSN rate.
     Returns: (success, lsn_rate_min, errmsg)
@@ -654,6 +649,9 @@ def get_lsn_rate_min():
         g_logger.debug("query_replication_stats failed: %s" % errmsg)
         return success, second_stat_replication_str, errmsg
 
+    if not first_stat_replication_str or not second_stat_replication_str:
+        return True, 0, ""
+
     return parse_replication_stats(
         first_stat_replication_str, second_stat_replication_str, time_diff
     )
@@ -674,19 +672,18 @@ def collect_network():
     collect network info
     """
     data = NetworkInfo()
-    local_name = NetUtil.GetHostIpOrName()
+    if g_opts.is_single_node:
+        data.status = "Normal"
+        data.output = "successfully checked network"
+        return data
+    
     node_names = g_clusterInfo.getClusterNodeNames()
-    node_names.remove(local_name)
-
+    node_names.remove(g_local_name)
     back_ips = []
     for node in g_clusterInfo.dbNodes:
         if node.name in node_names and node.backIps:
             back_ips.append(node.backIps[0])
 
-    if not back_ips:
-        data.status = "Normal"
-        data.output = "successfully checked network"
-        return data
     try:
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=min(12, len(back_ips))
@@ -839,6 +836,8 @@ def get_replay_size(port):
     if not success:
         return success, output, errmsg
 
+    if not output:
+        return True, [], ""
     output_list = output.splitlines()
     diff_replay_list = []
     for line in output_list:
@@ -936,11 +935,11 @@ def check_max_process_memory():
     if data.enable_memory_limit == "off":
         g_logger.log("Normal, enable_memory_limit is off")
     else:
-        if int(data.max_process) * 0.9 < int(data.used_process):
-            g_logger.log("Warning, max_process_memory is less than process_used_memory")
+        if float(data.max_process) * 0.9 < float(data.used_process):
+            g_logger.log("Warning, process_used_memory is exceeds 90% of max_process_memory")
         else:
             g_logger.log(
-                "Normal, max_process_memory is greater than process_used_memory"
+                "Normal, process_used_memory is less than 90% of max_process_memory"
             )
 
 
@@ -970,8 +969,8 @@ def check_replaygay():
     """
     check replay time
     """
-    if not is_primary_node() or g_opts.is_dss:
-        g_logger.log("Normal, do not check replaygay.")
+    if g_opts.is_single_node or not is_primary_node() or g_opts.is_dss:
+        g_logger.log("Normal, Do not check replaygay.")
         return
 
     success, data, errmsg = collect_replay_info()
@@ -981,11 +980,11 @@ def check_replaygay():
 
     if int(data.replay_time) > LSN_ERROR_THRESHOLD:
         g_logger.log(
-            "Error, the replaygay time is %smin, which is greater than the threshold of 5min."
+            "Error, The replaygay time is %smin, which is greater than the threshold of 5min."
             % data.replay_time
         )
     else:
-        g_logger.log("Normal, the replaygay time is %smin." % data.replay_time)
+        g_logger.log("Normal, The replaygay time is %smin." % data.replay_time)
 
 
 def run_task_with_log(task):
@@ -1007,7 +1006,7 @@ def check_all():
         check_process,
         check_network,
         check_database,
-        check_replaygay,
+        check_replaygay
     ]
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=POOL_SIZE) as executor:
@@ -1016,7 +1015,7 @@ def check_all():
             try:
                 future.result()
             except Exception as exc:
-                g_logger.log(f"Exception in process: {exc}")
+                g_logger.log(f"Error, Exception in process: {exc}")
 
 
 def do_local_check():
@@ -1033,7 +1032,7 @@ def do_local_check():
         ACTION_CHECK_PROCESS: check_process,
         ACTION_CHECK_NETWORK: check_network,
         ACTION_CHECK_DATABASE: check_database,
-        ACTION_CHECK_REPLAYGAY: check_replaygay,
+        ACTION_CHECK_REPLAYGAY: check_replaygay
     }
 
     if g_opts.action in function_dict.keys():

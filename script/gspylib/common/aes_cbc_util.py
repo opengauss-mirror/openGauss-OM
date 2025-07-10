@@ -19,6 +19,7 @@ try:
 except Exception as err:
     sys.exit("[GAUSS-52200] : Unable to import module: %s." % err)
 
+os.environ["CRYPTOGRAPHY_OPENSSL_NO_LEGACY"] = "1"
 
 class AesCbcUtil(object):
     """
@@ -88,8 +89,8 @@ class AesCbcUtil(object):
             # if not find SSLv3_method, then use ours.
             local_path = os.path.dirname(os.path.realpath(__file__))
             clib_path = os.path.realpath(os.path.join(local_path, "../clib"))
-            ssl_path = os.path.join(clib_path, 'libssl.so.1.1')
-            crypto_path = os.path.join(clib_path, 'libcrypto.so.1.1')
+            ssl_path = os.path.join(clib_path, 'libssl.so.3')
+            crypto_path = os.path.join(clib_path, 'libcrypto.so.3')
             if os.path.isfile(crypto_path):
                 ctypes.CDLL(crypto_path, mode=ctypes.RTLD_GLOBAL)
             if os.path.isfile(ssl_path):

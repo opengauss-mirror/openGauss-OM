@@ -1910,14 +1910,14 @@ Common options:
                                 cgroup_etc_dir + " Error: \n%s" % output)
 
         # check or prepare libcgroup lib
-        libcgroup_target = "/usr/local/lib/libcgroup.so.1"
-        cmd = "ldd %s | grep 'libcgroup.so.1'" % cgroup_exe_dir
+        libcgroup_target = "/usr/local/lib/libcgroup.so.2"
+        cmd = "ldd %s | grep 'libcgroup.so.2'" % cgroup_exe_dir
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error: \n%s" % output)
         elif str(output).find("not found") != -1:
             cmd = "cp '%s' '%s' && ldconfig" % (libcgroup_dir, libcgroup_target)
-            self.logger.debug("Need copy libcgroup.so.1 from %s to %s." %
+            self.logger.debug("Need copy libcgroup.so.2 from %s to %s." %
                               (libcgroup_dir, libcgroup_target))
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0:

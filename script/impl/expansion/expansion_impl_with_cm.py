@@ -214,6 +214,27 @@ class ExpansionImplWithCm(ExpansionImpl):
                                ExpansionImplWithCm.get_node_names(self.new_nodes))
         self.logger.log("success to send all CA file.")
 
+    def send_cm_cfg(self):
+        """
+        Send CM config file to new nodes
+        """
+        local_node = self.static_cluster_info.get_local_node_info()
+        cma_cfg_dir = os.path.realpath(local_node.cmagents[0].datadir)
+        cms_cfg_dir = os.path.realpath(local_node.cmservers[0].datadir)
+
+        if not os.path.isdir(cma_cfg_dir) or not os.path.isdir(cms_cfg_dir):
+            self.logger.log(f"not exists cm cfg. cma {cma_cfg_dir}, cms {cms_cfg_dir}")
+            return
+
+        self.ssh_tool.scpFiles(os.path.join(cma_cfg_dir, "cm_agent.con*"),
+                               cma_cfg_dir,
+                               ExpansionImplWithCm.get_node_names(self.new_nodes))
+        self.ssh_tool.scpFiles(os.path.join(cms_cfg_dir, "cm_server.con*"),
+                               cms_cfg_dir,
+                               ExpansionImplWithCm.get_node_names(self.new_nodes))
+        self.logger.log("success to send all CM config file.")
+        
+
     def _get_local_cm_agent_dir(self):
         """
         Get cm_agent directory
@@ -722,6 +743,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         # stop CM processes in existed nodes
         clusterInfo = dbClusterInfo()
         clusterInfo.initFromStaticConfig(self.user)
+        self.send_cm_cfg()
         stopCMProcessesCmd = "pkill -9 om_monitor -U {user}; pkill -9 cm_agent -U {user}; " \
             "pkill -9 cm_server -U {user};".format(user=self.user)
         self.logger.debug("stopCMProcessesCmd: " + stopCMProcessesCmd)

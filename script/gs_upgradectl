@@ -474,15 +474,24 @@ Option for grey upgrade
         env_value = EnvUtil.getEnv("MPPDB_ENV_SEPARATE_PATH")
         if not env_value or not os.path.exists(env_value):
             env_value = "~/.bashrc"
-        cmd = "source %s; gs_preupgradechk -i A" % env_value
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            raise Exception("Failed to check pre upgrade. Output: %s" % output)
+        try:
+            cmd = "source %s; gs_preupgradechk -i A" % env_value
+            result = subprocess.run(
+                cmd, 
+                shell=True, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE, 
+                universal_newlines=True
+            )
+            if result.returncode != 0:
+                raise Exception("Failed to check pre upgrade. Output: %s" % result.stderr)
         
-        if "All items have been completed" in output:
-            self.logger.logExit("Fiailed to check pre upgrade. the reason is: %s" % output.split('Error:')[1])
-        else:
-            self.logger.log("Successfully checked pre upgrade.")
+            if "All items have been completed" in result.stdout:
+                self.logger.logExit("Failed to check pre upgrade. the reason is: %s" % result.stdout.split('Error:')[1])
+            else:
+                self.logger.log("Successfully checked pre upgrade.")
+        except Exception as e:
+            raise Exception("Failed to check pre upgrade. Output: %s" % str(e))
 
     def check_pre_upgrade(self):
         if self.skip_resource_check:

@@ -33,6 +33,7 @@ from gspylib.common.ParameterParsecheck import Parameter
 from base_utils.os.net_util import NetUtil
 from base_utils.os.user_util import UserUtil
 from base_utils.os.env_util import EnvUtil
+from base_utils.security.security_checker import SecurityChecker
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from domain_utils.cluster_file.cluster_log import ClusterLog
 
@@ -48,6 +49,7 @@ ACTION_CHECK_DATABASE = "Check_Database"
 ACTION_CHECK_REPLAYGAY = "Check_Replaygay"
 
 DEFAULT_INTERVAL = 60
+DEFAULT_TIMEOUT = 50
 
 g_pre_upgrade_check_opts = {
     "A1": ["Checking items", "[ cpu used status ]", "Normal", "OK"],
@@ -215,7 +217,9 @@ def init_globals():
         g_opts.local_mode = True
 
     if not g_opts.local_mode:
-        g_sshTool = SshTool(g_opts.hostname_list, g_logger.logFile)
+        g_sshTool = SshTool(
+            g_opts.hostname_list, g_logger.logFile, timeout=DEFAULT_TIMEOUT
+        )
 
 
 def check_system_resource(resource_type):
@@ -273,10 +277,13 @@ def check_all():
             Local_Check_Pre_Upgrade,
             ACTION_CHECK_ALL,
             g_opts.user,
-            g_opts.log_file,
+            g_opts.local_log,
         )
         (status, output, output_map) = get_cmd_output(cmd)
-        g_logger.debug("The cmd is %s, output is %s" % (cmd, output_map))
+        g_logger.debug(
+            "The cmd is %s\n output is %s\n output_map is %s"
+            % (cmd, output, output_map)
+        )
 
         for node in list(status.keys()):
             if status[node] != DefaultValue.SUCCESS:
@@ -323,7 +330,10 @@ def check_resource_usage(action, item_key, log_msg):
             g_opts.local_log,
         )
         (status, output, output_map) = get_cmd_output(cmd)
-        g_logger.debug("The cmd is %s, output is %s" % (cmd, output_map))
+        g_logger.debug(
+            "The cmd is %s\n output is %s\n output_map is %s"
+            % (cmd, output, output_map)
+        )
 
         for node in status:
             if status[node] != DefaultValue.SUCCESS:
@@ -339,8 +349,7 @@ def check_resource_usage(action, item_key, log_msg):
                 lines = [line for line in output_map[node].split("\n") if line.strip()]
                 detail_msg += "[%s]\n" % node
                 for line in lines:
-                    res_status = line.split(",")[0]
-                    res_output = line.split(",")[1]
+                    res_status, res_output = line.split(",", 1)
                     detail_msg += "%s [%s]\n" % (res_output.strip(), res_status)
 
         if "Error" in detail_msg:
@@ -386,30 +395,67 @@ def check_replaygay():
     check_resource_usage(ACTION_CHECK_REPLAYGAY, "A7", "replaygay usage status")
 
 
-def get_cmd_output(cmd, ssh_conf=""):
+def get_cmd_output(cmd):
     """
     function: execute the cmd and get the output
     input: cmd
     output:status, output, outputMap
     """
     local_host = NetUtil.GetHostIpOrName()
-    if g_opts.local_mode == True:
+    try:
+        if g_opts.local_mode == True:
+            status = {}
+            output_map = {}
+            result = subprocess.run(
+                cmd,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+                timeout=DEFAULT_TIMEOUT,
+            )
+            if result.returncode != 0:
+                status[local_host] = "Failure"
+                output_map[local_host] = result.stderr
+            else:
+                status[local_host] = "Success"
+                output_map[local_host] = result.stdout
+        else:
+            gp_path = os.path.dirname(os.path.realpath(__file__))
+            (status, output) = g_sshTool.getSshStatusOutput(
+                cmd, [], "", "%s/../" % gp_path
+            )
+            output_map = g_sshTool.parseSshOutput(g_opts.hostname_list)
+        return (status, output, output_map)
+    except Exception as e:
+        g_logger.debug(str(e))
+        output = str(e)
         status = {}
         output_map = {}
-        (status_str, output) = subprocess.getstatusoutput(cmd)
-        if status_str != 0:
-            status[local_host] = "Failure"
-        else:
-            status[local_host] = "Success"
-        output_map[local_host] = output
-    else:
-        gp_path = os.path.dirname(os.path.realpath(__file__))
-        (status, output) = g_sshTool.getSshStatusOutput(
-            cmd, [], "", "%s/../" % gp_path, ssh_config=ssh_conf
-        )
-        output_map = g_sshTool.parseSshOutput(g_opts.hostname_list)
+        if "Timed out" not in output:
+            raise Exception(output)
 
-    return (status, output, output_map)
+        for line in output.split("\n"):
+            if "Timed out" not in line or not line.startswith("["):
+                continue
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            ip_or_name = parts[3]
+            if SecurityChecker.check_is_ip(ip_or_name):
+                ip_or_name = get_name_by_ip(ip_or_name)
+            status[ip_or_name] = "Success"
+            output_map[ip_or_name] = (
+                "Error, Timed out, please check the network or ssh connection!"
+            )
+        return (status, output, output_map)
+
+
+def get_name_by_ip(ip):
+    for dbinfo in g_clusterInfo.dbNodes:
+        if dbinfo.backIps[0] == ip:
+            return dbinfo.name
+    return ""
 
 
 def display_result_information(item):

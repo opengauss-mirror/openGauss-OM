@@ -263,8 +263,7 @@ def usage():
      -t                                The type of action.
      -U                                The user name of the node.
      -s                                the path of MPPDB file
-     -l --log-file=logfile             The path of log file.
-        --lsn-speed=num                The speed of lsn.
+     -l                                The path of log file.
      -? --help                         Show this help screen.
      -V --version
 
@@ -305,7 +304,7 @@ def parse_command_line():
             g_opts.user = value
         elif key == "-s":
             g_opts.mppdbfile = value
-        elif key == "-l" or key == "--log-file":
+        elif key == "-l":
             g_opts.log_file = os.path.realpath(value)
         Parameter.checkParaVaild(key, value)
 
@@ -413,7 +412,7 @@ def query_dss_info():
     (status, output) = subprocess.getstatusoutput(cmd)
     if status != 0:
         g_logger.debug("Exec %s failed! Output: %s" % (cmd, output))
-        return False, output
+        return False, output.replace("\n", " ")
     for line in output.splitlines():
         if line.startswith("data"):
             data.dss_data_value = line.split()[5]
@@ -449,9 +448,10 @@ def get_dss_log_or_data_threshold():
     cmd = "cm_ctl list --param --server |grep datastorage_threshold_value_check"
     (status, output) = subprocess.getstatusoutput(cmd)
     if status != 0:
-        raise Exception("Exec %s failed! Output: %s" % (cmd, output))
+        g_logger.debug("Exec %s failed! Output: %s" % (cmd, output))
+        return False, output.replace("\n", " ")
     dss_threshold = output.splitlines()[0].split("=")[1].strip()
-    return dss_threshold
+    return True, dss_threshold
 
 
 def check_disk_used():
@@ -492,7 +492,12 @@ def check_disk_used():
         g_logger.log("Error, " + "".join(error_msgs))
         return
 
-    dss_threshold = get_dss_log_or_data_threshold()
+    status, dss_threshold = get_dss_log_or_data_threshold()
+    if not status:
+        error_msgs.append("Get dss log or data threshold failed, output is %s." % dss_threshold)
+        g_logger.log("Error, " + "".join(error_msgs))
+        return
+
     if float(data.dss_data_value) > float(dss_threshold):
         error_msgs.append(
             f"Dss data dir available space is not enough, the disk utilization rate is {data.dss_data_value}%."
@@ -518,14 +523,16 @@ def check_process(timeout=None):
     if not timeout:
         timeout = 10
     try:
-        cmd = "source %s; timeout %ss bash -c 'gs_om -t status'" % (g_opts.mppdbfile, timeout)
+        cmd = "source %s; timeout %ss bash -c 'gs_om -t status|grep cluster_state'" % (g_opts.mppdbfile, timeout)
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0 or "Normal" not in output:
-            g_logger.log("Error, process is not normal")
+            g_logger.debug("The cmd is %s, output is %s" % (cmd, output))
+            g_logger.log("Error, process is not normal.")
         else:
-            g_logger.log("Normal, process is normal")
+            g_logger.log("Normal, process is normal.")
     except Exception as e:
-        g_logger.log("Error, check process failed! Output: %s" % output)
+        g_logger.debug("The cmd is %s, output is %s" % (cmd, str(e)))
+        g_logger.log("Error, check process failed.")
 
 
 def query_replication_stats(port):
@@ -714,11 +721,11 @@ def ping_ip(ip, num=10):
         cmd = "%s -c %s %s -W 1" % (ping, num, ip)
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
-            g_logger.debug("Failed to ping %s. %s" % (ip, output))
+            g_logger.debug("Failed to ping %s, output is %s." % (ip, output))
             return False
         return True
     except Exception as e:
-        g_logger.debug("Error exec %s: %s" % (cmd, str(e)))
+        g_logger.debug("Error exec %s failed, output is %s." % (cmd, str(e)))
         return False
 
 

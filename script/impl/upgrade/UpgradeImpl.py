@@ -3979,6 +3979,13 @@ class UpgradeImpl:
         if 'rollback-post_catalog_otherdb_92_506.sql' in fileNameList:
             fileNameList.remove('rollback-post_catalog_otherdb_92_506.sql')
             fileNameList.append('rollback-post_catalog_otherdb_92_506.sql') 
+
+        if EnvUtil.is_dss_mode(self.context.user):
+            if 'rollback-post_catalog_otherdb_93_046.sql' in fileNameList:
+                fileNameList.remove('rollback-post_catalog_otherdb_93_046.sql')
+            if 'upgrade-post_catalog_otherdb_93_046.sql' in fileNameList:
+                fileNameList.remove('upgrade-post_catalog_otherdb_93_046.sql')
+
         fileName = "{0}_catalog_{1}_tmp.sql".format(mode, dbType)
         self.context.logger.debug("The real file list for %s: %s" % (
             dbType, fileNameList))

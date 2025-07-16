@@ -958,8 +958,8 @@ def check_active_connections():
 
     if int(data.active_connection) > MAX_ACTIVE_CONNECTIONS:
         g_logger.log(
-            "Warning, The number of active connections is %s. There are currently many business executions, \
-            it is recommended to perform the upgrade during low business periods."
+            "Warning, The number of active connections is %s. There are currently many business executions," \
+            "it is recommended to perform the upgrade during low business periods."
             % data.active_connection
         )
     else:

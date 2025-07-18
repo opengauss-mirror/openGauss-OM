@@ -402,10 +402,11 @@ def get_cmd_output(cmd):
     output:status, output, outputMap
     """
     local_host = NetUtil.GetHostIpOrName()
+    status = {}
+    output_map = {}
+    output = ""
     try:
         if g_opts.local_mode == True:
-            status = {}
-            output_map = {}
             result = subprocess.run(
                 cmd,
                 shell=True,
@@ -416,10 +417,11 @@ def get_cmd_output(cmd):
             )
             if result.returncode != 0:
                 status[local_host] = "Failure"
-                output_map[local_host] = result.stderr
+                output = result.stderr
             else:
                 status[local_host] = "Success"
-                output_map[local_host] = result.stdout
+                output = result.stdout
+            output_map[local_host] = output
         else:
             gp_path = os.path.dirname(os.path.realpath(__file__))
             (status, output) = g_sshTool.getSshStatusOutput(

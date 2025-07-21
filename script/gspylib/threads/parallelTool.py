@@ -60,10 +60,8 @@ class parallelTool:
         jobs = parallelTool.getCpuCount(parallelJobs)
         if (jobs > len(paraList)):
             jobs = len(paraList)
-        pool = ThreadPool(jobs)
-        results = pool.map(func, paraList)
-        pool.close()
-        pool.join()
-        return results
+        with ThreadPool(processes=jobs) as pool:
+            results = pool.map(func, paraList)
+            return results
 
 

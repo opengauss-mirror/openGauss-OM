@@ -181,8 +181,8 @@ function clib_copy()
     rm -rf $PKG_TMP_DIR/script/gspylib/clib
     mkdir -p $PKG_TMP_DIR/script/gspylib/clib
     cp $BUILD_TOOLS_PATH/gcc${gcc_version}/gcc/lib64/libstdc++.so.6 $PKG_TMP_DIR/script/gspylib/clib
-    cp $BINARYLIBS_PATH/openssl/comm/lib/libssl.so.1.1 $PKG_TMP_DIR/script/gspylib/clib
-    cp $BINARYLIBS_PATH/openssl/comm/lib/libcrypto.so.1.1 $PKG_TMP_DIR/script/gspylib/clib
+    cp $BINARYLIBS_PATH/openssl/comm/lib/libssl.so.3 $PKG_TMP_DIR/script/gspylib/clib
+    cp $BINARYLIBS_PATH/openssl/comm/lib/libcrypto.so.3 $PKG_TMP_DIR/script/gspylib/clib
     if [ -f $BINARYLIBS_PATH_INSTALL_TOOLS/libpython3.*m.so.1.0 ]
     then
         cp $BINARYLIBS_PATH_INSTALL_TOOLS/libpython3.*m.so.1.0 $PKG_TMP_DIR/script/gspylib/clib

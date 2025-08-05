@@ -682,8 +682,13 @@ def performEnvCheck(action_item, failed_mesg, success_mesg, item_num,
                 if os.path.exists(ssh_config_tmp):
                     FileUtil.removeFile(ssh_config_tmp)
                 g_logger.debug(
-                    "Execute ssh cmd [%s] with ssh_config exception." % cmd)
-                raise Exception(str(e))
+                    "Execute ssh cmd [%s] with ssh_config exception: %s." % (cmd, str(e)))
+                
+                g_logger.debug("retry to execute ssh cmd without ssh_config.")
+                try:
+                    (status, output, outputMap) = getCmdOutput(cmd)
+                except Exception as e:
+                    raise Exception(str(e))
         else:
             (status, output, outputMap) = getCmdOutput(cmd)
         parRes = ""

@@ -1620,9 +1620,17 @@ class PreinstallImpl:
         if len(local_node.datanodes) < 1:
             return
         port = local_node.datanodes[0].port
-        ckcmd = f"""
-        su - {self.context.user} -c "source {self.context.mpprcFile};gsql -d postgres -p {port} -q -A -t -c 'show upgrade_mode'"
-        """
+        ckcmd = ""
+        if os.getuid() == 0:
+            
+            ckcmd = f"""
+            su - {self.context.user} -c "source {self.context.mpprcFile};gsql -d postgres -p {port} -q -A -t -c 'show upgrade_mode'"
+            """
+        else:
+            ckcmd = f"""
+            source {self.context.mpprcFile};gsql -d postgres -p {port} -q -A -t -c 'show upgrade_mode'
+            """
+            
         status, output = subprocess.getstatusoutput(ckcmd)
         self.context.logger.debug("Check upgrade result: %d, %s" % (status, output))
         if status == 0 and output:

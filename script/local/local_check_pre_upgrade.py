@@ -874,7 +874,7 @@ def check_replaygay():
     check replay time
     """
     if g_opts.is_single_node or not is_primary_node() or g_opts.is_dss:
-        g_logger.log("Normal, Do not check replay.")
+        g_logger.log("Normal, The replay lag is 0 bytes.")
         return
 
     success, data, errmsg = collect_replay_info()

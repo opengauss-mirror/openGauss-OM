@@ -72,7 +72,6 @@ TMP_DIR_ERROR_VALUE = 50
 HOME_DIR_ERROR_VALUE = 50
 GAUSSHOME_DIR_ERROR_VALUE = 1024
 MAX_ACTIVE_CONNECTIONS = 20
-LSN_ERROR_THRESHOLD = 5
 POOL_SIZE = 2
 
 
@@ -206,9 +205,7 @@ class ReplyInfo:
         input  : NA
         output : NA
         """
-        self.lsn_rate = ""
-        self.diff_replay = ""
-        self.replay_time = ""
+        self.diff_replay_list = []
 
 
 #############################################################################
@@ -574,96 +571,6 @@ def get_node_port():
         g_logger.logExit("Error querying node port: %s" % str(e))
 
 
-def lsn_to_int(lsn: str) -> int:
-    """
-    Convert an LSN (Log Sequence Number) string to a 64-bit integer.
-
-    Args:
-        lsn: LSN string in the format 'XXXX/YYYYYYYY' (e.g., '16/3002D50')
-
-    Returns:
-        Integer representation of the LSN.
-
-    Raises:
-        ValueError: If the LSN format is invalid.
-    """
-    try:
-        # Split the LSN string into two parts (e.g., '16/3002D50' -> ['16', '3002D50'])
-        part1, part2 = lsn.strip().split("/")
-        # Convert hexadecimal parts to a 64-bit integer
-        # High 32 bits: first part, low 32 bits: second part
-        return (int(part1, 16) << 32) + int(part2, 16)
-    except ValueError:
-        raise ValueError(f"Invalid LSN format: {lsn}")
-
-
-def lsn_diff_python(lsn1: str, lsn2: str) -> int:
-    """
-    Calculate the difference between two LSNs in bytes (pure Python implementation).
-
-    Args:
-        lsn1: First LSN string.
-        lsn2: Second LSN string.
-
-    Returns:
-        Difference in bytes (lsn2 - lsn1).
-        Positive if lsn2 is ahead of lsn1, negative otherwise.
-    """
-    return lsn_to_int(lsn2) - lsn_to_int(lsn1)
-
-
-def parse_replication_stats(first_stat_replication_str, second_stat_replication_str, time_diff):
-    """
-    Parse replication stats and calculate the minimum LSN rate.
-    Returns: (success, lsn_rate_min, errmsg)
-    """
-    first_stat_replication = first_stat_replication_str.strip().split("\n")
-    second_stat_replication = second_stat_replication_str.strip().split("\n")
-    lsn_rate_list = []
-    for first, second in zip(first_stat_replication, second_stat_replication):
-        lsn_value = lsn_diff_python(first, second)
-        if lsn_value == 0:
-            g_logger.debug("lsn_rate_min: %s" % lsn_value)
-            return True, 0, ""
-        lsn_rate = lsn_value / time_diff
-        lsn_rate_list.append(lsn_rate)
-
-    if not lsn_rate_list:
-        errmsg = "No valid LSN rate calculated."
-        g_logger.debug(errmsg)
-        return False, None, errmsg
-
-    lsn_rate_list.sort()
-    return True, lsn_rate_list[0], ""
-
-
-def get_lsn_rate_min():
-    """
-    get lsn rate min
-    """
-    if not is_primary_node() or g_opts.is_dss:
-        return True, 0, ""
-    port = get_node_port()
-    success, first_stat_replication_str, errmsg = query_replication_stats(port)
-    if not success:
-        g_logger.debug("query_replication_stats failed: %s" % errmsg)
-        return success, first_stat_replication_str, errmsg
-    # set time diff is 10s
-    time_diff = 10
-    time.sleep(time_diff)
-    success, second_stat_replication_str, errmsg = query_replication_stats(port)
-    if not success:
-        g_logger.debug("query_replication_stats failed: %s" % errmsg)
-        return success, second_stat_replication_str, errmsg
-
-    if not first_stat_replication_str or not second_stat_replication_str:
-        return True, 0, ""
-
-    return parse_replication_stats(
-        first_stat_replication_str, second_stat_replication_str, time_diff
-    )
-
-
 def check_network():
     """
     function: check network
@@ -844,14 +751,13 @@ def get_replay_size(port):
         return success, output, errmsg
 
     if not output:
-        return True, [], ""
+        return False, [], "No data"
     output_list = output.splitlines()
     diff_replay_list = []
     for line in output_list:
         diff_replay = line.split("|")[1]
-        if diff_replay == "0":
-            continue
         diff_replay_list.append(diff_replay)
+    g_logger.debug("diff_replay_list: %s" % diff_replay_list)
     return success, diff_replay_list, ""
 
 
@@ -860,23 +766,13 @@ def collect_replay_info():
     collect reply info
     """
     data = ReplyInfo()
-    success, lsn_speed, errmsg = get_lsn_rate_min()
-    if not success:
-        return success, lsn_speed, errmsg
-
     port = get_node_port()
     success, diff_replay_list, errmsg = get_replay_size(port)
+
     if not success:
         return success, diff_replay_list, errmsg
-
-    if not diff_replay_list or not lsn_speed:
-        data.replay_time = "0"
-        return success, data, ""
-
-    for diff_replay in diff_replay_list:
-        data.replay_time = int(diff_replay) / lsn_speed
-
-    return success, data, ""
+    data.diff_replay_list = diff_replay_list
+    return success, data, errmsg
 
 
 def set_track_activities():
@@ -978,7 +874,7 @@ def check_replaygay():
     check replay time
     """
     if g_opts.is_single_node or not is_primary_node() or g_opts.is_dss:
-        g_logger.log("Normal, Do not check replaygay.")
+        g_logger.log("Normal, Do not check replay.")
         return
 
     success, data, errmsg = collect_replay_info()
@@ -986,20 +882,23 @@ def check_replaygay():
         g_logger.log("Error, %s" % errmsg)
         return
 
-    if int(data.replay_time) > LSN_ERROR_THRESHOLD:
-        g_logger.log(
-            "Error, The replaygay time is %smin, which is greater than the threshold of 5min."
-            % data.replay_time
-        )
+    max_replay = max(int(x) for x in data.diff_replay_list)
+    base_mb = 1024 * 1024
+    if max_replay > base_mb * 1024:
+        max_replay_gb = max_replay / (base_mb * 1024)
+        g_logger.log("Error, The replay lag is %.2f GB, which is greater than the threshold of 1GB." % max_replay_gb)
+    elif max_replay > 300 * base_mb:
+        max_replay_mb = max_replay / base_mb
+        g_logger.log("Warning, The replay lag is %.2f MB, which is greater than the threshold of 300MB." % max_replay_mb)
     else:
-        g_logger.log("Normal, The replaygay time is %smin." % data.replay_time)
+        g_logger.log("Normal, The replay lag is %d bytes." % max_replay)
 
 
 def run_task_with_log(task):
     try:
         task()
     except Exception as e:
-        g_logger.log(f"Exception in {task.__name__}: {e}")
+        g_logger.log(f"Error, Exception in {task.__name__}: {e}")
 
 
 def check_all():

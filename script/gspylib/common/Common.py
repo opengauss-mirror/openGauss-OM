@@ -2175,7 +2175,7 @@ class DefaultValue():
         output: NA
         """
         gucCheckList = ["|", ";", "&", "$", "<", ">", "`", "{", "}", "[", "]",
-                        "~", "?", " ", "!"]
+                        "~", "?", " ", "!", "\n"]
         if (gucValue.strip() == ""):
             return
         for rac in gucCheckList:

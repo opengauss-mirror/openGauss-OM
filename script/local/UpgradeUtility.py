@@ -143,6 +143,7 @@ class CmdOptions():
         self.setType = "reload"
         self.isSingleInst = False
         self.upgrade_dss_config = ''
+        self.switch_target_commitid = ''
 
 
 class OldVersionModules():
@@ -302,6 +303,7 @@ Common options:
   --guc_string                     check the guc string has been successfully
   --oldcluster_num                 old cluster number
   --rolling                        is rolling upgrade or rollback
+  --switch_commitid                switch target commitid
    wrote in the configure file, format is guc:value,
    can only check upgrade_from, upgrade_mode
     """
@@ -319,7 +321,7 @@ def parseCommandLine():
             "help", "upgrade_bak_path=", "script_type=",
             "old_cluster_app_path=", "new_cluster_app_path=", "rollback",
             "force", "rolling", "oldcluster_num=", "guc_string=", "fromFile",
-            "setType=", "HA", "upgrade_dss_config="
+            "setType=", "HA", "upgrade_dss_config=", "switch_commitid="
         ])
     except Exception as er:
         usage()
@@ -395,6 +397,8 @@ def parseLongOptions(key, value):
         g_opts.setType = value
     elif key == "--HA":
         g_opts.isSingleInst = True
+    elif key == "--switch_commitid":
+        g_opts.switch_target_commitid = value
 
 
 def checkParameter():
@@ -454,6 +458,21 @@ def checkParameter():
             ErrorCode.GAUSS_518["GAUSS_51800"] % "$GAUSSHOME")
     g_gausshome = os.path.normpath(g_gausshome)
 
+def copy_dynamic_file():
+    
+    if g_opts.rollback:
+        srcpath = g_opts.newClusterAppPath
+        destpath = g_opts.oldClusterAppPath
+    else:
+        srcpath = g_opts.oldClusterAppPath
+        destpath = g_opts.newClusterAppPath
+
+    dy_config = "%s/bin/cluster_dynamic_config" % srcpath
+    FileUtil.removeFile("%s/bin/cluster_dynamic_config" % destpath)
+    cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        dy_config, dy_config, destpath)
+    g_logger.debug("copy_dynamic_file command: %s" % cmd)
+    CmdExecutor.execCommandLocally(cmd)
 
 def switchBin():
     """
@@ -461,11 +480,7 @@ def switchBin():
     input  : NA
     output : NA
     """
-    if g_opts.forceRollback:
-        if not os.path.exists(g_opts.appPath):
-            FileUtil.createDirectory(g_opts.appPath, True,
-                                   DefaultValue.KEY_DIRECTORY_MODE)
-    g_logger.log("Switch to %s." % g_opts.appPath)
+    g_logger.log("Switch bin to %s." % g_opts.appPath)
     if g_opts.appPath == g_gausshome:
         raise Exception(ErrorCode.GAUSS_502["GAUSS_50233"] % (
             "install path", "$GAUSSHOME"))
@@ -4231,6 +4246,8 @@ def switchDnNodeProcess():
     function: switch node process which CN or DN exits
     :return:
     """
+    copy_dynamic_file()
+    
     is_cm_killed = False
     is_dss_mode = EnvUtil.is_dss_mode(getpass.getuser())
     is_all_upgrade = DssConfig.get_value_b64_handler('dss_upgrade_all',
@@ -4259,7 +4276,14 @@ def switchDnNodeProcess():
             "Time to switch gaussdb fenced udf: %s" % getTimeFormat(elapsed))
 
     start_time = timeit.default_timer()
-    switchDn()
+    
+    needKillDn = isKillDn()
+    if not needKillDn:
+        g_logger.log("No need to kill DN and switch Bin.")
+    else:
+        g_logger.log("Need to kill DN and switch Bin.")
+        switchDn()
+        switchBin()
     elapsed = timeit.default_timer() - start_time
     g_logger.log("Time to switch DN: %s" % getTimeFormat(elapsed))
     if is_dss_mode and isNeedSwitch('dssserver'):
@@ -4346,10 +4370,7 @@ def switchDn():
     """
     function: switch DN after checkpoint
     """
-    needKillDn = isKillDn()
-    if not needKillDn:
-        g_logger.log("No need to kill DN.")
-        return
+    
     g_logger.log("Killing DN processes.")
     killDNCmd = "pkill -9 gaussdb -U " + g_opts.user
     g_logger.log("Command to kill DN process: %s" % killDNCmd)
@@ -4375,25 +4396,10 @@ def isKillDn():
         versionInBrackets = re.findall(pattern, output)
         curCommitid = versionInBrackets[0].split(" ")[-1]
         
-        g_logger.debug("isKillDn commitid:{0}".format(curCommitid))
-        # execute on the dn and cn to get the exists process version
-        if g_opts.rolling:
-            current_user = pwd.getpwuid(os.getuid()).pw_name
-            gauss_home = EnvUtil.getEnvironmentParameterValue("GAUSSHOME",
-                                                              current_user)
-            static_config_file = os.path.join(gauss_home, "bin",
-                                              "cluster_static_config")
-            cluster_info = dbClusterInfo()
-            cluster_info.initFromStaticConfig(current_user, static_config_file)
-            local_node = [node for node in cluster_info.dbNodes
-                      if node.name == NetUtil.GetHostIpOrName()][0]
-            dnInst = local_node.datanodes[0]
-            g_logger.debug("Check version for rolling upgrade node: %s."
-                           % (dnInst.hostname))
-            needKillDn = checkExistsVersion(dnInst, curCommitid)
-
-        else:
-            needKillDn = checkExistsVersion(dnInst, curCommitid)
+        g_logger.debug("isKillDn current commitid:{0}, target commitd: {0}".format(curCommitid, g_opts.switch_target_commitid))
+        if curCommitid != g_opts.switch_target_commitid:
+            needKillDn = True
+        
         return needKillDn
     except Exception as e:
         g_logger.debug("Cannot query the exists dn process "

@@ -494,7 +494,7 @@ Option for grey upgrade
             raise Exception("Failed to check pre upgrade. Output: %s" % str(e))
 
     def check_pre_upgrade(self):
-        if self.skip_resource_check:
+        if self.skip_resource_check or self.action != "auto-upgrade":
             self.logger.log("Skip pre upgrade source check.")
             return
 

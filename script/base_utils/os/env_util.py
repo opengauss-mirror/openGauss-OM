@@ -160,11 +160,15 @@ class EnvUtil(object):
         input : string
         output: True or False
         """
-        cmd = CmdUtil.SOURCE_CMD
-        cmd += " %s" % path
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = [CmdUtil.SOURCE_CMD, " %s" % path]
+        process = subprocess.Popen(cmd_list, 
+                                        shell=False, 
+                                        stdout=subprocess.PIPE, 
+                                        stderr=subprocess.PIPE)
+        output, error = process.communicate()
+        status = process.returncode
         if status != 0:
-            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % ' '.join(cmd_list) +
                             " Error:\n%s" % output)
         return True
 

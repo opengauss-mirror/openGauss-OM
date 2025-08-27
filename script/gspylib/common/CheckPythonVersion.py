@@ -26,6 +26,7 @@ import subprocess
 from os_platform.linux_distro import LinuxDistro
 from domain_utils.cluster_file.package_info import PackageInfo
 from base_diff.comm_constants import CommConstants
+from base_utils.os.cmd_util import CmdUtil
 
 
 def check_python_version():
@@ -60,10 +61,9 @@ def check_os_and_package_arch():
     if ("aarch64" in output):
         package_arch = "aarch64"
 
-    os_cmd = "uname -m"
-    (status, output) = subprocess.getstatusoutput(os_cmd)
+    output, error, status = CmdUtil.execCmdList(['uname', '-m'])
     if status != 0:
-        raise Exception("%s command failed." % (os_cmd))
+        raise Exception("[uname -m] command failed.")
     os_arch = output
     
     if (package_arch == os_arch):

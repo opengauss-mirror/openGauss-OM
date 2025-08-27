@@ -34,6 +34,7 @@ from domain_utils.cluster_file.cluster_dir import ClusterDir
 from domain_utils.cluster_file.cluster_log import ClusterLog
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.file_util import FileUtil
+from base_utils.os.cmd_util import CmdUtil
 from domain_utils.cluster_file.version_info import VersionInfo
 from base_utils.os.net_util import NetUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
@@ -199,12 +200,14 @@ class CheckNodeEnv(LocalBaseOM):
         DefaultValue.checkPathVaild(username)
         obspath = "LogPath=../.." + "/.." * obspathNum + "%s/" \
                   % self.clusterInfo.logPath + "%s" % username + "/bin/gs_obs"
-        cmd = "mkdir -p '%s/%s/bin/gs_obs' -m %s" \
-              % (self.clusterInfo.logPath, username,
-                 DefaultValue.KEY_DIRECTORY_MODE)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = [
+            'mkdir', '-p',
+            '%s/%s/bin/gs_obs' % (self.clusterInfo.logPath, username),
+            '-m', DefaultValue.KEY_DIRECTORY_MODE
+        ]
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if (status != 0):
-            self.logger.debug("The cmd is %s " % cmd)
+            self.logger.debug("The cmd is %s " % ' '.join(cmd_list))
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50208"] % "obs log"
                             + " Error: \n%s " % output)
         obsinifile = "%s/lib/OBS.ini" % self.clusterInfo.appPath

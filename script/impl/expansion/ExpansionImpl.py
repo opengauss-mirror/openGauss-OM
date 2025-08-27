@@ -225,8 +225,8 @@ class ExpansionImpl():
         (self.tempFileDir, tempXmlFile, tempXmlFile)
         (status, output) = subprocess.getstatusoutput(cmd)
 
-        cmd = "chown -R %s:%s %s" % (self.user, self.group, self.tempFileDir)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['chown', '-R', '%s:%s' % (self.user, self.group), self.tempFileDir]
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         
         newHosts = self.context.newHostList
         for host in newHosts:
@@ -1162,8 +1162,7 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
                 hostSsh.getSshStatusOutput(dynamic_opt_cmd, [hostName], self.envFile)
                 self.cleanSshToolFile(hostSsh)
             else:
-                scpcmd = "cp %s %s" % (srcFile, targetFile)
-                (status, output) = subprocess.getstatusoutput(scpcmd)
+                (output, error, status) = CmdUtil.execCmdList(['cp', srcFile, targetFile])
                 if status != 0:
                     GaussLog.exitWithError("Copy file faild. %s" % output)
                 

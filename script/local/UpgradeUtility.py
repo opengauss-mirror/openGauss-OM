@@ -473,9 +473,9 @@ def switchBin():
         if os.path.samefile(g_opts.appPath, g_gausshome):
             g_logger.log(
                 "$GAUSSHOME points to %s. No need to switch." % g_opts.appPath)
-    cmd = "ln -snf %s %s" % (g_opts.appPath, g_gausshome)
-    g_logger.log("Command for switching binary directory: '%s'." % cmd)
-    (status, output) = subprocess.getstatusoutput(cmd)
+    cmd_list = ['ln', '-snf', g_opts.appPath, g_gausshome]
+    g_logger.log("Command for switching binary directory: '%s'." % ' '.join(cmd_list))
+    (output, error, status) = CmdUtil.execCmdList(cmd_list)
     if status != 0:
         raise Exception(
             ErrorCode.GAUSS_508["GAUSS_50803"] + " Error: \n%s" % str(output))

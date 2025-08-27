@@ -40,7 +40,7 @@ from domain_utils.domain_common.cluster_constants import ClusterConstants
 from base_utils.os.file_util import FileUtil
 from gspylib.common.DbClusterInfo import dbClusterInfo
 from gspylib.os.gsfile import g_file
-
+from base_utils.os.cmd_util import CmdUtil
 
 # master 
 MASTER_INSTANCE = 0
@@ -237,9 +237,8 @@ class DropnodeImpl():
         # first backup, only need to be done on primary node
         tmpDir = EnvUtil.getEnvironmentParameterValue("PGHOST", self.user,
                                                            self.userProfile)
-        cmd = "cp %s %s/%s_BACKUP" % (
-        staticConfigPath, tmpDir, 'cluster_static_config')
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['cp', staticConfigPath, ('%s/%s_BACKUP') % (tmpDir, 'cluster_static_config')]
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if status:
             self.logger.debug("[gs_dropnode]Backup cluster_static_config failed"
                               + output)
@@ -274,8 +273,8 @@ class DropnodeImpl():
             "[gs_dropnode]Start to scp the cluster static conf to any other node.")
 
         if not self.context.flagOnlyPrimary:
-            cmd = "%s/script/gs_om -t refreshconf" % self.gphomepath
-            subprocess.getstatusoutput(cmd)
+            cmd_list = ['%s/script/gs_om' % self.gphomepath, '-t', 'refreshconf']
+            CmdUtil.execCmdList(cmd_list)
             for hostName in self.context.hostMapForExist.keys():
                 hostSsh = SshTool([hostName])
                 if hostName != self.localhostname:

@@ -97,7 +97,7 @@ class NetworkGateInfo(Probe):
 
     def _detect_ethtool_k(self):
         cmd = f'ethtool -k {self.name}'
-        output = CmdUtil.execCmd(cmd)
+        output, error, status = CmdUtil.execCmdList(['ethtool', '-k', self.name])
         opt_map = {}
         for line in output.split('\n'):
             kv = line.split(':')

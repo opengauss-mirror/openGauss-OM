@@ -37,9 +37,9 @@ class GrepUtil(object):
         """
         if not os.path.exists(path):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % path)
-        cmd = CmdUtil.getGrepCmd() + " %s '%s' '%s'" % (para, value, path)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = [CmdUtil.getGrepCmd(), " %s '%s' '%s'" % (para, value, path)]
+        output, error, status = CmdUtil.execCmdList(cmd_list)
         if status != 0:
-            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % ' '.join(cmd_list) +
                             " Error:\n%s" % output)
         return status, output

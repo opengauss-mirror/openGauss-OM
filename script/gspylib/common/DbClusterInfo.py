@@ -41,6 +41,7 @@ from domain_utils.domain_common.cluster_constants import ClusterConstants
 from base_utils.common.constantsbase import ConstantsBase
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.net_util import NetUtil
+from base_utils.os.cmd_util import CmdUtil
 from base_utils.security.security_checker import SecurityChecker
 from gspylib.component.DSS.dss_checker import DssSimpleChecker, DssConfig
 
@@ -4677,12 +4678,12 @@ class dbClusterInfo():
         # only one dn, no need to write primary or stanby node info
         dynamicConfigFile = self.__getDynamicConfig(user)
         if os.path.exists(dynamicConfigFile):
-            cmd = "rm -f %s" % dynamicConfigFile
-            (status, output) = subprocess.getstatusoutput(cmd)
+            cmd_list = ['rm', '-f', dynamicConfigFile]
+            (output, error, status) = CmdUtil.execCmdList(cmd_list)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_504["GAUSS_50407"] +
                                 " Error: \n%s." % str(output) +
-                                "The cmd is %s" % cmd)
+                                "The cmd is %s" % ' '.join(cmd_list))
         fp = None
         try:
             FileUtil.createFileInSafeMode(dynamicConfigFile)
@@ -4719,8 +4720,8 @@ class dbClusterInfo():
         except Exception as e:
             if fp:
                 fp.close()
-            cmd = "rm -f %s" % dynamicConfigFile
-            subprocess.getstatusoutput(cmd)
+            cmd_list = ['rm', '-f', dynamicConfigFile]
+            (output, error, status) = CmdUtil.execCmdList(cmd_list)
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50205"] % \
                             "dynamic configuration file"
                             + " Error: \n%s" % str(e))
@@ -4738,12 +4739,12 @@ class dbClusterInfo():
     def __create_simple_datanode_config(self, user, localhostname, sshtool):
         simpleDNConfig = self.__getDynamicSimpleDNConfig(user)
         if os.path.exists(simpleDNConfig):
-            cmd = "rm -f %s" % simpleDNConfig
-            (status, output) = subprocess.getstatusoutput(cmd)
+            cmd_list = ['rm', '-f', simpleDNConfig]
+            (output, error, status) = CmdUtil.execCmdList(cmd_list)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_504["GAUSS_50407"] +
                                 " Error: \n%s." % str(output) +
-                                "The cmd is %s" % cmd)
+                                "The cmd is %s" % ' '.join(cmd_list))
         output_list = self.__getStatusByOM(user)
         output_num = 0
         # The purpose of this regular expression is to match text lines containing IPv4 or IPv6 addresses.
@@ -4768,8 +4769,8 @@ class dbClusterInfo():
                         fp.write("%s=%d\n" %
                                  (dnname, statusdic[dnstatus]))
         except Exception as e:
-            cmd = "rm -f %s" % simpleDNConfig
-            subprocess.getstatusoutput(cmd)
+            cmd_list = ['rm', '-f', simpleDNConfig]
+            (output, error, status) = CmdUtil.execCmdList(cmd_list)
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50205"] %
                             "dynamic configuration file"
                             + " Error: \n%s" % str(e))
@@ -4938,8 +4939,8 @@ class dbClusterInfo():
                 self.__sendDynamicCfgToAllNodes(localHostName,
                                                 lastDynamicConfigFile,
                                                 dynamicConfigFile)
-            cleanCmd = "rm -f %s/bin/cluster_dynamic_config_*" % gaussHome
-            subprocess.getstatusoutput(cleanCmd)
+            clean_cmd_list = ['rm', '-f', '%s/bin/cluster_dynamic_config_*' % gaussHome]
+            CmdUtil.execCmdList(clean_cmd_list)
 
     def __sendDynamicCfgToAllNodes(self,
                                    localHostName,
@@ -4950,8 +4951,8 @@ class dbClusterInfo():
         for dbNode in self.dbNodes:
             if dbNode.name == localHostName:
                 if sourceFile != targetFile:
-                    cmd = "cp -f  %s %s" % (sourceFile, targetFile)
-                    status, output = subprocess.getstatusoutput(cmd)
+                    cmd_list = ['cp', '-f', sourceFile, targetFile]
+                    (output, error, status) = CmdUtil.execCmdList(cmd_list)
             else:
                 node = self.getDbNodeByName(dbNode.name)
                 node_ip = node.sshIps[0]

@@ -63,6 +63,23 @@ class CmdUtil(object):
         return output
 
     @staticmethod
+    def execCmdList(cmd_list, err_output=subprocess.PIPE, uni_newlines=False):
+        """
+        function: execute cmd
+        input: cmd, noexcept
+        output: output of cmd
+        """
+        process = subprocess.Popen(cmd_list, 
+                                        shell=False, 
+                                        stdout=subprocess.PIPE, 
+                                        stderr=err_output,
+                                        universal_newlines=uni_newlines)
+        output, error = process.communicate()
+        status = process.returncode
+        output = bytes.decode(output).strip()
+        return (output, error, status)
+
+    @staticmethod
     def findCmdInPath(cmd, additional_paths=None, print_error=True):
         """
         function: find cmd in path
@@ -127,6 +144,15 @@ class CmdUtil(object):
         return cmd
 
     @staticmethod
+    def getMoveFileCmdList(src, dest):
+        """
+        function: get move file cmd
+        input  : src, dest
+        output : list
+        """
+        return ['mv', src, dest]
+
+    @staticmethod
     def getRemoveCmd(path_type):
         """
         function: get remove cmd
@@ -139,6 +165,20 @@ class CmdUtil(object):
         elif path_type == "directory":
             opts = " -rf "
         return CmdUtil.findCmdInPath('rm') + opts
+
+    @staticmethod
+    def getRemoveCmdList(path_type):
+        """
+        function: get remove cmd
+        input  : path_type
+        output : list
+        """
+        opts_list = [CmdUtil.findCmdInPath('rm')]
+        if path_type == "file":
+            opts_list.append('-f')
+        elif path_type == "directory":
+            opts_list.append('-rf')
+        return opts_list
 
     @staticmethod
     def getChmodCmd(permission, src, recursive=False):
@@ -184,6 +224,15 @@ class CmdUtil(object):
         """
         return CmdUtil.findCmdInPath('mv') + " -f " + "'" + src + \
                "'" + BLANK_SPACE + "'" + dest + "'"
+    
+    @staticmethod
+    def getMoveCmdList(src, dest):
+        """
+        function: get move cmd
+        input  : src, dest
+        output : list
+        """
+        return [CmdUtil.findCmdInPath('mv'), '-f', src, dest]
 
     @staticmethod
     def getMakeDirCmd(src, recursive=False):
@@ -353,6 +402,15 @@ class CmdUtil(object):
         """
         cmd = CmdUtil.findCmdInPath('crontab') + BLANK_SPACE + " -l"
         return cmd
+    
+    @staticmethod
+    def getAllCrontabCmdList():
+        """
+        function: get all crontab cmd
+        input  : NA
+        output : str
+        """
+        return [CmdUtil.findCmdInPath('crontab'), '-l']
 
     @staticmethod
     def getCrontabCmd():
@@ -581,13 +639,13 @@ class CmdUtil(object):
         input : NA
         output: string
         """
-        config_cmd = CmdUtil.getGetConfValueCmd()
+        config_cmd = CmdUtil.getGetConfValueCmd()	
         (status, output) = subprocess.getstatusoutput(config_cmd)
-        # if cmd failed, then exit
-        if status != 0:
-            raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] %
-                            "system config pagesize" +
-                            "The cmd is %s" % config_cmd)
+        # if cmd failed, then exit	
+        if status != 0:	
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] %	
+                            "system config pagesize" +	
+                            "The cmd is %s" % config_cmd)	
         return output
 
     @staticmethod
@@ -750,9 +808,9 @@ class CmdUtil(object):
         input : bin name
         output: bool
         """
-        cmd = CmdUtil.getWhichCmd() + BLANK_SPACE + bin
+        cmd_list = [CmdUtil.getWhichCmd(), bin]
         try:
-            status, output = subprocess.getstatusoutput(cmd)
+            (output, error, status) = CmdUtil.execCmdList(cmd_list)
             if status == 0:
                 return True
         except Exception:

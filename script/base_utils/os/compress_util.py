@@ -44,6 +44,15 @@ class CompressUtil:
         output : str
         """
         return "%s -zxvf '%s' -C '%s'" % (CmdUtil.getTarCmd(), src_package, dest)
+    
+    @staticmethod
+    def getDecompressFilesCmdList(src_package, dest):
+        """
+        function: get decompress file cmd
+        input  : src_package, dest
+        output : list
+        """
+        return [CmdUtil.getTarCmd(), '-zxvf', src_package, '-C', dest]
 
     @staticmethod
     def getCompressZipFilesCmd(zip_name, file_src):
@@ -65,6 +74,15 @@ class CompressUtil:
         return "%s -o '%s' -d '%s'" % (CmdUtil.getUnzipCmd(), src_package, dest)
 
     @staticmethod
+    def getDecompressZipFilesCmdList(src_package, dest):
+        """
+        function: get decompress zip files cmd
+        input  : src_package, dest
+        output : list
+        """
+        return [CmdUtil.getUnzipCmd(), '-o', src_package, '-d', dest]
+
+    @staticmethod
     def decompressFiles(src_package, dest):
         """
         function:decompress package to files
@@ -75,11 +93,12 @@ class CompressUtil:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % src_package)
         if not os.path.exists(dest):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % dest)
-        cmd = CompressUtil.getDecompressFilesCmd(src_package, dest)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = CompressUtil.getDecompressFilesCmdList(src_package, dest)
+        output, error, status = CmdUtil.execCmdList(cmd_list)
+        # if cmd failed, then exit
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50231"] % src_package +
-                            " Error:\n%s" % output + "\nThe cmd is %s" % cmd)
+                            " Error:\n%s" % output + "\nThe cmd is %s" % ' '.join(cmd_list))
 
     @staticmethod
     def compressZipFiles(zip_name, dir_path):
@@ -107,8 +126,8 @@ class CompressUtil:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % src_package)
         if not os.path.exists(dest):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % dest)
-        cmd = CompressUtil.getDecompressZipFilesCmd(src_package, dest)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = CompressUtil.getDecompressZipFilesCmdList(src_package, dest)
+        output, error, status = CmdUtil.execCmdList(cmd_list)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50231"] % src_package +
-                            " Error:\n%s" % output + "\nThe cmd is %s" % cmd)
+                            " Error:\n%s" % output + "\nThe cmd is %s" % ' '.join(cmd_list))

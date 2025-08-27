@@ -150,9 +150,14 @@ class OpenGauss(object):
         """
         dbname = dbname if dbname is not None else self._dbname
         port = port if port is not None else self._port
-        cmd = 'gsql -p {0} -d {1} -r'.format(port, dbname)
-        data, err = Shell.communicate(cmd, sql, check=False)
-        logger.debug('openGauss查询执行：{0}\n{1}'.format(cmd, sql))
+        cmd_list = [
+            'gsql',
+            '-p', str(port),
+            '-d', dbname,
+            '-r'
+        ]
+        data, err = Shell.communicate_list(cmd_list, sql, check=False)
+        logger.debug('openGauss查询执行：{0}\n{1}'.format(' '.join(cmd_list), sql))
         return QueryResult(sql, data, err)
 
     def execute(self, sql):
@@ -161,8 +166,13 @@ class OpenGauss(object):
         :param sql:查询语句
         :return:
         """
-        cmd = 'gsql -d %s -p %d -c "%s"' % (self._dbname, self._port, sql)
-        Shell.communicate(cmd, sql, check=True)
+        cmd_list = [
+            'gsql',
+            '-d', self._dbname,
+            '-p', str(self._port),
+            '-c', sql
+        ]
+        Shell.communicate_list(cmd_list, sql, check=True)
 
 
 # 单例模式，全局仅一个

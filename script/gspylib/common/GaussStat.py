@@ -1204,10 +1204,10 @@ class GaussStat():
                     self.installPath, "share/postgresql/pmk_schema.sql"))
             pmkSqlFile_back = (os.path.join(
                 self.installPath, "share/postgresql/pmk_schema_bak.sql"))
-            cmd = "cp '%s' '%s'" % (pmkSqlFile, pmkSqlFile_back)
-            (status, output) = subprocess.getstatusoutput(cmd)
+            cmd_list = ['cp', pmkSqlFile, pmkSqlFile_back]
+            (output, error, status) = CmdUtil.execCmdList(cmd_list)
             if (status != 0):
-                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % ' '.join(cmd_list) +
                                 " Error: \n%s" % output)
 
             if (tablespace is not None and tablespace != ""):

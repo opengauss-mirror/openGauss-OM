@@ -36,6 +36,7 @@ from domain_utils.cluster_file.cluster_dir import ClusterDir
 from domain_utils.cluster_file.cluster_log import ClusterLog
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.file_util import FileUtil
+from base_utils.os.cmd_util import CmdUtil
 from domain_utils.cluster_file.package_info import PackageInfo
 from domain_utils.cluster_file.profile_file import ProfileFile
 from domain_utils.cluster_file.version_info import VersionInfo
@@ -294,9 +295,9 @@ def createLinkToApp():
                                   " symbolic link." % actualPath)
                 return
 
-    cmd = "ln -snf %s %s" % (actualPath, gaussHome)
-    g_opts.logger.log("Command for creating symbolic link: %s." % cmd)
-    (status, output) = subprocess.getstatusoutput(cmd)
+    cmd_list = ['ln', '-snf', actualPath, gaussHome]
+    g_opts.logger.log("Command for creating symbolic link: %s." % (' '.join(cmd_list)))
+    (output, error, status) = CmdUtil.execCmdList(cmd_list)
     if status != 0:
         g_opts.logger.log(output)
         g_opts.logger.logExit(ErrorCode.GAUSS_501["GAUSS_50107"] % "app.")
@@ -360,8 +361,8 @@ class Install(LocalBaseOM):
         tmp_path = os.path.realpath(os.path.join(EnvUtil.getTmpDirFromEnv(g_opts.user), f'dss_app_{VersionInfo.getCommitid()}'))
         if not os.path.isdir(tmp_path):
             raise Exception(f"Cannot get {clib_bin}, no such file.")
-        mv_cmd = f"mv {tmp_path}/{bin_file} {clib_bin}"
-        status, output = subprocess.getstatusoutput(mv_cmd)
+        mv_cmd_list = ['mv', f'{tmp_path}/{bin_file}', f'{clib_bin}']
+        (output, error, status) = CmdUtil.execCmdList(mv_cmd_list)
         if status != 0:
             self.logger.logExit(f"Failed to copy {bin_file} from {tmp_path}. Error: \n{str(output)}")
         self.logger.log(f"Successfully copy {bin_file} from {tmp_path}.")
@@ -393,17 +394,17 @@ class Install(LocalBaseOM):
             self.check_clib_bin(clib_bin, bin_)
             app_bin = os.path.realpath(os.path.join(dss_app, bin_))
             if os.path.isfile(clib_bin):
-                mv_cmd = r'\mv {0} {1}'.format(clib_bin, app_bin)
-                status, output = subprocess.getstatusoutput(mv_cmd)
+                mv_cmd_list = ['mv', clib_bin, app_bin]
+                (output, error, status) = CmdUtil.execCmdList(mv_cmd_list)
                 if status != 0:
-                    raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % mv_cmd +
+                    raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % (' '.join(mv_cmd_list)) +
                                     "Error:\n%s" % output)
 
-        link_cmd = 'ln -snf {0}/perctrl {1}'.format(dss_app, bin_path)
-        self.logger.debug(f"The cmd of the link: {link_cmd}.")
-        status, output = subprocess.getstatusoutput(link_cmd)
+        link_cmd_list = ['ln', '-snf', f'{dss_app}/perctrl', bin_path]
+        self.logger.debug("The cmd of the link: %s." % ' '.join(link_cmd_list))
+        (output, error, status) = CmdUtil.execCmdList(link_cmd_list)
         if status != 0:
-            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % link_cmd +
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % ' '.join(link_cmd_list) +
                             "Error:\n%s." % output)
         self.logger.log("Successfully generated the soft link.")
 
@@ -663,9 +664,9 @@ class Install(LocalBaseOM):
         source_path = os.path.join(os.getenv("GPHOME"),
             self.user, "etc")
         target_path = os.path.join(self.installPath, "etc")
-        cmd = "cp %s/* %s" % (source_path, target_path)
-        self.logger.debug("set cgroup at install step cmd: %s" % cmd)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['cp', f'{source_path}/*', target_path]
+        self.logger.debug("set cgroup at install step cmd: %s" % ' '.join(cmd_list))
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if status != 0:
             self.logger.debug("set cgroup at install step result: %s" % output)
 

@@ -38,6 +38,7 @@ from gspylib.os.gsfile import g_file
 from impl.dropnode.DropnodeImpl import DropnodeImpl
 from base_utils.os.file_util import FileUtil
 from gspylib.component.DSS.dss_comp import Dss, DssInst
+from base_utils.os.cmd_util import CmdUtil
 
 
 # Action type
@@ -211,8 +212,8 @@ class DropNodeWithCmImpl(DropnodeImpl):
         self.wait_reform_finish(node_list)
         pg_port = EnvUtil.getEnv("PGPORT")
         pgdata_path = EnvUtil.getEnv("PGDATA") + os.sep + "postgresql.conf"
-        get_url_cmd = f"grep ss_interconnect_url %s" % pgdata_path
-        sta, out = subprocess.getstatusoutput(get_url_cmd)
+        get_url_cmd_list = ['grep', 'ss_interconnect_url', pgdata_path]
+        (out, err, sta) = CmdUtil.execCmdList(get_url_cmd_list)
         url = (out.split('=')[-1]).strip()
         url_port = (url.split(',')[0]).split(':')[-1]
         dss_port = (node_list.split(',')[0]).split(':')[-1]

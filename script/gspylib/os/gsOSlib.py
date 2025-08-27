@@ -31,6 +31,7 @@ from gspylib.common.ErrorCode import ErrorCode
 from domain_utils.cluster_file.version_info import VersionInfo
 from gspylib.os.gsplatform import g_Platform, findCmdInPath
 from gspylib.os.gsfile import g_file
+from base_utils.os.cmd_util import CmdUtil
 
 sys.path.append(sys.path[0] + "/../../../lib")
 import psutil
@@ -55,12 +56,12 @@ class PlatformCommand():
         input : NA
         output: String
         """
-        dateCmd = g_Platform.getDateCmd() + " -R "
-        (status, output) = subprocess.getstatusoutput(dateCmd)
+        date_cmd_list = [g_Platform.getDateCmd(), '-R']
+        (output, error, status) = CmdUtil.execCmdList(date_cmd_list)
         # if cmd failed, then exit
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] % "date" +
-                            "The cmd is %s" % dateCmd)
+                            "The cmd is %s" % ' '.join(date_cmd_list))
         return output
 
     def getAllCrontab(self):
@@ -69,8 +70,8 @@ class PlatformCommand():
         input : NA
         output: status, output
         """
-        cmd = g_Platform.getAllCrontabCmd()
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = g_Platform.getAllCrontabCmdList()
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if output.find("no crontab for") >= 0:
             output = ""
             status = 0
@@ -78,7 +79,7 @@ class PlatformCommand():
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] %
                             "crontab list" + " Error:%s." % output +
-                            "The cmd is %s" % cmd)
+                            "The cmd is %s" % ' '.join(cmd_list))
         return status, output
 
     def execCrontab(self, path):
@@ -109,11 +110,10 @@ class PlatformCommand():
         input : string
         output: True or False
         """
-        cmd = g_Platform.getSourceCmd()
-        cmd += " %s" % path
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = [g_Platform.getSourceCmd(), path]
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if status != 0:
-            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % ' '.join(cmd_list) +
                             " Error:\n%s" % output)
         return True
 
@@ -138,12 +138,12 @@ class PlatformCommand():
         input : NA
         output: string
         """
-        hostCmd = findCmdInPath("hostname")
-        (status, output) = subprocess.getstatusoutput(hostCmd)
+        host_cmd_list = [findCmdInPath("hostname")]
+        (output, error, status) = CmdUtil.execCmdList(host_cmd_list)
         # if cmd failed, then exit
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] % "host name"
-                            + "The cmd is %s" % hostCmd)
+                            + "The cmd is %s" % ' '.join(host_cmd_list))
         return output
 
     def getSysConfiguration(self):
@@ -152,13 +152,13 @@ class PlatformCommand():
         input : NA
         output: string
         """
-        configCmd = g_Platform.getGetConfValueCmd()
-        (status, output) = subprocess.getstatusoutput(configCmd)
+        config_cmd_list = g_Platform.getGetConfValueCmdList()
+        (output, error, status) = CmdUtil.execCmdList(config_cmd_list)
         # if cmd failed, then exit
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] %
                             "system config pagesize" +
-                            "The cmd is %s" % configCmd)
+                            "The cmd is %s" % ' '.join(config_cmd_list))
         return output
 
     def getUserLimits(self, limitType):
@@ -204,12 +204,12 @@ class PlatformCommand():
         input : NA
         output: string
         """
-        ioStatCmd = g_Platform.getIOStatCmd()
-        (status, output) = subprocess.getstatusoutput(ioStatCmd)
+        iostatcmd_list = g_Platform.getIOStatCmdList()
+        (output, error, status) = CmdUtil.execCmdList(iostatcmd_list)
         # if cmd failed, then exit
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] %
-                            "IO information" + "The cmd is %s" % ioStatCmd)
+                            "IO information" + "The cmd is %s" % ' '.join(iostatcmd_list))
         return output
 
     def scpFile(self, ip, sourcePath, targetPath, copyTo=True):
@@ -366,10 +366,10 @@ class PlatformCommand():
         output : blockSize
         """
         blockSize = 0
-        cmd = g_Platform.getBlockdevCmd(devName)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = g_Platform.getBlockdevCmdList(devName)
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if status != 0:
-            raise Exception(ErrorCode.GAUSS_504["GAUSS_50408"] % cmd +
+            raise Exception(ErrorCode.GAUSS_504["GAUSS_50408"] % ' '.join(cmd_list) +
                             " Error: \n%s" % str(output))
         if str(output.strip()) != "" and output.isdigit():
             blockSize = int(output)
@@ -382,14 +382,14 @@ class PlatformCommand():
                : groupName
         output : Successful return True,otherwise return false
         """
-        cmd = g_Platform.getUseraddCmd(userName, groupName)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = g_Platform.getUseraddCmdList(userName, groupName)
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if status == 0:
             return True
         else:
             raise Exception(ErrorCode.GAUSS_503["GAUSS_50318"] % userName +
                             " Error: \n%s." % str(output) +
-                            "The cmd is %s" % cmd)
+                            "The cmd is %s" % ' '.join(cmd_list))
 
     def delUser(self, userName):
         """
@@ -397,14 +397,14 @@ class PlatformCommand():
         input  : userName
         output : Successful return True,otherwise return false
         """
-        cmd = g_Platform.getUserdelCmd(userName)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = g_Platform.getUserdelCmdList(userName)
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if status == 0:
             return True
         else:
             raise Exception(ErrorCode.GAUSS_503["GAUSS_50314"] % userName +
                             " Error: \n%s." % str(output) +
-                            "The cmd is %s" % cmd)
+                            "The cmd is %s" % ' '.join(cmd_list))
 
     def addGroup(self, groupName):
         """
@@ -412,14 +412,14 @@ class PlatformCommand():
         input  : groupName
         output : Successful return True,otherwise return false
         """
-        cmd = g_Platform.getGroupaddCmd(groupName)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = g_Platform.getGroupaddCmdList(groupName)
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if status == 0:
             return True
         else:
             raise Exception(ErrorCode.GAUSS_503["GAUSS_50319"] % groupName +
                             " Error: \n%s." % str(output) +
-                            "The cmd is %s" % cmd)
+                            "The cmd is %s" % ' '.join(cmd_list))
 
     def delGroup(self, groupName):
         """
@@ -427,14 +427,14 @@ class PlatformCommand():
         input  : groupName
         output : Successful return True,otherwise return false
         """
-        cmd = g_Platform.getGroupdelCmd(groupName)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = g_Platform.getGroupdelCmdList(groupName)
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if status == 0:
             return True
         else:
             raise Exception(ErrorCode.GAUSS_503["GAUSS_50313"] % groupName +
                             " Error:\n%s." % str(output) +
-                            "The cmd is %s" % cmd)
+                            "The cmd is %s" % ' '.join(cmd_list))
 
     def getPathOwner(self, pathName):
         """

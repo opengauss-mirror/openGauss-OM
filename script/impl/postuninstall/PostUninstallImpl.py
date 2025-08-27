@@ -37,6 +37,7 @@ from base_utils.os.file_util import FileUtil
 from domain_utils.cluster_file.profile_file import ProfileFile
 from domain_utils.cluster_file.version_info import VersionInfo
 from base_utils.os.net_util import NetUtil
+from base_utils.os.cmd_util import CmdUtil
 from base_utils.os.env_util import EnvUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from os_platform.linux_distro import LinuxDistro
@@ -800,17 +801,17 @@ class PostUninstallImpl:
             global gphome
             gphome = os.path.normpath(
                 self.getItemValueFromXml("gaussdbToolPath"))
-            cmd = "rm -rf %s/*" % gphome
+            cmd_list = ['rm', '-rf', ('%s/*') % gphome]
             if "HOST_IP" in os.environ.keys():
                 # Agent Mode
                 if self.localMode:
                     # clean gphome in local mode
                     self.verifyCleanGphome()
-                    (status, output) = subprocess.getstatusoutput(cmd)
+                    (output, error, status) = CmdUtil.execCmdList(cmd_list)
                     if status != 0:
                         raise Exception(
                             ErrorCode.GAUSS_514["GAUSS_51400"]
-                            % cmd + " Error:\n%s" % output)
+                            % ' '.join(cmd_list) + " Error:\n%s" % output)
                     self.logger.logExit("Successfully clean gphome locally.")
                 else:
                     # clean gphome with specified node
@@ -848,11 +849,11 @@ class PostUninstallImpl:
                     # which means clean gphome locally
                     self.verifyCleanGphome()
                     if os.stat(gphome).st_uid != 0:
-                        (status, output) = subprocess.getstatusoutput(cmd)
+                        (output, error, status) = CmdUtil.execCmdList(cmd_list)
                         if status != 0:
                             raise Exception(
                                 ErrorCode.GAUSS_514["GAUSS_51400"]
-                                % cmd + " Error:\n%s" % output)
+                                % ' '.join(cmd_list) + " Error:\n%s" % output)
                 self.logger.logExit("Successfully clean gphome.")
 
         except Exception as e:

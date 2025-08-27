@@ -24,6 +24,7 @@ from gspylib.inspection.common.CheckResult import ResultStatus
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.DbClusterStatus import DbClusterStatus
 from gspylib.common.Common import ClusterCommand
+from base_utils.os.cmd_util import CmdUtil
 
 
 class CheckDBParams(BaseItem):
@@ -132,25 +133,25 @@ class CheckDBParams(BaseItem):
                 shared_buffers = int(shared_buffer_size[0:-1])
 
             # check shared_buffers
-            strCmd = "cat /proc/sys/kernel/shmmax"
-            status, shmmax = subprocess.getstatusoutput(strCmd)
+            str_cmd_list = ['cat', '/proc/sys/kernel/shmmax']
+            (shmmax, error, status) = CmdUtil.execCmdList(str_cmd_list)
             if (status != 0):
                 self.result.raw += "Failed to obtain shmmax parameters." \
-                                   " Command: %s.\n" % strCmd
+                                   " Command: %s.\n" % ' '.join(str_cmd_list)
                 flag = False
             # check shmall parameters
-            strCmd = "cat /proc/sys/kernel/shmall"
-            status, shmall = subprocess.getstatusoutput(strCmd)
+            str_cmd_list = ['cat', '/proc/sys/kernel/shmall']
+            (shmall, error, status) = CmdUtil.execCmdList(str_cmd_list)
             if (status != 0):
                 self.result.raw += "Failed to obtain shmall parameters." \
-                                   " Command: %s.\n" % strCmd
+                                   " Command: %s.\n" % ' '.join(str_cmd_list)
                 flag = False
             # get PAGESIZE
-            strCmd = "getconf PAGESIZE"
-            status, PAGESIZE = subprocess.getstatusoutput(strCmd)
+            str_cmd_list = ['getconf', 'PAGESIZE']
+            (PAGESIZE, error, status) = CmdUtil.execCmdList(str_cmd_list)
             if (status != 0):
                 self.result.raw += "Failed to obtain PAGESIZE." \
-                                   " Command: %s.\n" % strCmd
+                                   " Command: %s.\n" % ' '.join(str_cmd_list)
                 flag = False
             if (shared_buffers < 128 * kB):
                 self.result.raw += "Shared_buffers must be greater " \
@@ -170,12 +171,12 @@ class CheckDBParams(BaseItem):
                                    % (desc, shared_buffer_size)
             # check sem    
             if (desc.find("CN(") >= 0):
-                strCmd = "cat /proc/sys/kernel/sem"
-                status, output = subprocess.getstatusoutput(strCmd)
+                str_cmd_list = ['cat', '/proc/sys/kernel/sem']
+                (output, error, status) = CmdUtil.execCmdList(str_cmd_list)
                 if (status != 0):
                     self.result.raw += "Failed to obtain sem parameters." \
                                        " Error: %s.\n" % output + \
-                                       " Command: %s.\n" % strCmd
+                                       " Command: %s.\n" % ' '.join(str_cmd_list)
                     flag = False
                 paramList = output.split("\t")
                 if (int(paramList[0]) < 17):

@@ -21,6 +21,7 @@ from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
 from os_platform.gsservice import g_service
 from os_platform.UserPlatform import g_Platform
+from base_utils.os.cmd_util import CmdUtil
 
 EXPECTED_VALUE = "disabled"
 SUSE_FLAG = "SuSEfirewall2 not active"
@@ -50,15 +51,15 @@ class CheckFirewall(BaseItem):
 
     def doSet(self):
         if g_Platform.isPlatFormEulerOSOrRHEL7X():
-            cmd = "systemctl stop firewalld.service"
+            cmd_list = ['systemctl', 'stop', 'firewalld.service']
         elif SharedFuncs.isSupportSystemOs():
-            cmd = "service iptables stop"
+            cmd_list = ['service', 'iptables', 'stop']
         else:
-            cmd = "SuSEfirewall2 stop"
+            cmd_list = ['SuSEfirewall2', 'stop']
 
-        status, output = subprocess.getstatusoutput(cmd)
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if status:
             self.result.val = "Failed to stop firewall service. Error: %s\n" \
-                              % output + "The cmd is %s " % cmd
+                              % output + "The cmd is %s " % (cmd_list)
         else:
             self.result.val = "Successfully stopped the firewall service.\n"

@@ -34,6 +34,7 @@ libpath = os.path.join(EnvUtil.getEnv("GAUSSHOME"), "lib")
 sys.path.append(libpath)
 from gspylib.common.ErrorCode import ErrorCode
 from base_utils.os.file_util import FileUtil
+from base_utils.os.cmd_util import CmdUtil
 from domain_utils.sql_handler.sql_executor import SqlExecutor
 
 
@@ -115,7 +116,6 @@ def main():
                     exesql += line + "\n"
         (status, result, err_output) = \
             SqlExecutor.excuteSqlOnLocalhost(port, exesql, database)
-        cmd = "rm -rf %s" % sqlfile
         if (err_output != ""):
             output["status"] = status
             output["error_output"] = err_output
@@ -127,9 +127,10 @@ def main():
         FileUtil.createFileInSafeMode(outputfile)
         with open(outputfile, "w") as fp_json:
             json.dump(output, fp_json)
-        (status, outpout) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['rm', '-rf', sqlfile]
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if status != 0:
-            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % ' '.join(cmd_list)
                             + "Error:\n%s" % output)
     except Exception as e:
         GaussLog.exitWithError("Errors:%s" % str(e))

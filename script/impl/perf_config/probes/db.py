@@ -79,8 +79,8 @@ class DBInfo(Probe):
             Project.log('detect that database is cluster mode.')
 
     def _read_guc_in_postgresql_conf(self, guc):
-        cmd = f'grep "{guc}" {self.postgresql_conf} -i'
-        output = CmdUtil.execCmd(cmd, noexcept=True)
+        cmdList = ['grep', guc, self.postgresql_conf, '-i']
+        output, error, status = CmdUtil.execCmdList(cmdList, noexcept=True)
         if output == '':
             return
         res = None

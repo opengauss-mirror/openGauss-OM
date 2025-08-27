@@ -31,6 +31,7 @@ from gspylib.common.LocalBaseOM import LocalBaseOM
 from domain_utils.cluster_file.cluster_log import ClusterLog
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from domain_utils.cluster_os.cluster_user import ClusterUser
+from base_utils.os.cmd_util import CmdUtil
 
 
 class CleanOsUser(LocalBaseOM):
@@ -143,13 +144,12 @@ class CleanOsUser(LocalBaseOM):
             #clean user cron
             self.clean_user_cron()
             # clean user process
-            kill_cmd = "pkill -u %s" % self.user
-            status, output = subprocess.getstatusoutput(kill_cmd)
+            kill_cmd_list = ['pkill', '-u', self.user]
+            (output, error, status) = CmdUtil.execCmdList(kill_cmd_list)
             self.logger.debug("Kill user[%s] process.status is [%s],result is:%s"
                               % (self.user, status, output))
             # delete user
-            status, output = subprocess.getstatusoutput("userdel -f %s"
-                                                        % self.user)
+            (output, error, status) = CmdUtil.execCmdList(['userdel', '-f', self.user])
             if (status != 0):
                 self.logger.logExit(ErrorCode.GAUSS_503["GAUSS_50314"]
                                     % self.user + " Error: \n%s" % output)
@@ -157,8 +157,7 @@ class CleanOsUser(LocalBaseOM):
             # delete path
             if os.path.isdir(gaussHome):
                 if os.stat(gaussHome).st_uid != 0:
-                    status, output = subprocess.getstatusoutput("rm -rf '%s'"
-                                                                % gaussHome)
+                    (output, error, status) = CmdUtil.execCmdList(['rm', '-rf', gaussHome])
                     if (status != 0):
                         self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50209"]
                                             % gaussHome + " Error: \n%s" % output)
@@ -211,10 +210,13 @@ class CleanOsUser(LocalBaseOM):
             userList = allowUsersLineBefore.split()
             userList.remove(self.user)
             allowUsersLineRemoved = ' '.join(userList)
-            cmd = "sed -i 's/%s/%s/g' %s" % (allowUsersLineBefore,
-                                             allowUsersLineRemoved,
-                                             sshd_config)
-            (status, output) = subprocess.getstatusoutput(cmd)
+            cmd_list = [
+                'sed',
+                '-i',
+                f's/{allowUsersLineBefore}/{allowUsersLineRemoved}/g',
+                sshd_config
+            ]
+            (output, error, status) = CmdUtil.execCmdList(cmd_list)
             # Not found, or there is an error.
             if status != 0:
                 self.logger.debug("Failed to remove user '%s' from "

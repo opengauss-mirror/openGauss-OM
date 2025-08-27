@@ -19,7 +19,7 @@ from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
 from os_platform.gsservice import g_service
-
+from base_utils.os.cmd_util import CmdUtil
 
 class CheckCrondService(BaseItem):
     def __init__(self):
@@ -38,12 +38,12 @@ class CheckCrondService(BaseItem):
 
     def doSet(self):
         if SharedFuncs.isSupportSystemOs():
-            cmd = "/sbin/service crond start"
+            cmd_list = ['/sbin/service', 'crond', 'start']
         else:
-            cmd = "/sbin/service cron start"
-        (status, output) = subprocess.getstatusoutput(cmd)
+            cmd_list = ['/sbin/service', 'cron', 'start']
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if (status != 0):
             self.result.val = "Failed to started crond service. " \
-                              "Error: %s\n" % output + "The cmd is %s " % cmd
+                              "Error: %s\n" % output + "The cmd is %s " % ' '.join(cmd_list)
         else:
             self.result.val = "Successfully started the crond service.\n"

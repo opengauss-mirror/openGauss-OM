@@ -206,19 +206,21 @@ class DmidecodeUtil(object):
         :param dmitype: dmi type. None | int | str | DMIType | DMITypeCategory
         :return: DmiDecodeTable
         """
+        cmd_list = [CmdUtil.getDmidecodeCmd()]
         if dmitype is None:
-            cmd = CmdUtil.getDmidecodeCmd()
+            pass
         elif isinstance(dmitype, DMIType) or isinstance(dmitype, DMITypeCategory):
-            cmd = f'{CmdUtil.getDmidecodeCmd()} -t {dmitype.value} '
+            cmd_list.append('-t')
+            cmd_list.append(dmitype.value)
         elif isinstance(dmitype, int) or isinstance(dmitype, str):
-            cmd = f'{CmdUtil.getDmidecodeCmd()} -t {dmitype} '
+            cmd_list.append('-t')
+            cmd_list.append(dmitype)
         else:
             assert False
 
-        status, output = subprocess.getstatusoutput(cmd)
+        output, error, status = CmdUtil.execCmdList(cmd_list)
         if status != 0:
-            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error: \n%s" % str(output))
-
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % ' '.join(cmd_list) + " Error: \n%s" % str(output))
         return DmiDecodeTable(output)
 
     @staticmethod
@@ -235,10 +237,10 @@ class DmidecodeUtil(object):
         execute dmidecode --version and get the result.
         :return: dmidecode --version
         """
-        cmd = f'{CmdUtil.getDmidecodeCmd()} --version'
-        status, output = subprocess.getstatusoutput(cmd)
+        cmd_list = [CmdUtil.getDmidecodeCmd(), '--version']
+        output, error, status = CmdUtil.execCmdList(cmd_list)
         if status != 0:
-            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error: \n%s" % str(output))
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % ' '.join(cmd_list) + " Error: \n%s" % str(output))
         return output
 
 

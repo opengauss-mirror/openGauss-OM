@@ -52,10 +52,10 @@ class CheckCrontabLeft(BaseItem):
 
     def doSet(self):
         if os.getuid == 0:
-            cmd = "crontab -l -u '%s'" % self.crontabUser
+            cmd_list = ['crontab', '-l', '-u', self.crontabUser]
         else:
-            cmd = "crontab -l"
-        (status, output) = subprocess.getstatusoutput(cmd)
+            cmd_list = ['crontab', '-l']
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if status != 0 or output.find('om_monitor') < 0:
             self.result.val = "No gauss process in crontab.\n"
             return

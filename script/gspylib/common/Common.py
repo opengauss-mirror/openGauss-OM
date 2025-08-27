@@ -3372,11 +3372,11 @@ class DefaultValue():
         get kernel sem
         """
         # get total sem
-        cmd = "cat /proc/sys/kernel/sem"
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['cat', '/proc/sys/kernel/sem']
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
 
         if status != 0 or output == "":
-            raise Exception(ErrorCode.GAUSS_501["GAUSS_50110"] % cmd)
+            raise Exception(ErrorCode.GAUSS_501["GAUSS_50110"] % ' '.join(cmd_list))
         
         return int(output.split()[1])
 
@@ -3960,11 +3960,13 @@ class ClusterCommand():
                 OMCommand.getLocalScript("Local_Execute_Sql"), port,
                 sqlfilepath, outputfile, snapid, database)
             gs_sshTool.executeCommand(cmd)
-            cmd = "%s %s" % (CmdUtil.getRemoveCmd("directory"), sqlfilepath)
-            (status, output) = subprocess.getstatusoutput(cmd)
+            cmd_list = CmdUtil.getRemoveCmdList("directory")
+            cmd_list.append(sqlfilepath)
+            (output, error, status) = CmdUtil.execCmdList(cmd_list)
         except Exception as e:
-            cmd = "%s %s" % (CmdUtil.getRemoveCmd("directory"), sqlfilepath)
-            (status, output) = subprocess.getstatusoutput(cmd)
+            cmd_list = CmdUtil.getRemoveCmdList("directory")
+            cmd_list.append(sqlfilepath)
+            (output, error, status) = CmdUtil.execCmdList(cmd_list)
             raise Exception(str(e))
 
     @staticmethod
@@ -4012,21 +4014,22 @@ class ClusterInstanceConfig():
                 key = entry[0]
                 value = entry[1]
                 # delete the old parameter information
-                cmd = "sed -i 's/^.*\(%s.*=.*\)/#\\1/g' %s" % (key, configFile)
-                (status, output) = subprocess.getstatusoutput(cmd)
+                cmd_list = ['sed', '-i', ("'s/^.*\(%s.*=.*\)/#\\1/g' %s") % (key, configFile)]
+                (output, error, status) = CmdUtil.execCmdList(cmd_list)
                 if (status != 0):
                     raise Exception(ErrorCode.GAUSS_500["GAUSS_50008"] +
                                     " Command:%s. Error:\n%s" % (cmd, output))
 
                 # append new config to file
-                cmd = 'echo "      " >> %s' % (configFile)
-                (status, output) = subprocess.getstatusoutput(cmd)
+                cmd_list = ['echo', ('"      " >> %s' % (configFile))]
+                (output, error, status) = CmdUtil.execCmdList(cmd_list)
                 if (status != 0):
                     raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
                                     " Error: \n%s" % output)
 
                 cmd = 'echo "%s = %s" >> %s' % (key, value, configFile)
-                (status, output) = subprocess.getstatusoutput(cmd)
+                cmd_list = ['echo', ('"%s = %s" >> %s' % (key, value, configFile))]
+                (output, error, status) = CmdUtil.execCmdList(cmd_list)
                 if (status != 0):
                     raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
                                     " Error: \n%s" % output)

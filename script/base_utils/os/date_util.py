@@ -34,10 +34,11 @@ class DateUtil(object):
         input : NA
         output: String
         """
-        dateCmd = CmdUtil.getDateCmd() + " -R "
-        (status, output) = subprocess.getstatusoutput(dateCmd)
+        date_cmd_list = [CmdUtil.getDateCmd(), '-R']
+        output, error, status = CmdUtil.execCmdList(date_cmd_list)
+
         # if cmd failed, then exit
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] % "date" +
-                            "The cmd is %s" % dateCmd)
+                            "The cmd is %s" % ' '.join(date_cmd_list))
         return output

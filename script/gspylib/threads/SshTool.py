@@ -962,9 +962,9 @@ class SshTool():
         if local_name_or_ip in ssh_hosts:
             localhost_idx = ssh_hosts.index(local_name_or_ip)
             ssh_hosts.pop(localhost_idx)
-            cpcmd = "cp -r %s %s" % (src_file, target_dir)
+            cpcmd_list = ['cp', '-r', src_file, target_dir]
             if src_file != target_dir and src_file != os.path.join(target_dir, os.path.basename(src_file)):
-                (status, output) = subprocess.getstatusoutput(cpcmd)
+                (output, error, status) = CmdUtil.execCmdList(cpcmd_list)
                 if status == 0:
                     result_map[local_name_or_ip] = DefaultValue.SUCCESS
                 else:
@@ -1004,9 +1004,7 @@ class SshTool():
                 for host in self.hostNames:
                     fp.write("%s\n" % host)
                 fp.flush()
-            subprocess.getstatusoutput("chmod %s '%s'"
-                                       % (DefaultValue.FILE_MODE,
-                                          self.__hostsFile))
+            os.chmod(self.__hostsFile, int(str(DefaultValue.FILE_MODE), 8))
         except Exception as e:
             FileUtil.removeFile(self.__hostsFile)
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50205"] % "host file"

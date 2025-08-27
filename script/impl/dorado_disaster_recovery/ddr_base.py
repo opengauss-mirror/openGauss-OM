@@ -633,7 +633,7 @@ class DoradoDisasterRecoveryBase(StreamingBase):
                             ", output:" + str(out).strip())
         self.logger.log("Successfully stop dssserver before start cluster on node [%s] " % main_standby_inst.hostname)
       
-    def set_dss_cluster_run_mode(self, mode='cluster_standby', only_mode=None):
+    def set_dss_cluster_run_mode(self, mode='cluster_standby', only_mode=None, online=False):
         """
         Set dss cluster_run_mode in dss cfg 
         """
@@ -644,20 +644,22 @@ class DoradoDisasterRecoveryBase(StreamingBase):
         dss_home = EnvUtil.getEnv('DSS_HOME')
         cfg = os.path.join(dss_home, 'cfg', 'dss_inst.ini')
 
-        cmd = r"grep -q '^\s*CLUSTER_RUN_MODE\s*=' %s" % cfg
-        (status, output) = subprocess.getstatusoutput(cmd)
-        self.logger.debug("grep dss cfg CLUSTER_RUN_MODE cmd: %s" % cmd)
-        if status != 0:
-            cmd_param = r"echo 'CLUSTER_RUN_MODE = %s' >> %s" % (mode, cfg)
+        if online:
+            cmd_param = f"source {self.mpp_file}; dsscmd setcfg -n CLUSTER_RUN_MODE -v {mode}"
         else:
-            cmd_param = r"sed -i 's/^\s*CLUSTER_RUN_MODE\s*=.*/CLUSTER_RUN_MODE = %s/' %s" % (mode, cfg)
-
-        params_list = [(inst, cmd_param) for db_node in
-                       self.cluster_info.dbNodes for inst in db_node.datanodes]
-
+            cmd = ["grep", "-q", r'^\s*CLUSTER_RUN_MODE\s*=', cfg]
+            process = subprocess.Popen(cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            output, error = process.communicate()
+            status = process.returncode
+            self.logger.debug("grep dss cfg CLUSTER_RUN_MODE cmd: %s" % cmd)
+            if status != 0:
+                cmd_param = r"echo 'CLUSTER_RUN_MODE = %s' >> %s" % (mode, cfg)
+            else:
+                cmd_param = r"sed -i 's/^\s*CLUSTER_RUN_MODE\s*=.*/CLUSTER_RUN_MODE = %s/' %s" % (mode, cfg)
+            
+        params_list = [(inst, cmd_param) for db_node in self.cluster_info.dbNodes for inst in db_node.datanodes]
         rets = parallelTool.parallelExecute(self.__config_dss_para, params_list)
-        self.logger.log(
-            "Successfully set dss cfg CLUSTER_RUN_MODE to %s." % mode)
+        self.logger.log("Successfully set dss cfg CLUSTER_RUN_MODE to %s." % mode)
 
     def __config_dss_para(self, params_list):
         """
@@ -1062,5 +1064,5 @@ class DoradoDisasterRecoveryBase(StreamingBase):
             self.set_cmserver_guc("ss_double_cluster_mode", "1", "set")
             if not self.params.restart:
                 self.reload_cm_guc()
-            self.set_dss_cluster_run_mode("cluster_primary")
+            self.set_dss_cluster_run_mode("cluster_primary", online=True)
             self.write_dorado_step("2_set_cluster_guc_for_failover_done")

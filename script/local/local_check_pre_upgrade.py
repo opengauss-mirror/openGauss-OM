@@ -556,10 +556,14 @@ def get_primary_hostname():
 
 
 def is_primary_node():
-    primary_home = get_primary_hostname()
-    if g_local_name != primary_home or g_opts.is_dss:
-        return False
-    return True
+    sqlstr = "select local_role from pg_stat_get_stream_replications();"
+    port = get_node_port()
+    ret, output, _ = gsql_execute(sqlstr, port)
+    if ret and output:
+        if output.find("Primary") > -1:
+            return True
+    
+    return False
 
 
 def get_node_port():

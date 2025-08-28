@@ -1819,7 +1819,6 @@ class UpgradeImpl:
                 self.greyUpgradeSyncOldConfigToNew()
                 # 11. switch the cluster version to new version
                 self.getOneDNInst(checkNormal=True)
-                self.switchBin(const.NEW)
                 self.restore_origin_disaster_user_file()
                 # create CA for CM
                 if len(self.context.nodeNames) == len(self.context.clusterNodes) or self.context.upgrade_remain:
@@ -2164,7 +2163,8 @@ class UpgradeImpl:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
                             "Command:%s. Error:\n%s" % (cmd, output))
             self.refresh_dynamic_config_file()
-        self.context.logger.log("Switching DN processes.")
+            
+        self.context.logger.log("Switching DN bin and processes.")
         is_rolling = False
         start_time = timeit.default_timer()
         # under upgrade, kill the process from old cluster app path,
@@ -2178,10 +2178,16 @@ class UpgradeImpl:
                self.context.oldClusterAppPath,
                self.context.newClusterAppPath,
                self.context.xmlFile,
-               self.context.localLog)
-
+               self.context.localLog)            
+                
         if isRollback:
+            cmd += " -R '%s'" % self.context.oldClusterAppPath
+            cmd += " --switch_commitid=%s" % self.oldCommitId
             cmd += " --rollback"
+        else:
+            cmd += " -R '%s'" % self.context.newClusterAppPath
+            cmd += " --switch_commitid=%s" % self.newCommitId
+            
         if self.context.forceRollback:
             cmd += " --force"
         if len(self.context.nodeNames) != len(self.context.clusterNodes):
@@ -5195,7 +5201,6 @@ END;"""
             if maxStep >= GreyUpgradeStep.STEP_SWITCH_NEW_BIN:
                 self.greyRestoreConfig()
                 self.clean_cm_instance()
-                self.switchBin(const.OLD)
                 self.greyRestoreGuc()
                 if needSwitchProcess:
                     self.rollbackHotpatch()

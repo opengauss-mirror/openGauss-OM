@@ -4277,8 +4277,8 @@ def switchDnNodeProcess():
 
     start_time = timeit.default_timer()
     
-    needKillDn = isKillDn()
-    if not needKillDn:
+    need_kill_dn = isKillDn()
+    if not need_kill_dn:
         g_logger.log("No need to kill DN and switch Bin.")
     else:
         g_logger.log("Need to kill DN and switch Bin.")

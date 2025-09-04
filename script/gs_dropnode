@@ -268,16 +268,16 @@ General options:
         else continue
         """
         command = "echo 1"
-        sshTool = SshTool(hostnames, None, 0)
-        resultMap, outputCollect = sshTool.getSshStatusOutput(command,
-                                                              hostnames, env)
-        self.logger.debug(outputCollect)
-        self.failureHosts = '.'.join(re.findall(r"\[FAILURE\] .*:.*\n",
-                                                outputCollect))
-        for host in list(self.hostMapForExist.keys()):
-            if host in self.failureHosts:
+        for hostname in hostnames:
+            sshTool = SshTool([hostname], None, 0)
+            resultMap, outputCollect = sshTool.getSshStatusOutput(command,
+                                                                  [hostname], env)
+            self.logger.debug(outputCollect)
+            self.failureHosts = '.'.join(re.findall(r"\[FAILURE\] .*:.*\n",
+                                                    outputCollect))
+            if self.failureHosts:
                 GaussLog.exitWithError(
-                    ErrorCode.GAUSS_358["GAUSS_35807"] % host)
+                    ErrorCode.GAUSS_358["GAUSS_35807"] % hostname)
 
     def initLogs(self):
         """

@@ -727,10 +727,15 @@ class ExpansionImplWithCm(ExpansionImpl):
         self.logger.debug("stopCMProcessesCmd: " + stopCMProcessesCmd)
         hostList = [node.name for node in clusterInfo.dbNodes]
         newNodesList = [node.name for node in self.new_nodes]
-        existingHosts = [host for host in hostList if host not in newNodesList]
         gaussHome = EnvUtil.getEnv("GAUSSHOME")
         gaussLog = EnvUtil.getEnv("GAUSSLOG")
-        CmdExecutor.execCommandWithMode(stopCMProcessesCmd, self.ssh_tool, host_list=existingHosts)
+        CmdExecutor.execCommandWithMode(stopCMProcessesCmd, self.ssh_tool, host_list=hostList)
+        
+        killgaussdbcmd = "pkill -9 gaussdb -U {user}".format(user=self.user)
+        self.logger.debug("kill gaussdb on new node: " + killgaussdbcmd)
+        resmap, output = self.ssh_tool.getSshStatusOutput(killgaussdbcmd, newNodesList)
+        self.logger.debug(resmap, output)
+        
         DefaultValue.remove_metadata_and_dynamic_config_file(self.user, self.ssh_tool, self.logger)
         # execute gs_guc reload
         self._gsctlReload()

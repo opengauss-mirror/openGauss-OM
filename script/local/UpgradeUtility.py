@@ -4696,6 +4696,17 @@ def clean_cm_instance():
 
     cleanMonitor()
     
+    ## restore cluster_static_config
+    g_logger.debug("restore cluseter config file without cm.")
+    static_config = "%s/bin/cluster_static_config" % g_opts.oldClusterAppPath
+    restore_cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+            static_config, static_config, g_opts.newClusterAppPath)
+
+    dynamic_config = "%s/bin/cluster_dynamic_config" % g_opts.newClusterAppPath
+    restore_cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
+        dynamic_config, dynamic_config, g_opts.oldClusterAppPath)
+    subprocess.getstatusoutput(restore_cmd)
+    
     if local_node.cmservers:
         FileUtil.cleanDirectoryContent(local_node.cmservers[0].datadir)
         server_component = CM_OLAP()

@@ -556,6 +556,9 @@ class UpgradeImpl:
         for upgrade from oldClusterNumber(<MOT_PARAM_VERSION) to newClusterNumber(>=MOT_PARAM_VERSION),
         need to set guc param enable_mot_server = on when containing mot tables.
         """
+        if self.context.action != const.ACTION_AUTO_UPGRADE:
+            self.context.logger.debug("[check_mot_table] no need to check mot under {%s} mode." % self.context.action)
+            return
         self.context.logger.debug("[check_mot_table] check mot tables, oldClusterNumber is %s and newClusterNumber is %s" %
                                   (self.context.oldClusterNumber, self.context.newClusterNumber))
         if not (float(self.context.oldClusterNumber) < MOT_PARAM_VERSION and float(self.context.newClusterNumber) >= MOT_PARAM_VERSION):
@@ -5199,11 +5202,17 @@ END;"""
                 needSwitchProcess = True
 
             if maxStep >= GreyUpgradeStep.STEP_SWITCH_NEW_BIN:
+                dynamicConfigFile = "%s/bin/cluster_dynamic_config" % \
+                                self.context.newClusterAppPath
+                if self.get_upgrade_cm_strategy() != 2 and os.path.exists(dynamicConfigFile):
+                    self.refresh_dynamic_config_file()
+                        
                 self.greyRestoreConfig()
                 self.clean_cm_instance()
                 self.greyRestoreGuc()
                 if needSwitchProcess:
                     self.rollbackHotpatch()
+                    
                     self.getOneDNInst(checkNormal=True)
                     self.switchExistsProcess(True)
                 self.recordNodeStep(GreyUpgradeStep.STEP_UPDATE_CATALOG)
@@ -7875,9 +7884,11 @@ END;"""
         cm_strategy = self.get_upgrade_cm_strategy()
         if cm_strategy == 1:
             self.context.logger.debug("Rollback need clean cm directory")
-            cmd = "%s -t %s -l %s" % \
+            cmd = "%s -t %s --old_cluster_app_path=%s --new_cluster_app_path=%s -l %s" % \
                   (OMCommand.getLocalScript("Local_Upgrade_Utility"),
                    const.ACTION_CLEAN_CM,
+                   self.context.oldClusterAppPath,
+                   self.context.newClusterAppPath,
                    self.context.localLog)
             self.context.logger.debug("Roll back CM install command: {0}".format(cmd))
             self.context.sshTool.executeCommand(cmd, hostList=self.context.nodeNames)

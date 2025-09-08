@@ -1073,17 +1073,18 @@ class UpgradeImpl:
         if not needReload:
             return
 
-        # Restart the instance CMSERVERS
+        if not EnvUtil.is_dss_mode(getpass.getUser()):
+            # Restart the instance CMSERVERS
 
-        # Reload cm parameters using kill -1
-        cmd = DefaultValue.killInstProcessCmd("cm_server", False, 1)
-        self.context.logger.debug("Command for reloading CMServer instances: %s." % cmd)
-        (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
-        if status != 0:
-            self.context.logger.warn("Kill CMS failed. OUTPUT: {0}".format(output))
-        # Waiting for CMS instance to automatically refresh and reload
-        time.sleep(10)
-        self.context.logger.debug("Successfully set and reload CMServer instance.")
+            # Reload cm parameters using kill -1
+            cmd = DefaultValue.killInstProcessCmd("cm_server", False, 1)
+            self.context.logger.debug("Command for reloading CMServer instances: %s." % cmd)
+            (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
+            if status != 0:
+                self.context.logger.warn("Kill CMS failed. OUTPUT: {0}".format(output))
+            # Waiting for CMS instance to automatically refresh and reload
+            time.sleep(10)
+        self.context.logger.debug("Successfully set CMServer instance.")
 
     def base_close_cm_server_guc(self):
         """
@@ -1177,34 +1178,35 @@ class UpgradeImpl:
             hostList = copy.deepcopy(self.context.clusterNodes)
             self.context.execCommandInSpecialNode(cmd, hostList)
 
-            # make sure all cm_server child process has been killed. Example: gs_check
-            gaussHome = ClusterDir.getInstallDir(self.context.user)
-            cmServerFile = "%s/bin/cm_server" % gaussHome
-            cmNodes = []
-            # Get all the nodes that contain the CMSERVER instance
-            for dbNode in self.context.clusterInfo.dbNodes:
-                if len(dbNode.cmservers) > 0:
-                    cmNodes.append(dbNode)
-            # only kill the child process, not including cm_server
-            pstree = "%s -c" % os.path.realpath(
-                os.path.dirname(os.path.realpath(__file__)) + "/../../py_pstree.py")
-            if self.context.isSingle:
-                cmd = "pidList=`ps aux | grep \"%s\" | grep -v 'grep' | awk '{print $2}' | " \
-                      "xargs `; " % cmServerFile
-                cmd += "for pid in $pidList; do %s $pid | xargs -r -n 100 kill -9; done" % pstree
-                (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
-            else:
-                cmd = "pidList=\`ps aux | grep \"%s\" | grep -v 'grep' | awk '{print \$2}' | " \
-                      "xargs \`; " % cmServerFile
-                cmd += "for pid in \$pidList; do %s \$pid | xargs -r -n 100 kill -9; done" % pstree
-                (status, output) = self.context.sshTool.getSshStatusOutput(
-                                    cmd, [cmNode.name for cmNode in cmNodes])
-            self.context.logger.debug("Command for killing all cm_server child process: %s." % cmd)
-            self.context.logger.debug("The result of kill cm_server child process commands. "
-                                      "Status:%s, Output:%s." % (status, output))
-            self.waitClusterNormalDegrade(waitTimeOut=120)
+            if not EnvUtil.is_dss_mode(getpass.getUser()):
+                # make sure all cm_server child process has been killed. Example: gs_check
+                gaussHome = ClusterDir.getInstallDir(self.context.user)
+                cmServerFile = "%s/bin/cm_server" % gaussHome
+                cmNodes = []
+                # Get all the nodes that contain the CMSERVER instance
+                for dbNode in self.context.clusterInfo.dbNodes:
+                    if len(dbNode.cmservers) > 0:
+                        cmNodes.append(dbNode)
+                # only kill the child process, not including cm_server
+                pstree = "%s -c" % os.path.realpath(
+                    os.path.dirname(os.path.realpath(__file__)) + "/../../py_pstree.py")
+                if self.context.isSingle:
+                    cmd = "pidList=`ps aux | grep \"%s\" | grep -v 'grep' | awk '{print $2}' | " \
+                        "xargs `; " % cmServerFile
+                    cmd += "for pid in $pidList; do %s $pid | xargs -r -n 100 kill -9; done" % pstree
+                    (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
+                else:
+                    cmd = "pidList=\`ps aux | grep \"%s\" | grep -v 'grep' | awk '{print \$2}' | " \
+                        "xargs \`; " % cmServerFile
+                    cmd += "for pid in \$pidList; do %s \$pid | xargs -r -n 100 kill -9; done" % pstree
+                    (status, output) = self.context.sshTool.getSshStatusOutput(
+                                        cmd, [cmNode.name for cmNode in cmNodes])
+                self.context.logger.debug("Command for killing all cm_server child process: %s." % cmd)
+                self.context.logger.debug("The result of kill cm_server child process commands. "
+                                        "Status:%s, Output:%s." % (status, output))
+                self.waitClusterNormalDegrade(waitTimeOut=120)
 
-            self.context.logger.debug("Successfully closed the CMServer parameters.", "constant")
+                self.context.logger.debug("Successfully closed the CMServer parameters.", "constant")
         except Exception as er:
             if not self.context.forceRollback:
                 raise Exception(str(er))

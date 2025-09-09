@@ -267,8 +267,11 @@ General options:
         if the node which will not be deleted can't be connected, report ERR
         else continue
         """
+        existhosts = list(self.hostMapForExist.keys())
         command = "echo 1"
         for hostname in hostnames:
+            if hostname not in existhosts:
+                continue
             sshTool = SshTool([hostname], None, 0)
             resultMap, outputCollect = sshTool.getSshStatusOutput(command,
                                                                   [hostname], env)

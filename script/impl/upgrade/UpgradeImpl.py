@@ -5206,11 +5206,13 @@ END;"""
             if maxStep >= GreyUpgradeStep.STEP_SWITCH_NEW_BIN:
                 dynamicConfigFile = "%s/bin/cluster_dynamic_config" % \
                                 self.context.newClusterAppPath
-                if self.get_upgrade_cm_strategy() != 2 and os.path.exists(dynamicConfigFile):
-                    self.refresh_dynamic_config_file()
-                        
                 self.greyRestoreConfig()
                 self.clean_cm_instance()
+                
+                if self.get_upgrade_cm_strategy() != 2 and os.path.exists(dynamicConfigFile):
+                    self.context.logger.debug("Generate dynamic_config_file for rollback.")
+                    self.refresh_dynamic_config_file()
+                
                 self.greyRestoreGuc()
                 if needSwitchProcess:
                     self.rollbackHotpatch()

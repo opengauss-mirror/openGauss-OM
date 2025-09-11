@@ -4246,7 +4246,6 @@ def switchDnNodeProcess():
     function: switch node process which CN or DN exits
     :return:
     """
-    copy_dynamic_file()
     
     is_cm_killed = False
     is_dss_mode = EnvUtil.is_dss_mode(getpass.getuser())
@@ -4282,6 +4281,7 @@ def switchDnNodeProcess():
         g_logger.log("No need to kill DN and switch Bin.")
     else:
         g_logger.log("Need to kill DN and switch Bin.")
+        copy_dynamic_file()
         switchDn()
         switchBin()
     elapsed = timeit.default_timer() - start_time

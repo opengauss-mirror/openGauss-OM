@@ -1076,7 +1076,7 @@ class UpgradeImpl:
         if not needReload:
             return
 
-        if not EnvUtil.is_dss_mode(getpass.getUser()):
+        if not EnvUtil.is_dss_mode(getpass.getuser()):
             # Restart the instance CMSERVERS
 
             # Reload cm parameters using kill -1
@@ -1181,7 +1181,7 @@ class UpgradeImpl:
             hostList = copy.deepcopy(self.context.clusterNodes)
             self.context.execCommandInSpecialNode(cmd, hostList)
 
-            if not EnvUtil.is_dss_mode(getpass.getUser()):
+            if not EnvUtil.is_dss_mode(getpass.getuser()):
                 # make sure all cm_server child process has been killed. Example: gs_check
                 gaussHome = ClusterDir.getInstallDir(self.context.user)
                 cmServerFile = "%s/bin/cm_server" % gaussHome

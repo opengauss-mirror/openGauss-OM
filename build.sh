@@ -183,6 +183,9 @@ function clib_copy()
     cp $BUILD_TOOLS_PATH/gcc${gcc_version}/gcc/lib64/libstdc++.so.6 $PKG_TMP_DIR/script/gspylib/clib
     cp $BINARYLIBS_PATH/openssl/comm/lib/libssl.so.1.1 $PKG_TMP_DIR/script/gspylib/clib
     cp $BINARYLIBS_PATH/openssl/comm/lib/libcrypto.so.1.1 $PKG_TMP_DIR/script/gspylib/clib
+
+    find $PKG_TMP_DIR/script/gspylib/clib -type f -name "*.so*" -exec strip --strip-all {} \;
+
     if [ -f $BINARYLIBS_PATH_INSTALL_TOOLS/libpython3.*m.so.1.0 ]
     then
         cp $BINARYLIBS_PATH_INSTALL_TOOLS/libpython3.*m.so.1.0 $PKG_TMP_DIR/script/gspylib/clib
@@ -212,6 +215,8 @@ function lib_copy()
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/paramiko             ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psutil               ${PKG_TMP_DIR}/lib
     cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/netifaces            ${PKG_TMP_DIR}/lib
+
+    find ${PKG_TMP_DIR}/lib -type f -name "*.so*" -exec strip --strip-all {} \;
 
     if [ -d "${BINARYLIBS_PATH_INSTALL_TOOLS}/psycopg2" ]; then
         cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psycopg2    ${PKG_TMP_DIR}/lib

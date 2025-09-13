@@ -513,7 +513,7 @@ class PostUninstallImpl:
                    "script:\$PATH/d' %s " % (self.user, userprofile)
             cmd += "-e '/^export PATH=\$GPHOME\/script\/gspylib\/pssh\/bin:" \
                    "\$GPHOME\/script:\$PATH/d' %s " % PROFILE_FILE
-            cmd += "-e '/^export LD_LIBRARY_PATH=\$GPHOME\/script\/gspylib\/clib:" \
+            cmd += "-e '/^export LD_LIBRARY_PATH=\$GPHOME\/script\/gspylib\/clib:\/usr\/local\/softbus\/ctrlbus\/lib:" \
                    "\$LD_LIBRARY_PATH$/d' %s " % userprofile
             cmd += "-e '/^export LD_LIBRARY_PATH=\$GPHOME\/lib:" \
                    "\$LD_LIBRARY_PATH$/d' %s " % userprofile

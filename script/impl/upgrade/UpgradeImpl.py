@@ -5115,6 +5115,7 @@ END;"""
         # if we read the step for file, means we have force to rollback,
         #  the record in table is not same with file
         # we can only read the step from file
+        self.context.nodeNames = self.context.clusterNodes
         try:
             self.distributeXml()
             if action == const.ACTION_AUTO_ROLLBACK:

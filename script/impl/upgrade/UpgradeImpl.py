@@ -1599,7 +1599,8 @@ class UpgradeImpl:
                 "Old cluster cm_server not supported ssl_enable parameter. New version supported.")
             return True
 
-        self.context.logger.log("Old cluster version number less than 92574.")
+        self.context.logger.debug("Check version number[92574] is not between old and new cluster "
+                                  "version number. no need to check CMS parameter.")
         return False
 
     def get_current_enable_ssl_value(self):

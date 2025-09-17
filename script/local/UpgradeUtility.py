@@ -4252,18 +4252,13 @@ def switchDnNodeProcess():
     is_all_upgrade = DssConfig.get_value_b64_handler('dss_upgrade_all',
                                                      g_opts.upgrade_dss_config,
                                                      action='decode') == 'on'
-    if is_dss_mode and g_opts.rolling and not is_all_upgrade:
-        if isNeedSwitch('cm_agent', True):
-            # disabling cm from starting the dn process
-            DssConfig.reload_cm_resource(
-                g_logger,
-                timeout=DssConfig.DMS_TMP_RESTART_DELAY,
-                wait_for_start=False)
-        is_cm_killed = True
 
-    if is_dss_mode and g_opts.rolling and not is_cm_killed:
-        if isNeedSwitch('cm_agent', True):
-            reloadCmagent(signal=9)
+    if is_dss_mode:
+        start_time = timeit.default_timer()
+        switchBin()
+        elapsed = timeit.default_timer() - start_time
+        g_logger.log("Time to switch bin: %s" % getTimeFormat(elapsed))
+        return
 
     if g_opts.rolling:
         # for rolling upgrade, gaussdb fenced udf will be
@@ -4286,8 +4281,6 @@ def switchDnNodeProcess():
         switchBin()
     elapsed = timeit.default_timer() - start_time
     g_logger.log("Time to switch DN: %s" % getTimeFormat(elapsed))
-    if is_dss_mode and isNeedSwitch('dssserver'):
-        switch_dss_server()
 
 
 def switchFencedUDFProcess():

@@ -2151,7 +2151,14 @@ class UpgradeImpl:
     def switchDn(self, isRollback):
 
         self.waif_for_om_monitor_start(is_rollback=isRollback)
-
+        if EnvUtil.is_dss_mode(getpass.getuser()):
+            cmd = "cm_ctl stop"
+            self.context.logger.log("Command for stop cluster:%s" % cmd)
+            (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
+            if status == 0:
+                self.context.logger.log("Successfully stop cluster.")
+            else:
+                raise Exception("Failed to stop cluster.\nstatus: %s\nouput:%s" % (status, output))
         # Under cm, restart the cm component and database component separately.
         # ddes mode and specified node upgrade are not supported.
         upgrade_sep_comps = False

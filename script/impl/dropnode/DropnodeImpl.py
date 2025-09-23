@@ -553,10 +553,10 @@ class OperCommon:
         if statusMap[host] != 'Success':
             self.logger.debug("[gs_dropnode]Parse pg_hba file failed:" + output)
         for ip in hostIpListForDel:
-            if ip in output1:
+            if self.is_ip_in_replconninfo(ip, output1):
                 i = output1.rfind('replconninfo', 0, output1.find(ip)) + 12
                 resultDict['replStr'] += output1[i]
-            if ip in output:
+            if self.is_ip_in_replconninfo(ip, output):
                 s = output.rfind('host', 0, output.find(ip))
                 e = output.find('\n', output.find(ip), len(output))
                 resultDict['pghbaStr'] += output[s:e] + '|'
@@ -565,6 +565,21 @@ class OperCommon:
         self.logger.log(
             "[gs_dropnode]End to parse parameter config file on %s." % host)
         return resultDict
+
+    @staticmethod
+    def is_ip_in_replconninfo(ip, replconninfo):
+        try:
+            pairs = replconninfo.strip("'").split()
+            conn_info = {}
+            for pair in pairs:
+                if '=' in pair:
+                    key, value = pair.split('=', 1)
+                    conn_info[key] = value
+            localhost = conn_info.get('localhost')
+            remotehost = conn_info.get('remotehost')
+            return ip == localhost or ip == remotehost
+        except Exception as e:
+            return False
 
     def check_sync_standby_str(self, dnlist, output):
         if output.strip() == '' or output.strip() == '*':

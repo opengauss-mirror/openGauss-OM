@@ -553,9 +553,11 @@ class OperCommon:
         if statusMap[host] != 'Success':
             self.logger.debug("[gs_dropnode]Parse pg_hba file failed:" + output)
         for ip in hostIpListForDel:
-            if self.is_ip_in_replconninfo(ip, output1):
-                i = output1.rfind('replconninfo', 0, output1.find(ip)) + 12
-                resultDict['replStr'] += output1[i]
+            output_arr = output1.split('\n')
+            for rep in output_arr:
+                if self.is_ip_in_replconninfo(ip, rep):
+                    i = rep.rfind('replconninfo', 0, rep.find(ip)) + 12
+                    resultDict['replStr'] += rep[i]
             if self.is_ip_in_replconninfo(ip, output):
                 s = output.rfind('host', 0, output.find(ip))
                 e = output.find('\n', output.find(ip), len(output))

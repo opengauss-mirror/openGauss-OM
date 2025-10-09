@@ -264,8 +264,10 @@ class DropnodeImpl():
             "[gs_dropnode]Start to scp the cluster static conf to any other node.")
 
         if not self.context.flagOnlyPrimary:
-            cmd = "%s/script/gs_om -t refreshconf" % self.gphomepath
-            subprocess.getstatusoutput(cmd)
+            if DefaultValue.get_cm_server_num_from_static(self.clusterInfo) <= 0:
+                self.logger.log("Cluster without-cm need to refresh dynamic file.")
+                cmd = "source %s; %s/script/gs_om -t refreshconf" % (self.envFile, self.gphomepath)
+                subprocess.getstatusoutput(cmd)
             for hostName in self.context.hostMapForExist.keys():
                 hostSsh = SshTool([hostName])
                 if hostName != self.localhostname:
@@ -273,6 +275,7 @@ class DropnodeImpl():
                 tmpDir, hostName)
                     hostSsh.scpFiles(staticConfigPath_name, staticConfigPath,
                                      [hostName], self.envFile)
+                    self.logger.debug(f"[update_static] end to scp static_conf_file to: {hostName}")
                     try:
                         os.unlink(staticConfigPath_name)
                     except FileNotFoundError:

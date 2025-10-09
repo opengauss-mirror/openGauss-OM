@@ -246,7 +246,9 @@ class DropnodeImpl():
                 # instanceType should change to master while the cluster had switchover
                 if len(dbNode.datanodes) > 0:
                     dbNode.datanodes[0].instanceType = MASTER_INSTANCE
-                    break
+            else:
+                if len(dbNode.datanodes) > 0:
+                    dbNode.datanodes[0].instanceType = STANDBY_INSTANCE
 
         # save cluster_static_config
         for dbNode in self.context.clusterInfo.dbNodes:

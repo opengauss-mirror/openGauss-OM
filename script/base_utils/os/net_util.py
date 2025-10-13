@@ -90,17 +90,7 @@ class NetUtil(object):
         input: NA
         output: NA
         """
-        env_dist = os.environ
-        if "HOST_IP" not in list(env_dist.keys()):
-            return NetUtil.getHostName()
-        host_ip = env_dist.get("HOST_IP")
-        if host_ip is not None and NetUtil.isIpValid(host_ip):
-            return host_ip
-        try:
-            host_ip = socket.gethostbyname(socket.gethostname())
-        except Exception as e:
-            raise e
-        return host_ip
+        return NetUtil.getHostName()
 
     @staticmethod
     def getHostName():

@@ -93,58 +93,22 @@ def run(hosts):
     trace_id = opts.trace_id or "-"
     manager = TaskPool(opts)
     for host in hosts:
-        env_dist = os.environ
-        if "HOST_IP" in env_dist.keys():
-            tool_path = os.path.join(os.path.dirname(__file__), "../../../../")
-            cmd_sender_path = os.path.join(tool_path, 'script/cmd_sender.py')
-
-            if not os.path.exists(cmd_sender_path):
-                sys.exit(2)
-
-            xml_path = os.path.join(tool_path, "cluster_default_agent.xml")
-            agent_port = 0
-            tmp_dir = ""
-            try:
-                dom_tree = ETree.parse(xml_path)
-                root_node = dom_tree.getroot()
-                element = root_node.findall('CLUSTER')[0]
-                elem_array = element.findall('PARAM')
-                for elem in elem_array:
-                    name = elem.attrib['name']
-                    if name == "agentPort":
-                        agent_port = int(elem.attrib['value'])
-                    if name == "tmpMppdbPath":
-                        tmp_dir = str(elem.attrib['value'])
-            except Exception as ex:
-                raise Exception("Failed to parsing xml. Error: \n%s." %
-                                str(ex))
-
-            action_file = os.path.join(tmp_dir, ".action_flag_file")
-            if os.path.exists(action_file):
-                with open(action_file, "r") as fp:
-                    result = fp.read()
-                action = result.strip()
-            else:
-                action = "common"
-            cmd = ['python3', cmd_sender_path, '-H', host, '-p',
-                   str(agent_port), '-a', action, '-t', str(opts.timeout)]
-        else:
-            cmd = ["/usr/bin/ssh", host, "-q",
-                   "-o", "SendEnv=PSSH_NODENUM PSSH_HOST",
-                   "-o", "BatchMode=yes",
-                   "-o", "ConnectionAttempts=10",
-                   "-o", "ConnectTimeout=30",
-                   "-o", "NumberOfPasswordPrompts=1",
-                   "-o", "ServerAliveCountMax=10",
-                   "-o", "ServerAliveInterval=30",
-                   "-o", "TCPKeepAlive=yes"]
-            if opts.extra:
-                extra_info = shlex.split(opts.extra)
-                cmd.extend(extra_info)
-            if opts.opt:
-                for i in opts.opt:
-                    cmd.append("-o")
-                    cmd.append(i)
+        cmd = ["/usr/bin/ssh", host, "-q",
+               "-o", "SendEnv=PSSH_NODENUM PSSH_HOST",
+               "-o", "BatchMode=yes",
+               "-o", "ConnectionAttempts=10",
+               "-o", "ConnectTimeout=30",
+               "-o", "NumberOfPasswordPrompts=1",
+               "-o", "ServerAliveCountMax=10",
+               "-o", "ServerAliveInterval=30",
+               "-o", "TCPKeepAlive=yes"]
+        if opts.extra:
+            extra_info = shlex.split(opts.extra)
+            cmd.extend(extra_info)
+        if opts.opt:
+            for i in opts.opt:
+                cmd.append("-o")
+                cmd.append(i)
         cmd.extend(args)
         manager.add_task(host, cmd)
     try:

@@ -1688,7 +1688,7 @@ Common options:
         # clean LD_LIBRARY_PATH
         FileUtil.deleteLine(userProfile,
                           "^\\s*export\\s*LD_LIBRARY_PATH=\\$GPHOME\\/script"
-                          "\\/gspylib\\/clib:\\/usr\\/local\\/softbus\\/ctrlbus\\/lib:\\$LD_LIBRARY_PATH$")
+                          "\\/gspylib\\/clib:\\/usr\\/local\\/ubs_mem\\/lib:\\$LD_LIBRARY_PATH$")
         FileUtil.deleteLine(userProfile,
                           "^\\s*export\\s*LD_LIBRARY_PATH=\\$GPHOME\\/lib:"
                           "\\$LD_LIBRARY_PATH$")
@@ -1791,7 +1791,7 @@ Common options:
             # set LD_LIBRARY_PATH
             FileUtil.writeFile(userProfile, [
                 "export LD_LIBRARY_PATH="
-                "$GPHOME/script/gspylib/clib:/usr/local/softbus/ctrlbus/lib:$LD_LIBRARY_PATH"])
+                "$GPHOME/script/gspylib/clib:/usr/local/ubs_mem/lib:$LD_LIBRARY_PATH"])
             FileUtil.writeFile(userProfile, [
                 "export LD_LIBRARY_PATH=$GPHOME/lib:$LD_LIBRARY_PATH"])
             # set PYTHONPATH

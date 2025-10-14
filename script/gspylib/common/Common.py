@@ -2088,8 +2088,8 @@ class DefaultValue():
             else:
                 memTotalList = output.split("\n")
                 for content in memTotalList:
-                    if ("MemTotal" in content):
-                        memoList = content.split(":")
+                    memoList = content.split(":")
+                    if ("MemTotal" == memoList[0]):  
                         memo = memoList[1]
                         memo = memo.replace("kB", "")
                         memo = memo.replace("\n", "")
@@ -2105,8 +2105,8 @@ class DefaultValue():
                                 "Error:\n%s" % str(output))
         memTotalList = output.split("\n")
         for content in memTotalList:
-            if ("MemTotal" in content):
-                memoList = content.split(":")
+            memoList = content.split(":")
+            if ("MemTotal" == memoList[0]): 
                 memo = memoList[1]
                 memo = memo.replace("kB", "")
                 memo = memo.strip()

@@ -2095,6 +2095,7 @@ class DefaultValue():
                         memo = memo.replace("\n", "")
                         memo = memo.strip()
                         memo = int(memo) / 1024 / 1024
+                        break
             return memo
         physicMemo = []
         cmd = g_file.SHELL_CMD_DICT["physicMemory"]
@@ -2112,6 +2113,7 @@ class DefaultValue():
                 memo = memo.strip()
                 memo = int(memo) / 1024 / 1024
                 physicMemo.append(memo)
+                break
         minPhysicMemo = min(physicMemo)
         return minPhysicMemo
 

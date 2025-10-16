@@ -647,7 +647,7 @@ def gsql_execute(sql, port, timeout=None):
     output: NA
     """
     if not timeout:
-        timeout = 3
+        timeout = 10
     try:
         sql_escaped = sql.replace('"', '\\"')
         cmd = 'timeout %ss bash -c "gsql -m -d postgres -p %s -A -t -c \\"%s\\""' % (
@@ -655,7 +655,7 @@ def gsql_execute(sql, port, timeout=None):
             port,
             sql_escaped,
         )
-        (status, output) = subprocess.getstatusoutput(cmd)
+        (status, output) = CmdUtil.retryGetstatusoutput(cmd, retry_time=2)
         if status != 0:
             errmsg = "Exec %s failed!, output is %s" % (cmd, output)
             g_logger.debug(errmsg)

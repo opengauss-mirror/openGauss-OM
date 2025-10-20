@@ -41,6 +41,7 @@ from gspylib.common.OMCommand import OMCommand
 from gspylib.os.gsfile import g_file
 
 from base_utils.os.net_util import NetUtil
+from base_utils.os.cmd_util import CmdUtil
 from base_utils.executor.cmd_executor import CmdExecutor
 from domain_utils.cluster_file.cluster_dir import ClusterDir
 
@@ -612,8 +613,8 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         pgdata_path = self.get_env("PGDATA")
         conf_file = pgdata_path + os.sep + 'postgresql.conf'
-        get_url_cmd = "grep -n 'ss_interconnect_url' %s" % conf_file
-        sta, out = subprocess.getstatusoutput(get_url_cmd)
+        get_url_cmd_lst = ['grep', '-n', 'ss_interconnect_url', conf_file]
+        (out, error, sta) = CmdUtil.execCmdList(get_url_cmd_lst)
         url = eval(out.split('=')[-1].strip())
         url_port = (url.split(',')[0]).split(':')[-1]
         dss_port = (node_list.split(',')[0]).split(':')[-1]

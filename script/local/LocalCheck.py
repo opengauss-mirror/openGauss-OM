@@ -35,6 +35,7 @@ from gspylib.common.ParameterParsecheck import Parameter
 from domain_utils.cluster_file.config_param import ConfigParam
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.file_util import FileUtil
+from base_utils.os.cmd_util import CmdUtil
 from domain_utils.cluster_file.version_info import VersionInfo
 from base_utils.os.net_util import NetUtil
 from base_utils.os.user_util import UserUtil
@@ -242,8 +243,8 @@ def checkSysctlParameter(kernelParameter, isSet):
             continue
         if (DefaultValue.checkDockerEnv() and key in docker_no_need_check):
             continue
-        cmd = "cat %s" % ("/proc/sys/%s" % key.replace('.', '/'))
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['cat', sysFile]
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if (status == 0):
             if (key == "vm.min_free_kbytes"
                     and output.split() != kernelParameter[key].split()):
@@ -275,8 +276,8 @@ def checkSysctlParameter(kernelParameter, isSet):
                 setParameterList[key] = kernelParameter[key]
             elif output.split() != kernelParameter[key].split():
                 if (key == "vm.overcommit_ratio"):
-                    cmd = "cat /proc/sys/vm/overcommit_memory"
-                    (status, value) = subprocess.getstatusoutput(cmd)
+                    cmd_list = ['cat', '/proc/sys/vm/overcommit_memory']
+                    (value, error, status) = CmdUtil.execCmdList(cmd_list)
                     if (status == 0 and value == "0"):
                         continue
                 resultList.append(2)
@@ -320,8 +321,7 @@ def setOSParameter(setParameterList, patchlevel):
             SetSysctlForList(key, setParameterList[key])
             g_logger.log("        Set variable '%s' to '%s'"
                          % (key, setParameterList[key]))
-        cmd = "sysctl -p"
-        (status, _) = subprocess.getstatusoutput(cmd)
+        (output, error, status) = CmdUtil.execCmdList(['sysctl', '-p'])
         if (status != 0):
             cmderrorinfo = "sysctl -p | grep 'No such file or directory'"
             (status, outputresult) = subprocess.getstatusoutput(cmderrorinfo)
@@ -363,12 +363,12 @@ def delSysctlForList(key, value):
     """
     g_logger.debug("Deleting sysctl parameter.")
     kernelParameterFile = "/etc/sysctl.conf"
-    cmd = """sed -i '/^\\s*%s *=.*$/d' %s """ % (key, kernelParameterFile)
-    (status, output) = subprocess.getstatusoutput(cmd)
+    cmd_list = ['sed', '-i', ('/^\\s*%s *=.*$/d' % key), kernelParameterFile]
+    (output, error, status) = CmdUtil.execCmdList(cmd_list)
     if (status != 0):
         g_logger.log("        Failed to delete variable"
                      " '%s %s' from /etc/sysctl.conf." % (key, value))
-        g_logger.debug("Command:\n  %s\nOutput:\n  %s" % (cmd, str(output)))
+        g_logger.debug("Command:\n  %s\nOutput:\n  %s" % (' '.join(cmd_list), str(output)))
 
 
 def checkLimitsParameter(limitPara, isSet):

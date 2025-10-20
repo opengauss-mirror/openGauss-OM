@@ -47,6 +47,17 @@ class Shell(object):
         if check and err is not None:
             raise ShellExecException('{0} < {1}'.format(progress, message), 1, err)
         return data, err
+    
+    @staticmethod
+    def communicate_list(progress_list, message, check=False):
+        conn = subprocess.Popen(progress_list, shell=False, stdin=PIPE, stdout=PIPE, stderr=PIPE, encoding="utf-8",
+                                universal_newlines=True)
+        data, err = conn.communicate(message, 60)
+        conn.terminate()
+        
+        if check and err is not None:
+            raise ShellExecException('{0} < {1}'.format(' '.join(progress_list), message), 1, err)
+        return data, err
         
 
 

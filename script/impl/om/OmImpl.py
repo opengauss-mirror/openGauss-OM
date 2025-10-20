@@ -334,14 +334,13 @@ class OmImpl:
             dirName = os.path.dirname(os.path.realpath(__file__))
             tmpDirName = os.path.realpath(
                 "%s/../../static_config_files" % dirName)
-            cmd = "mkdir -p -m %s '%s'" % (
-                DefaultValue.KEY_DIRECTORY_MODE, tmpDirName)
-            (status, output) = subprocess.getstatusoutput(cmd)
+            cmd_list = ['mkdir', '-p', '-m', DefaultValue.KEY_DIRECTORY_MODE, tmpDirName]
+            (output, error, status) = CmdUtil.execCmdList(cmd_list)
             if (status != 0):
                 raise Exception(
                     ErrorCode.GAUSS_502["GAUSS_50208"]
                     % "temporary directory" + "\nCommand:%s\nError: %s"
-                    % (cmd, output))
+                    % (' '.join(cmd_list), output))
             self.logger.log("Successfully created the temp directory.")
 
             # create static files

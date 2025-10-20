@@ -510,10 +510,10 @@ class OmImplOLAP(OmImpl):
         if not os.path.exists(xml_tmp_file):
             self.logger.exitWithError(ErrorCode.GAUSS_502["GAUSS_50201"] % xml_tmp_file)
         # get xml file path and print
-        cmd = "cat %s" % xml_tmp_file
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['cat', xml_tmp_file]
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if status != 0:
-            self.logger.exitWithError(ErrorCode.GAUSS_502["GAUSS_50205"] % cmd)
+            self.logger.exitWithError(ErrorCode.GAUSS_502["GAUSS_50205"] % ' '.join(cmd_list))
         xml_file = output.strip()
         self.logger.log("Successfully generated xml. the xml is %s" % xml_file)
 

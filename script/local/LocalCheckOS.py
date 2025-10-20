@@ -665,8 +665,7 @@ def disRemoveIPC():
     g_logger.debug("disbale RemoveIPC.")
     distName = g_Platform.getCurrentPlatForm()[0]
     if distName.upper() in ("OPENEULER", "FUSIONOS", "KYLIN", "H3LINUX", "NINGOS"):
-        cmd = "setenforce 0"
-        subprocess.getstatusoutput(cmd)
+        CmdUtil.execCmdList(['setenforce', 0])
         initFile = "/usr/lib/systemd/system/systemd-logind.service"
         if os.path.exists(initFile):
             close_cmd = "if [ `systemctl show systemd-logind | " \
@@ -907,11 +906,11 @@ def checkTeamMode(teamConfFile, isCheck, network_card_num):
     if isCheck:
         g_logger.log("Teaming Mode: %s" % teamMode)
     else:
-        cmd = "teamdctl %s state" % network_card_num
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['teamdctl', network_card_num, 'state']
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if (status != 0):
             g_logger.warn("Failed to obtain network card teaming "
-                           "information. Commands for getting: %s." % cmd)
+                           "information. Commands for getting: %s." % ' '.join(cmd_list))
             return []
             
         match = re.search(r"active port: (\w+)", output)
@@ -1039,10 +1038,9 @@ def setNetWorkMTUOrTXRXValue(networkCardNum, valueType,
     output : NA
     """
     if (valueType == "tx" or valueType == "rx"):
-        cmd = "/sbin/ethtool -G %s %s %s" % (networkCardNum,
-                                             valueType, expectValue)
-
-    (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['/sbin/ethtool', '-G', networkCardNum, valueType, expectValue]
+    
+    (output, error, status) = CmdUtil.execCmdList(cmd_list)
     if (status != 0):
         if (valueType == 'tx' or valueType == 'rx'):
             if (output.find("no ring parameters changed, aborting") < 0):
@@ -1053,7 +1051,7 @@ def setNetWorkMTUOrTXRXValue(networkCardNum, valueType,
             isPrint = True
         if isPrint:
             g_logger.debug("Failed to set network card %s value."
-                           " Commands for setting: %s." % (valueType, cmd))
+                           " Commands for setting: %s." % (valueType, ' '.join(cmd_list)))
             g_logger.logExit(ErrorCode.GAUSS_506["GAUSS_50613"]
                              % valueType + " Error: \n%s" % output)
 
@@ -1230,8 +1228,8 @@ def CheckNetWorkCardInterrupt(data, isSetting=False):
                                  " affinitization. Please stop the irqbalance"
                                  " service and/or execute 'killall"
                                  " irqbalance'.")
-                    killcmd = "%s irqbalance" % CmdUtil.findCmdInPath("killall")
-                    (status, output) = subprocess.getstatusoutput(killcmd)
+                    kill_cmd_list = [CmdUtil.findCmdInPath("killall"), 'irqbalance']
+                    (output, error, status) = CmdUtil.execCmdList(kill_cmd_list)
                     if status != 0:
                         g_logger.log("Failed to execute killall irqbalance")
                 count = int(GetInterruptCountNum(data.netNum))

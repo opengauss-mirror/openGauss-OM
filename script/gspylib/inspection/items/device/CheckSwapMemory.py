@@ -19,7 +19,7 @@ import subprocess
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
 from base_utils.os.file_util import FileUtil
-
+from base_utils.os.cmd_util import CmdUtil
 
 class CheckSwapMemory(BaseItem):
     def __init__(self):
@@ -64,12 +64,12 @@ class CheckSwapMemory(BaseItem):
     def doSet(self):
         resultStr = ""
         configFile = "/etc/fstab"
-        cmd = "swapoff -a"
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['swapoff', '-a']
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if (status != 0):
             resultStr += "Failed to close swap information.\n Error : %s." \
                          % output
-            resultStr += "The cmd is %s " % cmd
+            resultStr += "The cmd is %s " % ' '.join(cmd_list)
         cmd = "sed -i '/^.*swap/d' %s" % configFile
         (status, output) = subprocess.getstatusoutput(cmd)
         if (status != 0):

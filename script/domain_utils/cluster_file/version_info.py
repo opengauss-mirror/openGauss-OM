@@ -174,7 +174,7 @@ class VersionInfo(object):
         """
         def _parse_pkg_prefix(_cfg):
             _cmd = f'cat {_cfg}'
-            _status, _output = subprocess.getstatusoutput(_cmd)
+            _output, _error, _status = CmdUtil.execCmdList(['cat', _cfg])
             if _status != 0:
                 raise Exception(ErrorCode.GAUSS_502["GAUSS_50217"] %
                                         "version.cfg" + "The cmd is %s. " % _cmd +

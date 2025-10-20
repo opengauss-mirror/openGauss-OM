@@ -983,8 +983,8 @@ class CM_OLAP(CM):
             raise Exception("Failed to add the CM resource for VIP." \
                             " Cmd: \n%s, Error: \n%s" % (cmd, str(out)))
 
-        cmd = "cm_ctl res --check"
-        stat, out = subprocess.getstatusoutput(cmd)
+        cmd_list = ['cm_ctl', 'res', '--check']
+        (out, err, stat) = CmdUtil.execCmdList(cmd_list)
         if stat != 0:
             raise Exception("Failed to config the CM resource file for VIP." \
-                            " Cmd: \n%s, Error: \n%s" % (cmd, str(out)))
+                            " Cmd: \n%s, Error: \n%s" % (' '.join(cmd_list), str(out)))

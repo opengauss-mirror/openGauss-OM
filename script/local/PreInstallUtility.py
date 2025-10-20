@@ -760,10 +760,10 @@ Common options:
             elif allow_item_res.find('#') > 0:
                 allow_item_res = allow_item_res[0: allow_item_res.find('#')]
             if item_value not in allow_item_res.split(' '):
-                set_allow_item_cmd = "sed -i '/\\<%s\\>/d' %s" % (allow_item, sshd_config)
-                (status, output) = subprocess.getstatusoutput(set_allow_item_cmd)
+                set_allow_item_cmd_list = ['sed', '-i', f'/\\<{allow_item}\\>/d', sshd_config]
+                (output, error, status) = CmdUtil.execCmdList(set_allow_item_cmd_list)
                 if status != 0:
-                    self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % set_allow_item_cmd +
+                    self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % ' '.join(set_allow_item_cmd_list) +
                                         " Error:\n%s" % output)
                 SshdConfig.setKeyValueInSshd(allow_item_res, item_value)
         # Attention: here we will not restart sshd service,
@@ -855,12 +855,12 @@ Common options:
         if userstatus != 0 and groupstatus == 0:
             self.logger.debug(
                 "Creating OS user [%s:%s]." % (self.user, self.group))
-            cmd = "useradd -m -g %s %s" % (self.group, self.user)
-            (status, output) = subprocess.getstatusoutput(cmd)
+            cmd_list = ['useradd', '-m', '-g', self.group, self.user]
+            (output, error, status) = CmdUtil.execCmdList(cmd_list)
             if status != 0:
                 self.logger.logExit(
                     ErrorCode.GAUSS_502["GAUSS_50206"] % 'OS user'
-                    + " Command: %s. Error: \n%s" % (cmd, output))
+                    + " Command: %s. Error: \n%s" % (' '.join(cmd_list), output))
         if needChgOwner:
             userProfile = ClusterConstants.HOME_USER_BASHRC % self.user
             if not os.path.exists(userProfile):
@@ -877,10 +877,10 @@ Common options:
             # check if the file is a link
             tmp_path = "/tmp/os_user_pwd"
             password = AesCbcUtil.aes_cbc_decrypt_with_multi(*AesCbcUtil.format_path(tmp_path))
-            cmd = "rm -rf %s" % tmp_path
-            (status, output) = subprocess.getstatusoutput(cmd)
+            cmd_list = ['rm', '-rf', tmp_path]
+            (output, error, status) = CmdUtil.execCmdList(cmd_list)
             if status != 0:
-                raise Exception(ErrorCode.GAUSS_511["GAUSS_51103"] % cmd)
+                raise Exception(ErrorCode.GAUSS_511["GAUSS_51103"] % ' '.join(cmd_list))
         except Exception as e:
             self.delTempFile(tempFile)
             self.logger.debug("Changing user password failed. %s" % str(e))
@@ -1864,8 +1864,8 @@ Common options:
         if not os.path.exists(libCgroupPath):
             os.makedirs(libCgroupPath)
 
-        cmd = "tar -xf %s -C %s" % (bz2FileName, libCgroupPath)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['tar', '-xf', bz2FileName, '-C', libCgroupPath]
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if status != 0:
             self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50217"] % bz2FileName +
                                 " Error: \n%s" % output)

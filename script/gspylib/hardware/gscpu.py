@@ -24,6 +24,7 @@ import multiprocessing
 
 sys.path.append(sys.path[0] + "/../../")
 from gspylib.common.ErrorCode import ErrorCode
+from base_utils.os.cmd_util import CmdUtil
 
 """
 Requirements:
@@ -74,12 +75,12 @@ class CpuInfo(object):
         if (not os.path.isfile(fileName)):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50210"] % fileName)
 
-        cmd = "cat '%s' 2>/dev/null" % fileName
-        status, output = subprocess.getstatusoutput(cmd)
+        cmd_list = ['cat', fileName]
+        (output, error, status) = CmdUtil.execCmdList(cmd_list, subprocess.DEVNULL)
         if (status == 0):
             return output
         else:
-            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % ' '.join(cmd_list) +
                             " Error: \n%s" % str(output))
 
 

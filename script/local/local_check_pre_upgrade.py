@@ -405,10 +405,10 @@ def query_dss_info():
         return False
     # check dss info
     data = DssInfo()
-    cmd = "dsscmd lsvg -m G"
-    (status, output) = subprocess.getstatusoutput(cmd)
+    cmd_list = ['dsscmd', 'lsvg', '-m', 'G']
+    (output, error, status) = CmdUtil.execCmdList(cmd_list)
     if status != 0:
-        g_logger.debug("Exec %s failed! Output: %s" % (cmd, output))
+        g_logger.debug("Exec %s failed! Output: %s" % (' '.join(cmd_list), output))
         return False, output.replace("\n", " ")
     for line in output.splitlines():
         if line.startswith("data"):
@@ -629,14 +629,14 @@ def ping_ip(ip, num=10):
     """
     try:
         ping = CmdUtil.get_ping_tool()
-        cmd = "%s -c %s %s -W 1" % (ping, num, ip)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['ping', '-c', ping, num, '-W', 1]
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if status != 0:
             g_logger.debug("Failed to ping %s, output is %s." % (ip, output))
             return False
         return True
     except Exception as e:
-        g_logger.debug("Error exec %s failed, output is %s." % (cmd, str(e)))
+        g_logger.debug("Error exec %s failed, output is %s." % (' '.join(cmd_list), str(e)))
         return False
 
 
@@ -783,10 +783,10 @@ def set_track_activities():
     """
     function: set track_activities
     """
-    cmd = "gs_guc reload -c 'track_activities = on'"
-    (status, output) = subprocess.getstatusoutput(cmd)
+    cmd_list = ['gs_guc', 'reload', '-c', 'track_activities = on']
+    (output, error, status) = CmdUtil.execCmdList(cmd_list)
     if status != 0:
-        errmsg = "Failed to set track_activities. Commands for setting: %s." % cmd
+        errmsg = "Failed to set track_activities. Commands for setting: %s." % ' '.join()
         g_logger.debug(errmsg)
         return False, None, errmsg
     return True, output.strip(), ""

@@ -17,7 +17,7 @@
 import subprocess
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-
+from base_utils.os.cmd_util import CmdUtil
 
 class CheckPortConflict(BaseItem):
     def __init__(self):
@@ -53,13 +53,13 @@ class CheckPortConflict(BaseItem):
                     if (pid.isdigit()):
                         pidList.append(pid)
         if (pidList):
-            cmd = "kill -9"
+            cmd_list = ['kill', '-9']
             for pid in pidList:
-                cmd += " %s" % pid
-            (status, output) = subprocess.getstatusoutput(cmd)
+                cmd_list.append(pid)
+            (output, error, status) = CmdUtil.execCmdList(cmd_list)
             if (status != ""):
                 self.result.val = "Failed to kill process.Error:%s\n" % output
-                self.result.val += "The cmd is %s " % cmd
+                self.result.val += "The cmd is %s " % ' '.join(cmd_list)
             else:
                 self.result.val = \
                     "Successfully killed the process with occupies the port.\n"

@@ -347,10 +347,10 @@ def check_command():
     """
     g_logger.debug("check Command for rsync")
     g_logger.debug(g_opts.speedLimitFlag)
-    cmd = "command -v rsync"
-    (status, output) = subprocess.getstatusoutput(cmd)
+    cmd_list = ['command', '-v', 'rsync']
+    (output, error, status) = CmdUtil.execCmdList(cmd_list)
     if status != 0:
-        g_logger.logExit(("The cmd is %s." % cmd) + output)
+        g_logger.logExit(("The cmd is %s." % ' '.join(cmd_list)) + output)
 
 
 def create_temp_result_folder():
@@ -421,12 +421,12 @@ def basic_info_check():
     cmds.append("gs_gtm --version >> %s 2>&1" % dataFileName)
     cmds.append("cat /proc/version >> %s 2>&1" % dataFileName)
 
-    cmd = "cat /proc/sys/kernel/core_pattern"
-    (status, output) = subprocess.getstatusoutput(cmd)
+    cmd_list = ['cat', '/proc/sys/kernel/core_pattern']
+    (output, error, status) = CmdUtil.execCmdList(cmd_list)
     if status != 0:
         g_logger.debug(
             "Failed to collect core dump files. Command: %s.\n Error:\n%s" % (
-            cmd, output))
+            ' '.join(cmd_list), output))
     core_config = str(output)
     core_pattern = core_config.split('/')[-1]
     itemTitleCommand(cmds, "C O R E'    'F I L E'    'I N F O", dataFileName)
@@ -453,8 +453,8 @@ def basic_info_check():
         pg_xlog = Inst.datadir + "/pg_xlog"
         cmds.append("ls -lrt %s >> %s 2>&1" % (pg_xlog, dataFileName))
 
-    cmd = "echo $GAUSSLOG"
-    (status, output) = subprocess.getstatusoutput(cmd)
+    cmd_list = ['echo', '$GAUSSLOG']
+    (output, error, status) = CmdUtil.execCmdList(cmd_list)
     gausslog = str(output)
     pg_log = "%s/pg_log" % gausslog
 
@@ -1301,12 +1301,12 @@ def check_core_pattern():
     input: NA
     output: core_path
     """
-    cmd = "cat /proc/sys/kernel/core_pattern"
-    (status, output) = subprocess.getstatusoutput(cmd)
+    cmd_list = ['cat', '/proc/sys/kernel/core_pattern']
+    (output, error, status) = CmdUtil.execCmdList(cmd_list)
     if status != 0:
         g_logger.debug(
             "Failed to collect core dump files. Command: %s.\n Error:\n%s" % (
-            cmd, output))
+            ' '.join(cmd_list), output))
         g_jobInfo.failedTask["read core pattern"] = ErrorCode.GAUSS_535[
                                                         "GAUSS_53507"] % 'cat'
         g_logger.log(json.dumps(g_jobInfo.__dict__))
@@ -1651,11 +1651,11 @@ def getBakConfCmd(Inst):
     return (cmd, pidfile)
 
 def get_dss_replslot_dir(vgname):
-    cmd = "dsscmd ls -p +%s/pg_replslot/" % vgname
-    (status, output) = subprocess.getstatusoutput(cmd)
+    cmd_list = ['dsscmd', 'ls', '-p', f'+{vgname}/pg_replslot/']
+    (output, error, status) = CmdUtil.execCmdList(cmd_list)
     if status != 0:
         g_logger.debug("Failed to collect pg_replslot directorys."
-                       " Command: %s \n Error: %s.\n" % (cmd, output))
+                       " Command: %s \n Error: %s.\n" % (' '.join(cmd_list), output))
         return []
     file_dirs = []
     out_list = output.split('\n')
@@ -1668,14 +1668,14 @@ def get_dss_replslot_dir(vgname):
     return file_dirs
 
 def get_dss_repslot_files(vgname, slot_path):
-    cmd = "dsscmd ls -p +%s/pg_replslot/%s/" % (vgname, slot_path)
-    (status1, output1) = subprocess.getstatusoutput(cmd)
-    if status1 != 0:
+    cmd_list = ['dsscmd', 'ls', '-p', f'+{vgname}/pg_replslot/{slot_path}/']
+    (output, error, status) = CmdUtil.execCmdList(cmd_list)
+    if status != 0:
         g_logger.debug("Failed to collect pg_replslot files."
-                       " Command: %s \n Error: %s.\n" % (cmd, output1))
+                       " Command: %s \n Error: %s.\n" % (' '.join(cmd_list), output))
         return []
     slot_files = []
-    out1_lines = output1.split('\n')
+    out1_lines = output.split('\n')
     for line in out1_lines:
         data_line = line.split()
         for item in data_line:

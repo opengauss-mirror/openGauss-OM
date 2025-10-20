@@ -32,8 +32,8 @@ class SysctlUtil(object):
 
     @staticmethod
     def getAll():
-        cmd = f'{CmdUtil.getSysctlCmd()} -a'
-        output = CmdUtil.execCmd(cmd, noexcept=False)
+        cmdList = [CmdUtil.getSysctlCmd(), '-a']
+        output, error, status = CmdUtil.execCmdList(cmdList)
         res = {}
         for line in output.split('\n'):
             kv = line.split(' = ')
@@ -44,7 +44,7 @@ class SysctlUtil(object):
 
     @staticmethod
     def get(name):
-        output = CmdUtil.execCmd(f'{CmdUtil.getSysctlCmd()} {name}', noexcept=False)
+        output, error, status = CmdUtil.execCmdList([CmdUtil.getSysctlCmd(), name])
         kv = output.split(' = ')
         if len(kv) == 1:
             return
@@ -52,4 +52,4 @@ class SysctlUtil(object):
 
     @staticmethod
     def set(name, value):
-        CmdUtil.execCmd(f'{CmdUtil.getSysctlCmd()} {name} {value}', noexcept=False)
+        CmdUtil.execCmdList([CmdUtil.getSysctlCmd(), name, value])

@@ -39,6 +39,7 @@ from base_utils.os.env_util import EnvUtil
 from base_utils.os.file_util import FileUtil
 from domain_utils.cluster_file.version_info import VersionInfo
 from base_utils.os.net_util import NetUtil
+from base_utils.os.cmd_util import CmdUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 
 ACTION_CLEAN_SYSLOG_CONFIG = 'clean_syslog_config'
@@ -520,16 +521,16 @@ class Postuninstall(LocalBaseOM):
                 "Warning: There are other users in the group %s on %s,"
                 " skip to delete group." % (groupname, hostName))
         elif status == 1:
-            cmd = "groupdel %s" % groupname
-            (status, output) = subprocess.getstatusoutput(cmd)
+            cmd_list = ['groupdel', groupname]
+            (output, error, status) = CmdUtil.execCmdList(cmd_list)
             if status != 0:
                 self.logger.logExit(
                     "Warning: Failed to delete group "
-                    "%s by cmd:%s. Error: \n%s" % (groupname, cmd, output))
+                    "%s by cmd:%s. Error: \n%s" % (groupname, ' '.join(cmd_list), output))
         else:
             self.logger.logExit(
                 "Warning: Failed to delete group "
-                "%s by cmd:%s. Error: \n%s" % (groupname, cmd, output))
+                "%s by cmd:%s. Error: \n%s" % (groupname, ' '.join(cmd_list), output))
         self.logger.debug("Successfully cleaned user group.")
 
     def cleanScript(self):

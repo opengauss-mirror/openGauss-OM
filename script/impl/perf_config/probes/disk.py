@@ -72,7 +72,7 @@ class DiskDeviceInfo(Probe):
             Project.log('detect io speed by fio: ' + cmd)
             output = CmdUtil.execCmd(cmd)
 
-            CmdUtil.execCmd(f'rm {fio_file} -fr')
+            CmdUtil.execCmdList(['rm', fio_file, '-fr'])
             Project.log('remove fio file: ' + fio_file)
 
             nums = re.findall(r'\d+', output)
@@ -82,7 +82,7 @@ class DiskDeviceInfo(Probe):
 
         except Exception:
             Project.log('remove fio file: ' + fio_file)
-            CmdUtil.execCmd(f'rm {fio_file} -fr')
+            CmdUtil.execCmdList(['rm', fio_file, '-fr'])
             pass
 
 class DiskInfo(Probe):

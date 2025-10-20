@@ -28,6 +28,7 @@ import xml.etree.ElementTree as ET
 from gspylib.common.GaussLog import GaussLog
 from base_utils.template.xml_status import XmlStatus
 from base_utils.template.xml_constant import XmlConstant
+from base_utils.os.cmd_util import CmdUtil
 
 
 def load_json_file():
@@ -40,8 +41,8 @@ def load_json_file():
 
 
 def get_locale():
-    cmd = "echo $LANG"
-    (status, output) = subprocess.getstatusoutput(cmd)
+    cmd_list = ['echo', '$LANG']
+    output, error, status = CmdUtil.execCmdList(cmd_list)
     if status == 0:
         if output:
             if "CN" in output:
@@ -49,9 +50,9 @@ def get_locale():
             else:
                 XmlConstant.IS_CHINESE = False
         else:
-            GaussLog.exitWithError("Executing %s failed. output is empty." % cmd)
+            GaussLog.exitWithError("Executing %s failed. output is empty." % ' '.join(cmd_list))
     else:
-        GaussLog.exitWithError("Executing %s failed. Error: %s" % (cmd, output))
+        GaussLog.exitWithError("Executing %s failed. Error: %s" % (' '.join(cmd_list), output))
 
 
 def check_input_chinese():
@@ -264,8 +265,7 @@ class GenerateTemplate:
         GaussLog.printMessage("%s   %s" % (XmlConstant.RESOURCE_DATA.get('target_xml_dir'), self.target_xml))
         GaussLog.printMessage(XmlConstant.RESOURCE_DATA.get('target_xml_content'))
         # use cat
-        cmd = "cat %s" % self.target_xml
-        (status, output) = subprocess.getstatusoutput(cmd)
+        output, error, status = CmdUtil.execCmdList(['cat', self.target_xml])
         if status == 0:
             GaussLog.printMessage(output)
 

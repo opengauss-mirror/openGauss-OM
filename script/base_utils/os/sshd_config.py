@@ -23,6 +23,7 @@ import subprocess
 import os
 
 from gspylib.common.ErrorCode import ErrorCode
+from base_utils.os.cmd_util import CmdUtil
 
 
 def get_ssh_config_path():
@@ -78,8 +79,8 @@ class SshdConfig:
             void
         """
         sshd_config = '/etc/ssh/sshd_config'
-        cmd = "grep -E '^\<Match\>' %s" % sshd_config
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['grep', '-E', "'^\<Match\>' %s" % sshd_config]
+        output, error, status = CmdUtil.execCmdList(cmd_list)
 
         if status == 0:
             cmd = "sed -i '/^\<Match\>.*/i %s %s' %s" % (key, value,

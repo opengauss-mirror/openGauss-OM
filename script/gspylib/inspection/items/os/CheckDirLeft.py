@@ -21,6 +21,7 @@ from gspylib.inspection.common.CheckResult import ResultStatus
 from os_platform.UserPlatform import g_Platform
 from gspylib.common.ErrorCode import ErrorCode
 from base_utils.os.file_util import FileUtil
+from base_utils.os.cmd_util import CmdUtil
 
 rmDir = []
 
@@ -75,12 +76,12 @@ class CheckDirLeft(BaseItem):
         errMsg = ""
         for path in rmDir:
             if (os.path.exists(path)):
-                cmd = "rm -rf %s" % path
-                (status, output) = subprocess.getstatusoutput(cmd)
+                cmd_list = ['rm', '-rf', path]
+                (output, error, status) = CmdUtil.execCmdList(cmd_list)
                 if (status != 0):
                     errMsg += "Failed to delete %s.Error: %s\n" % \
                               (path, output)
-                    errMsg += "The cmd is %s " % cmd
+                    errMsg += "The cmd is %s " % ' '.join(cmd_list)
         if (errMsg):
             self.result.val = errMsg
         else:

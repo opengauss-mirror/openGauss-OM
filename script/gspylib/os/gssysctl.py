@@ -20,7 +20,7 @@ import subprocess
 sys.path.append(sys.path[0] + "/../../")
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.os.gsplatform import g_Platform
-
+from base_utils.os.cmd_util import CmdUtil
 
 class SysctlInfo:
     """
@@ -42,10 +42,10 @@ class SysctlInfo:
         para_dict = {}
         fullParaDict = {}
         try:
-            cmd = "'%s' -a" % g_Platform.getSysctlCmd()
-            (status, output) = subprocess.getstatusoutput(cmd)
+            cmd_list = [g_Platform.getSysctlCmd(), '-a']
+            (output, error, status) = CmdUtil.execCmdList(cmd_list)
             if (status != 0):
-                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % ' '.join(cmd_list) +
                                 " Error: \n%s" % str(output))
             line_list = output.split('\n')
             for line in line_list:
@@ -90,10 +90,10 @@ class SysctlInfo:
                     new_line = "\n" + key + " =" + paraDict[key]
                     fp.write(new_line)
             # restart server
-            cmd = "'%s' -p" % g_Platform.getSysctlCmd()
-            (status, output) = subprocess.getstatusoutput(cmd)
+            cmd_list = [g_Platform.getSysctlCmd(), '-p']
+            (output, error, status) = CmdUtil.execCmdList(cmd_list)
             if status != 0:
-                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % ' '.join(cmd_list) +
                                 " Error: \n%s" % str(output))
         except Exception as e:
             raise Exception(str(e))

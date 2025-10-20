@@ -108,12 +108,13 @@ class NetUtil(object):
         input : NA
         output: string
         """
-        host_cmd = CmdUtil.findCmdInPath("hostname")
-        (status, output) = subprocess.getstatusoutput(host_cmd)
+        host_cmd_list = [CmdUtil.findCmdInPath("hostname")]
+        output, error, status = CmdUtil.execCmdList(host_cmd_list)
+
         # if cmd failed, then exit
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] % "host name"
-                            + "The cmd is %s" % host_cmd)
+                            + "The cmd is %s" % ' '.join(host_cmd_list))
         return output
 
     @staticmethod

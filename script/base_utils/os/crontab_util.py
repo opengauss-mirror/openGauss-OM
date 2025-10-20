@@ -38,8 +38,8 @@ class CrontabUtil(object):
         input : NA
         output: status, output
         """
-        cmd = CmdUtil.getAllCrontabCmd()
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = CmdUtil.getAllCrontabCmdList()
+        output, error, status = CmdUtil.execCmdList(cmd_list)
         if output.find("no crontab for") >= 0:
             output = ""
             status = 0
@@ -47,7 +47,7 @@ class CrontabUtil(object):
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] %
                             "crontab list" + " Error:%s." % output +
-                            "The cmd is %s" % cmd)
+                            "The cmd is %s" % ' '.join(cmd_list))
         return status, output
 
     @staticmethod
@@ -80,43 +80,8 @@ class CrontabUtil(object):
         input : NA
         output: True or False
         """
-        cmd = CmdUtil.getAllCrontabCmd()
-        (_, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = CmdUtil.getAllCrontabCmdList()
+        output, error, status = CmdUtil.execCmdList(cmd_list)
         if output.find("not allowed") >= 0:
             return False
         return True
-    
-    @staticmethod
-    def user_custom_cron_task(cmd, pid_file):
-        """
-        function : Check user custom cron task
-        input : NA
-        output: True or False
-        """
-        CrontabUtil.deamonize(cmd, pid_file)
-
-    @staticmethod
-    def job(cmd):
-        """
-        custem user cron
-        """
-        subprocess.run(cmd, shell=True)
-
-    @staticmethod
-    def run_timer(cmd):
-        while True:
-            CrontabUtil.job(cmd)
-            time.sleep(1)
-
-    @staticmethod
-    def deamonize(cmd, pid_file):
-        import daemon
-        from daemon import pidfile
-        with daemon.DaemonContext(
-            working_directory='.',
-            umask=0o002,
-            pidfile=pidfile.TimeoutPIDLockFile(pid_file),
-            stdout=sys.stdout,
-            stderr=sys.stderr
-        ):
-            CrontabUtil.run_timer(cmd)

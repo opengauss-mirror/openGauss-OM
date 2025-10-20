@@ -42,6 +42,7 @@ from gspylib.common.ErrorCode import ErrorCode
 localDirPath = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, localDirPath + "/../../../lib/netifaces/")
 from netifaces import interfaces, ifaddresses, AF_INET, AF_INET6
+from base_utils.os.cmd_util import CmdUtil
 
 ISCONFIGURETRUE = "# isConfigure = TRUE"
 ISCONFIGUREFALSE = "# isConfigure = FALSE"
@@ -642,6 +643,14 @@ class GenericPlatform:
         """
         return findCmdInPath('useradd') + " -m " + user + " -g " + group
 
+    def getUseraddCmdList(self, user, group):
+        """
+        function: get user add cmd
+        input  : user, group
+        output : list
+        """
+        return [findCmdInPath('useradd'), '-m', user, '-g', group]
+
     def getUserdelCmd(self, user):
         """
         function: get userdel cmd
@@ -649,6 +658,14 @@ class GenericPlatform:
         output : str
         """
         return findCmdInPath('userdel') + " -r " + user
+
+    def getUserdelCmdList(self, user):
+        """
+        function: get userdel cmd
+        input  : user
+        output : list
+        """
+        return [findCmdInPath('userdel'), '-r', user]
 
     def getGroupaddCmd(self, group):
         """
@@ -658,6 +675,14 @@ class GenericPlatform:
         """
         return findCmdInPath('groupadd') + " " + group
 
+    def getGroupaddCmdList(self, group):
+        """
+        function: get group add cmd
+        input  : group
+        output : list
+        """
+        return [findCmdInPath('groupadd'), group]
+
     def getGroupdelCmd(self, group):
         """
         function: get group del cmd
@@ -665,6 +690,14 @@ class GenericPlatform:
         output : str
         """
         return findCmdInPath('groupdel') + " " + group
+
+    def getGroupdelCmdList(self, group):
+        """
+        function: get group del cmd
+        input  : group
+        output : list
+        """
+        return [findCmdInPath('groupdel'), group]
 
     def getMoveCmd(self, src, dest):
         """
@@ -866,6 +899,14 @@ class GenericPlatform:
         cmd = findCmdInPath('crontab') + BLANK_SPACE + " -l"
         return cmd
 
+    def getAllCrontabCmdList(self):
+        """
+        function: get all crontab cmd
+        input  : NA
+        output : list
+        """
+        return [findCmdInPath('crontab'), '-l']
+
     def getCrontabCmd(self):
         """
         function: get crontab cmd
@@ -978,6 +1019,14 @@ class GenericPlatform:
         """
         return findCmdInPath('getconf') + " PAGESIZE "
 
+    def getGetConfValueCmdList(self):
+        """
+        function: get conf value cmd
+        input  : NA
+        output : str
+        """
+        return [findCmdInPath('getconf'), 'PAGESIZE']
+
     def getBlockdevCmd(self, device, value="", isSet=False):
         """
         function: get block dev cmd
@@ -989,6 +1038,17 @@ class GenericPlatform:
                    BLANK_SPACE + device
         else:
             return findCmdInPath('blockdev') + " --getra " + device
+    
+    def getBlockdevCmdList(self, device, value="", isSet=False):
+        """
+        function: get block dev cmd
+        input  :  device, value, isSet
+        output : str
+        """
+        if isSet and value != "":
+            return [findCmdInPath('blockdev'), '--setra', value, device]
+        else:
+            return [findCmdInPath('blockdev'), '--getra', device]
 
     def getSysModManagementCmd(self, OperType, module):
 
@@ -1043,6 +1103,14 @@ class GenericPlatform:
         output : str
         """
         return findCmdInPath('iostat') + " -xm 2 3 "
+
+    def getIOStatCmdList(self):
+        """
+        function: get io stat cmd
+        input  : NA
+        output : list
+        """
+        return [findCmdInPath('iostat'), '-xm', '2', '3']
 
     def getEthtoolCmd(self):
         """
@@ -1348,11 +1416,11 @@ class LinuxPlatform(GenericPlatform):
         output: str
         """
         # converts the relative path to an absolute path
-        cmd = "echo ~ 2>/dev/null"
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['echo', '~']
+        (output, error, status) = CmdUtil.execCmdList(cmd_list, subprocess.DEVNULL)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] % "user home"
-                            + "The cmd is %s" % cmd)
+                            + "The cmd is %s" % ' '.join())
         return output
 
     def checkProcAlive(self, procPid):

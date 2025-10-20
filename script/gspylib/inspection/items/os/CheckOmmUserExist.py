@@ -17,15 +17,15 @@
 import subprocess
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
-
+from base_utils.os.cmd_util import CmdUtil
 
 class CheckOmmUserExist(BaseItem):
     def __init__(self):
         super(CheckOmmUserExist, self).__init__(self.__class__.__name__)
 
     def doCheck(self):
-        cmd = "id omm"
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['id', 'omm']
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         self.result.raw = output
         if (output.lower().find('no such user') < 0):
             self.result.rst = ResultStatus.NG
@@ -37,10 +37,10 @@ class CheckOmmUserExist(BaseItem):
             self.result.val = output
 
     def doSet(self):
-        cmd = "userdel -rf omm"
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['userdel', '-rf', 'omm']
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if (status != 0):
             self.result.val += "Failed to delete omm user. Error:%s\n" % output
-            self.result.val += "The cmd is %s " % cmd
+            self.result.val += "The cmd is %s " % ' '.join(cmd_list)
         else:
             self.result.val += "Successfully deleted omm user.\n"

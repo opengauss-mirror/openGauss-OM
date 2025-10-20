@@ -35,6 +35,7 @@ from domain_utils.cluster_file.cluster_dir import ClusterDir
 from domain_utils.cluster_file.cluster_log import ClusterLog
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.file_util import FileUtil
+from base_utils.os.cmd_util import CmdUtil
 from domain_utils.cluster_file.package_info import PackageInfo
 from domain_utils.cluster_file.version_info import VersionInfo
 from base_utils.os.net_util import NetUtil
@@ -162,10 +163,10 @@ class CheckUpgrade():
                              % "$GAUSSHOME")
 
         gaussdbFile = "%s/bin/gaussdb" % gaussHome
-        cmd = "%s --version 2>/dev/null" % (gaussdbFile)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = [gaussdbFile, '--version']
+        (output, error, status) = CmdUtil.execCmdList(cmd_list, subprocess.DEVNULL)
         if (status != 0):
-            g_logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
+            g_logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % ' '.join(cmd_list)
                              + "Error:\n %s" % output)
 
     def __checkSHA256(self):
@@ -215,21 +216,20 @@ class CheckUpgrade():
                              + "\nOutput:%s" % output)
 
         # backup cluster_static_config
-        cmd = "cp -p '%s' '%s'/" % (commonStaticConfigFile, bakPath)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['cp', '-p', commonStaticConfigFile, bakPath]
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if (status != 0):
-            g_logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
+            g_logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % ' '.join(cmd_list)
                              + "\nOutput:%s" % output)
 
         upgradeBakPath = self.__getBackupDir()
         try:
             # backup upgrade_version
             oldUpgradeVersionFile = "%s/old_upgrade_version" % upgradeBakPath
-            cmd = "cp -p %s  %s" % (commonUpgradeVersionFile,
-                                    oldUpgradeVersionFile)
-            (status, output) = subprocess.getstatusoutput(cmd)
+            cmd_list = ['cp', '-p', commonUpgradeVersionFile, oldUpgradeVersionFile]
+            (output, error, status) = CmdUtil.execCmdList(cmd_list)
             if (status != 0):
-                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % ' '.join(cmd_list)
                                 + "\nOutput:%s" % output)
 
         except Exception as e:

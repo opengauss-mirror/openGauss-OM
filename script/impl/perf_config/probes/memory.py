@@ -34,7 +34,7 @@ class MemoryInfo(Probe):
         super(MemoryInfo, self).__init__()
         self.total_size = lambda : MemoryUtil.getPhysicalMemTotalSize()
         self.avail_size = lambda : MemoryUtil.getMemAvailableSize()
-        self.page_size = lambda : CmdUtil.execCmd('getconf PAGE_SIZE')
+        self.page_size = lambda : CmdUtil.execCmdList(['getconf', 'PAGE_SIZE'])
 
         self.hugepage = None
 
@@ -59,7 +59,6 @@ class MemoryInfo(Probe):
     def _detect_hugepage(self):
         self.hugepage = {'enabled': '', 'defrag': ''}
         for key in self.hugepage:
-            cmd = f'cat /sys/kernel/mm/transparent_hugepage/{key}'
-            output = CmdUtil.execCmd(cmd)
+            output, error, status = CmdUtil.execCmdList(['cat', f'/sys/kernel/mm/transparent_hugepage/{key}'])
             self.hugepage[key] = re.findall('\[(.*?)\]', output)[0]
 

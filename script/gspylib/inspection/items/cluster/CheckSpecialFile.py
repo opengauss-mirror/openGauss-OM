@@ -22,6 +22,7 @@ from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.net_util import NetUtil
+from base_utils.os.cmd_util import CmdUtil
 
 class CheckSpecialFile(BaseItem):
     def __init__(self):
@@ -128,7 +129,8 @@ class CheckSpecialFile(BaseItem):
         outputList = []
         failList = []
         cmd = "find '%s' -name '*'" % path
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['find', path, '-name', '*']
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         FileList = output.split('\n')
         while '' in FileList:
             FileList.remove('')

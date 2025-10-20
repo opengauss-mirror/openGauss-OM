@@ -20,6 +20,7 @@
 try:
     import sys
     import psutil
+    import subprocess
     sys.path.append(sys.path[0] + "/../../")
     from base_utils.os.cmd_util import CmdUtil
     from gspylib.common.ErrorCode import ErrorCode
@@ -81,7 +82,7 @@ class MemoryUtil(object):
         :return:
         """
         if attr is None:
-            output = CmdUtil.execCmd(f'{CmdUtil.getCatCmd()} {MemoryUtil.MEM_INFO_FILE}')
+            output, error, status = CmdUtil.execCmdList([CmdUtil.getCatCmd(), MemoryUtil.MEM_INFO_FILE])
             res = {}
             for line in output.split('\n'):
                 kv = line.split(':')

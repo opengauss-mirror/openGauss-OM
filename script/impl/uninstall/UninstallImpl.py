@@ -30,6 +30,7 @@ from domain_utils.cluster_file.cluster_dir import ClusterDir
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.file_util import FileUtil
 from base_utils.os.net_util import NetUtil
+from base_utils.os.cmd_util import CmdUtil
 from gspylib.common.DbClusterInfo import dbNodeInfo, \
     dbClusterInfo, compareObject
 from domain_utils.cluster_file.profile_file import ProfileFile
@@ -176,10 +177,10 @@ class UninstallImpl:
         # and static_config does not exists, mv it to static_config
         if (not os.path.exists(static_config) and os.path.exists(
                 static_config_bak)):
-            cmd = "mv %s %s" % (static_config_bak, static_config)
-            (status, output) = subprocess.getstatusoutput(cmd)
+            cmd_list = ['mv', static_config_bak, static_config]
+            (output, error, status) = CmdUtil.execCmdList(cmd_list)
             if (status != 0):
-                self.logger.debug("The cmd is %s " % cmd)
+                self.logger.debug("The cmd is %s " % ' '.join())
                 self.logger.error("rename cluster_static_config_bak failed")
                 self.logger.debug("Error:\n%s" % output)
         # if path not exits, can not stop cluster

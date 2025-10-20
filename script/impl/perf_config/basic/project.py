@@ -470,20 +470,18 @@ class Project(object):
     ###################################################
     @staticmethod
     def startOpenGauss():
-        cmd = 'gs_om -t start'
         Project.notice('start openGauss.....')
 
-        output = CmdUtil.execCmd(cmd)
+        output, error, status = CmdUtil.execCmdList(['gs_om', '-t', 'start'])
 
         Project.notice('start openGauss finish.')
         Project.log(output)
 
     @staticmethod
     def stopOpenGauss():
-        cmd = 'gs_om -t stop'
         Project.notice('stop openGauss......')
 
-        output = CmdUtil.execCmd(cmd)  
+        output, error, status = CmdUtil.execCmdList(['gs_om', '-t', 'stop'])
 
         Project.notice('stop openGauss finish.')
         Project.log(output)

@@ -20,6 +20,7 @@ import subprocess
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
+from base_utils.os.cmd_util import CmdUtil
 
 
 class CheckBootItems(BaseItem):
@@ -36,8 +37,8 @@ class CheckBootItems(BaseItem):
         else:
             bootfile = "/etc/init.d/boot.local"
         for item in checkItems:
-            cmd = "grep -i %s %s" % (item, bootfile)
-            (status, output) = subprocess.getstatusoutput(cmd)
+            cmd_list = ['grep', '-i', item, bootfile]
+            (output, error, status) = CmdUtil.execCmdList(cmd_list)
             if (output):
                 bootitem.append(item)
                 self.result.rst = ResultStatus.NG

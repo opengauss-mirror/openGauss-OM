@@ -884,10 +884,10 @@ class Kerberos():
 
     def __initKadm5Conf(self, dest_dir):
         kadm5_file = os.path.realpath(os.path.join(dest_dir, "kadm5.acl"))
-        cmd = "sed -i 's/#realms#/OPENGAUSS.ORG/g' %s" % kadm5_file
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['sed', '-i', 's/#realms#/OPENGAUSS.ORG/g', kadm5_file]
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if (status != 0):
-            g_logger.debug("The cmd is %s " % cmd)
+            g_logger.debug("The cmd is %s " % ' '.join(cmd_list))
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50205"] % kadm5_file
                             + output)
         g_logger.log("Initialize \"kadm5.acl\" successfully.")
@@ -928,10 +928,10 @@ class Kerberos():
         self.__initKrb5Conf(dest_dir, "kdc.conf")
 
         kdc_file = os.path.realpath(os.path.join(dest_dir, "kdc.conf"))
-        cmd = "sed -i 's;#KRB_HOME#;%s;g' %s" % (g_opts.gausshome, kdc_file)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['sed', '-i', ('s;#KRB_HOME#;%s;g' % g_opts.gausshome), kdc_file]
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if status != 0:
-            g_logger.debug("The cmd is %s " % cmd)
+            g_logger.debug("The cmd is %s " % ' '.join(cmd_list))
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50205"] % kdc_file
                             + output)
 
@@ -941,38 +941,35 @@ class Kerberos():
         mppdb_site_file = os.path.realpath(os.path.join(dest_dir,
                                                         "mppdb-site.xml"))
         principal = "%s/opengauss.org@OPENGAUSS.ORG " % g_opts.user
-        cmd = "sed -i 's;#mppdb.kerberos.principal#;%s;g' %s" % \
-              (principal, mppdb_site_file)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['sed', '-i', ('s;#mppdb.kerberos.principal#;%s;g' % principal), mppdb_site_file]
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if status != 0:
-            g_logger.debug("The cmd is %s " % cmd)
+            g_logger.debug("The cmd is %s " % ' '.join(cmd_list))
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50205"] %
                             mppdb_site_file + output)
 
-        cmd = "sed -i 's;#KRB_HOME#;%s;g' %s" % (g_opts.gausshome,
-                                                 mppdb_site_file)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['sed', '-i', ('s;#KRB_HOME#;%s;g' % g_opts.gausshome), mppdb_site_file]
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if status != 0:
-            g_logger.debug("The cmd is %s " % cmd)
+            g_logger.debug("The cmd is %s " % ' '.join(cmd_list))
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50205"] %
                             mppdb_site_file + output)
 
         kdc_conf = os.path.realpath(os.path.join(g_opts.gausshome_kerberso,
                                                  "kdc.conf"))
-        cmd = "sed -i 's;#KRB_CONFIG#;%s;g' %s" % (kdc_conf, mppdb_site_file)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['sed', '-i', ('s;#KRB_CONFIG#;%s;g' % kdc_conf), mppdb_site_file]
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if status != 0:
-            g_logger.debug("The cmd is %s " % cmd)
+            g_logger.debug("The cmd is %s " % ' '.join(cmd_list))
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50205"] %
                             mppdb_site_file + output)
 
         keytab = os.path.realpath(os.path.join(g_opts.gausshome_kerberso,
                                                "%s.keytab" % g_opts.user))
-        cmd = "sed -i 's;#mppdb.kerberos.keytab#;%s;g' %s" % (keytab,
-                                                              mppdb_site_file)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = ['sed', '-i', ('s;#mppdb.kerberos.keytab#;%s;g' % keytab), mppdb_site_file]
+        (output, error, status) = CmdUtil.execCmdList(cmd_list)
         if status != 0:
-            g_logger.debug("The cmd is %s " % cmd)
+            g_logger.debug("The cmd is %s " % ' '.join(cmd_list))
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50205"] %
                             mppdb_site_file + output)
 

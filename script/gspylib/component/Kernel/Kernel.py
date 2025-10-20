@@ -161,9 +161,9 @@ class Kernel(BaseComponent):
                 raise Exception("cat /etc/hosts failed! cmd: %s; Error: %s " % (hostname_cmd, result))
             host_list = result.splitlines()
             for host in host_list:
-                ping_cmd = f"{ping_tool} {host} -c 5"
-                (status, result) = subprocess.getstatusoutput(ping_cmd)
-                self.logger.debug("cmd is %s; output: %s" % (ping_cmd, result))
+                ping_cmd_list = [ping_tool, host, '-c', '5']
+                (output, error, status) = CmdUtil.execCmdList(ping_cmd_list)
+                self.logger.debug("cmd is %s; output: %s" % (' '.join(ping_cmd_list), result))
                 if status != 0:
                     raise Exception(f"{ping_tool} {host} failed! {output}")
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
@@ -302,11 +302,11 @@ class Kernel(BaseComponent):
                     # delete file in the pg_location directory
                     if (not os.path.exists(pglDir)):
                         continue
-                    cmd = "cd '%s'" % pglDir
-                    (status, output) = subprocess.getstatusoutput(cmd)
+                    cmd_list = ['cd', pglDir]
+                    (output, error, status) = CmdUtil.execCmdList(cmd_list)
                     if (status != 0):
                         raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
-                                        cmd + " Error: \n%s " % output)
+                                        ' '.join(cmd_list) + " Error: \n%s " % output)
 
                     outputFile = FileUtil.findFile(".", "f", "type")
                     if (len(outputFile) > 0):

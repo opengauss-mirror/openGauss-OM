@@ -22,6 +22,7 @@ from gspylib.common.ErrorCode import ErrorCode
 from domain_utils.cluster_file.config_param import ConfigParam
 from base_utils.os.file_util import FileUtil
 from os_platform.linux_distro import LinuxDistro
+from base_utils.os.cmd_util import CmdUtil
 
 setParameterList = {}
 
@@ -137,8 +138,8 @@ class CheckSysParams(BaseItem):
                 self.SetSysctlForList(key, setParameterList[key])
                 self.result.val += "Set variable '%s' to '%s'\n" % (
                     key, setParameterList[key])
-            cmd = "sysctl -p"
-            (status, output) = subprocess.getstatusoutput(cmd)
+            cmd_list = ['sysctl', '-p']
+            (output, error, status) = CmdUtil.execCmdList(cmd_list)
             if (status != 0):
                 cmderrorinfo = "sysctl -p | grep 'No such file or directory'"
                 (status, outputresult) = subprocess.getstatusoutput(

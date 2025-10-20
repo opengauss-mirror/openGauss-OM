@@ -200,10 +200,11 @@ class FileUtil(object):
                 "parameter overwrite", dest))
         try:
             if overwrite:
-                cmd = CmdUtil.getMoveFileCmd(src, dest)
-                (status, output) = subprocess.getstatusoutput(cmd)
+                cmd_list = CmdUtil.getMoveFileCmdList(src, dest)
+                output, error, status = CmdUtil.execCmdList(cmd_list)
+
                 if status != 0:
-                    raise Exception(output + "The cmd is %s" % cmd)
+                    raise Exception(output + "The cmd is %s" % ' '.join(cmd_list))
             else:
                 # move file
                 shutil.move(src, dest)
@@ -566,15 +567,15 @@ class FileUtil(object):
         input:path
         output:true
         """
+        cmd_list = CmdUtil.getRemoveCmdList("directory")
         if "*" in path:
-            path = FileUtil.withAsteriskPath(path)
-            cmd = "%s %s" % (CmdUtil.getRemoveCmd("directory"), path)
+            cmd_list.append(FileUtil.withAsteriskPath(path))
         else:
-            cmd = "%s '%s'" % (CmdUtil.getRemoveCmd("directory"), path)
-        (status, output) = subprocess.getstatusoutput(cmd)
+            cmd_list.append(path)
+        output, error, status = CmdUtil.execCmdList(cmd_list)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50209"] % path +
-                            " Error:\n%s." % output + "The cmd is %s" % cmd)
+                            " Error:\n%s." % output + "The cmd is %s" % ' '.join(cmd_list))
         return True
 
     @staticmethod
@@ -588,8 +589,8 @@ class FileUtil(object):
         try:
             if keywords == "":
                 if recursive:
-                    cmd = "%s -R '%s'" % (CmdUtil.getListCmd(), path)
-                    (status, output) = subprocess.getstatusoutput(cmd)
+                    cmd_list = [CmdUtil.getListCmd(), '-R', path]
+                    output, error, status = CmdUtil.execCmdList(cmd_list)
                     if status != 0:
                         raise Exception(output + "\nThe cmd is %s" % cmd)
                     list_dir = output.split('\n')
@@ -651,13 +652,13 @@ class FileUtil(object):
         """
         if not os.path.exists(path):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % path)
-        cmd = "%s '%s' -%s %s " % (CmdUtil.getFindCmd(), path,
-                                   choice, keyword)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = [CmdUtil.getFindCmd(), path, '-' + choice, keyword]
+        output, error, status = CmdUtil.execCmdList(cmd_list)
+
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] % (
                     "the files of path %s" % path) + " Error:\n%s" % output
-                            + "\nThe cmd is %s" % cmd)
+                            + "\nThe cmd is %s" % ''.join(cmd_list))
         list_file = output.split('\n')
         while '' in list_file:
             list_file.remove('')
@@ -840,11 +841,11 @@ class FileUtil(object):
         input : old_file_path, new_file_path
         output : NA
         """
-        cmd = CmdUtil.getMoveCmd(old_file_path, new_file_path)
-        (status, output) = subprocess.getstatusoutput(cmd)
+        cmd_list = CmdUtil.getMoveCmdList(old_file_path, new_file_path)
+        output, error, status = CmdUtil.execCmdList(cmd_list)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50218"] % old_file_path +
-                            " Error:\n%s" % output + "\nThe cmd is %s" % cmd)
+                            " Error:\n%s" % output + "\nThe cmd is %s" % ' '.join(cmd_list))
 
     @staticmethod
     def checkLink(file_path):

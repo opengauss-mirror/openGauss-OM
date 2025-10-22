@@ -222,6 +222,7 @@ class LocalRestore(LocalBaseOM):
         if self.restoreBin:
             self.logger.log("Restoring binary files.")
             try:
+                self.check_db_status()
                 # decompress tar file
                 self.decompressTarFile("binary")
 

@@ -187,6 +187,17 @@ class LocalRestore(LocalBaseOM):
             raise Exception(str(e))
 
         self.logger.log("Successfully checked installPath directory permission.")
+        
+    def check_db_status(self):
+        """
+        return True if db is running
+        """
+        realpathcmd = "readlink -f `ps ux | grep gaussdb | grep -v grep  | awk '{print $11}'`"
+        status, output = subprocess.getstatusoutput(realpathcmd)
+        if status == 0 and output:
+            self.logger.debug(f"check dbstatus, install path is {self.installPath} and process is {output}")
+            if os.path.join(self.installPath, 'bin', 'gaussdb') == output.strip():
+                raise Exception("gaussdb is still running. restore app bin path offline.")
 
     def doRestore(self):
         """

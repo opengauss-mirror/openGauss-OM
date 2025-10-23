@@ -629,14 +629,14 @@ def ping_ip(ip, num=10):
     """
     try:
         ping = CmdUtil.get_ping_tool()
-        cmd_list = ['ping', '-c', ping, num, '-W', 1]
-        (output, error, status) = CmdUtil.execCmdList(cmd_list)
+        cmd = "%s -c %s %s -W 1" % (ping, num, ip)
+        (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             g_logger.debug("Failed to ping %s, output is %s." % (ip, output))
             return False
         return True
     except Exception as e:
-        g_logger.debug("Error exec %s failed, output is %s." % (' '.join(cmd_list), str(e)))
+        g_logger.debug("Error exec %s failed, output is %s." % (cmd, str(e)))
         return False
 
 

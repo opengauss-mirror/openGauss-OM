@@ -98,8 +98,7 @@ class BackupImplOLAP(BackupImpl):
             raise Exception(ErrorCode.GAUSS_501["GAUSS_50111"] % self.context.backupDir)
 
         localHostName = NetUtil.GetHostIpOrName()
-        tmp_backupDir = "%s/backupTemp_%d" % (
-            EnvUtil.getTmpDirFromEnv(), os.getpid())
+        tmp_backupDir = os.path.join(EnvUtil.getTmpDirFromEnv(), "backupTemp_%d" % os.getpid())
         cmd = "%s -U %s --nodeName %s -P %s -l %s --ingore_miss" % \
               (OMCommand.getLocalScript("Local_Backup"),
                self.context.user,
@@ -159,7 +158,7 @@ class BackupImplOLAP(BackupImpl):
                  DefaultValue.KEY_DIRECTORY_MODE)
         self._runCmd(cmd, self.context.nodename)
         # send backup package to the specified node from the local node
-        originalFile = "'%s'/%s.tar" % (tmp_backupDir, flag)
+        originalFile = os.path.join(tmp_backupDir, f"{flag}.tar")
         if flag == "parameter":
             if self.context.nodename != [NetUtil.getHostName()]:
                 self.context.sshTool.scpFiles(
@@ -168,7 +167,7 @@ class BackupImplOLAP(BackupImpl):
             else:
                 FileUtil.cpFile(originalFile, self.context.backupDir)
         else:
-            targetFile = "'%s'/%s.tar" % (self.context.backupDir, flag)
+            targetFile = os.path.join(self.context.backupDir, f"{flag}.tar")
             cmd = g_file.SHELL_CMD_DICT["copyFile"] % (
                 originalFile, targetFile)
             self._runCmd(cmd)

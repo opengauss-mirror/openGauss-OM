@@ -187,17 +187,19 @@ class LocalRestore(LocalBaseOM):
             raise Exception(str(e))
 
         self.logger.log("Successfully checked installPath directory permission.")
-        
-    def check_db_status(self):
+       
+    def check_db_offline(self):
         """
         return True if db is running
         """
-        realpathcmd = "readlink -f `ps ux | grep gaussdb | grep -v grep  | awk '{print $11}'`"
-        status, output = subprocess.getstatusoutput(realpathcmd)
-        if status == 0 and output:
-            self.logger.debug(f"check dbstatus, install path is {self.installPath} and process is {output}")
-            if os.path.join(self.installPath, 'bin', 'gaussdb') == output.strip():
-                raise Exception("gaussdb is still running. restore app bin path offline.")
+        proccmd = "ps ux | grep '\<gaussdb\>' | grep -v grep | grep -v 'fenced UDF master process'  | wc -l"
+        status, output = subprocess.getstatusoutput(proccmd)
+        if status == 0 and output == '0':
+            self.logger.log("database is offline.")
+            return True
+        
+        self.logger.log("Skipping restore binary files because of database is still running.")
+        return False 
 
     def doRestore(self):
         """
@@ -219,10 +221,9 @@ class LocalRestore(LocalBaseOM):
         """
         self.logger.log("Restoring files.")
 
-        if self.restoreBin:
+        if self.restoreBin and self.check_db_offline():
             self.logger.log("Restoring binary files.")
             try:
-                self.check_db_status()
                 # decompress tar file
                 self.decompressTarFile("binary")
 

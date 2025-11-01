@@ -664,11 +664,11 @@ class Install(LocalBaseOM):
         source_path = os.path.join(os.getenv("GPHOME"),
             self.user, "etc")
         target_path = os.path.join(self.installPath, "etc")
-        cmd_list = ['cp', f'{source_path}/*', target_path]
-        self.logger.debug("set cgroup at install step cmd: %s" % ' '.join(cmd_list))
-        (output, error, status) = CmdUtil.execCmdList(cmd_list)
+        cmd = "cp %s/* %s" % (source_path, target_path)
+        self.logger.warn("set cgroup at install step cmd: %s" % cmd)
+        (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
-            self.logger.debug("set cgroup at install step result: %s" % output)
+            self.logger.warn("set cgroup at install step result: %s" % output)
 
         self.logger.log("Successfully Set Cgroup.")
 

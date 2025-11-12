@@ -79,7 +79,7 @@ class SshdConfig:
             void
         """
         sshd_config = '/etc/ssh/sshd_config'
-        cmd_list = ['grep', '-E', "'^\<Match\>' %s" % sshd_config]
+        cmd_list = ['grep', '-E', '^\<Match\>', sshd_config]
         output, error, status = CmdUtil.execCmdList(cmd_list)
 
         if status == 0:

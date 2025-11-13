@@ -2742,6 +2742,27 @@ class UpgradeImpl:
                                         self.context.mpprcFile)
         self.context.logger.debug("Successfully backup global relmap file.")
 
+    def delete_files_not_in_new_version(self):
+        """
+        delete files not in new version
+        """
+        self.context.logger.debug("Start to delete files not in new version.")
+        gp_home_path = ClusterDir.getClusterToolPath(self.context.user)
+        python_lib_path = os.path.join(gp_home_path, "script/gspylib/clib/libpython3.7m.so.1.0")
+        white_list = [python_lib_path]
+        try:
+            for file in white_list:
+                delete_cmd = "(if [ -f '%s' ]; then rm -rf '%s'; fi) " % (file, file)
+                self.context.logger.debug("delete file: %s." % delete_cmd)
+                CmdExecutor.execCommandWithMode(
+                    delete_cmd,
+                    self.context.sshTool,
+                    self.context.isSingle,
+                    self.context.mpprcFile)
+            self.context.logger.debug("Successfully delete files not in new version.")
+        except Exception as e:
+            self.context.logger.logExit("Failed to delete files not in new version: %s" % str(e))
+    
     def cleanTmpGlobalRelampFile(self):
         """
         remove global/pg_filenode.map when commit, if old cluster
@@ -4844,6 +4865,7 @@ END;"""
             self.del_controlfile_dwdir()
             # remove tmp global relmap file
             self.cleanTmpGlobalRelampFile()
+            self.delete_files_not_in_new_version()
             self.context.logger.log("Commit upgrade succeeded.")
         except Exception as e:
             self.exitWithRetCode(const.ACTION_COMMIT_UPGRADE, False, str(e))

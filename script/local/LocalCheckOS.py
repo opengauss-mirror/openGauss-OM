@@ -1038,9 +1038,10 @@ def setNetWorkMTUOrTXRXValue(networkCardNum, valueType,
     output : NA
     """
     if (valueType == "tx" or valueType == "rx"):
-        cmd_list = ['/sbin/ethtool', '-G', networkCardNum, valueType, expectValue]
-    
-    (output, error, status) = CmdUtil.execCmdList(cmd_list)
+        cmd = "/sbin/ethtool -G %s %s %s" % (networkCardNum,
+                                             valueType, expectValue)
+
+    (status, output) = subprocess.getstatusoutput(cmd)
     if (status != 0):
         if (valueType == 'tx' or valueType == 'rx'):
             if (output.find("no ring parameters changed, aborting") < 0):
@@ -1051,7 +1052,7 @@ def setNetWorkMTUOrTXRXValue(networkCardNum, valueType,
             isPrint = True
         if isPrint:
             g_logger.debug("Failed to set network card %s value."
-                           " Commands for setting: %s." % (valueType, ' '.join(cmd_list)))
+                           " Commands for setting: %s." % (valueType, cmd))
             g_logger.logExit(ErrorCode.GAUSS_506["GAUSS_50613"]
                              % valueType + " Error: \n%s" % output)
 
@@ -1060,11 +1061,11 @@ def setNetWorkMTUOrTXRXValue(networkCardNum, valueType,
         cmd_write = "sed -i \"/^.*\\/sbin\\/ethtool -G %s %s %s$/d\" %s" \
                    % (networkCardNum, valueType, expectValue, initFileName)
 
-    cmdInit = """%s && echo "%s">>%s""" % (cmdWrite, cmd, initFileName)
-    (status, output) = subprocess.getstatusoutput(cmdInit)
+    cmd_init = """%s && echo "%s">>%s""" % (cmd_write, cmd, initFileName)
+    (status, output) = subprocess.getstatusoutput(cmd_init)
     if (status != 0):
         g_logger.debug("Faile to write %s setting commands into init file."
-                       " Commands for setting: %s." % (valueType, cmdInit))
+                       " Commands for setting: %s." % (valueType, cmd_init))
         g_logger.logExit(ErrorCode.GAUSS_502["GAUSS_50205"]
                          % initFileName + " Error: \n%s" % output)
 

@@ -188,10 +188,16 @@ class LocalRestore(LocalBaseOM):
 
         self.logger.log("Successfully checked installPath directory permission.")
        
-    def check_db_offline(self):
+    def check_need_restorebin(self):
         """
         return True if db is running
         """
+        if g_forceRestore:
+            return True
+        
+        if not os.path.isdir(self.installPath) or not os.listdir(self.installPath):
+            return True
+        
         proccmd = "ps ux | grep '\<gaussdb\>' | grep -v grep | grep -v 'fenced UDF master process'  | wc -l"
         status, output = subprocess.getstatusoutput(proccmd)
         if status == 0 and output == '0':
@@ -221,7 +227,7 @@ class LocalRestore(LocalBaseOM):
         """
         self.logger.log("Restoring files.")
 
-        if self.restoreBin and self.check_db_offline():
+        if self.restoreBin and self.check_need_restorebin():
             self.logger.log("Restoring binary files.")
             try:
                 # decompress tar file

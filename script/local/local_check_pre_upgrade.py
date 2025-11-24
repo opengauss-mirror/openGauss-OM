@@ -24,6 +24,7 @@ import sys
 import getopt
 import subprocess
 import time
+import re
 import concurrent.futures
 
 localDirPath = os.path.dirname(os.path.realpath(__file__))
@@ -520,17 +521,21 @@ def check_process(timeout=None):
     if not timeout:
         timeout = 10
     try:
-        cmd = "source %s; timeout %ss bash -c 'gs_om -t status|grep cluster_state'" % (g_opts.mppdbfile, timeout)
+        cmd = "source %s; timeout %ss bash -c 'gs_ctl query'" % (g_opts.mppdbfile, timeout)
         (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0 or "Normal" not in output:
-            g_logger.debug("The cmd is %s, output is %s" % (cmd, output))
-            g_logger.log("Error, process is not normal.")
+        g_logger.debug("The cmd is %s, output is %s" % (cmd, output))
+        if status != 0:
+            g_logger.error("Error, execute gs_ctl query on node failed, maybe server stopped.")
+            return
+        match = re.search(r'db_state\s*:\s*(\w+)', output)
+        if match:
+            if match.group(1) != "Normal":
+                g_logger.error("Error, process is not normal")
         else:
-            g_logger.log("Normal, process is normal.")
+            g_logger.error("Error, cannot get db_state info.")
     except Exception as e:
         g_logger.debug("The cmd is %s, output is %s" % (cmd, str(e)))
         g_logger.log("Error, check process failed.")
-
 
 def query_replication_stats(port):
     """

@@ -43,3 +43,7 @@ def copy_lib():
     if status != 0:
         raise Exception("cp file failed.\nError:%s\nThe cmd is: %s\n" %
                         (output, cmd))
+
+
+if __name__ == "__main__":
+    copy_lib()

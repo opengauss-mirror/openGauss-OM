@@ -82,6 +82,7 @@ class CrontabUtil(object):
         """
         cmd_list = CmdUtil.getAllCrontabCmdList()
         output, error, status = CmdUtil.execCmdList(cmd_list)
-        if output.find("not allowed") >= 0:
+        error = bytes.decode(error).strip()
+        if output.find("not allowed") >= 0 or error.find("not allowed") >= 0:
             return False
         return True

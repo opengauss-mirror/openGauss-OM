@@ -165,12 +165,12 @@ class Uninstall(LocalBaseOM):
         if not CrontabUtil.check_user_crontab_permission():
             self.logger.log("Warning: The user has no permission to delete crontab task.")
             return
+        crontabFile = "%s/gauss_crontab_file_%d" \
+                          % (EnvUtil.getTmpDirFromEnv(), os.getpid())
         try:
             # get all content by crontab command
             (status, output) = CrontabUtil.getAllCrontab()
             # overwrit crontabFile, make it empty.
-            crontabFile = "%s/gauss_crontab_file_%d" \
-                          % (EnvUtil.getTmpDirFromEnv(), os.getpid())
             FileUtil.createFile(crontabFile, True)
             content_CronTabFile = [output]
             FileUtil.writeFile(crontabFile, content_CronTabFile)
@@ -184,7 +184,10 @@ class Uninstall(LocalBaseOM):
         except Exception as e:
             if os.path.exists(crontabFile):
                 FileUtil.removeFile(crontabFile)
-            raise Exception(str(e))
+            if "Failed to obtain crontab list" in str(e):
+                return
+            else:
+                raise Exception(str(e))
         self.logger.log("Successfully deleted OMMonitor.")
 
     def checkParameters(self):

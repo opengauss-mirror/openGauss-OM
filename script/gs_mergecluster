@@ -1,0 +1,520 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+#############################################################################
+# Copyright (c) 2025 Huawei Technologies Co.,Ltd.
+#
+# openGauss is licensed under Mulan PSL v2.
+# You can use this software according to the terms
+# and conditions of the Mulan PSL v2.
+# You may obtain a copy of Mulan PSL v2 at:
+#
+#          http://license.coscl.org.cn/MulanPSL2
+#
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS,
+# WITHOUT WARRANTIES OF ANY KIND,
+# EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+# MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+# See the Mulan PSL v2 for more details.
+# ----------------------------------------------------------------------------
+# Description  :
+#############################################################################
+
+import os
+from re import S
+import pwd
+import subprocess
+import socket
+import stat
+import time
+import argparse
+
+
+from gspylib.common.DbClusterInfo import dbClusterInfo
+from gspylib.threads.SshTool import SshTool
+from base_diff.comm_constants import CommConstants
+from domain_utils.cluster_file.package_info import PackageInfo
+from base_utils.os.file_util import FileUtil
+from base_utils.os.cmd_util import CmdUtil
+from domain_utils.cluster_file.cluster_config_file import ClusterConfigFile
+from domain_utils.cluster_file.cluster_dir import ClusterDir
+from gspylib.common.GaussLog import GaussLog
+
+"""
+gs_mergecluseter -X /xx/cluster.xml
+
+"""
+
+OPTYPE_LOCAL = 'local'
+OPTYPE_REMOTE = 'remote'
+
+INSTANCE_TYPE_UNDEFINED = -1
+# master
+MASTER_INSTANCE = 0
+# standby
+STANDBY_INSTANCE = 1
+# dummy standby
+DUMMY_STANDBY_INSTANCE = 2
+# cascade standby
+CASCADE_STANDBY = 3
+
+
+class MergeCluster():
+
+    def __init__(self):
+        self.xmlfile = ""
+        self.apppath = ""
+        self.logpath = ""
+        self.toolspath = ""
+        self.datanodes = []
+        self.tmppath = ""
+        self.backip_list = []
+        self.remote_list = []
+        self.remote_sshtools = []
+        self.logger = None
+        self.user = pwd.getpwuid(os.getuid()).pw_name
+        self.port = None
+        self.datanodepath = ""
+        self.inst_role_map = {}
+
+    def parse_param(self):
+        print("Parse parameters.")
+        parser = argparse.ArgumentParser(
+            description="./gs_mergecluster -X /home/omm/cluster.xml")
+        parser.add_argument("--xmlfile", "-X", type=str,
+                            help="cluster xml config file")
+        args = parser.parse_args()
+        xmlfile = args.xmlfile
+        if not xmlfile:
+            print("Please assign a xmlconfig file")
+            exit(1)
+        if not os.path.exists(xmlfile):
+            print("xmlfile is not exists.")
+            exit(1)
+
+        self.xmlfile = xmlfile
+
+    def set_tools_env(self):
+        gpvalue = self.toolspath
+        libenv = os.getenv("LD_LIBRARY_PATH")
+        pathenv = os.getenv("PATH")
+        os.environ["GPHOME"] = gpvalue
+        os.environ["LD_LIBRARY_PATH"] = f"{os.path.join(gpvalue, 'script/gspylib/clib')}:{os.path.join(gpvalue, 'lib')}:{libenv}"
+        os.environ["PATH"] = f"{os.path.join(gpvalue, 'script/gspylib/pssh/bin')}:{os.path.join(gpvalue, 'script')}:{pathenv}"
+
+    def set_app_env(self):
+        apppath = self.apppath
+        libenv = os.getenv("LD_LIBRARY_PATH")
+        pathenv = os.getenv("PATH")
+        os.environ["GAUSSHOME"] = apppath
+        os.environ["LD_LIBRARY_PATH"] = f"{os.path.join(apppath, 'lib')}:{libenv}"
+        os.environ["PATH"] = f"{os.path.join(apppath, 'bin')}:{pathenv}"
+
+    def run(self):
+        self.parse_param()
+        self.init_from_xml()
+        self.get_commitid(os.path.join(
+            os.path.dirname(os.path.realpath(__file__)), '..'))
+        self.create_inst_path(OPTYPE_LOCAL)
+
+        # init logfile after create log path
+        LOG_DEBUG = 1
+        logfile = os.path.join(self.logpath, 'om', 'gs_mergecluster.log')
+        self.logger = GaussLog(logfile, "mergecluster", LOG_DEBUG)
+
+        # local node install
+        self.install_pkg(OPTYPE_LOCAL)
+        self.set_tools_env()
+        self.set_app_env()
+        self.set_envirment(OPTYPE_LOCAL)
+        self.config_install_file(OPTYPE_LOCAL)
+
+        # remote node install
+        self.check_and_build_trust()
+        self.remote_sshtools = SshTool(self.remote_list)
+        self.create_inst_path(OPTYPE_REMOTE)
+        self.install_pkg(OPTYPE_REMOTE)
+        self.genhostfile()
+        self.set_envirment(OPTYPE_REMOTE)
+        self.config_install_file(OPTYPE_REMOTE)
+        self.config_inst_param()
+        self.build_all_instance()
+        self.merge_cluster()
+        self.finished_merge()
+
+    def check_and_build_trust(self):
+        self.logger.log("Begin to check and build trust")
+
+        self.sshtools = SshTool(self.backip_list)
+        is_trust_success = True
+
+        rstmap, output = self.sshtools.getSshStatusOutput("hostname")
+        self.logger.debug(rstmap, output)
+
+        for host in rstmap:
+            if rstmap.get(host) == "Failure":
+                is_trust_success = False
+                break
+
+        if is_trust_success:
+            self.logger.log("Ssh Trust test ok...")
+            return
+
+        self.logger.warn("Ssh Trust is not ok, need to rebuild")
+
+        curpath = os.path.dirname(os.path.realpath(__file__))
+        sshexkey = os.path.join(curpath, 'gs_sshexkey')
+        hostfile = os.path.join(curpath, 'hostfile')
+        with open(hostfile, 'w') as fd:
+            for hostip in self.backip_list:
+                fd.write(f"{hostip}\n")
+            fd.close()
+
+        create_trust = f"{sshexkey} -f {hostfile}"
+        self.logger.log(f"create trust command: {create_trust}")
+        self.logger.log("Please enter the hosts password.")
+        s, o = subprocess.getstatusoutput(create_trust)
+        if s != 0:
+            self.logger.error(f"Create trust failed: {o}")
+            exit(1)
+        self.logger.log("End to check and build trust")
+
+    def init_from_xml(self):
+        cluster_info = dbClusterInfo()
+        cluster_info.initFromXml(self.xmlfile)
+        self.datanodes = cluster_info.dbNodes
+        self.apppath = cluster_info.appPath
+        
+        appnormalpath = os.path.normpath(self.apppath)
+        if os.path.exists(appnormalpath) and os.path.islink(appnormalpath):
+            subprocess.getstatusoutput(f"unlink {appnormalpath}")
+
+        self.apprealpath = os.path.realpath(appnormalpath) + "_%s"
+        self.logpath = os.path.join(cluster_info.logPath, self.user)
+        self.toolspath = ClusterDir.getPreClusterToolPath(self.xmlfile)
+        self.tmppath = ClusterConfigFile.readClusterTmpMppdbPath(
+            self.user, self.xmlfile)
+        self.corepath = cluster_info.readClustercorePath(self.xmlfile)
+
+        self.localhostname = socket.gethostname()
+        for node in self.datanodes:
+            self.inst_role_map[node.name] = {}
+            if node.datanodes:
+                self.port = node.datanodes[0].port
+                self.datanodepath = node.datanodes[0].datadir
+                self.inst_role_map[node.name]["type"] = node.datanodes[0].instanceType
+                self.inst_role_map[node.name]["datadir"] = node.datanodes[0].datadir
+            self.backip_list.append(node.backIps[0])
+            self.inst_role_map[node.name]["backip"] = node.backIps[0]
+            if node.name != self.localhostname:
+                self.remote_list.append(node.backIps[0])
+
+    def create_inst_path(self, opt_type):
+
+        cmd = f"mkdir -p {self.logpath} &&  mkdir -p {self.toolspath} && mkdir -p {self.tmppath} \
+            && mkdir -p /home/{self.user}/gauss_om"
+
+        if opt_type == OPTYPE_LOCAL:
+            status, output = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                raise Exception(str(output))
+        else:
+            self.remote_sshtools.executeCommand(cmd)
+
+    def get_commitid(self, rootdir):
+        def _parse_version_cfg(_cfg):
+            _cmd = f'cat {_cfg}'
+            _status, _output = subprocess.getstatusoutput(_cmd)
+            if _status != 0:
+                raise Exception("get version.cfg failed, %s" % _output)
+            _lines = _output.splitlines()
+            _res = {
+                'pkg_prefix': _lines[0].replace("OM", "Server"),
+                'backend_version': _lines[1],
+                'commit': _lines[2],
+                'mode': 'release' if len(_lines) < 4 else _lines[3],
+                'pkgversion': _lines[0].replace("openGauss-Server-", "")
+            }
+            return _res
+
+        cmd = 'cd {} && tar -xpf `ls openGauss-Server*.tar.bz2 | tail -1` ./version.cfg'.format(
+            rootdir)
+        CmdUtil.execCmd(cmd)
+
+        cfg = os.path.join(rootdir, 'version.cfg')
+        self.og_version_cfg = _parse_version_cfg(cfg)
+
+    def genhostfile(self):
+
+        host_file = os.path.join(self.toolspath, 'hosts')
+        with open(host_file, 'w') as fd:
+            for hostname, items in self.inst_role_map.items():
+                hostip = items.get("backip")
+                fd.write("%s %s" % (hostip, hostname) + os.linesep)
+            fd.close()
+        self.remote_sshtools.scpFiles(host_file, self.toolspath)
+
+    def install_pkg(self, opt_type):
+        self.logger.log(f"Begin to install package on {opt_type} node")
+
+        serverfile = PackageInfo.getPackageFile(CommConstants.PKG_SERVER)
+        omfile = PackageInfo.getPackageFile(CommConstants.PKG_OM)
+        servername = os.path.basename(serverfile)
+        omname = os.path.basename(omfile)
+
+        if not os.path.exists(serverfile) or not os.path.exists(omfile):
+            self.logger.error("Package file not exist")
+            exit(1)
+
+        if opt_type == OPTYPE_LOCAL:
+            FileUtil.cpFile(omfile, self.toolspath)
+            FileUtil.cpFile(serverfile, self.toolspath)
+        else:
+            self.remote_sshtools.scpFiles(omfile, self.toolspath)
+            self.remote_sshtools.scpFiles(serverfile, self.toolspath)
+
+        commitid = self.og_version_cfg["commit"]
+        apprealpath = self.apprealpath % commitid
+
+        decompress_om = f"cd {self.toolspath} && tar -xf {omname}"
+        decompress_server = f"mkdir -p {apprealpath} && cd {self.toolspath} && tar -xf {servername} -C {apprealpath}"
+        if opt_type == OPTYPE_LOCAL:
+            CmdUtil.execCmd(decompress_om)
+            CmdUtil.execCmd(decompress_server)
+        else:
+            self.remote_sshtools.executeCommand(decompress_om)
+            self.remote_sshtools.executeCommand(decompress_server)
+
+        self.logger.log(f"End to install package on {opt_type} node")
+
+    def set_envirment(self, opt_type):
+        envlist = [
+            f"export GPHOME={self.toolspath}",
+            f"export PGDATA={self.datanodepath}",
+            f"export COREPATH={self.corepath}",
+            "export PGDATABASE=postgres",
+            f"export PGPORT={self.port}",
+            "export IP_TYPE=ipv4",
+            "export GAUSS_WARNING_TYPE=5",
+            "export PATH=\$GPHOME/script/gspylib/pssh/bin:\$GPHOME/script:\$PATH",
+            "export LD_LIBRARY_PATH=\$GPHOME/script/gspylib/clib:/usr/local/ubs_mem/lib:\$LD_LIBRARY_PATH",
+            "export LD_LIBRARY_PATH=\$GPHOME/lib:\$LD_LIBRARY_PATH",
+            "export PYTHONPATH=\$GPHOME/lib",
+            f"export PATH=/home/{self.user}/gauss_om/script:\$PATH",
+            f"export GAUSSHOME={self.apppath}",
+            "export PATH=\$GAUSSHOME/bin:\$PATH",
+            "export LD_LIBRARY_PATH=\$GAUSSHOME/lib:\$LD_LIBRARY_PATH",
+            "export S3_CLIENT_CRT_FILE=\$GAUSSHOME/lib/client.crt",
+            "export GAUSS_VERSION=7.0.0-RC3",
+            f"export PGHOST={self.tmppath}",
+            f"export GAUSSLOG={self.logpath}",
+            "umask 077",
+            "export GAUSS_ENV=2",
+            "export GS_CLUSTER_NAME=mycluster"]
+
+        for envstr in envlist:
+            cmd = f"echo {envstr} >> /home/{self.user}/.bashrc"
+            if opt_type == OPTYPE_LOCAL:
+                CmdUtil.execCmd(cmd)
+            else:
+                self.remote_sshtools.executeCommand(cmd)
+
+    def run_node_execute(self, hostip, hostname, cmd, ignore_ex=False):
+        try:
+            if hostname == self.localhostname:
+                CmdUtil.execCmd(cmd)
+            else:
+                self.remote_sshtools.executeCommand(cmd, hostList=[hostip])
+        except Exception as e:
+            if ignore_ex:
+                self.logger.debug(f"run cmd[{cmd}] failed at host[{hostip}]. exception {str(e)}")
+            else:
+                raise Exception(e)
+
+    def config_install_file(self, opt_type):
+        commitid = self.og_version_cfg["commit"]
+        pkgversion = self.og_version_cfg["pkgversion"]
+        backend_version = self.og_version_cfg["backend_version"]
+
+        cmd = f"if [ -d {self.apppath} ]; then unlink {self.apppath} ; fi && ln -s {self.apppath}_{commitid} {self.apppath} &&" \
+            f"cp {self.apppath}/version.cfg {self.toolspath} &&" \
+            f"echo {pkgversion} > {self.apppath}/bin/upgrade_version && " \
+            f"echo {backend_version} >> {self.apppath}/bin/upgrade_version && " \
+            f"echo {commitid} >> {self.apppath}/bin/upgrade_version &&" \
+            f"python3 {self.toolspath}/script/gspylib/common/copy_python_lib.py"
+
+        if opt_type == OPTYPE_LOCAL:
+            CmdUtil.execCmd(cmd)
+        else:
+            self.remote_sshtools.executeCommand(cmd)
+
+    def generate_param_script(self, localip, port, dndir, appname):
+
+        cmdlist = []
+        index = 1
+        for backip in self.backip_list:
+            cmdlist.append(
+                f"gs_guc set -D {dndir} -h 'host all {self.user} {backip}/32 trust'")
+            cmdlist.append(
+                f"gs_guc set -D {dndir} -h 'host all all  {backip}/32 sha256'")
+
+            if backip == localip:
+                continue
+            relcmd = f"""gs_guc set -D {dndir} -c "replconninfo{index}=\
+'localhost={localip} localport={port + 1} \
+localheartbeatport={port + 5} \
+localservice={port + 4} \
+remotehost={backip} \
+remoteport={port + 1} \
+remoteheartbeatport={port + 5} \
+remoteservice={port + 4}'" """
+            cmdlist.append(relcmd)
+            index += 1
+
+        log_dir = "%s/pg_log/dn_%d" % (self.logpath, appname)
+        audit_dir = "%s/pg_audit/dn_%d" % (self.logpath, appname)
+        paramcmd = "gs_guc set -D {0} -c \"application_name='dn_{1}'\" " \
+            "-c \"log_directory='{2}'\" " \
+            " -c \"audit_directory='{3}'\" " \
+            "".format(dndir, appname, log_dir, audit_dir)
+        cmdlist.append(paramcmd)
+        return cmdlist
+
+    def config_inst_param(self):
+        self.logger.log("Begin to config instance parameters.")
+        # import pdb;pdb.set_trace()
+        for node in self.datanodes:
+            cmdlist = []
+            hostip = node.backIps[0]
+            hostname = node.name
+            if node.datanodes:
+                inst = node.datanodes[0]
+                cmdlist = self.generate_param_script(
+                    hostip, inst.port, inst.datadir, inst.instanceId)
+
+            # write script and execute
+            tmpguc = os.path.join(self.tmppath, "guc.sh")
+            with os.fdopen(os.open("%s" % tmpguc, os.O_WRONLY | os.O_CREAT,
+                                   stat.S_IWUSR | stat.S_IRUSR), 'w') as fo:
+                fo.write("#!/bin/bash\n")
+                for cmdstr in cmdlist:
+                    fo.write(f"{cmdstr}\n")
+                fo.close()
+            if hostname == self.localhostname:
+                CmdUtil.execCmd(f"bash {tmpguc}")
+            else:
+                self.remote_sshtools.scpFiles(
+                    tmpguc, self.tmppath, hostList=[hostip])
+                self.remote_sshtools.executeCommand(f"bash {tmpguc}", hostList=[hostip])
+        self.logger.log("End to config instance parameters.")
+
+    def wait_instance_normal(self, hostip, datadir):
+
+        run_check_max_time = 10
+
+        while True:
+            time.sleep(10)
+
+            build_check = f"ps ux | grep build | grep {datadir} | grep -v grep | wc -l"
+            statumap, outputmap = self.remote_sshtools.getSshStatusOutput(
+                build_check, hostList=[hostip])
+            self.logger.debug(f"Check building process on host {hostip}")
+            self.logger.debug(statumap, outputmap)
+            if statumap[hostip] != "Success":
+                self.logger.debug(statumap, outputmap)
+                break
+            if outputmap:
+                build_inst_num = outputmap.splitlines()[-1]
+                if build_inst_num != '0':
+                    self.logger.log(f"wait [{hostip}] building ...")
+                    import pdb;pdb.set_trace()
+                    continue
+            else:
+                self.logger.debug(statumap, outputmap)
+                break
+
+            self.logger.debug(f"Building is finished. check process status on host {hostip}")
+            run_check = f"gs_ctl query -D {datadir}"
+            statumap, outputmap = self.remote_sshtools.getSshStatusOutput(
+                run_check, hostList=[hostip])
+            if statumap[hostip] == "Success":
+                self.logger.log(f"Build host [{hostip}] success.")
+                break
+            else:
+                if run_check_max_time < 0:
+                    self.logger.error(f"Build host [{hostip}] failed.")
+                    break
+                run_check_max_time -= 1
+
+    def build_all_instance(self):
+        self.logger.log("Begin to build standby instance.")
+        # restart primary
+        for hostname, items in self.inst_role_map.items():
+            if items.get("type") != MASTER_INSTANCE:
+                continue
+            backip = items.get('backip')
+            datadir = items.get('datadir')
+            stopcmd = f"gs_ctl stop -D {datadir}"
+            self.run_node_execute(hostname, backip, stopcmd, ignore_ex=True)
+            startcmd = f"gs_ctl start -D {datadir} -M primary"
+            self.run_node_execute(hostname, backip, startcmd)
+
+        # restart and build standby
+        for hostname, items in self.inst_role_map.items():
+            if items.get("type") != STANDBY_INSTANCE:
+                continue
+            backip = items.get('backip')
+            datadir = items.get('datadir')
+            cmd = f"gs_ctl stop -D {datadir}; gs_ctl start -D {datadir} -M standby"
+            self.run_node_execute(hostname, backip, cmd, ignore_ex=True)
+ 
+            build_log = os.path.join(self.tmppath, 'build.log')
+            cmd = f"nohup gs_ctl build -D {datadir} -M standby -b full >> {build_log} &"
+            self.run_node_execute(hostname, backip, cmd)
+            self.wait_instance_normal(backip, datadir)
+
+        # restart and build cascade_standby
+        for hostname, items in self.inst_role_map.items():
+            if items.get("type") != CASCADE_STANDBY:
+                continue
+            backip = items.get('backip')
+            datadir = items.get('datadir')
+            cmd = f"gs_ctl stop -D {datadir}; gs_ctl start -D {datadir} -M cascade_standby"
+            self.run_node_execute(hostname, backip, cmd, ignore_ex=True)
+
+            build_log = os.path.join(self.tmppath, 'build.log')
+            cmd = f"nohup gs_ctl build -D {datadir} -M cascade_standby -b full >> {build_log} &"
+            self.run_node_execute(hostname, backip, cmd)
+            self.wait_instance_normal(backip, datadir)
+
+    def merge_cluster(self):
+        self.logger.log("Begin to generate cluster config file.")
+        cmd = f"gs_om -t generateconf -X {self.xmlfile} --distribute"
+        CmdUtil.execCmd(cmd)
+
+        _, output = subprocess.getstatusoutput("gs_om -t status --detail")
+        self.logger.debug(output)
+        self.logger.log("End to generate cluster config file.")
+        
+    def finished_merge(self):
+        # copy $GPHOME script lib to /home/user/gauss_om/
+        # copy $GPHOME script to $GAUSSHOME/bin, need for upgrade.
+        dest_path = f"/home/{self.user}/gauss_om/"
+        bin_path = os.path.join(self.apppath, 'bin')
+        cmd = ("cp -rf %s/script %s/lib %s/version.cfg %s; cp -rf %s/script %s/"
+               % (self.toolspath, self.toolspath,
+                  self.toolspath, dest_path, self.toolspath, bin_path))
+        CmdUtil.execCmd(cmd)
+        self.remote_sshtools.executeCommand(cmd)
+        
+        print("Merge cluster finished. Cluster status info:")
+        _, o = subprocess.getstatusoutput("gs_om -t status --detail")
+        print(o)        
+
+
+def main():
+    mc = MergeCluster()
+    mc.run()
+
+
+if __name__ == '__main__':
+    main()

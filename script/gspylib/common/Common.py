@@ -528,7 +528,8 @@ class DefaultValue():
         "lz4",
         "numactl",
         "unixODBC",
-        "java"
+        "java",
+        "openblas"
     ]
 
     DATABASE_CHECK_WHITE_LIST = ["dbe_perf", "pg_catalog"]

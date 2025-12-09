@@ -525,14 +525,16 @@ def check_process(timeout=None):
         (status, output) = subprocess.getstatusoutput(cmd)
         g_logger.debug("The cmd is %s, output is %s" % (cmd, output))
         if status != 0:
-            g_logger.error("Error, execute gs_ctl query on node failed, maybe server stopped.")
+            g_logger.error("Error, process is not normal, execute cmd \"%s\" failed, maybe server stopped." % cmd)
             return
         match = re.search(r'db_state\s*:\s*(\w+)', output)
         if match:
             if match.group(1) != "Normal":
                 g_logger.error("Error, process is not normal")
+            else:
+                g_logger.log("Normal, process is normal.")
         else:
-            g_logger.error("Error, cannot get db_state info.")
+            g_logger.error("Error, process is not normal, cannot get db_state info.")
     except Exception as e:
         g_logger.debug("The cmd is %s, output is %s" % (cmd, str(e)))
         g_logger.log("Error, check process failed.")

@@ -124,3 +124,5 @@ class VersionInfo():
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50222"] % versionFile
                             + " Commit id is wrong.")
         return version, number, commitId
+            
+

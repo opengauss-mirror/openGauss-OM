@@ -170,4 +170,21 @@ class VersionInfo(object):
         if status != 0:
             return ""
         return output.replace('gaussdb ', '').strip()
+    
+    @staticmethod
+    def get_blocksize(versionfile):
+        support_blksize_list = ['4096', '8192']
+        default_8k_blksize = '8192'
+        if not os.path.exists(versionfile):
+            return default_8k_blksize
+        readlines = []
+        with open(versionfile, 'r') as fd:
+            readlines = fd.readlines()
+        for line in readlines:
+            if not line.startswith('blocksize='):
+                continue
+            blksize = line.strip().split("=")[1]
+            if blksize in support_blksize_list:
+                return blksize
+        return default_8k_blksize
 

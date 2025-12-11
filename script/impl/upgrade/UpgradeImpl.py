@@ -414,8 +414,24 @@ class UpgradeImpl:
             self.getOneDNInst(checkNormal=True)
             self.checkUpgradeMode()
             self.check_compress_tbl_compatibility()
+            self.check_blocksize_consistent()
             
-    
+    def check_blocksize_consistent(self):
+        """
+        check old version and new versoin block_size consistent. both 4k or 8k
+        """
+        self.context.logger.debug("Check block size consistent start.")
+        new_version_file = VersionInfo.get_version_file()
+        new_blksize = VersionInfo.get_blocksize(new_version_file)
+        old_version_file = os.path.join(self.context.oldClusterAppPath, 'version.cfg')
+        old_blksize = VersionInfo.get_blocksize(old_version_file)
+        self.context.logger.debug(f"new blocksize: {new_blksize}, old blocksize: {old_blksize}")
+        
+        if new_blksize != old_blksize:
+            raise Exception(f"Block size is not same. new bin`blocksize is {new_blksize} but old bin is {old_blksize}")
+            
+        self.context.logger.debug("Check block size consistent success.")
+
     def check_compress_tbl_compatibility(self):
         """
         Check if upgrade from 3.0.* version with compressed table.

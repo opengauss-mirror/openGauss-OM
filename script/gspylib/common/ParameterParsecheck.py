@@ -97,6 +97,7 @@ gs_ssh = ["-?", "--help", "-V", "--version", "-c:"]
 gs_checkos = ["-?", "--help", "-V", "--version", "-h:", "-f:", "-o:",
               "-i:", "--detail",
               "-l:", "-X:", "--skip-item-num="]
+gs_checkps = ["-?", "--help", "-V", "--version", "--show-index", "-o:"]
 gs_checkse = ["-?", "--help", "-V", "--version", "-h:", "-f:", "-o:",
               "-i:", "--detail", "--database=",
               "-l:", "-X:"]
@@ -160,6 +161,7 @@ ParameterDict = {"preinstall": gs_preinstall,
                  "checkse": gs_checkse,
                  "checkperf": gs_checkperf,
                  "check": gs_check,
+                 "checkps": gs_checkps,
                  "auto_upgrade": gs_upgradectl_auto_upgrade,
                  "chose_strategy": gs_upgradectl_chose_strategy,
                  "commit_upgrade": gs_upgradectl_commit,
@@ -412,6 +414,7 @@ class Parameter():
                            "--agent-mode": "agentMode",
                            "--krb-server": "krb-server",
                            "--krb-client": "krb-client",
+                           "--show-index": "showIndex",
                            "--non-print": "nonPrinting",
                            "--dynamic": "dynamic",
                            "--delete-root-trust": "root_delete_flag",

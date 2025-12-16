@@ -38,6 +38,7 @@ from base_utils.os.cmd_util import CmdUtil
 from domain_utils.cluster_file.cluster_config_file import ClusterConfigFile
 from domain_utils.cluster_file.cluster_dir import ClusterDir
 from gspylib.common.GaussLog import GaussLog
+from domain_utils.cluster_file.version_info import VersionInfo
 
 """
 gs_mergecluseter -X /xx/cluster.xml
@@ -46,6 +47,7 @@ gs_mergecluseter -X /xx/cluster.xml
 
 OPTYPE_LOCAL = 'local'
 OPTYPE_REMOTE = 'remote'
+DIRECTORY_MODE = 700
 
 INSTANCE_TYPE_UNDEFINED = -1
 # master
@@ -172,11 +174,7 @@ class MergeCluster():
         create_trust = f"{sshexkey} -f {hostfile}"
         self.logger.log(f"create trust command: {create_trust}")
         self.logger.log("Please enter the hosts password.")
-        s, o = subprocess.getstatusoutput(create_trust)
-        if s != 0:
-            self.logger.error(f"Create trust failed: {o}")
-            exit(1)
-        self.logger.log("End to check and build trust")
+        CmdUtil.execCmd(create_trust)
 
     def init_from_xml(self):
         cluster_info = dbClusterInfo()
@@ -210,8 +208,8 @@ class MergeCluster():
 
     def create_inst_path(self, opt_type):
 
-        cmd = f"mkdir -p {self.logpath} &&  mkdir -p {self.toolspath} && mkdir -p {self.tmppath} \
-            && mkdir -p /home/{self.user}/gauss_om"
+        cmd = f"mkdir -m {DIRECTORY_MODE} -p {self.logpath} &&  mkdir -m {DIRECTORY_MODE} -p {self.toolspath} && mkdir -m {DIRECTORY_MODE} -p {self.tmppath} \
+            && mkdir -m {DIRECTORY_MODE} -p /home/{self.user}/gauss_om"
 
         if opt_type == OPTYPE_LOCAL:
             status, output = subprocess.getstatusoutput(cmd)
@@ -287,6 +285,7 @@ class MergeCluster():
         self.logger.log(f"End to install package on {opt_type} node")
 
     def set_envirment(self, opt_type):
+        version = VersionInfo.getPackageVersion()
         envlist = [
             f"export GPHOME={self.toolspath}",
             f"export PGDATA={self.datanodepath}",
@@ -304,7 +303,7 @@ class MergeCluster():
             "export PATH=\$GAUSSHOME/bin:\$PATH",
             "export LD_LIBRARY_PATH=\$GAUSSHOME/lib:\$LD_LIBRARY_PATH",
             "export S3_CLIENT_CRT_FILE=\$GAUSSHOME/lib/client.crt",
-            "export GAUSS_VERSION=7.0.0-RC3",
+            f"export GAUSS_VERSION={version}",
             f"export PGHOST={self.tmppath}",
             f"export GAUSSLOG={self.logpath}",
             "umask 077",

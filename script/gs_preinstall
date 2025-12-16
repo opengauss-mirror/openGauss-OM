@@ -501,7 +501,8 @@ General options:
 
         # target tools
         bin_files = ['./bin/encrypt']
-        lib_files_splitter = ['./lib/libtext_splitter_ffi.so']
+        ogai_files = ['./lib/libtext_splitter_ffi.so', './lib/libonnx_wrapper.so.1',
+                      './lib/libonnxruntime.so.1', './lib/libtokenizers.so']
         dss_files = []
         memcheck_files = []
         if self.clusterInfo.enable_dss == 'on':
@@ -521,13 +522,13 @@ General options:
 
         # unpack and move tools into target path
         cmd = 'cd {} && '.format(root)
-        cmd += 'tar -xpf {}*.tar.bz2  {} && '.format(pkg_prefix, ' '.join(bin_files + dss_files + memcheck_files + lib_files_splitter))
+        cmd += 'tar -xpf {}*.tar.bz2  {} && '.format(pkg_prefix, ' '.join(bin_files + dss_files + memcheck_files + ogai_files))
         if dss_files:
             cmd += 'mkdir -p {0} -m u=rwx && '.format(clib_dss)
             cmd += 'mv {} {} && '.format(' '.join(dss_files), clib_dss)
         if memcheck_root_lib != '':
             cmd += 'cp ./lib/libasan.so.6 {} &&'.format(memcheck_root_lib)
-        cmd += '\mv {} {} && '.format(' '.join(bin_files + memcheck_files + lib_files_splitter), clib)
+        cmd += '\mv {} {} && '.format(' '.join(bin_files + memcheck_files + ogai_files), clib)
         cmd += 'cd {} && rm -rf bin'.format(root)
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:

@@ -380,7 +380,7 @@ def collectUserConnection():
     """
     data = UserConnection()
     data.db = []
-    sql_query = """SELECT rolname, rolconnlimit FROM pg_roles WHERE rolname NOT LIKE 'gs_role%' AND rolconnlimit = -1;"""
+    sql_query = """SELECT rolname, rolconnlimit FROM pg_catalog.pg_roles WHERE rolname NOT LIKE 'gs_role%' AND rolsuper = 'f' AND rolconnlimit = -1;"""
     getDatabaseInfo(data, sql_query)
     return data
 
@@ -2614,7 +2614,7 @@ def checkUserConnection(isSetting):
     output : NA
     """
     data = collectUserConnection()
-    if not (data.output == 1):
+    if data.output > 0:
         if not isSetting:
             g_logger.log("        Warning reason:Ensure the maximum connection settings for users are configured correctly.When the actual number of connections for the current user exceeds the user's maximum connection limit, no new connections can be established.Limiting the maximum number of connections for different users based on business requirements can prevent a single user from monopolizing all connections.")
         else:
@@ -2767,7 +2767,7 @@ def setUserConnection(data):
     result.db = []
     try:
         for item in data.db:
-            sql_query = """ALTER ROLE %s CONNECTION LIMIT 1024;""" %(item.split("|")[0].strip())
+            sql_query = """ALTER ROLE %s CONNECTION LIMIT 2048;""" % (item.split("|")[0].strip())
             getDatabaseInfo(result, sql_query)
     except Exception as e:
         data.errormsg = e.__str__()

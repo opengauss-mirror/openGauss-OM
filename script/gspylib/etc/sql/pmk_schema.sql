@@ -2861,7 +2861,7 @@ BEGIN
 							( SELECT (total_cpu()*10.0)::bigint AS mppdb_cpu_time 	-- converting to millisecond
 							)
 							, sess_cpu_stat AS
-							( SELECT ''' || i.node_name  || '''::name AS node_name
+							( SELECT ''' || pg_catalog.quote_ident(i.node_name)  || '''::name AS node_name
 								   , a.datname::name AS db_name
 								   , a.usename::name AS user_name
 								   , a.client_hostname
@@ -2881,7 +2881,7 @@ BEGIN
 								 AND a.pid             	  =  sessionid2pid(st.sessid::cstring)
 							   ORDER BY st.session_cpu_time DESC
 									  , mppdb_cpu_time_perc DESC
-							   LIMIT ' || i_top_n_sessions || '
+							   LIMIT ' || pg_catalog.quote_literal(i_top_n_sessions) || '
 						    )
 							SELECT scs.node_name
 								 , scs.db_name
@@ -2995,7 +2995,7 @@ BEGIN
                                 FROM sess_stat1 ss
 							)
 							, sess_memory_stat AS
-							( SELECT ''' || i.node_name  || '''::name AS node_name
+							( SELECT ''' || pg_catalog.quote_ident(i.node_name)  || '''::name AS node_name
 								   , a.datname::name AS db_name
 								   , a.usename::name AS user_name
 								   , a.client_hostname
@@ -3017,7 +3017,7 @@ BEGIN
 								 AND a.pid              = sessionid2pid(st.sessid::cstring)
 							   ORDER BY st.totalsize DESC
 									  , st.usedsize DESC
-							   LIMIT ' || i_top_n_sessions || '
+							   LIMIT ' || pg_catalog.quote_literal(i_top_n_sessions) || '
 						    )
 							SELECT sms.node_name
 								 , sms.db_name
@@ -3112,7 +3112,7 @@ BEGIN
                                 FROM sess_stat1 ss
 							)		
 						 	, sess_io_stat AS
-							( SELECT ''' || i.node_name  || '''::name AS node_name
+							( SELECT ''' || pg_catalog.quote_ident(i.node_name)  || '''::name AS node_name
 								   , a.datname::name AS db_name
 								   , a.usename::name AS user_name
 								   , a.client_hostname
@@ -3132,7 +3132,7 @@ BEGIN
 								 AND a.pid              = sessionid2pid(st.sessid::cstring)
 							   ORDER BY st.disk_reads DESC
 									  , st.read_time DESC
-							   LIMIT ' || i_top_n_sessions || '
+							   LIMIT ' || pg_catalog.quote_literal(i_top_n_sessions) || '
 						    )
 							SELECT sios.node_name
 								 , sios.db_name

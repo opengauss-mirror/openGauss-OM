@@ -2,6 +2,7 @@ analyze pg_catalog.pg_class;
 analyze pg_catalog.pg_namespace;
 analyze pg_catalog.pgxc_class;
 analyze pg_catalog.pg_statistic;
+START TRANSACTION;
 --sqlblock
 DROP FUNCTION IF EXISTS PUBLIC.pgxc_analyzed_tuples() CASCADE;
 --sqlblock
@@ -23,7 +24,7 @@ DECLARE
         fetch_dn := 'SELECT node_name FROM pg_catalog.pgxc_node WHERE node_type=''D'' order by node_name';
         FOR datanode_rd IN EXECUTE(fetch_dn) LOOP
             dn_name         :=  datanode_rd.node_name;
-            fetch_tuple_str := 'EXECUTE DIRECT ON (' || dn_name || ') ''SELECT
+            fetch_tuple_str := 'EXECUTE DIRECT ON (' || pg_catalog.quote_ident(dn_name) || ') ''SELECT
                                                                             n.nspname,
                                                                             c.relname,
                                                                             c.reltuples
@@ -96,3 +97,4 @@ GROUP BY schemaname, tablename, total_tuples, relwidth;
 SELECT * FROM PUBLIC.pgxc_analyzed_skewness
 WHERE skewness_tuple > 100000
 ORDER BY skewness_tuple DESC, skewness_ratio DESC, skewness_size DESC;
+COMMIT;

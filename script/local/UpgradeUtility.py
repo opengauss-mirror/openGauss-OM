@@ -386,6 +386,8 @@ def parseLongOptions(key, value):
     elif key == "--rolling":
         g_opts.rolling = True
     elif key == "--guc_string":
+        if any(bad in value for bad in [';', '--', '/*', '*/']):
+            raise ValueError("Input contains invalid guc params.")
         if "=" in value and len(value.split("=")) == 2 and "'" not in value.split("=")[1]:
             value = value.split("=")[0] + "=" + "'%s'" % value.split("=")[1]
         g_opts.gucStr = value

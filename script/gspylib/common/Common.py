@@ -3203,7 +3203,7 @@ class DefaultValue():
         if len(params) != 6:
             raise Exception(ErrorCode.GAUSS_500["GAUSS_50000"] % "decrypt hadr user info")
         rand_pwd, hadr_str, cluster_info, db_user, logger, mode = params
-        sql = "select pg_catalog.gs_decrypt_aes128('%s', '%s');" % (hadr_str, rand_pwd)
+        sql = "select pg_catalog.gs_decrypt_aes128('%s', '%s');" % (hadr_str.replace("'", "''"), rand_pwd)
         instances = []
         for node in cluster_info.dbNodes:
             if cluster_info.isSingleInstCluster():

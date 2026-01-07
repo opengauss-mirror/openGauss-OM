@@ -41,7 +41,7 @@ try:
     import psutil
 except ImportError as e:
     # mv psutil mode .so file by python version
-    pythonVer = sys.version[:3]
+    pythonVer = str(sys.version_info[0]) + '.' + str(sys.version_info[1])
     psutilLinux = os.path.join(localDirPath,
                                "./../../../lib/psutil/_psutil_linux.so")
     psutilPosix = os.path.join(localDirPath,

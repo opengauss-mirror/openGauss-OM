@@ -49,7 +49,7 @@ class ParseCommandLine(object):
         """
         try:
             opts, args = getopt.getopt(sys.argv[1:], "t:", ["help", "upgrade-package=",
-                                                            "backup-version="])
+                                                            "backup-version=", "is-rollback"])
         except Exception as e:
             self.usage()
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50012"] % str(e))
@@ -68,6 +68,8 @@ class ParseCommandLine(object):
                 p_dict["upgrade_package"] = value
             elif key == "--backup-version":
                 p_dict["backup-version"] = value
+            elif key == "--is-rollback":
+                p_dict["is_rollback"] = True
             else:
                 GaussLog.exitWithError(
                     ErrorCode.GAUSS_500["GAUSS_50000"] % key)
@@ -94,7 +96,8 @@ class UpgradeCmUtility(object):
         """
         action_list = [Const.ACTION_UPGRADE_PREPARE_UPGRADE_CM,
                        Const.ACTION_UPGRADE_CM_UPGRADE_BINARY,
-                       Const.ACTION_UPGRADE_CM_ROLLBACK]
+                       Const.ACTION_UPGRADE_CM_ROLLBACK,
+                       Const.ACTION_UPGRADE_CM_CONFIG]
         if self.upgrade_action not in action_list:
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50003"] % ("t", action_list))
 
@@ -631,12 +634,79 @@ class UpgradeCmRollbackUtility(UpgradeCmUtility):
         self.logger.log("Rollback CM component binary files successfully.")
 
 
+class UpgradeCmConfigUtility(UpgradeCmUtility):
+    """
+    Upgrade CM component configuration files
+    """
+    def __init__(self, param_dict):
+        super(UpgradeCmConfigUtility, self).__init__(param_dict)
+        self.is_rollback = param_dict.get("is_rollback")
+
+    def set_config_param(self, conf_file, param, value=None):
+        """
+        Add/update (if value is not None) a config parameter in conf_file. Do nothing if value is None.
+        """
+        if value is None:
+            # No deletion logic; do nothing
+            return
+        # add or update parameter
+        grep_cmd = "grep -q '^{}[ ]*=.*' {}".format(param, conf_file)
+        exists = subprocess.getstatusoutput(grep_cmd)[0] == 0
+        if exists:
+            pass
+        else:
+            echo_cmd = "echo '{0} = {1}' >> {2}".format(param, value, conf_file)
+            status, output = subprocess.getstatusoutput(echo_cmd)
+            if status != 0:
+                self.logger.error(f"Failed to add {param}: {output}")
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % echo_cmd)
+            else:
+                self.logger.debug(f"{param} added as {value} successfully.")
+
+    def do_operation(self):
+        """
+        Upgrade CM parameter configuration, backup/restore whole config file.
+        """
+        local_node = [node for node in self.cluster_info.dbNodes
+                      if node.name == NetUtil.GetHostIpOrName()][0]
+        agent_inst_dir = local_node.cmagents[0].datadir
+        agent_conf_file = os.path.realpath(os.path.join(agent_inst_dir, "cm_agent.conf"))
+        tmp_dir = EnvUtil.getEnv("PGHOST")
+        backup_file = os.path.join(tmp_dir, "cm_agent.conf.bak.upgrade_cm")
+
+        params = {
+            "environment_threshold": "(90,90,90,0,0)",
+            "diskusage_threshold_value_check": "90",
+            "disk_check_timeout": "2000",
+            "disk_check_interval": "1",
+            "disk_check_buffer_size": "1",
+            "enable_xalarmd_slow_disk_check": "false"
+        }
+
+        if self.is_rollback:
+            # restore entire config file from backup
+            if os.path.exists(backup_file):
+                shutil.move(backup_file, agent_conf_file)
+                self.logger.debug(f"Restored config from backup: {backup_file}")
+            else:
+                self.logger.warning(f"No backup config found for rollback: {backup_file}")
+        else:
+            # backup entire config file
+            shutil.copyfile(agent_conf_file, backup_file)
+            self.logger.debug(f"Backup config to: {backup_file}")
+            for param, value in params.items():
+                self.set_config_param(agent_conf_file, param, value)
+            # Ensure the file ends with a single newline
+            with open(agent_conf_file, 'a', encoding='utf-8') as f:
+                f.write('\n')
+
 if __name__ == '__main__':
     command_line = ParseCommandLine()
     parameeter_dict = command_line.parse_command_line()
     do_operate_dict = {Const.ACTION_UPGRADE_PREPARE_UPGRADE_CM: UpgradeCmPrepareUtility,
                        Const.ACTION_UPGRADE_CM_UPGRADE_BINARY: UpgradeCmUpgradeUtility,
-                       Const.ACTION_UPGRADE_CM_ROLLBACK: UpgradeCmRollbackUtility}
+                       Const.ACTION_UPGRADE_CM_ROLLBACK: UpgradeCmRollbackUtility,
+                       Const.ACTION_UPGRADE_CM_CONFIG: UpgradeCmConfigUtility}
     upgrade_operation = do_operate_dict.get(parameeter_dict.get("upgrade_action"))(parameeter_dict)
     upgrade_operation.run()
 

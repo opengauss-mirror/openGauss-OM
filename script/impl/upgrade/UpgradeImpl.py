@@ -2149,7 +2149,21 @@ class UpgradeImpl:
         self.context.logger.debug("Time to wait for om_monitor: %s." %
                                   elapsed)
 
+    def update_cm_conf_file(self, is_rollback=False):
+        """update_cm_conf_file"""
+
+        cmd = "{0} -t {1}".format(OMCommand.getLocalScript("Local_Upgrade_CM"),
+                           const.ACTION_UPGRADE_CM_CONFIG)
+        if is_rollback:
+            cmd += " --is-rollback"
+        self.context.logger.debug("Command for upgrade CM config files : {0}.".format(cmd))
+        self.context.sshTool.executeCommand(cmd)
+
     def switchDn(self, isRollback):
+
+        # upgrade_cm_conf_file
+        if DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) > 0:
+            self.update_cm_conf_file(is_rollback=isRollback)
 
         self.waif_for_om_monitor_start(is_rollback=isRollback)
         if EnvUtil.is_dss_mode(getpass.getuser()):

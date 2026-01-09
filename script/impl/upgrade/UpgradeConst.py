@@ -117,6 +117,7 @@ ERR_GREP_NO_RESULT = 256
 ACTION_UPGRADE_PREPARE_UPGRADE_CM = "prepare_upgrade_cm"
 ACTION_UPGRADE_CM_UPGRADE_BINARY = "upgrade_cm"
 ACTION_UPGRADE_CM_ROLLBACK = "rollback_cm"
+ACTION_UPGRADE_CM_CONFIG = "upgrade_cm_config"
 
 UPGRADE_BACKUP_DIR = "upgrade_cm_backup_dir"
 UPGRADE_CM_DECOMPRESS_DIR = "cm_decompress_package"

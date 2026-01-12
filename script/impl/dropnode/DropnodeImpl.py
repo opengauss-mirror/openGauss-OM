@@ -417,7 +417,7 @@ class OperCommon:
         elif 'Is server running?' in output and isForDel:
             return
         else:
-            res = re.findall(r'db_state\s*:\s*(\w+)', output)
+            res = re.findall(r'db_state\s*:\s*(\w+)', output, re.IGNORECASE)
             if not len(res) and isForDel:
                 return
             elif not len(res):

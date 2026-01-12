@@ -141,6 +141,8 @@ class ClusterConfigFile:
         pattern = ClusterParams.FLOAT_IP_PATTERN
         for node in node_array:
             name = node.attrib['name']
+            if name == 'password':
+                continue
             if name not in expected_param_names and not pattern.match(name):
                 raise Exception(ErrorCode.GAUSS_512["GAUSS_51258"] % name)
 

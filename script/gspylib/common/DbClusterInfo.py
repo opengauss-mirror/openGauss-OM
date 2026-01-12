@@ -4757,6 +4757,7 @@ class dbClusterInfo():
                 output_num += 1
         tempstatus = output_list[-output_num:]
         statusdic = {'Primary': 0, 'Standby': 1, 'Cascade': 3, 'Unknown': 9}
+        FileUtil.createFileInSafeMode(simpleDNConfig)
         try:
             with open(simpleDNConfig, "w") as fp:
                 for dninfo in tempstatus:

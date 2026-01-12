@@ -55,7 +55,6 @@ class ClusterParams:
     UWAL_RPC_FLOWCONTROL_VALUE = 'uwal_rpc_flowcontrol_value'
     UWAL_ASYNC_APPEND_SWITCH = 'uwal_async_append_switch'
     UWAL_DEVICES_PATH = 'uwal_devices_path'
-    PASSWORD = 'password'
     CLUSTER_TYPE = 'clusterType'
 
     @staticmethod
@@ -88,7 +87,6 @@ class ClusterParams:
             ClusterParams.UWAL_RPC_FLOWCONTROL_VALUE,
             ClusterParams.UWAL_ASYNC_APPEND_SWITCH,
             ClusterParams.UWAL_DEVICES_PATH,
-            ClusterParams.PASSWORD,
             ClusterParams.CLUSTER_TYPE
         ]
 

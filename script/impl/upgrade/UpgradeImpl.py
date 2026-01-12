@@ -3703,32 +3703,36 @@ class UpgradeImpl:
         create pg_proc_temp_oids
         :return:
         """
-        sql = \
-            """START TRANSACTION; SET IsInplaceUpgrade = on; 
-            CREATE TABLE pg_proc_temp_oids (proname name NOT NULL, 
-            pronamespace oid NOT NULL, proowner oid NOT NULL, prolang oid 
-            NOT NULL, procost real NOT NULL, prorows real NOT NULL, 
-            provariadic oid NOT NULL, protransform regproc NOT NULL, 
-            proisagg boolean NOT NULL, proiswindow boolean NOT NULL, 
-            prosecdef boolean NOT NULL, proleakproof boolean NOT NULL, 
-            proisstrict boolean NOT NULL, proretset boolean NOT NULL, 
-            provolatile "char" NOT NULL, pronargs smallint NOT NULL, 
-            pronargdefaults smallint NOT NULL, prorettype oid NOT NULL, 
-            proargtypes oidvector NOT NULL, proallargtypes oid[], 
-            proargmodes "char"[], proargnames text[], proargdefaults 
-            pg_node_tree, prosrc text, probin text, proconfig text[], 
-            proacl aclitem[], prodefaultargpos int2vector,fencedmode boolean, 
-            proshippable boolean, propackage boolean, prokind "char" NOT 
-            NULL) with oids;"""
-        sql += "copy pg_proc_temp_oids  WITH OIDS from '%s' with " \
-               "delimiter ',' csv header FORCE NOT NULL proargtypes;" % \
-               new_pg_proc_csv_path
+        # Suggest: specify schema to avoid table in public and improve security
+        schema = 'pg_catalog'
+        table_name = f"{schema}.pg_proc_temp_oids"
+        sql = (
+            f"START TRANSACTION; SET IsInplaceUpgrade = on; "
+            f"CREATE TABLE {table_name} (proname name NOT NULL, "
+            "pronamespace oid NOT NULL, proowner oid NOT NULL, prolang oid "
+            "NOT NULL, procost real NOT NULL, prorows real NOT NULL, "
+            "provariadic oid NOT NULL, protransform regproc NOT NULL, "
+            "proisagg boolean NOT NULL, proiswindow boolean NOT NULL, "
+            "prosecdef boolean NOT NULL, proleakproof boolean NOT NULL, "
+            "proisstrict boolean NOT NULL, proretset boolean NOT NULL, "
+            "provolatile \"char\" NOT NULL, pronargs smallint NOT NULL, "
+            "pronargdefaults smallint NOT NULL, prorettype oid NOT NULL, "
+            "proargtypes oidvector NOT NULL, proallargtypes oid[], "
+            "proargmodes \"char\"[], proargnames text[], proargdefaults "
+            "pg_node_tree, prosrc text, probin text, proconfig text[], "
+            "proacl aclitem[], prodefaultargpos int2vector,fencedmode boolean, "
+            "proshippable boolean, propackage boolean, prokind \"char\" NOT "
+            "NULL) with oids;"
+        )
+        sql += f"copy {table_name}  WITH OIDS from '{new_pg_proc_csv_path}' with " \
+               "delimiter ',' csv header FORCE NOT NULL proargtypes;"
         sql += "COMMIT;"
         # update proisagg and proiswindow message sql
-        sql += \
-            "update pg_proc_temp_oids set proisagg = CASE WHEN prokind = 'a' " \
-            "THEN True ELSE False END, proiswindow = CASE WHEN prokind = 'w' " \
+        sql += (
+            f"update {table_name} set proisagg = CASE WHEN prokind = 'a' "
+            "THEN True ELSE False END, proiswindow = CASE WHEN prokind = 'w' "
             "THEN True ELSE False END;"
+        )
         self.context.logger.debug("pg_proc_temp_oids sql is %s" % sql)
         # creat table
         for eachdb in database_list:

@@ -3624,6 +3624,7 @@ def createPgprocPathMappingFile():
                      proc_file_path, pg_proc_temp_file_path in
                      zip(proc_file_path_list, pg_proc_temp_file_path_list))
     pg_proc_mapping_file = os.path.join(g_opts.appPath, 'pg_proc_mapping.txt')
+    FileUtil.createFileInSafeMode(pg_proc_mapping_file)
     with open(pg_proc_mapping_file, 'w') as fp:
         fp.write(str(proc_dict))
     g_logger.log(
@@ -3713,6 +3714,7 @@ def createNewCsvFile():
             info.insert(header.index('protransform') + 2, 'True')
     for info in pg_proc_data_info:
         new_pg_proc_csv_data.append(info)
+    FileUtil.createFileInSafeMode(new_pg_proc_csv_path)
     f = open(new_pg_proc_csv_path, 'w')
     new_pg_proc_csv_writer = csv.writer(f)
     for info in new_pg_proc_csv_data:

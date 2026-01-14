@@ -28,6 +28,7 @@ import xml.dom.minidom as minidom
 from base_utils.os.env_util import EnvUtil
 from gspylib.common.ErrorCode import ErrorCode
 from base_utils.os.sshd_config import SshdConfig
+from script.base_utils.os.file_util import FileUtil
 
 
 class ClusterKey:
@@ -379,6 +380,7 @@ class GenerateXml:
         xml_str = ET.tostring(self.root, encoding="UTF-8", method="xml")
         dom = minidom.parseString(xml_str)
         formatted_xml = dom.toprettyxml(encoding="UTF-8")
+        FileUtil.createFileInSafeMode(target_xml)
         with open(target_xml, "wb") as f:
             f.write(formatted_xml)
         xml_tmp_file = "/home/%s/tmp_generate_xml" % user

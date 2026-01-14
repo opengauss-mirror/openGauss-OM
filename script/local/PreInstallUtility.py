@@ -2222,6 +2222,7 @@ Common options:
         try:
             # check if the file is a link
             FileUtil.checkLink(self.tmpFile)
+            FileUtil.createFileInSafeMode(self.tmpFile)
             tmpFileFp = open(self.tmpFile, "w+")
             # Obtain network interface card of backIp,
             # get this virtual IP network adapter card through it.

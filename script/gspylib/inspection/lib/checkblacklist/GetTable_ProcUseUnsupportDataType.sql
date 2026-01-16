@@ -5,7 +5,7 @@ with oid2relname AS
 		c.relname AS tablename,
 		pg_get_userbyid(c.relowner) as relowner,
 		c.oid AS relid
-   FROM pg_class c LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
+   FROM pg_class c LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 )
 ,
 oid2typename AS
@@ -15,7 +15,7 @@ oid2typename AS
 		t.typname AS typname,
 		pg_get_userbyid(typowner) as typowner,
 		t.oid AS typoid
-   FROM pg_type t LEFT JOIN pg_namespace n ON t.typnamespace = n.oid
+   FROM pg_type t LEFT JOIN pg_catalog.pg_namespace n ON t.typnamespace = n.oid
 )
 
 select
@@ -39,7 +39,7 @@ with oid2typename AS
 		t.typname AS typname,
 		pg_get_userbyid(typowner) as typowner,
 		t.oid AS typoid
-   FROM pg_type t LEFT JOIN pg_namespace n ON t.typnamespace = n.oid
+   FROM pg_type t LEFT JOIN pg_catalog.pg_namespace n ON t.typnamespace = n.oid
 )
 
 select
@@ -50,7 +50,7 @@ select
 	typname,
 	typowner
 from pg_proc p
-INNER JOIN pg_namespace n ON n.oid = p.pronamespace
+INNER JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
 INNER JOIN oid2typename ON (typoid = prorettype or typoid = any(proargtypes))
 where (typoid in (628, 629, 142, 194) or (typname like '%reg%') or typoid > 16384)
 and p.oid > 16384

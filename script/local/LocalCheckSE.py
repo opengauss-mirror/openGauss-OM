@@ -2800,7 +2800,7 @@ def setDBConnection(data):
     result.db = []
     try:
         for item in data.db:
-            sql_query = """UPDATE pg_database SET datconnlimit=1024 WHERE datname='%s';""" %(item.strip())
+            sql_query = """UPDATE pg_catalog.pg_database SET datconnlimit=1024 WHERE datname='%s';""" %(item.strip())
             getDatabaseInfo(result, sql_query)
     except Exception as e:
         data.errormsg = e.__str__()

@@ -3649,7 +3649,7 @@ def getTableFilePath(tablename, dnInst, db_name):
                         " Error: \n%s" % str(output))
     table_oid = output.strip('\n')
     g_logger.debug("pg_proc oid is %s" % table_oid)
-    sql = "select pg_relation_filepath(%s);" % table_oid
+    sql = "select pg_catalog.pg_relation_filepath(%s);" % table_oid
     (status, output) = ClusterCommand.remoteSQLCommand(
         sql, g_opts.user,
         dnInst.hostname,
@@ -4437,9 +4437,9 @@ def getLsnInfo():
                 g_opts.upgrade_bak_path, const.GET_LSN_SQL_FILE)
             if not os.path.exists(getLsnSqlPath):
                 FileUtil.createFileInSafeMode(getLsnSqlPath)
-                lsnSql = "select pg_current_xlog_location(), " \
-                         "pg_xlogfile_name(pg_current_xlog_location()), " \
-                         "pg_xlogfile_name_offset(pg_current_xlog_location());"
+                lsnSql = "select pg_catalog.pg_current_xlog_location(), " \
+                         "pg_catalog.pg_xlogfile_name(pg_current_xlog_location()), " \
+                         "pg_catalog.pg_xlogfile_name_offset(pg_current_xlog_location());"
                 with os.fdopen(
                         os.open(getLsnSqlPath, os.O_WRONLY, 0o755), 'w') as fp:
                     fp.writelines(lsnSql)

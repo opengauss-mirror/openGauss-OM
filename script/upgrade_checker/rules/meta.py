@@ -2174,6 +2174,46 @@ META = {
         Category.WDR,
         "存储用于生成WDR报告的相关数据",
         False
+    ),
+    "pg_catalog.gs_sql_limit": Meta(
+        Category.TABLE,
+        "存储所有SQL防火墙规则的信息",
+        True,
+        # 无需校验内容
+    ),
+    "information_schema.profiling": Meta(
+        Category.INFO_SCHEMA,
+        "用于记录一些sql profiling特性相关信息",
+        True,
+        [
+            ContentRulesMeta()
+        ]
+    ),
+    "information_schema.engines": Meta(
+        Category.INFO_SCHEMA,
+        "用于记录一些engines相关信息",
+        True,
+        [
+            ContentRulesMeta()
+        ]
+    ),
+    "pg_catalog.pg_statistic_lock": Meta(
+        Category.OPTIMIZER,
+        "用于记录一些engines相关信息",
+        True,
+        # 无需校验内容
+    ),
+    "pg_catalog.gs_matview_log": Meta(
+        Category.TABLE,
+        "用于记录物化视图日志",
+        True,
+        # 无需校验内容
+    ),
+    "coverage.proc_coverage": Meta(
+        Category.TABLE,
+        "用于记录存储过程覆盖率信息",
+        True,
+        # 无需校验内容
     )
 }
 

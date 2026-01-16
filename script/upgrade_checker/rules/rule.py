@@ -215,7 +215,12 @@ class StructRule(Rule):
         """
         conclusion = super(StructRule, self).analyze(expect)
         if self.category == Category.UNKNOWN:
-            conclusion.warnings.append('发现未分类的系统表 {0}, 建议升级工具。'.format(self.rel_key))
+            conclusion.err_count += 1
+            detail = {
+                'state': ConclusionState.FAILED,
+                'summary': '发现未分类的系统表 {0}, 请升级工具'.format(self.rel_key)
+            }
+            conclusion.details.append(detail)
         return conclusion
 
 

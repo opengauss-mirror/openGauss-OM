@@ -423,10 +423,10 @@ class ExpansionImplWithCm(ExpansionImpl):
 
     def _set_pgxc_node_name(self):
         # 1.set pgxc_node_name on old nodes
-        gauss_home = os.path.realpath(self.static_cluster_info.appPath)
+        gauss_home = CmdUtil.quoteCmd(os.path.realpath(self.static_cluster_info.appPath))
         guc_path = os.path.join(gauss_home, "bin", "gs_guc")
         cmd = "source %s; %s set -N all -I all -c " \
-              "\\\"%s='%s'\\\"" % (self.envFile, guc_path,
+              "\\\"%s='%s'\\\"" % (CmdUtil.quoteCmd(self.envFile), guc_path,
                                    "pgxc_node_name",
                                    self._get_pgxc_node_name_for_single_inst())
         if self.context.current_root_user:
@@ -505,7 +505,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         Keep ss_interconnect_channel_count same with origin node.
         """
-        port = EnvUtil.getEnv("PGPORT")
+        port = CmdUtil.quoteCmd(EnvUtil.getEnv("PGPORT"))
         get_cmd = "gsql -d postgres -p %s -A -t -c 'show ss_interconnect_channel_count;'" % port
         sta, out = subprocess.getstatusoutput(get_cmd)
         channel_count = int(out)
@@ -558,7 +558,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         Get dss_home when current user is root.
         """
-        cmd = f"cat {self.envFile} | grep {env} | grep /"
+        cmd = f"cat {CmdUtil.quoteCmd(self.envFile)} | grep {env} | grep /"
         if os.getuid() == 0:
             cmd = f"su - {self.user} -c '{cmd}'"
         sta, out = subprocess.getstatusoutput(cmd)
@@ -579,7 +579,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         Update dss_nodes_list on old nodes.
         """
-        dss_home = self.get_env("DSS_HOME")
+        dss_home = CmdUtil.quoteCmd(self.get_env("DSS_HOME"))
         dss_inst = dss_home + '/cfg/dss_inst.ini'
         if os.getuid() == 0:
             get_list_cmd = f"su - {self.user} -c 'cat {dss_inst} | grep DSS_NODES_LIST'"
@@ -763,7 +763,7 @@ class ExpansionImplWithCm(ExpansionImpl):
             "rm %s/bin/cluster_manual_start -rf" % (self.envFile, gaussHome, gaussLog, gaussHome)
         self.logger.debug("startCMProcessesCmd: " + startCMProcessesCmd)
         CmdExecutor.execCommandWithMode(startCMProcessesCmd, self.ssh_tool, host_list=hostList)
-        queryClusterCmd = "source %s; cm_ctl query -Cv" % self.envFile
+        queryClusterCmd = "source %s; cm_ctl query -Cv" % CmdUtil.quoteCmd(self.envFile)
         self.logger.debug("queryClusterCmd: " + queryClusterCmd)
         tryCount = 0
         while tryCount <= 120:
@@ -863,7 +863,7 @@ class ExpansionImplWithCm(ExpansionImpl):
             config_path_dn = "%s/cluster_static_config_%s" % (tmp_dir, node.name)
             self.context.clusterInfo.saveToStaticConfig(config_path_dn, node.id)
 
-        cmd = "source %s; gs_om -t refreshconf" % self.envFile
+        cmd = "source %s; gs_om -t refreshconf" % CmdUtil.quoteCmd(self.envFile)
         subprocess.getstatusoutput(cmd)
         old_hosts = [node.name for node in self.old_nodes]
         for host in old_hosts:
@@ -895,8 +895,8 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         Delete new_node pg_xlog and pg_doublewrite. 
         """
-        vg_name = EnvUtil.getEnv("VGNAME")
-        dss_home = self.get_env("DSS_HOME")
+        vg_name = CmdUtil.quoteCmd(EnvUtil.getEnv("VGNAME"))
+        dss_home = CmdUtil.quoteCmd(self.get_env("DSS_HOME"))
         dss_inst = dss_home + '/cfg/dss_inst.ini'
         get_list_cmd = "cat %s | grep DSS_NODES_LIST" % dss_inst
         status, output = subprocess.getstatusoutput(get_list_cmd)
@@ -975,7 +975,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         """
         if self.xml_cluster_info.enable_dss != "on":
             return
-        restart_cmd = f"source {self.envFile}; cm_ctl stop; cm_ctl start;"
+        restart_cmd = f"source {CmdUtil.quoteCmd(self.envFile)}; cm_ctl stop; cm_ctl start;"
         status, _ = subprocess.getstatusoutput(restart_cmd)
         if status != 0:
             self.logger.debug("Failed to restart cluster when dss enabled.")

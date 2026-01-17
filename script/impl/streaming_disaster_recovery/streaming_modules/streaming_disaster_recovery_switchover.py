@@ -152,7 +152,7 @@ class StreamingSwitchoverHandler(StreamingBase):
         """
         dest_ip, dest_path, timeout = params
         cmd = "source %s && pssh -s -t %s -H %s 'if [ -f %s ]; then rm -f %s; fi'" % (
-            EnvUtil.getMpprcFile(), timeout, dest_ip, dest_path, dest_path)
+            CmdUtil.quoteCmd(EnvUtil.getMpprcFile()), timeout, dest_ip, dest_path, dest_path)
         status, output = CmdUtil.getstatusoutput_by_fast_popen(cmd)
         return status, output, dest_ip
 

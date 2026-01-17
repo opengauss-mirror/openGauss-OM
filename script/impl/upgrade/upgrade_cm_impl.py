@@ -44,7 +44,7 @@ class UpgradeCmImpl(UpgradeImpl):
         """
         Get CM current version
         """
-        cmd = "source {0}; cm_ctl -V".format(EnvUtil.getMpprcFile())
+        cmd = "source {0}; cm_ctl -V".format(CmdUtil.quoteCmd(EnvUtil.getMpprcFile()))
         status, output = subprocess.getstatusoutput(cmd)
         self.logger.debug("Get CM version result: {0}".format(output))
         if status != 0 or "build" not in output or "openGauss" not in output:
@@ -88,7 +88,7 @@ class UpgradeCmImpl(UpgradeImpl):
         Reccord origin cluster state
         """
         self.logger.log("Start to record origin cluster state.")
-        cmd = "source {0} ; cm_ctl query | grep cluster_state".format(EnvUtil.getMpprcFile())
+        cmd = "source {0} ; cm_ctl query | grep cluster_state".format(CmdUtil.quoteCmd(EnvUtil.getMpprcFile()))
         state_level_dict = {DefaultValue.CLUSTER_STATUS_UNAVAILABLE: 3,
                             DefaultValue.CLUSTER_STATUS_DEGRADED: 2,
                             DefaultValue.CLUSTER_STATUS_NORMAL: 1}
@@ -149,7 +149,7 @@ class UpgradeCmImpl(UpgradeImpl):
         Post upgrade check
         """
         self.logger.log("Finial check cluster:")
-        cmd = "source {0} ; cm_ctl query | grep cluster_state".format(EnvUtil.getMpprcFile())
+        cmd = "source {0} ; cm_ctl query | grep cluster_state".format(CmdUtil.quoteCmd(EnvUtil.getMpprcFile()))
         start_time = time.time()
         end_time = start_time + 60
         normal_count = 0

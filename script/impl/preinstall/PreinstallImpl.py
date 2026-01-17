@@ -574,7 +574,7 @@ class PreinstallImpl:
                                    cmd_type="python")
 
             # check enter permission
-            cmd = "cd %s" % packageDir
+            cmd = "cd %s" % CmdUtil.quoteCmd(packageDir)
             cmd = CmdUtil.get_user_exec_cmd(self.context.current_user_root, self.context.user, cmd)
             (status, output) = subprocess.getstatusoutput(cmd)
             # if cmd failed, then exit
@@ -595,7 +595,7 @@ class PreinstallImpl:
                                    retry_time=15, waite_time=1, link=True)
 
                 # check enter permission
-                cmd = "cd %s" % user_dir
+                cmd = "cd %s" % CmdUtil.quoteCmd(user_dir)
                 cmd = CmdUtil.get_user_exec_cmd(self.context.current_user_root, self.context.user, cmd)
                 (status, output) = subprocess.getstatusoutput(cmd)
                 # if cmd failed, then exit
@@ -612,7 +612,7 @@ class PreinstallImpl:
 
             # check enter permission
             log_file_dir = os.path.dirname(self.context.logger.logFile)
-            cmd = "cd %s" % log_file_dir
+            cmd = "cd %s" % CmdUtil.quoteCmd(log_file_dir)
             cmd = CmdUtil.get_user_exec_cmd(self.context.current_user_root, self.context.user, cmd)
             (status, output) = subprocess.getstatusoutput(cmd)
             # if cmd failed, then exit
@@ -688,7 +688,7 @@ class PreinstallImpl:
                 self.context.localLog)
             if self.context.mpprcFile != "":
                 cmd += " -s '%s'" % (
-                    self.context.mpprcFile)
+                    CmdUtil.quoteCmd(self.context.mpprcFile))
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0:
                 self.context.logger.debug("Failed to check hostname mapping: %s" % cmd)
@@ -1006,7 +1006,7 @@ class PreinstallImpl:
             self.context.warningType)
         if self.context.mpprcFile != "":
             cmd += " -s '%s' -g %s" % (
-                self.context.mpprcFile, self.context.group)
+                CmdUtil.quoteCmd(self.context.mpprcFile), self.context.group)
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             self.context.logger.debug(
@@ -1377,8 +1377,8 @@ class PreinstallImpl:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
                                 + " Error: \n%s" % output)
 
-            user_dir = "%s/%s" % (
-                self.context.clusterInfo.logPath, self.context.user)
+            user_dir = CmdUtil.quoteCmd("%s/%s" % (
+                self.context.clusterInfo.logPath, self.context.user))
 
             # the user_dir may not been created now,
             # so we need check its exists
@@ -1393,7 +1393,7 @@ class PreinstallImpl:
                                     + " Error: \n%s" % output)
 
             # check enter permission
-            log_file_dir = os.path.dirname(self.context.logger.logFile)
+            log_file_dir = CmdUtil.quoteCmd(os.path.dirname(self.context.logger.logFile))
             cmd = "cd %s" % log_file_dir
             cmd = CmdUtil.get_user_exec_cmd(self.context.current_user_root, self.context.user, cmd)
             (status, output) = subprocess.getstatusoutput(cmd)
@@ -1627,11 +1627,12 @@ class PreinstallImpl:
         if os.getuid() == 0:
             
             ckcmd = f"""
-            su - {self.context.user} -c "source {self.context.mpprcFile};gsql -d postgres -p {port} -q -A -t -c 'show upgrade_mode'"
+            su - {self.context.user} -c "source {CmdUtil.quoteCmd(self.context.mpprcFile)}; 
+            gsql -d postgres -p {port} -q -A -t -c 'show upgrade_mode'"
             """
         else:
             ckcmd = f"""
-            source {self.context.mpprcFile};gsql -d postgres -p {port} -q -A -t -c 'show upgrade_mode'
+            source {CmdUtil.quoteCmd(self.context.mpprcFile)};gsql -d postgres -p {port} -q -A -t -c 'show upgrade_mode'
             """
             
         status, output = subprocess.getstatusoutput(ckcmd)
@@ -1758,7 +1759,7 @@ class PreinstallImpl:
 
         cmd = './gs_perfconfig tune -t os,suggest --apply -y'
         if self.context.mpprcFile:
-            cmd += (' --env ' + self.context.mpprcFile)
+            cmd += (' --env ' + CmdUtil.quoteCmd(self.context.mpprcFile))
         os.system(cmd)
 
     def doPreInstall(self):

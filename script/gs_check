@@ -310,7 +310,7 @@ class CheckContext():
         output : boolean
         '''
         # Delete Cache files
-        cmd = "rm -rf %s" % self.getCacheFile()
+        cmd = "rm -rf %s" % CmdUtil.quoteCmd(self.getCacheFile())
         SharedFuncs.runShellCmd(cmd)
 
     def dump(self):
@@ -619,7 +619,7 @@ def checkuser():
         if (len(dbNameList) == 1 and
                 dbNameList[0] == NetUtil.GetHostIpOrName()):
             return
-        appPath = EnvUtil.getEnv('GPHOME', g_opts.cluster.appPath)
+        appPath = CmdUtil.quoteCmd(EnvUtil.getEnv('GPHOME', g_opts.cluster.appPath))
         psshPath = os.path.join(appPath, 'script/gspylib/pssh/bin/pssh')
         cmd = "%s -H %s 'id' " % (psshPath, " -H ".join(node_ips))
         (status, output) = subprocess.getstatusoutput(cmd)
@@ -1619,10 +1619,10 @@ def formatOutput():
             g_logger.debug(str(e))
 
     # move the *.out file to nodes folder
-    outputFolder = g_context.tmpPath
+    outputFolder = CmdUtil.quoteCmd(g_context.tmpPath)
     checkID = g_context.checkID
     cmd = "cd %s; find . -name \'*%s.out\' -exec mv {} %s \;"\
-          % (g_context.tmpPath, checkID, os.path.join(outputFolder, "nodes"))
+          % (CmdUtil.quoteCmd(g_context.tmpPath), checkID, os.path.join(outputFolder, "nodes"))
     SharedFuncs.runShellCmd(cmd, g_context.user)
 
     # No check result is generated when the output is specified as /dev/null
@@ -1659,7 +1659,7 @@ def formatOutput():
 
 def __checkFileExist(path, filePattern):
     # Check the file exists
-    cmd = "cd %s; ls | grep '%s' | wc -l" % (path, filePattern)
+    cmd = "cd %s; ls | grep '%s' | wc -l" % (CmdUtil.quoteCmd(path), filePattern)
     (status, output) = subprocess.getstatusoutput(cmd)
     if status == 0 and output != "0":
         return True
@@ -1692,7 +1692,7 @@ def killChildProcess(node):
 
 def cleanTmpDir(node):
     # clean tmp files in all the nodes
-    cmd = r"rm -rf %s" % g_context.tmpPath
+    cmd = r"rm -rf %s" % CmdUtil.quoteCmd(g_context.tmpPath)
     if SharedFuncs.is_local_node(node):
         SharedFuncs.runShellCmd(cmd)
     else:

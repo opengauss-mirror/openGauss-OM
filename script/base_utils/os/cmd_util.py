@@ -27,6 +27,7 @@ from subprocess import PIPE, Popen
 from datetime import datetime
 from datetime import timedelta
 import pwd
+import shlex
 from gspylib.common.ErrorCode import ErrorCode
 from base_utils.common.exceptions import CommandNotFoundException
 from base_utils.common.fast_popen import FastPopen
@@ -78,6 +79,15 @@ class CmdUtil(object):
         status = process.returncode
         output = bytes.decode(output).strip()
         return (output, error, status)
+
+    @staticmethod
+    def quoteCmd(cmd):
+        """
+        function: quote shell cmd
+        input: shell cmd
+        output: quoted cmd
+        """
+        return shlex.quote(str(cmd))
 
     @staticmethod
     def findCmdInPath(cmd, additional_paths=None, print_error=True):

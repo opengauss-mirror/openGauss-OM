@@ -240,7 +240,8 @@ class SshTool():
 
             # 2.call createtrust script
             trust_file = get_sshexkey_file()
-            cmd = "%s -f %s -l '%s'" % (trust_file, tmp_hosts, tmp_log_file)
+            cmd = "%s -f %s -l '%s'" % (CmdUtil.quoteCmd(trust_file), 
+                    CmdUtil.quoteCmd(tmp_hosts), CmdUtil.quoteCmd(tmp_log_file))
             if skipHostnameSet:
                 cmd += " --skip-hostname-set"
 
@@ -274,7 +275,7 @@ class SshTool():
         input : username,filePath
         output: True/False
         """
-        ownerPath = os.path.split(filePath)[0]
+        ownerPath = CmdUtil.quoteCmd(os.path.split(filePath)[0])
         if os.getuid() == 0:
             cmd = "su - %s -c 'cd %s'" % (username, ownerPath)
         else:
@@ -315,7 +316,7 @@ class SshTool():
             gp_home = ""
             # osProfile if exists
             if osProfile and os.path.isfile(osProfile):
-                cmd = "source %s && echo $GPHOME" % osProfile
+                cmd = "source %s && echo $GPHOME" % CmdUtil.quoteCmd(osProfile)
                 (status, output) = subprocess.getstatusoutput(cmd)
                 if status == 0:
                     gp_home = output.strip()
@@ -545,7 +546,7 @@ class SshTool():
             if not parallelism:
                 for dss_host in hostList:
                     dss_cmd = sshCmd.replace('parallelism_flag',
-                                            '-H ' + dss_host)
+                                            '-H ' + CmdUtil.quoteCmd(dss_host))
                     status, output = subprocess.getstatusoutput(dss_cmd)
                     # killed by signal 9 or Signals.SIGKILL
                     if output.find("Timed out, Killed by signal") > 0:
@@ -848,7 +849,7 @@ class SshTool():
                 mpprcFile = EnvUtil.getEnv(DefaultValue.MPPRC_FILE_ENV)
 
             if mpprcFile and os.path.isfile(mpprcFile):
-                cmd = "source %s && echo $GPHOME" % mpprcFile
+                cmd = "source %s && echo $GPHOME" % CmdUtil.quoteCmd(mpprcFile)
                 (status, output) = subprocess.getstatusoutput(cmd)
                 if status == 0:
                     gp_home = output.strip()
@@ -877,9 +878,9 @@ class SshTool():
                          " 2>&1 | tee %s" % (pscppre, self.__timeout,
                                              parallel_num,
                                              " -H ".join(hosts),
-                                             self.__outputPath,
-                                             self.__errorPath, srcFile,
-                                             targetDir, self.__resultFile)
+                                             CmdUtil.quoteCmd(self.__outputPath),
+                                             CmdUtil.quoteCmd(self.__errorPath), CmdUtil.quoteCmd(srcFile),
+                                             CmdUtil.quoteCmd(targetDir), CmdUtil.quoteCmd(self.__resultFile))
             (status, output) = subprocess.getstatusoutput(scpCmd)
             hosts = [HostsUtil.remove_square_bracket_if_exist(host) for host in hosts]
             # If sending the file fails, we retry  3 * 10s to avoid the
@@ -977,7 +978,7 @@ class SshTool():
         if exist return true,else retrun false
         """
         sshcmd = "if [ -e '%s' ];then echo 'exist tar file yes flag';" \
-                 "else echo 'exist tar file no flag';fi" % fileAbsPath
+                 "else echo 'exist tar file no flag';fi" % CmdUtil.quoteCmd(fileAbsPath)
         if node != NetUtil.GetHostIpOrName():
             outputCollect = self.getSshStatusOutput(sshcmd,
                                                                  [node],

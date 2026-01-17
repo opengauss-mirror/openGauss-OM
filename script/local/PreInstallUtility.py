@@ -600,6 +600,7 @@ Common options:
         # the owner of GPHOME path becomes no owner;
         # when execute gs_preinstall secondly,
         # report permisson error about GPHOME
+        originalPath = CmdUtil.quoteCmd(originalPath)
         FileUtil.checkPathandChangeOwner(originalPath, self.user,
                                              DefaultValue.KEY_DIRECTORY_MODE)
         cmd = "cd %s" % originalPath
@@ -1096,7 +1097,7 @@ Common options:
             raise Exception(str(e))
 
         # make user log dir
-        user_dir = "%s/%s" % (self.clusterInfo.logPath, self.user)
+        user_dir = CmdUtil.quoteCmd("%s/%s" % (self.clusterInfo.logPath, self.user))
         self.prepareGivenPath(user_dir, False)
 
         # change the directory permission. Remove hidden folders
@@ -1227,7 +1228,7 @@ Common options:
         """
         if not needCheckEmpty:
             return
-        upperDir = os.path.dirname(installPath)
+        upperDir = CmdUtil.quoteCmd(os.path.dirname(installPath))
         cmd = "if [ -w %s ];then echo 1; else echo 0;fi" % upperDir
         cmd = CmdUtil.get_user_exec_cmd(self.current_user_root, self.user, cmd)
         self.logger.debug(
@@ -1485,7 +1486,7 @@ Common options:
             chrootFlag = True
         # Change the owner of Gausslog
         self.logger.debug("Changing the owner of Gausslog.")
-        user_dir = "%s/%s" % (self.clusterInfo.logPath, self.user)
+        user_dir = CmdUtil.quoteCmd("%s/%s" % (self.clusterInfo.logPath, self.user))
         self.logger.debug("Changing the owner of GPHOME: %s." % user_dir)
         FileUtil.changeOwner(self.user, user_dir, True, "shell", retry_flag=True,
                            retry_time=15, waite_time=1, link=True)
@@ -1891,7 +1892,7 @@ Common options:
         # decompress server pakcage
         self.decompressPkg2Cgroup()
         #create temp directory for libcgroup etc
-        cgroup_etc_dir = "%s/%s/etc" % (self.clusterToolPath, self.user)
+        cgroup_etc_dir = CmdUtil.quoteCmd("%s/%s/etc" % (self.clusterToolPath, self.user))
         dirName = os.path.dirname(os.path.realpath(__file__))
         libcgroup_dir = os.path.realpath("%s/../../libcgroup/lib/libcgroup.so" % dirName)
         cgroup_exe_dir = os.path.realpath("%s/../../libcgroup/bin/gs_cgroup" % dirName)
@@ -1924,9 +1925,9 @@ Common options:
                 self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50214"] % libcgroup_target +
                                     " Error: \n%s" % output)
 
-        GPHOME_cgroupCfgFile = "%s/%s/etc/gscgroup_%s.cfg" % (self.clusterToolPath, self.user,
+        GPHOME_cgroupCfgFile = "%s/%s/etc/gscgroup_%s.cfg" % (CmdUtil.quoteCmd(self.clusterToolPath), self.user,
                                                               self.user)
-        GAUSSHOME_cgroupCfgFile = "%s/etc/gscgroup_%s.cfg" % (self.clusterInfo.appPath, self.user)
+        GAUSSHOME_cgroupCfgFile = "%s/etc/gscgroup_%s.cfg" % (CmdUtil.quoteCmd(self.clusterInfo.appPath), self.user)
 
         cmd = "(if [ -f '%s' ]; then cp '%s' '%s';fi)" % (GAUSSHOME_cgroupCfgFile,
                                                           GAUSSHOME_cgroupCfgFile,
@@ -1955,13 +1956,13 @@ Common options:
         # generate cgroup config file under cluster tool path.
         # and then copy it to GAUSSHOME path in gs_install step.
         execute_cmd = "%s -U %s --upgrade -c -H %s/%s" % (cgroup_exe_dir, self.user,
-                                                          self.clusterToolPath, self.user)
+                                                          CmdUtil.quoteCmd(self.clusterToolPath), self.user)
         c_logger.debug("Command for executing gs_cgroup: %s\n" % execute_cmd)
         (status, output) = subprocess.getstatusoutput(execute_cmd)
         c_logger.debug("The result of execute gs_cgroup is:\n%s." % output)
 
         # set cgroup cmd to OS initFile. it will be executed at restart os system.
-        gauss_home = self.clusterInfo.appPath
+        gauss_home = CmdUtil.quoteCmd(self.clusterInfo.appPath)
         init_cmd = "export LD_LIBRARY_PATH=%s/lib/ && %s/bin/gs_cgroup -U %s --upgrade -c -H %s" % \
              (gauss_home, gauss_home, self.user, gauss_home)
         set_init_cmd = "sed -i \"/.* -U %s .* -c -H .*/d\" %s && " % (self.user, initFile)
@@ -2119,7 +2120,7 @@ Common options:
         self.logger.debug("Set ARM Optimization.")
         try:
             initFile = DefaultValue.getOSInitFile()
-            clusterToolPath = self.clusterToolPath
+            clusterToolPath = CmdUtil.quoteCmd(self.clusterToolPath)
             # set_arm_optimization
             init_cmd = "sed -i \"/(if test -f \'.*setArmOptimization.sh\';" \
                        " then export LC_ALL=C;" \
@@ -2358,7 +2359,7 @@ Common options:
                     nicFile = "/etc/sysconfig/network-scripts/ifcfg-%s" \
                               % vip_nic
                     networkConfiguredFile = \
-                        NetUtil.getNetworkConfiguredFile(configuredIp)
+                        CmdUtil.quoteCmd(NetUtil.getNetworkConfiguredFile(configuredIp))
                     if networkConfiguredFile == "":
                         networkConfiguredFile = nicFile
                     cmd = "rm -rf '%s' && touch '%s' && chmod %s '%s' \
@@ -2526,7 +2527,7 @@ Common options:
         actualPath = self.clusterAppPath + "_" + commitid
         if not os.path.exists(actualPath):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % actualPath)
-        cmd = "df -h %s | awk '{print $4}' | xargs" % actualPath
+        cmd = "df -h %s | awk '{print $4}' | xargs" % CmdUtil.quoteCmd(actualPath)
         self.logger.debug("Command to check available disk space is:\n%s"
                           % cmd)
         # output is this format: "Avail 104G"
@@ -2791,7 +2792,7 @@ Common options:
             if softname.startswith("bzip2"):
                 cmd = "which bzip2"
             else:
-                cmd = "rpm -qa|grep -c " + softname
+                cmd = "rpm -qa|grep -c " + CmdUtil.quoteCmd(softname)
             self.logger.debug("Command to check %s by %s" \
                               % (softname, cmd))
             # output is num of softname

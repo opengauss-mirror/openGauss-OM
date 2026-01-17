@@ -245,8 +245,8 @@ class UpgradeImpl:
         input  : NA
         output : NA
         """
-        filePath = os.path.join(self.context.tmpDir,
-                                ".upgrade_task_om_rollback_result")
+        filePath = CmdUtil.quoteCmd(os.path.join(self.context.tmpDir,
+                                ".upgrade_task_om_rollback_result"))
         cmd = "echo \"OM:RUN\" > %s" % filePath
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
@@ -1390,7 +1390,7 @@ class UpgradeImpl:
         """
         cm_nodes = [node for node in self.context.clusterInfo.dbNodes if node.cmservers]
         for node in cm_nodes:
-            temp_sh_file = "%s/upgrade_from.sh" % EnvUtil.getEnv("PGHOST")
+            temp_sh_file = CmdUtil.quoteCmd("%s/upgrade_from.sh" % EnvUtil.getEnv("PGHOST"))
             subprocess.getstatusoutput("touch %s; cat /dev/null > %s" %
                                        (temp_sh_file, temp_sh_file))
             cms_dir = node.cmservers[0].datadir
@@ -1612,8 +1612,8 @@ class UpgradeImpl:
         all_cm_server_inst = [inst for node in self.context.clusterInfo.dbNodes for inst in node.cmservers]
         first_cms_inst = all_cm_server_inst[0]
         server_conf_file = os.path.join(first_cms_inst.datadir, "cm_server.conf")
-        remote_cmd = "grep -E '^enable_ssl = ' {0}".format(server_conf_file)
-        ssh_cmd = "pssh -s -H {0} \"{1}\"".format(first_cms_inst.hostname, remote_cmd)
+        remote_cmd = "grep -E '^enable_ssl = ' {0}".format(CmdUtil.quoteCmd(server_conf_file))
+        ssh_cmd = "pssh -s -H {0} \"{1}\"".format(CmdUtil.quoteCmd(first_cms_inst.hostname), remote_cmd)
         status, output = subprocess.getstatusoutput(ssh_cmd)
         if status != 0 or "=" not in output:
             self.context.logger.warn("Get enable_ssl failed. Output:: [{0}]".format(output))
@@ -2008,7 +2008,7 @@ class UpgradeImpl:
         Check cluster state and start cluster
         """
         self.context.logger.log("Check cluster state.")
-        cmd = "source {0};gs_om -t query".format(self.context.userProfile)
+        cmd = "source {0};gs_om -t query".format(CmdUtil.quoteCmd(self.context.userProfile))
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             self.context.logger.debug("Check cluster state failed. Output: {0}".format(output))
@@ -2016,7 +2016,7 @@ class UpgradeImpl:
             self.context.logger.log("Cluster state: {0}".format(output))
             return
         self.context.logger.log("Cluster need start now.")
-        cmd = "source {0};gs_om -t start".format(self.context.userProfile)
+        cmd = "source {0};gs_om -t start".format(CmdUtil.quoteCmd(self.context.userProfile))
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             self.context.logger.debug("Start cluster state failed. Output: {0}".format(output))
@@ -3056,7 +3056,7 @@ class UpgradeImpl:
             self.context.sshTool.executeCommand(
                 cmd, hostList=self.context.clusterNodes)
             self.context.logger.log("Successfully install Kerberos.")
-            cmd = "source %s && gs_om -t start" % self.context.userProfile
+            cmd = "source %s && gs_om -t start" % CmdUtil.quoteCmd(self.context.userProfile)
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
@@ -3068,7 +3068,7 @@ class UpgradeImpl:
         refresh dynamic config file
         :return:
         """
-        cmd = "source %s ;gs_om -t refreshconf" % self.context.userProfile
+        cmd = "source %s ;gs_om -t refreshconf" % CmdUtil.quoteCmd(self.context.userProfile)
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
@@ -3124,7 +3124,7 @@ class UpgradeImpl:
         :return:
         """
         cmd = "source %s ; gs_guc check -N all -I all -c 'upgrade_mode'" % \
-              self.context.userProfile
+              CmdUtil.quoteCmd(self.context.userProfile)
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_500[
@@ -4088,7 +4088,7 @@ class UpgradeImpl:
         """
         Stop cluster with gs_om
         """
-        cmd = "source %s ;gs_om -t stop" % self.context.userProfile
+        cmd = "source %s ;gs_om -t stop" % CmdUtil.quoteCmd(self.context.userProfile)
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51610"] % "cluster" +
@@ -4099,7 +4099,7 @@ class UpgradeImpl:
         """
         Start Cluster with om
         """
-        cmd = "source %s ;gs_om -t start" % self.context.userProfile
+        cmd = "source %s ;gs_om -t start" % CmdUtil.quoteCmd(self.context.userProfile)
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51607"] % "cluster" +
@@ -4112,7 +4112,7 @@ class UpgradeImpl:
         """
         self.context.logger.debug("Starting cluster with cm.")
         gauss_home = EnvUtil.getEnv("GAUSSHOME")
-        gauss_log = EnvUtil.getEnv("GAUSSLOG")
+        gauss_log = CmdUtil.quoteCmd(EnvUtil.getEnv("GAUSSLOG"))
         # check whether om_monitor started
         check_monitor_cmd = "gs_ssh -c 'ps x | grep -v grep | grep om_monitor'"
         start_monitor_cmd = "gs_ssh -c 'nohup om_monitor -L %s/cm/om_monitor >> " \
@@ -4137,13 +4137,14 @@ class UpgradeImpl:
         # remove cluster_manual_start file to start cluster
         cluster_manual_start_file = os.path.join(gauss_home, "bin", "cluster_manual_start")
         cmd = "source %s ; gs_ssh -c 'rm %s -f'" % (
-            self.context.userProfile, cluster_manual_start_file)
+            CmdUtil.quoteCmd(self.context.userProfile),
+            CmdUtil.quoteCmd(cluster_manual_start_file))
         self.context.logger.debug("cm start cluster cmd: %s" % cmd)
         status, output = subprocess.getstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51607"] % "cluster" +
                 "cmd: %s\nOutput: %s" % (cmd, output))
-        cmd = "source %s ;gs_om -t query" % self.context.userProfile
+        cmd = "source %s ;gs_om -t query" % CmdUtil.quoteCmd(self.context.userProfile)
         while wait_time < cluster_start_timeout:
             status, output = subprocess.getstatusoutput(cmd)
             if status != 0:
@@ -4426,7 +4427,7 @@ END;"""
         input  : NA
         output : primary id
         """
-        vg_name = EnvUtil.getEnv("VGNAME")
+        vg_name = CmdUtil.quoteCmd(EnvUtil.getEnv("VGNAME"))
         cmd = "pg_controldata +%s | grep \"Primary instance ID\"" % vg_name
         primary_id = -1
         while primary_id < 0:
@@ -4442,7 +4443,8 @@ END;"""
         input  : inst_id
         output : NA
         """
-        cmd = "dsscmd ls -p +%s/%s/" % (EnvUtil.getEnv("VGNAME"), ori_dir)
+        cmd = "dsscmd ls -p +%s/%s/" % (CmdUtil.quoteCmd(EnvUtil.getEnv("VGNAME")),
+         CmdUtil.quoteCmd(ori_dir))
         status, output = subprocess.getstatusoutput(cmd)
         xlog_files = []
         out = output.split('\n')
@@ -4464,9 +4466,10 @@ END;"""
         if not UpgradeImpl.check_dir_exists(ori_dir):
             return
         xlog_files = UpgradeImpl.get_xlog_files(ori_dir)
-        vg_name = EnvUtil.getEnv("VGNAME")
+        vg_name = CmdUtil.quoteCmd(EnvUtil.getEnv("VGNAME"))
         pri_index = 0
-        pri_vgname = DssInst.get_private_vgname_by_ini(EnvUtil.get_dss_home(), pri_index)
+        pri_vgname = DssInst.get_private_vgname_by_ini(CmdUtil.quoteCmd(EnvUtil.get_dss_home()),
+                                                        pri_index)
         cmd = "dsscmd mkdir -p +%s -d %s; dsscmd ln -s +%s/%s -t +%s/%s;" % (
                pri_vgname, new_dir, pri_vgname, new_dir, vg_name, new_dir)
         for xlog in xlog_files:
@@ -4484,7 +4487,8 @@ END;"""
         input  : ori_primary_id
         output : NA
         """
-        cmd = "dsscmd ls -p +%s/%s/ | awk '{print $6}'" % (EnvUtil.getEnv("VGNAME"), dw_dir)
+        cmd = "dsscmd ls -p +%s/%s/ | awk '{print $6}'" % (CmdUtil.quoteCmd(EnvUtil.getEnv("VGNAME")),
+                                                            CmdUtil.quoteCmd(dw_dir))
         status, output = subprocess.getstatusoutput(cmd)
         out = output.split('\n')
         dw_files = []
@@ -4499,7 +4503,7 @@ END;"""
         input  : ori_primary_id, new_primary_id
         output : NA
         """
-        vg_name = EnvUtil.getEnv("VGNAME")
+        vg_name = CmdUtil.quoteCmd(EnvUtil.getEnv("VGNAME"))
         ori_dir = "pg_doublewrite" + ori_id
         if not UpgradeImpl.check_dir_exists(ori_dir):
             return
@@ -4539,7 +4543,7 @@ END;"""
         input  : old file name, new file name
         output : NA
         """
-        vg_name = EnvUtil.getEnv("VGNAME")
+        vg_name = CmdUtil.quoteCmd(EnvUtil.getEnv("VGNAME"))
         cmd = "dsscmd rename -o +%s/%s -n +%s/%s" % (vg_name, ori_file, vg_name, new_file)
         status, _ = subprocess.getstatusoutput(cmd)
         if status != 0:
@@ -4553,8 +4557,8 @@ END;"""
         input  : primary_id
         output : NA
         """
-        tmp_path = EnvUtil.getEnv("PGHOST")
-        vg_name = EnvUtil.getEnv("VGNAME")
+        tmp_path = CmdUtil.quoteCmd(EnvUtil.getEnv("PGHOST"))
+        vg_name = CmdUtil.quoteCmd(EnvUtil.getEnv("VGNAME"))
         cmd = "dsscmd cp -s +%s/pg_control.upgrade -d %s/pg_control.upgrade" % (vg_name, tmp_path)
         status, _ = subprocess.getstatusoutput(cmd)
         source_file = tmp_path + os.sep + 'pg_control.upgrade'
@@ -4589,7 +4593,7 @@ END;"""
         input  : NA
         output : NA
         """
-        vg_name = EnvUtil.getEnv("VGNAME")
+        vg_name = CmdUtil.quoteCmd(EnvUtil.getEnv("VGNAME"))
         cmd = "dsscmd cp -s +%s/%s -d +%s/%s" % (vg_name, source_file, vg_name, dest_file)
         status, _ = subprocess.getstatusoutput(cmd)
         if status != 0:
@@ -4661,7 +4665,7 @@ END;"""
         """
         if not UpgradeImpl.check_one_controlpage():
             return
-        vg_name = EnvUtil.getEnv("VGNAME")
+        vg_name = CmdUtil.quoteCmd(EnvUtil.getEnv("VGNAME"))
         cmd = "dsscmd rm -p +%s/pg_control; dsscmd rm -p +%s/pg_control.backup.upgrade;" \
               "dsscmd rename -o +%s/pg_control.upgrade -n +%s/pg_control; " \
               "dsscmd rm -p +%s/pg_control.backup; dsscmd cp -s +%s/pg_control -d +%s/pg_control.backup;" % (
@@ -4676,7 +4680,7 @@ END;"""
         """
         function: check dir exists.
         """
-        vg_name = EnvUtil.getEnv("VGNAME")
+        vg_name = CmdUtil.quoteCmd(EnvUtil.getEnv("VGNAME"))
         cmd = "dsscmd ls -p +%s/%s" % (vg_name, dir_name)
         status, output = subprocess.getstatusoutput(cmd)
         if "Succeed" in output:
@@ -4688,7 +4692,7 @@ END;"""
         """
         function: check control pages num in pg_control
         """
-        vg_name = EnvUtil.getEnv("VGNAME")
+        vg_name = CmdUtil.quoteCmd(EnvUtil.getEnv("VGNAME"))
         cmd = "pg_controldata +%s | grep \"pg_control data\" | wc -l" % vg_name
         status, output = subprocess.getstatusoutput(cmd)
         control_num = int(output)
@@ -4700,8 +4704,8 @@ END;"""
         global cur_primaryId
         if not UpgradeImpl.check_one_controlpage():
             return
-        tmp_path = EnvUtil.getEnv("PGHOST")
-        vg_name = EnvUtil.getEnv("VGNAME")
+        tmp_path = CmdUtil.quoteCmd(EnvUtil.getEnv("PGHOST"))
+        vg_name = CmdUtil.quoteCmd(EnvUtil.getEnv("VGNAME"))
         cmd = "dsscmd cp -s +%s/pg_control.upgrade -d %s/pg_control.upgrade;dsscmd rm -p +%s/pg_control.upgrade;" \
               "dsscmd cp -s +%s/pg_control -d %s/pg_control;" % (vg_name, tmp_path, vg_name, vg_name, tmp_path)
         status, _ = subprocess.getstatusoutput(cmd)
@@ -4764,7 +4768,7 @@ END;"""
             return
         if not self.need_change_dssfiles():
             return
-        vg_name = EnvUtil.getEnv("VGNAME")
+        vg_name = CmdUtil.quoteCmd(EnvUtil.getEnv("VGNAME"))
         id_cmd = "dsscmd ls -p +%s | grep pg_doublewrite"
         sta, out = subprocess.getstatusoutput(id_cmd)
         dw_dirs = []
@@ -6378,7 +6382,7 @@ END;"""
         try:
             # record step info on local node
 
-            tempPath = self.context.upgradeBackupPath
+            tempPath = CmdUtil.quoteCmd(self.context.upgradeBackupPath)
             filePath = os.path.join(tempPath, const.INPLACE_UPGRADE_STEP_FILE)
             cmd = "echo \"%s:%d\" > %s" % (action, step, filePath)
             (status, output) = subprocess.getstatusoutput(cmd)
@@ -7355,7 +7359,7 @@ END;"""
                                       "constant")
 
     def checkCMPausing(self):
-        cmd = "source %s; gs_om -t status" % self.context.userProfile
+        cmd = "source %s; gs_om -t status" % CmdUtil.quoteCmd(self.context.userProfile)
         status, output = subprocess.getstatusoutput(cmd)
         if status == 0 and "pausing" in output:
             self.context.logger.debug("The cluster has been paused, upgrade is forbidden.")
@@ -7463,7 +7467,7 @@ END;"""
         """
         Query cluster status
         """
-        cmd = "source %s;gs_om -t query" % self.context.userProfile
+        cmd = "source %s;gs_om -t query" % CmdUtil.quoteCmd(self.context.userProfile)
         (status, output) = subprocess.getstatusoutput(cmd)
         if "Cascade Need repair" in output:
             self.context.logger.debug("Cascade node disconnect , "
@@ -7549,7 +7553,7 @@ END;"""
         endTime = datetime.now() + timedelta(seconds=int(waitTimeOut))
         while True:
             cmd = "source %s;gs_om -t status --detail --time-out=5" % \
-                  self.context.userProfile
+                  CmdUtil.quoteCmd(self.context.userProfile)
             (status, output) = subprocess.getstatusoutput(cmd)
             if status == 0 and (output.find("Normal") >= 0 or
                                 output.find("Degraded") >= 0):

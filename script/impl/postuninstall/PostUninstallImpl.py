@@ -443,7 +443,7 @@ class PostUninstallImpl:
             for otherNode in otherNodes:
                 if (otherNode == hostName):
                     continue
-                cmd = f"ssh root@%s 'rm -rf %s'" % (otherNode, self.gauss_om_path)
+                cmd = f"ssh root@%s 'rm -rf %s'" % (CmdUtil.quoteCmd(otherNode), CmdUtil.quoteCmd(self.gauss_om_path))
                 (status, output) = subprocess.getstatusoutput(cmd)
                 if status != 0:
                     self.logger.logExit(
@@ -585,7 +585,7 @@ class PostUninstallImpl:
         self.logger.log("Deleting local OS user.")
         cmd = "%s -U %s -l %s" % (
             OMCommand.getLocalScript("Local_Clean_OsUser"), self.user,
-            self.localLog)
+            CmdUtil.quoteCmd(self.localLog))
         self.logger.debug("Command for deleting local OS user: %s" % cmd)
         (status, output) = subprocess.getstatusoutput(cmd)
         if (status != 0):
@@ -597,10 +597,10 @@ class PostUninstallImpl:
             self.logger.debug("Deleting local OS group.")
             cmd = "%s -t %s -u %s -l '%s' -X '%s'" % (
                 OMCommand.getLocalScript("Local_UnPreInstall"),
-                ACTION_DELETE_GROUP,
-                group,
-                self.localLog,
-                self.xmlFile)
+                CmdUtil.quoteCmd(ACTION_DELETE_GROUP),
+                CmdUtil.quoteCmd(group),
+                CmdUtil.quoteCmd(self.localLog),
+                CmdUtil.quoteCmd(self.xmlFile))
             self.logger.debug("Command for deleting local OS group: %s" % cmd)
             (status, output) = subprocess.getstatusoutput(cmd)
             if (status != 0):
@@ -636,10 +636,10 @@ class PostUninstallImpl:
         if (self.mpprcFile != ""):
             try:
                 UserUtil.check_user_exist(self.user)
-                baseCmd = 'su - %s -c "rm -rf %s"' % (self.user, self.mpprcFile)
+                baseCmd = 'su - %s -c "rm -rf %s"' % (CmdUtil.quoteCmd(self.user), CmdUtil.quoteCmd(self.mpprcFile))
             except Exception as exp:
                 self.logger.debug("Check user [%s] not exist. Error: %s" % (self.user, str(exp)))
-                baseCmd = "if [ -f %s ]; then rm -rf %s; fi" % (self.mpprcFile, self.mpprcFile)
+                baseCmd = "if [ -f %s ]; then rm -rf %s; fi" % (CmdUtil.quoteCmd(self.mpprcFile), CmdUtil.quoteCmd(self.mpprcFile))
             # check if local mode
             if os.stat(self.mpprcFile).st_uid != 0:
                 if (self.localMode):
@@ -652,7 +652,7 @@ class PostUninstallImpl:
                 else:
                     dbNodeNames = self.clusterInfo.getClusterNodeNames()
                     for dbNodeName in dbNodeNames:
-                        cmd = "pssh -s -H %s '%s'" % (dbNodeName, baseCmd)
+                        cmd = "pssh -s -H %s '%s'" % (CmdUtil.quoteCmd(dbNodeName), CmdUtil.quoteCmd(baseCmd))
                         (status, output) = subprocess.getstatusoutput(cmd)
                         if (status != 0):
                             message = output.strip()
@@ -765,7 +765,7 @@ class PostUninstallImpl:
         input : hostname
         output: True/False, hostname
         """
-        cmd = 'ssh -n %s %s true' % (DefaultValue.SSH_OPTION, hostname)
+        cmd = 'ssh -n %s %s true' % (DefaultValue.SSH_OPTION, CmdUtil.quoteCmd(hostname))
         (status, output) = subprocess.getstatusoutput(cmd)
         if (status != 0):
             self.logger.debug("The cmd is %s " % cmd)
@@ -954,7 +954,7 @@ class PostUninstallImpl:
         kill_remote_ssh_agent_cmd = DefaultValue.killInstProcessCmd("ssh-agent", True)
 
         for host in host_list:
-            remote_cmd = "%s;/usr/bin/ssh root@%s \"rm -rf %s\"" % (SYSTEM_SSH_ENV, host, cmd % kill_remote_ssh_agent_cmd)
+            remote_cmd = "%s;/usr/bin/ssh root@%s \"rm -rf %s\"" % (SYSTEM_SSH_ENV, CmdUtil.quoteCmd(host), cmd % kill_remote_ssh_agent_cmd)
             (status, output) = subprocess.getstatusoutput(remote_cmd)
             if status != 0:
                 self.logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % remote_cmd

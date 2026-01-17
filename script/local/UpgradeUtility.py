@@ -562,8 +562,8 @@ def syncPostgresqlconf(dbInstance):
     # get config info of current node
     try:
         # get guc param info from old cluster
-        gucCmd = "source %s" % g_opts.userProfile
-        oldPostgresConf = "%s/postgresql.conf" % dbInstance.datadir
+        gucCmd = "source %s" % CmdUtil.quoteCmd(g_opts.userProfile)
+        oldPostgresConf = "%s/postgresql.conf" % CmdUtil.quoteCmd(dbInstance.datadir)
         gucParamDict = readPostgresqlConfig(oldPostgresConf)
 
         synchronousStandbyNames = ""
@@ -626,8 +626,8 @@ def syncPostgresqlconf(dbInstance):
             dbInstance.datadir, gucCmd))
 
         # save guc parameter to temp file
-        gucTempFile = "%s/setGucParam_%s.sh" % (
-            g_opts.upgrade_bak_path, dbInstance.instanceId)
+        gucTempFile = CmdUtil.quoteCmd("%s/setGucParam_%s.sh" % (
+            g_opts.upgrade_bak_path, dbInstance.instanceId))
         # Do not modify the write file operation.
         # Escape processing of special characters in the content
         cmd = "echo \"%s\" > %s" % (gucCmd, gucTempFile)
@@ -734,7 +734,7 @@ def reloadCmagent(signal=1):
     reload the cm_agent instance, make the guc parameter working
     """
     cmd = "ps ux | grep '%s/bin/cm_agent' | grep -v grep | awk '{print $2}' | " \
-          "xargs -r -n 100 kill -%s" % (g_clusterInfo.appPath, str(signal))
+          "xargs -r -n 100 kill -%s" % (CmdUtil.quoteCmd(g_clusterInfo.appPath), str(signal))
     g_logger.debug("Command for reload cm_agent:%s" % cmd)
     (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
     if status == 0:
@@ -749,7 +749,7 @@ def reload_cmserver():
     """
     # reload the cm_server instance, make the guc parameter working
     cmd = "ps ux | grep '%s/bin/cm_server' | grep -v grep | awk '{print $2}' | " \
-          "xargs -r -n 100 kill -1" % g_clusterInfo.appPath
+          "xargs -r -n 100 kill -1" % CmdUtil.quoteCmd(g_clusterInfo.appPath)
     g_logger.debug("Command for reload cm_server:%s" % cmd)
     status, _ = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
     if status == 0:
@@ -793,7 +793,10 @@ def cpDirectory(srcDir, destDir):
     input  : NA
     output : NA
     """
-    cmd = "rm -rf '%s' && cp -r -p '%s' '%s'" % (destDir, srcDir, destDir)
+    cmd = "rm -rf '%s' && cp -r -p '%s' '%s'" % (
+        CmdUtil.quoteCmd(destDir),
+        CmdUtil.quoteCmd(srcDir),
+        CmdUtil.quoteCmd(destDir))
     g_logger.debug("Backup commad:[%s]." % cmd)
     (status, output) = subprocess.getstatusoutput(cmd)
     if status != 0:
@@ -1113,11 +1116,11 @@ def __restore_base_folder(instance):
                 tbsBaseDir = each_db["spclocation"]
             else:
                 tbsBaseDir = "%s/pg_location/%s" % (instance.datadir, each_db["spclocation"])
-            pg_catalog_base_dir = "%s/%s_%s/%d" % (tbsBaseDir,
+            pg_catalog_base_dir = CmdUtil.quoteCmd("%s/%s_%s/%d" % (tbsBaseDir,
                                                    DefaultValue.TABLESPACE_VERSION_DIRECTORY,
-                                                   instance_name, int(each_db["dboid"]))
+                                                   instance_name, int(each_db["dboid"])))
         else:
-            pg_catalog_base_dir = "%s/base/%d" % (instance.datadir, int(each_db["dboid"]))
+            pg_catalog_base_dir = CmdUtil.quoteCmd("%s/base/%d" % (instance.datadir, int(each_db["dboid"])))
         # for base folder, template0 need handle specially
         if each_db["dbname"] == 'template0':
             pg_catalog_base_back_dir = "%s_bak" % pg_catalog_base_dir
@@ -2094,7 +2097,7 @@ def checkGucValueFromFile():
                                     str(gsql_result_list[2].strip()), str(value)))
             return
         for inst in instances:
-            configFile = "%s/%s" % (inst.datadir, fileName)
+            configFile = CmdUtil.quoteCmd("%s/%s" % (inst.datadir, fileName))
             cmd = "sed 's/\t/ /g' %s | grep '^[ ]*\<%s\>[ ]*=' | awk -F '=' '{print $2}'" % \
                   (configFile, key)
             g_logger.debug("Command for checking guc:%s" % cmd)
@@ -2146,8 +2149,8 @@ def backupInstanceHotpatchConfig(instanceDataDir):
     input  : instanceDataDir
     output : NA
     """
-    hotpatch_info_file = "%s/hotpatch/patch.info" % instanceDataDir
-    hotpatch_info_file_bak = "%s/hotpatch/patch.info.bak" % instanceDataDir
+    hotpatch_info_file = "%s/hotpatch/patch.info" % CmdUtil.quoteCmd(instanceDataDir)
+    hotpatch_info_file_bak = "%s/hotpatch/patch.info.bak" % CmdUtil.quoteCmd(instanceDataDir)
     cmd = "(if [ -f '%s' ];then mv -f '%s' '%s';fi)" % (
         hotpatch_info_file, hotpatch_info_file, hotpatch_info_file_bak)
     (status, output) = subprocess.getstatusoutput(cmd)
@@ -2213,8 +2216,8 @@ def rollbackInstanceHotpatchConfig(instanceDataDir):
     input  : instanceDataDir
     output : NA
     """
-    hotpatch_info_file = "%s/hotpatch/patch.info" % instanceDataDir
-    hotpatch_info_file_bak = "%s/hotpatch/patch.info.bak" % instanceDataDir
+    hotpatch_info_file = "%s/hotpatch/patch.info" % CmdUtil.quoteCmd(instanceDataDir)
+    hotpatch_info_file_bak = "%s/hotpatch/patch.info.bak" % CmdUtil.quoteCmd(instanceDataDir)
     cmd = "(if [ -f '%s' ];then mv -f '%s' '%s';fi)" % (
         hotpatch_info_file_bak, hotpatch_info_file_bak, hotpatch_info_file)
     (status, output) = subprocess.getstatusoutput(cmd)
@@ -2290,7 +2293,7 @@ def clean_opts_old_clusternum():
     all_instances = g_dbNode.datanodes
     for instance in all_instances:
         if instance.instanceRole == DefaultValue.INSTANCE_ROLE_DATANODE:
-            optfile = "%s/postmaster.opts" % instance.datadir
+            optfile = "%s/postmaster.opts" % CmdUtil.quoteCmd(instance.datadir)
             if not os.path.exists(optfile):
                 continue
         
@@ -2685,9 +2688,8 @@ def backupOneInstanceOldClusterDBAndRel(instance):
         instance_name = getInstanceName(instance)
 
         # handle master dn instance
-        dn_db_and_catalog_info_file_name = \
-            "%s/dn_db_and_catalog_info_%s.json" % (
-                backup_path, instance_name)
+        dn_db_and_catalog_info_file_name = CmdUtil.quoteCmd(
+                "%s/dn_db_and_catalog_info_%s.json" % (backup_path, instance_name))
         DbInfoStr = json.dumps(dbInfoDict, indent=2)
         fp = open(dn_db_and_catalog_info_file_name, 'w')
         fp.write(DbInfoStr)
@@ -2702,8 +2704,9 @@ def backupOneInstanceOldClusterDBAndRel(instance):
                 standbyInstLst.append(peerInsts[i])
         for standbyInstance in standbyInstLst:
             cmd = "pscp -H %s %s %s" % (
-            standbyInstance.hostname, dn_db_and_catalog_info_file_name,
-            dn_db_and_catalog_info_file_name)
+                standbyInstance.hostname, 
+                dn_db_and_catalog_info_file_name,
+                dn_db_and_catalog_info_file_name)
             g_logger.debug("exec cmd is: %s" % cmd)
             (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
             if status != 0:
@@ -2836,7 +2839,7 @@ def execSQLFile(dbname, sqlFile, cn_port):
     gsql_cmd = SqlCommands.getSQLCommandForInplaceUpgradeBackup(
         cn_port, dbname.replace('$', '\$'))
     cmd = "%s -X --echo-queries --set ON_ERROR_STOP=on -f %s" % (
-        gsql_cmd, sqlFile)
+        gsql_cmd, CmdUtil.quoteCmd(sqlFile))
     (status, output) = subprocess.getstatusoutput(cmd)
     g_logger.debug("Catalog modification log for database %s:\n%s." % (
         dbname, output))
@@ -2939,7 +2942,7 @@ def __backup_dcf_file(instance):
     """
     try:
         g_logger.debug("Backup instance dcf files. Instance data_dir: %s" % instance.datadir)
-        dcf_back_dir = os.path.join(instance.datadir, "dcf_data_bak")
+        dcf_back_dir = CmdUtil.quoteCmd(os.path.join(instance.datadir, "dcf_data_bak"))
         cmd = "rm -rf '%s' " % dcf_back_dir
         (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
         if status != 0:
@@ -3031,9 +3034,9 @@ def __backup_xlog_file(instance):
 def __get_latest_checkpoint_location(instance):
     try:
         result = dict()
-        cmd = "pg_controldata '%s'" % instance.datadir
+        cmd = "pg_controldata '%s'" % CmdUtil.quoteCmd(instance.datadir)
         if g_opts.mpprcFile != "" and g_opts.mpprcFile is not None:
-            cmd = "source %s; %s" % (g_opts.mpprcFile, cmd)
+            cmd = "source %s; %s" % (CmdUtil.quoteCmd(g_opts.mpprcFile), cmd)
         (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
         g_logger.debug("Command for get control data:%s.Output:\n%s." % (
             cmd, output))
@@ -3087,7 +3090,7 @@ def __backup_cbm_file(instance):
     try:
         g_logger.debug("Backup instance cbm files. "
                        "Instance data dir: %s" % instance.datadir)
-        cbm_back_dir = os.path.join(instance.datadir, "pg_cbm_back")
+        cbm_back_dir = CmdUtil.quoteCmd(os.path.join(instance.datadir, "pg_cbm_back"))
         cmd = "rm -rf '%s' " % cbm_back_dir
         (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
         if status != 0:
@@ -3205,7 +3208,7 @@ def __restore_dcf_file(instance):
         if not os.path.exists(dcf_back_dir):
             g_logger.debug("There is no dcf dir to restore for %d." % instance.instanceId)
             return
-        cmd = "rm -rf '%s' " % dcf_dir
+        cmd = "rm -rf '%s' " % CmdUtil.quoteCmd(dcf_dir)
         (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + "\nOutput:%s" % output)
@@ -3287,7 +3290,7 @@ def __restore_cbm_file(instance):
     try:
         g_logger.debug("restore instance cbm files. "
                        "Instance data dir: %s" % instance.datadir)
-        cbm_dir = os.path.join(instance.datadir, "pg_cbm")
+        cbm_dir = CmdUtil.quoteCmd(os.path.join(instance.datadir, "pg_cbm"))
         cmd = "rm -rf '%s' " % cbm_dir
         (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
         if status != 0:
@@ -3415,7 +3418,9 @@ def __clean_dcf_file(instance):
     """
     # clean dcf backup files
     dcf_back_dir = os.path.join(instance.datadir, "dcf_data_bak")
-    cmd = "rm -rf '%s' && rm -rf '%s'/*_upgrade_backup" % (dcf_back_dir, instance.datadir)
+    cmd = "rm -rf '%s' && rm -rf '%s'/*_upgrade_backup" % (
+            CmdUtil.quoteCmd(dcf_back_dir), 
+            CmdUtil.quoteCmd(instance.datadir))
     (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
     if status != 0:
         raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + "\nOutput:%s" % output)
@@ -3439,7 +3444,7 @@ def __clean_cbm_file(instance):
     """
     # clean pg_cbm_back files
     cbm_back_dir = os.path.join(instance.datadir, "pg_cbm_back")
-    cmd = "rm -rf '%s' " % cbm_back_dir
+    cmd = "rm -rf '%s' " % CmdUtil.quoteCmd(cbm_back_dir)
     (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
     if status != 0:
         raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
@@ -3484,14 +3489,14 @@ def __clean_base_folder(instance):
             else:
                 tbsBaseDir = "%s/pg_location/%s" % (
                     instance.datadir, each_db["spclocation"])
-            pg_catalog_base_dir = "%s/%s_%s/%d" % (
+            pg_catalog_base_dir = CmdUtil.quoteCmd("%s/%s_%s/%d" % (
                 tbsBaseDir,
                 DefaultValue.TABLESPACE_VERSION_DIRECTORY,
                 instance_name,
-                int(each_db["dboid"]))
+                int(each_db["dboid"])))
         else:
-            pg_catalog_base_dir = "%s/base/%d" % (
-                instance.datadir, int(each_db["dboid"]))
+            pg_catalog_base_dir = CmdUtil.quoteCmd("%s/base/%d" % (
+                instance.datadir, int(each_db["dboid"])))
 
         # for base folder, template0 need handle specially
         if each_db["dbname"] == 'template0':
@@ -3724,10 +3729,11 @@ def createNewCsvFile():
                 [MASTER_INSTANCE,STANDBY_INSTANCE, CASCADE_STANDBY]:
             standbyInstLst.append(peerInsts[i])
     for standbyInstance in standbyInstLst:
-        standbyCsvFilePath = \
-            '%s/pg_copydir/new_tbl_pg_proc_oids.csv' % standbyInstance.datadir
+        standbyCsvFilePath = '%s/pg_copydir/new_tbl_pg_proc_oids.csv' % \
+                                CmdUtil.quoteCmd(standbyInstance.datadir)
         cmd = "pscp -H %s %s %s" % (
-            standbyInstance.hostname, new_pg_proc_csv_path,
+            CmdUtil.quoteCmd(standbyInstance.hostname), 
+            CmdUtil.quoteCmd(new_pg_proc_csv_path),
             standbyCsvFilePath)
         g_logger.debug("exec cmd is: %s" % cmd)
         (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
@@ -3906,7 +3912,7 @@ def config_upgrade_from(space_count, file_name):
                   "before upgrade".format(g_opts.oldVersion,
                                           " " * (space_count - len(str(g_opts.oldVersion))))
     config_cmd = "sed -i 's/^upgrade_from =.*/{0}/g' {1} && " \
-                 "grep 'upgrade_from' {1}".format(replace_str, file_name)
+                 "grep 'upgrade_from' {1}".format(replace_str, CmdUtil.quoteCmd(file_name))
     _, output = subprocess.getstatusoutput(config_cmd)
     if not "upgrade_from = {0}".format(g_opts.oldVersion) in output:
         g_logger.debug("Config {0} failed. Output: {1}".format(file_name, output))
@@ -4318,7 +4324,7 @@ def isNeedSwitch(process, dataDir="", is_dss_mode=False):
     if process == "datanode":
         process = "gaussdb"
     path = os.path.join(path, 'bin', process)
-    path = os.path.normpath(path)
+    path = CmdUtil.quoteCmd(os.path.normpath(path))
     if dataDir:
         cmd = r"pidList=`ps ux | grep '\<%s\>' | grep '%s' | grep '%s'| " \
               r"grep -v 'grep' | awk '{print $2}' | xargs `; " \
@@ -4691,13 +4697,13 @@ def clean_cm_instance():
     
     ## restore cluster_static_config
     g_logger.debug("restore cluseter config file without cm.")
-    static_config = "%s/bin/cluster_static_config" % g_opts.oldClusterAppPath
+    static_config = "%s/bin/cluster_static_config" % CmdUtil.quoteCmd(g_opts.oldClusterAppPath)
     restore_cmd = "(if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
             static_config, static_config, g_opts.newClusterAppPath)
 
-    dynamic_config = "%s/bin/cluster_dynamic_config" % g_opts.newClusterAppPath
+    dynamic_config = "%s/bin/cluster_dynamic_config" % CmdUtil.quoteCmd(g_opts.newClusterAppPath)
     restore_cmd += " && (if [ -f '%s' ];then cp -f -p '%s' '%s/bin/';fi)" % (
-        dynamic_config, dynamic_config, g_opts.oldClusterAppPath)
+        dynamic_config, dynamic_config, CmdUtil.quoteCmd(g_opts.oldClusterAppPath))
     subprocess.getstatusoutput(restore_cmd)
     
     if local_node.cmservers:
@@ -4777,8 +4783,11 @@ def doRestoreGlobalRelmapFile(datadir):
 
     relmapFileName = os.path.join(datadir, "global/pg_filenode.map")
     relmapBackFileName = os.path.join(datadir, "global/pg_filenode.map.backup")
-    cmd =  "cp '%s' '%s' && cp '%s' '%s'"  % (oldRelmapFileName, relmapFileName, \
-        oldRelmapFileName, relmapBackFileName)
+    cmd = "cp '%s' '%s' && cp '%s' '%s'"  % (
+        CmdUtil.quoteCmd(oldRelmapFileName),
+        CmdUtil.quoteCmd(relmapFileName),
+        CmdUtil.quoteCmd(oldRelmapFileName),
+        CmdUtil.quoteCmd(relmapBackFileName))
 
     g_logger.debug("restore global relmap file, cmd: %s" % cmd)
     (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
@@ -4799,7 +4808,9 @@ def doCleanTmpGlobalRelmapFile(datadir):
     does the really work of clean temp global relmap file
     """
     oldRelmapFileName = os.path.join(datadir, "global/pg_filenode.old.map")
-    cmd = "(if [ -f '%s' ];then rm '%s' -f;fi)" % (oldRelmapFileName, oldRelmapFileName)
+    cmd = "(if [ -f '%s' ];then rm '%s' -f;fi)" % (
+        CmdUtil.quoteCmd(oldRelmapFileName), 
+        CmdUtil.quoteCmd(oldRelmapFileName))
     g_logger.debug("remove tmp global relmap file, cmd: %s" % cmd)
     (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 5)
     if status != 0:
@@ -4819,8 +4830,10 @@ def doBackupGlobalRelmapFile(datadir):
     """
     relmapFileName = os.path.join(datadir, "global/pg_filenode.map")
     oldRelmapFileName = os.path.join(datadir, "global/pg_filenode.old.map")
-    cmd = "(if [ -f '%s' ];then cp '%s' '%s';fi)" \
-        % (relmapFileName, relmapFileName, oldRelmapFileName)
+    cmd = "(if [ -f '%s' ];then cp '%s' '%s';fi)" % (
+        CmdUtil.quoteCmd(relmapFileName),
+        CmdUtil.quoteCmd(relmapFileName),
+        CmdUtil.quoteCmd(oldRelmapFileName))
     g_logger.debug("backup global relmap file, cmd: %s" % cmd)
     (status, output) = CmdUtil.retryGetstatusoutput(cmd, 2, 5)
     if status != 0:

@@ -189,7 +189,7 @@ class Dss(BaseComponent):
         '''
         cmd_str = ''
 
-        gauss_home = ClusterDir.get_gauss_home()
+        gauss_home = CmdUtil.quoteCmd(ClusterDir.get_gauss_home())
         dsscmd_path = os.path.realpath(
             os.path.join(gauss_home, 'bin', Dss.DSS_IOFENCE_FILENAME))
 
@@ -232,7 +232,7 @@ class Dss(BaseComponent):
         if kill_server:
             Dss.kill_dss_server()
 
-        dss_home = EnvUtil.get_dss_home(getpass.getuser())
+        dss_home = CmdUtil.quoteCmd(EnvUtil.get_dss_home(getpass.getuser()))
         if unrej:
             Dss.unreg_disk(dss_home, logger=logger)
         if bin_path:
@@ -241,7 +241,7 @@ class Dss(BaseComponent):
             dss_cmd = 'dssserver'
 
         cmd = 'sh -c "source {} && nohup {} -M -D {} >/dev/null 2>&1 & "'.format(
-            EnvUtil.getMpprcFile(), dss_cmd, dss_home)
+            CmdUtil.quoteCmd(EnvUtil.getMpprcFile()), dss_cmd, dss_home)
         proc = FastPopen(cmd)
         out, err = proc.communicate()
         if proc.returncode != 0:
@@ -318,7 +318,7 @@ class Dss(BaseComponent):
 
     @staticmethod
     def get_dss_cipher_text(cert_path):
-        gauss_home = ClusterDir.get_gauss_home()
+        gauss_home = CmdUtil.quoteCmd(ClusterDir.get_gauss_home())
         dss_cmd = os.path.join(gauss_home, "bin/dsscmd")
         cmd = "{} encrypt".format(dss_cmd)
         rand_pwd = AesCbcUtil.aes_cbc_decrypt_with_path(cert_path,

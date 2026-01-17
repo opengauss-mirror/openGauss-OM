@@ -144,6 +144,7 @@ class PreInstall(LocalBaseOM):
         self.logger = None
         self.current_user_root = False
         self.cluster_core_path = ""
+        self.enable_hugebin = False
 
     def get_current_user(self):
         """
@@ -189,7 +190,7 @@ Usage:
     python3 PreInstallUtility.py -t action -u user -T warning_type
     [-g group] [-X xmlfile] [-P path] [-Q clusterToolPath] [-D mount_path]
     [-e "envpara=value" [...]] [-w warningserverip] [-h nodename]
-    [-s mpprc_file] [--check_empty] [-l log]
+    [-s mpprc_file] [--check_empty] [-l log] [--enable_hugebin]
 Common options:
     -t                                The type of action.
     -u                                The OS user of cluster.
@@ -205,6 +206,7 @@ Common options:
     -l                                The path of log file.
     -R                                The path of cluster install path.
     -C                                The path of cluster core path.
+    --enable_hugebin                  Enable huge app
     --help                            Show this help, then exit.
         """
         print(self.usage.__doc__)
@@ -217,7 +219,7 @@ Common options:
         """
         try:
             opts, args = getopt.getopt(sys.argv[1:], "t:u:g:T:w:X:P:Q:e:s:l:f:R:C:",
-                                       ["check_empty", "help"])
+                                       ["check_empty", "help", "enable-hugebin"])
         except Exception as e:
             self.usage()
             GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"] % str(e))
@@ -244,6 +246,8 @@ Common options:
                 self.envParams.append(value)
             elif key == "--check_empty":
                 self.checkEmpty = True
+            elif key == "--enable-hugebin":
+                self.enable_hugebin = True
             elif key == "-l":
                 self.logFile = os.path.realpath(value)
                 self.tmpFile = value
@@ -1165,6 +1169,59 @@ Common options:
 
         self.logger.debug("Successfully created data path.")
 
+    def mount_huge_bin(self, apppath):
+        """
+        mount bin path for enable_hugebin to tmpfs
+        """
+        if not self.enable_hugebin:
+            return
+        self.logger.debug("mount huge bin path to tmpfs.")
+        apphugebak = apppath + "_huge"
+        CmdUtil.execCmdList(["mkdir", "-p", apphugebak])
+        CmdUtil.execCmdList(["mount", "-t", "tmpfs", "-o", "huge=always", "tmpfs", apphugebak])
+
+        FileUtil.changeMode(DefaultValue.KEY_DIRECTORY_MODE, apphugebak)
+        FileUtil.changeOwner(self.user, apphugebak, link=True, recursive=True)
+
+        self.set_hugebin_os_init_script(apppath, apphugebak);
+
+    def set_hugebin_os_init_script(self, normalpath, hugepath):
+        # add mount hugebin to os-init-file(gs-OS-set.sh)
+        initfile = DefaultValue.getOSInitFile()
+        if initfile == "":
+            self.logger.debug("cound not add init script because of os-init-file empty.")
+            return
+        self.logger.debug("ready to add mount and link script to os-init-file.")
+        hugebin = os.path.join(hugepath, 'bin')
+        huge_gaussdb = os.path.join(hugebin, 'gaussdb')
+        normalbin = os.path.join(normalpath, 'bin')
+        huge_basename = os.path.basename(hugepath)
+
+        groupname = grp.getgrgid(pwd.getpwnam(self.user).pw_gid).gr_name
+        mnt_cmd = "(if test -d '%s'; then mount -t tmpfs -o uid=%s,gid=%s,huge=always tmpfs %s;fi;)" % \
+            (hugepath, self.user, groupname, hugepath)
+        restore_cmd = "(if test -d '%s'; then su - %s -c 'mkdir -p %s ; cp %s %s';fi)" % \
+            (hugepath, self.user, hugebin, os.path.join(normalpath, 'gaussdb'), hugebin)
+        link_gaussdb = "(if test -f '%s';then su - %s -c 'ln -sf %s %s';fi)" % \
+            (huge_gaussdb, self.user, huge_gaussdb, normalbin)
+        link_lib = "(if test -f '%s';then su - %s -c 'ln -sf %s %s';fi)" % \
+            (huge_gaussdb, self.user, os.path.join(normalpath, 'lib'), hugepath)
+        link_share = "(if test -f '%s';then su - %s -c 'ln -sf %s %s';fi)" % \
+            (huge_gaussdb, self.user, os.path.join(normalpath, 'share'), hugepath)
+        
+        initcmd = "sed -i '/^.*mount.*tmpfs.*%s.*%s.*$/d' %s;" % (self.user, huge_basename, initfile)
+        initcmd += "echo \"%s\" >> %s;" % (mnt_cmd, initfile)
+        initcmd += "sed -i '/^.*%s.*cp.*gaussdb.*%s.*$/d' %s;" % (self.user, huge_basename, initfile)
+        initcmd += "echo \"%s\" >> %s;" % (restore_cmd, initfile)
+        initcmd += "sed -i '/^.*%s.*ln -sf.*%s.*gaussdb.*$/d' %s;" % (self.user, huge_basename, initfile)
+        initcmd += "echo \"%s\" >> %s;" % (link_gaussdb, initfile)
+        initcmd += "sed -i '/^.*%s.*ln -sf.*lib.*%s.*$/d' %s;" % (self.user, huge_basename, initfile)
+        initcmd += "echo \"%s\" >> %s;" % (link_lib, initfile)
+        initcmd += "sed -i '/^.*%s.*ln -sf.*share.*%s.*$/d' %s;" % (self.user, huge_basename, initfile)
+        initcmd += "echo \"%s\" >> %s;" % (link_share, initfile)
+        CmdUtil.execCmd(initcmd)
+        self.logger.debug("finish to add mount and link script to os-init-file.")
+
     def prepareInstallPath(self, needCheckEmpty):
         """
         function: Prepare installation path
@@ -1206,6 +1263,7 @@ Common options:
         self.logger.debug("Install path %s." % installPath)
         self.prepareGivenPath(installPath, needCheckEmpty)
         self.checkUpperPath(needCheckEmpty, installPath)
+        self.mount_huge_bin(installPath)
 
         if self.clusterInfo.enable_dss:
             dss_app = os.path.realpath(
@@ -1797,6 +1855,9 @@ Common options:
                 "export LD_LIBRARY_PATH=$GPHOME/lib:$LD_LIBRARY_PATH"])
             # set PYTHONPATH
             FileUtil.writeFile(userProfile, ["export PYTHONPATH=$GPHOME/lib"])
+
+            if self.enable_hugebin:
+                FileUtil.writeFile(userProfile, ["export ENABLE_HUGEBIN=1"])
 
 
         except Exception as e:

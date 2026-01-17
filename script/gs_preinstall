@@ -112,6 +112,7 @@ class Preinstall(ParallelBaseOM):
         self.cluster_core_path = ""
         self.om_version_cfg = None  # structure like {'pkg_prefix': '', 'pgversion': '', 'commit': '', 'mode': ''}
         self.og_version_cfg = None
+        self.enable_hugebin = False
 
     def usage(self):
         """
@@ -391,7 +392,7 @@ General options:
                 envfile = "/etc/profile and ~/.bashrc"
             GaussLog.exitWithError(ErrorCode.GAUSS_518["GAUSS_51808"] % \
                                    checkoutput + "Please check %s." % envfile)
-
+    
     def delete_host_ip(self):
         """
         function: delete host_ip env
@@ -535,7 +536,32 @@ General options:
             GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"] %
                                    "version.cfg" + "The cmd is %s. " % cmd +
                                    "The output is %s." % output)
+            
+    def check_hugebin_support(self):
+        """
+        Check if hugebin can be used
+        """
+        if os.getuid() != 0:
+            self.logger.warn("EnableHugeBin is on, but current user is not root, "
+                            "so install without hugebin support.", "warning")
+            return False
+        
+        pagesize = os.sysconf(os.sysconf_names.get('SC_PAGESIZE', os.sysconf_names.get('SC_PAGE_SIZE')))
+        if pagesize != 4096:
+            self.logger.warn("EnableHugeBin is on, but system page size is %d bytes, "
+                            "not 4KB, so install without hugebin support." % pagesize, "warning")
+            return False
 
+        sysversion = subprocess.getoutput("uname -r")
+        major_version = int(sysversion.split('.')[0])
+        minor_version = int(sysversion.split('.')[1])
+        if major_version < 5 or (major_version == 5 and minor_version < 10):
+            self.logger.warn("EnableHugeBin is on, but current kernel version is %s, "
+                            "lower than 5.10, so install without hugebin support." % sysversion, "warning")
+            return False
+        
+        return True
+        
     # init global variables
     def initGlobals(self):
         """
@@ -575,6 +601,13 @@ General options:
                 self.clusterInfo.getClusterNodeNames():
             self.logger.logExit(ErrorCode.GAUSS_516["GAUSS_51619"]
                                 % NetUtil.GetHostIpOrName())
+        
+        enablehugebin = ClusterConfigFile.getOneClusterConfigItem("enableHugeBin", self.xmlFile)
+        if enablehugebin == "on" and self.check_hugebin_support():
+            self.enable_hugebin = True
+            self.logger.log("Preinstall database with enableHugeBin is on", "constant")
+            
+
         self.logger.log("Successfully parsed the configuration file.",
                         "constant")
 

@@ -21,6 +21,7 @@ import subprocess
 import grp
 import pwd
 import getpass
+import fnmatch
 
 from base_utils.os.user_util import UserUtil
 
@@ -256,6 +257,22 @@ class PostUninstallImpl:
             CmdExecutor.execCommandWithMode(cmd, self.sshTool, self.localMode,
                                             self.mpprcFile)
             self.logger.log("Successfully deleted the udev rule file.")
+
+        if os.getuid() == 0 and os.environ.get('ENABLE_HUGEBIN') == '1':
+            dirlist = os.listdir(os.path.dirname(self.clusterInfo.appPath))
+            matched_items = fnmatch.filter(dirlist, "app_*_huge")
+            for hugedir in matched_items:
+                cmd = "umount -Rf %s" % (os.path.join(os.path.dirname(self.clusterInfo.appPath), hugedir))
+                self.logger.debug(
+                    "Command for umount the hugebin directory: %s" % cmd)
+                try:
+                    CmdExecutor.execCommandWithMode(cmd,
+                                                self.sshTool, self.localMode,
+                                                self.mpprcFile)
+                except Exception as e:
+                    self.logger.debug("Umount hugebin directory [%s] failed: %s. Try to umount agent." %
+                                      (hugedir, str(e)))
+                self.logger.log("Finish umount the hugebin directory.")
 
     def CleanInstanceDir(self):
         """
@@ -524,7 +541,8 @@ class PostUninstallImpl:
             cmd += "-e '/^export COREPATH=/d' %s " % userprofile
             cmd += "-e '/^export GPHOME=/d' %s " % userprofile
             cmd += "-e '/^export PGDATA=%s/d' %s " % (datadir_escaped, userprofile)
-            cmd += "-e '/^export PYTHONPATH=\$GPHOME\/lib$/d' %s; fi) " % userprofile
+            cmd += "-e '/^export PYTHONPATH=\$GPHOME\/lib$/d' %s " % userprofile
+            cmd += "-e '/^export ENABLE_HUGEBIN=/d' %s; fi) " % userprofile
 
             self.logger.debug(
                 "Command for deleting environment variable: %s" % cmd)

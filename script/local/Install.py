@@ -518,7 +518,32 @@ class Install(LocalBaseOM):
         if self.clusterInfo.enable_dss == 'on':
             self.link_dss_bin()
 
+        if self.clusterInfo.enable_hugebin:
+            self.__install_hugebin()
+
         self.logger.log("Successfully decompressed bin file.")
+
+    def __install_hugebin(self):
+        self.logger.log("install huge application.")
+        normal_path = os.path.realpath(self.installPath)
+        huge_path = normal_path + "_huge"
+
+        self.logger.debug("install path: normal path %s, huge path %s" % (normal_path, huge_path))
+
+        # only copy bin/gaussdb file to huge path
+        cp_gaussdb = "mkdir -p %s/bin/ && cp %s %s/bin/" % (huge_path,
+                                                          os.path.join(normal_path, 'bin', 'gaussdb'),
+                                                          huge_path)
+        back_gaussdb = "mv %s %s" % (os.path.join(normal_path, 'bin', 'gaussdb'), normal_path)
+        link_lib = "ln -sf %s %s" % (os.path.join(normal_path, 'lib'), os.path.join(huge_path, 'lib'))
+        lib_share = "ln -sf %s %s" % (os.path.join(normal_path, 'share'), os.path.join(huge_path, 'share'))
+        link_gaussdb = "ln -sf %s %s" % (os.path.join(huge_path, 'bin', 'gaussdb'), os.path.join(normal_path, 'bin', 'gaussdb'))
+
+        CmdUtil.execCmd(cp_gaussdb)
+        CmdUtil.execCmd(back_gaussdb)
+        CmdUtil.execCmd(link_lib)
+        CmdUtil.execCmd(lib_share)
+        CmdUtil.execCmd(link_gaussdb)
 
     def __saveUpgradeVerionInfo(self):
         """

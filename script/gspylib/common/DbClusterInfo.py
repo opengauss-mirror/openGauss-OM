@@ -1017,6 +1017,7 @@ class dbClusterInfo():
         self.uwal_rpc_flowcontrol_switch = ""
         self.uwal_rpc_flowcontrol_value = ""
         self.uwal_async_append_switch = ""
+        self.enable_hugebin = False
 
     def __str__(self):
         """
@@ -3138,6 +3139,13 @@ class dbClusterInfo():
         if "HOST_IP" in os.environ.keys():
             self.corePath = self.__read_and_check_config_item(xmlRootNode, "corePath",
                                                               "cluster", True)
+            
+        # Read huge bin
+        _, enable_hugebin = ClusterConfigFile.readOneClusterConfigItem(
+            xmlRootNode, "enableHugeBin", "cluster")
+        if enable_hugebin is not None and enable_hugebin.strip() == "on":
+            self.enable_hugebin = True
+
 
     def get_cluster_back_ip1s(self):
         # Read cluster backIp1s

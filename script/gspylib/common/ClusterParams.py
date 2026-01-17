@@ -56,6 +56,7 @@ class ClusterParams:
     UWAL_ASYNC_APPEND_SWITCH = 'uwal_async_append_switch'
     UWAL_DEVICES_PATH = 'uwal_devices_path'
     CLUSTER_TYPE = 'clusterType'
+    ENABLE_HUGEBIN = "enableHugeBin"
 
     @staticmethod
     def get_all_param_names():
@@ -87,7 +88,8 @@ class ClusterParams:
             ClusterParams.UWAL_RPC_FLOWCONTROL_VALUE,
             ClusterParams.UWAL_ASYNC_APPEND_SWITCH,
             ClusterParams.UWAL_DEVICES_PATH,
-            ClusterParams.CLUSTER_TYPE
+            ClusterParams.CLUSTER_TYPE,
+            ClusterParams.ENABLE_HUGEBIN
         ]
 
     FLOAT_IP_PATTERN = re.compile(r'\bfloatIp[0-9]+')

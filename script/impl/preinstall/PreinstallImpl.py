@@ -1010,6 +1010,9 @@ class PreinstallImpl:
         if self.context.mpprcFile != "":
             cmd += " -s '%s' -g %s" % (
                 CmdUtil.quoteCmd(self.context.mpprcFile), self.context.group)
+        if self.context.enable_hugebin:
+            cmd += " --enable-hugebin"
+
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             self.context.logger.debug(
@@ -1063,6 +1066,8 @@ class PreinstallImpl:
             # check the env file
             if self.context.mpprcFile != "":
                 cmd += " -s '%s'" % self.context.mpprcFile
+            if self.context.enable_hugebin:
+                cmd += " --enable-hugebin"
             # exec the cmd
             CmdExecutor.execCommandWithMode(
                 cmd,

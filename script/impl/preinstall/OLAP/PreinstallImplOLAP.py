@@ -612,6 +612,8 @@ class PreinstallImplOLAP(PreinstallImpl):
             # check the env file
             if self.context.mpprcFile != "":
                 cmd += " -s %s" % self.context.mpprcFile
+            if self.context.enable_hugebin:
+                cmd += " --enable-hugebin"
             self.context.logger.debug("Fix server pkg cmd: %s" % cmd)
             # exec the cmd
             CmdExecutor.execCommandWithMode(cmd,

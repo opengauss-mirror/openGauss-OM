@@ -69,6 +69,7 @@ class Install(ParallelBaseOM):
         self.action = "gs_install"
         self.initStep = "Init Install"
         self.enable_perf_config = False
+        self.enable_hugebin = False
 
     def usage(self):
         """

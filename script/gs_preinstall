@@ -76,6 +76,7 @@ class Preinstall(ParallelBaseOM):
         self.root_ssh_agent_flag = False
         self.root_delete_flag = False
         self.user_ssh_agent_flag = False
+        self.og_version_cfg = None
 
     def usage(self):
         """
@@ -367,6 +368,22 @@ General options:
             if status != 0:
                 GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"] % "version.cfg"
                                        + "The cmd is %s. " % cmd + "The output is %s." % output)
+        def _parse_version_cfg(_cfg):
+            _cmd = f'cat {_cfg}'
+            _status, _output = subprocess.getstatusoutput(_cmd)
+            if _status != 0:
+                GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50217"] %
+                                        "version.cfg" + "The cmd is %s. " % _cmd +
+                                        "The output is %s." % _output)
+            _lines = _output.splitlines()
+            _res = {
+                'pkg_prefix': _lines[0],
+                'pgversion': _lines[1],
+                'commit': _lines[2],
+                'mode': 'release' if len(_lines) < 4 else _lines[3]
+            }
+            return _res        
+        self.og_version_cfg = _parse_version_cfg(os.path.join(toolpath, 'version.cfg'))
 
     # init global variables
     def initGlobals(self):

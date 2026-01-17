@@ -36,6 +36,7 @@ from domain_utils.cluster_file.package_info import PackageInfo
 from base_utils.os.password_util import PasswordUtil
 from base_utils.os.net_util import NetUtil
 from domain_utils.cluster_file.profile_file import ProfileFile
+from base_utils.os.env_util import EnvUtil
 
 # action name
 # prepare cluster tool package path

@@ -36,6 +36,7 @@ from domain_utils.cluster_file.package_info import PackageInfo
 from base_utils.os.password_util import PasswordUtil
 from base_utils.os.net_util import NetUtil
 from domain_utils.cluster_file.profile_file import ProfileFile
+from base_utils.os.env_util import EnvUtil
 
 # action name
 # prepare cluster tool package path
@@ -1445,6 +1446,55 @@ class PreinstallImpl:
                 if os.path.dirname(dataInst.datadir) == appPath:
                     raise Exception(ErrorCode.GAUSS_502["GAUSS_50232"] % (
                         dataInst.datadir, appPath))
+    
+    def check_upgrade_finished(self):
+        """
+        function : Check whether the cluster in upgrade processing. 
+                   if upgrade is not finished, we should stop preinstall.
+        input : None
+        output : None
+        """
+        self.context.logger.debug("Check if upgrade is not finished.")
+        apppath = self.context.clusterInfo.appPath
+        if not os.path.exists(apppath):
+            self.context.logger.debug(f"{apppath} is not exist.")
+            return
+        
+        commitid = self.context.og_version_cfg["commit"]
+        appreal = os.path.realpath(apppath)
+        self.context.logger.debug(f"Exist apppath info: commitid={commitid} , apppath={appreal}")
+        if commitid in os.path.basename(appreal):
+            return
+        
+        gauss_env = EnvUtil.getEnvironmentParameterValue('GAUSS_ENV',
+                                                         self.context.user,
+                                                         env_file=self.context.mpprcFile)
+        if gauss_env != '2':
+            return
+        
+        local_node = [node for node in self.context.clusterInfo.dbNodes
+                      if node.name == NetUtil.GetHostIpOrName()][0]
+        if len(local_node.datanodes) < 1:
+            return
+        port = local_node.datanodes[0].port
+        ckcmd = ""
+        if os.getuid() == 0:
+            
+            ckcmd = f"""
+            su - {self.context.user} -c "source {self.context.mpprcFile};gsql -d postgres -p {port} -q -A -t -c 'show upgrade_mode'"
+            """
+        else:
+            ckcmd = f"""
+            source {self.context.mpprcFile};gsql -d postgres -p {port} -q -A -t -c 'show upgrade_mode'
+            """
+            
+        status, output = subprocess.getstatusoutput(ckcmd)
+        self.context.logger.debug("Check upgrade result: %d, %s" % (status, output))
+        if status == 0 and output:
+            upgrademode = output.splitlines()[-1]
+            if upgrademode == '2':
+                self.context.logger.error("The upgrade is not complete, please do commit or rollback before preinstall.")
+                sys.exit(1)
 
     def checkOSSoftware(self):
         """
@@ -1521,6 +1571,8 @@ class PreinstallImpl:
         # Check whether the instance directory
         # conflicts with the application directory.
         self.checkInstanceDir()
+        # check if in upgrade process
+        self.check_upgrade_finished()
         # install tools phase1
         self.installToolsPhase1()
         # exchange user key for root user

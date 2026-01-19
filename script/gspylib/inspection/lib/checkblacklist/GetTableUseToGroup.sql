@@ -4,7 +4,7 @@ with oid2relname AS
 		n.nspname AS schemaname, 
 		c.relname AS tablename,
 		c.oid AS relid
-   FROM pg_class c LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
+   FROM pg_class c LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 )
 
 select

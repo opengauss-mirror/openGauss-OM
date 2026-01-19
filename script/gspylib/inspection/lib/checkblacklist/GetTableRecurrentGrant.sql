@@ -20,7 +20,7 @@ acl2tab as
         relacl,
         regexp_split_to_table(acl, ',') as record
     from aclinfo c
-    inner join pg_namespace n on c.relnamespace = n.oid
+    inner join pg_catalog.pg_namespace n on c.relnamespace = n.oid
     where relacl is not null
 ),
 

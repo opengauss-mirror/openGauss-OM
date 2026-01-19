@@ -5,7 +5,7 @@ with oid2relname AS
 		c.relname AS tablename,
 		pg_get_userbyid(c.relowner) as relowner,
 		c.oid AS relid
-   FROM pg_class c LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
+   FROM pg_class c LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 )
 select 
 	a.schemaname as inh_schemaname,

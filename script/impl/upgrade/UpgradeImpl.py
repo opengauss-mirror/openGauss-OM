@@ -3928,12 +3928,12 @@ class UpgradeImpl:
                     sql = "START TRANSACTION;"
                     sql += "SET %s = on;" % const.ON_INPLACE_UPGRADE
                     if mode == "upgrade":
-                        sql += "UPDATE PGXC_NODE SET node_host = '%s', " \
+                        sql += "UPDATE PG_CATALOG.PGXC_NODE SET node_host = '%s', " \
                                "node_host1 = '%s' WHERE node_host = " \
                                "'localhost'; " % (dn.listenIps[0],
                                                   dn.listenIps[0])
                     else:
-                        sql += "UPDATE PGXC_NODE SET node_host = " \
+                        sql += "UPDATE PG_CATALOG.PGXC_NODE SET node_host = " \
                                "'localhost', node_host1 = 'localhost' WHERE" \
                                " node_type = 'C' and node_host = '%s';" %\
                                (dn.listenIps[0])

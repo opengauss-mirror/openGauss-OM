@@ -190,7 +190,7 @@ META = {
                              "              p.proname, "
                              "              pg_get_function_arguments(p.oid)), "
                              "       md5(pg_get_functiondef(p.oid)::text) "
-                             "from pg_proc p left join pg_namespace n on p.pronamespace = n.oid "
+                             "from pg_proc p left join pg_catalog.pg_namespace n on p.pronamespace = n.oid "
                              "where p.oid < 16384 and p.proisagg=false and p.proiswindow=false and prolang < 10000 "
                              "and p.proname not in ('_pg_char_max_length')", # 格式差异忽略
                 key_desc='函数%s的定义',
@@ -246,7 +246,7 @@ META = {
             ContentRulesMeta(
                 complete_sql="select format('def:%s.%s', n.nspname, c.relname), "
                              "       md5(pg_get_viewdef(c.oid)) "
-                             "from pg_class c left join pg_namespace n on c.relnamespace=n.oid "
+                             "from pg_class c left join pg_catalog.pg_namespace n on c.relnamespace=n.oid "
                              "where c.oid < 16384 and "
                              "      c.relkind in ('v') and "
                              "      n.nspname not in ('pg_toast', 'snapshot') ",
@@ -323,7 +323,7 @@ META = {
             ContentRulesMeta(
                 complete_sql="select srvname, "
                              "       md5(fw.fdwname || fs.srvtype::text || fs.srvversion::text || fs.srvoptions::text) "
-                             "from pg_foreign_server fs left join pg_foreign_data_wrapper fw on fs.srvfdw = fw.oid "
+                             "from pg_foreign_server fs left join pg_catalog.pg_foreign_data_wrapper fw on fs.srvfdw = fw.oid "
                              "where  9999 < fs.oid and fs.oid < 16384 ;",
                 key_desc='外表服务器%s',
                 complete_sql_desc='校验系统表pg_foreign_server的内容'
@@ -353,8 +353,8 @@ META = {
             ),
             ContentRulesMeta(
                 complete_sql="select fdw.fdwname, format('hander(%s),validator(%s)', p1.proname, p2.proname) "
-                             "from pg_foreign_data_wrapper fdw left join pg_proc p1 on fdwhandler = p1.oid "
-                             "                                 left join pg_proc p2 on fdwvalidator=p2.oid "
+                             "from pg_foreign_data_wrapper fdw left join pg_catalog.pg_proc p1 on fdwhandler = p1.oid "
+                             "                                 left join pg_catalog.pg_proc p2 on fdwvalidator=p2.oid "
                              "where 9999 < fdw.oid and fdw.oid < 16384 ",
                 key_desc='外部数据包装器%s',
                 complete_sql_desc='校验表pg_foreign_data_wrapper的内容'
@@ -612,8 +612,8 @@ META = {
             ContentRulesMeta(
                 complete_sql="select format('def:%s(%s)', ct.relname, ci.relname), "
                              "       md5(pg_get_indexdef(indexrelid)) "
-                             "from pg_index i left join pg_class ct on i.indrelid = ct.oid "
-                             "                left join pg_class ci on i.indexrelid = ci.oid "
+                             "from pg_index i left join pg_catalog.pg_class ct on i.indrelid = ct.oid "
+                             "                left join pg_catalog.pg_class ci on i.indexrelid = ci.oid "
                              "where indexrelid < 16384 and ct.relnamespace not in (99, 4989)",
                 key_desc='索引定义%s',
                 complete_sql_desc='通过函数pg_get_indexdef()校验索引的定义（排除pg_toast、snapshot的索引，因为有会变OID名字等原因）'
@@ -752,8 +752,8 @@ META = {
             ContentRulesMeta(
                 complete_sql="select format('def:%s.%s(%s)', n.nspname, c.relname, r.rulename), "
                              "       md5(pg_get_ruledef(r.oid)) "
-                             "from pg_rewrite r left join pg_class c on r.ev_class = c.oid "
-                             "                  left join pg_namespace n on c.relnamespace = n.oid "
+                             "from pg_rewrite r left join pg_catalog.pg_class c on r.ev_class = c.oid "
+                             "                  left join pg_catalog.pg_namespace n on c.relnamespace = n.oid "
                              "where r.oid < 16384 and "
                              "      n.nspname not in ('pg_toast', 'snapshot');",
                 key_desc='规则定义%s',
@@ -794,7 +794,7 @@ META = {
             ContentRulesMeta(
                 complete_sql="select format('def:%s(%s)', c.relname, t.tgname), "
                              "       md5(pg_get_triggerdef(t.oid)) "
-                             "from pg_trigger t left join pg_class c on t.tgrelid=c.oid "
+                             "from pg_trigger t left join pg_catalog.pg_class c on t.tgrelid=c.oid "
                              "where t.oid < 16384 ",
                 key_desc='触发器定义%s',
                 complete_sql_desc='通过函数pg_get_triggerdef()检查触发器的定义'
@@ -1179,8 +1179,8 @@ META = {
             ContentRulesMeta(
                 complete_sql="select format('%s %s %s', c.cfgname, cm.maptokentype, mapseqno),"
                              "       md5(d.dictname)"
-                             "from pg_ts_config_map cm left join pg_ts_config c on cm.mapcfg = c.oid "
-                             "                         left join pg_ts_dict d on cm.mapdict = d.oid "
+                             "from pg_ts_config_map cm left join pg_catalog.pg_ts_config c on cm.mapcfg = c.oid "
+                             "                         left join pg_catalog.pg_ts_dict d on cm.mapdict = d.oid "
                              "where 9999 < cm.mapcfg and cm.mapcfg < 16384;",
                 key_desc='(9999,16384)的mapcfg范围内的键值为%s的文本搜索配置',
                 complete_sql_desc='(9999,16384)的mapcfg范围内的所有文本搜索配置项目',

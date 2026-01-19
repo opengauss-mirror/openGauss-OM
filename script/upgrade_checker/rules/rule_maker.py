@@ -60,7 +60,7 @@ class PgClassItem(object):
                    ) as columns,
                    n.nspname || '.' || c.relname as relkey
             from pg_class c
-                 left join pg_namespace n on c.relnamespace = n.oid
+                 left join pg_catalog.pg_namespace n on c.relnamespace = n.oid
             where c.relkind = 'r' and (c.oid < 16384 or relkey in (%s));
         """ % tables
         return sql

@@ -7,7 +7,7 @@ with relinfo as
 		(c.xmin::text::bigint) as rel_xmin,
         c.oid as relid
     from pg_class c
-    left join pg_namespace n on (c.relnamespace = n.oid)
+    left join pg_catalog.pg_namespace n on (c.relnamespace = n.oid)
 ),
 
 groupinfo as
@@ -17,7 +17,7 @@ groupinfo as
 		c.pgroup as group_name,
 		(g.xmin::text::bigint) as group_xmin
 	from pgxc_class c
-	left join pgxc_group g on (c.pgroup = g.group_name)
+	left join pg_catalog.pgxc_group g on (c.pgroup = g.group_name)
 )
 
 select

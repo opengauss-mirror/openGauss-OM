@@ -1,0 +1,755 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+#############################################################################
+# Copyright (c) 2020 Huawei Technologies Co.,Ltd.
+#
+# openGauss is licensed under Mulan PSL v2.
+# You can use this software according to the terms
+# and conditions of the Mulan PSL v2.
+# You may obtain a copy of Mulan PSL v2 at:
+#
+#          http://license.coscl.org.cn/MulanPSL2
+#
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS,
+# WITHOUT WARRANTIES OF ANY KIND,
+# EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+# MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+# See the Mulan PSL v2 for more details.
+# ----------------------------------------------------------------------------
+# Description  : gs_checkps is a utility to check cluster datafile
+#############################################################################
+import os
+import re
+import sys
+import pwd
+import copy
+import html
+import shutil
+import logging
+import subprocess
+
+from datetime import datetime
+sys.path.append(sys.path[0] + '/../lib')
+from base_utils.os.net_util import NetUtil
+from base_utils.os.cmd_util import CmdUtil
+from gspylib.threads.SshTool import SshTool
+from base_utils.os.user_util import UserUtil
+from gspylib.common.GaussLog import GaussLog
+from gspylib.common.ErrorCode import ErrorCode
+from gspylib.common.DbClusterInfo import dbClusterInfo
+from gspylib.common.ParameterParsecheck import Parameter
+from domain_utils.sql_handler.sql_executor import SqlExecutor
+from gspylib.common.Common import DefaultValue, ClusterCommand
+
+###########################
+# gspylib/common/DbClusterInfo.py
+# instance type. only for CN/DN 
+###########################
+INSTANCE_TYPE_UNDEFINED = -1
+# master 
+MASTER_INSTANCE = 0
+# standby 
+STANDBY_INSTANCE = 1
+# dummy standby 
+DUMMY_STANDBY_INSTANCE = 2
+# cascade standby
+CASCADE_STANDBY = 3
+DICT_INSTANCE = {MASTER_INSTANCE: "primary", 
+                 STANDBY_INSTANCE: "standby",
+                 CASCADE_STANDBY: "cascade_standby"}
+# output file
+rpt_dir = "chk_rpt"
+g_PGHOST = os.environ.get('PGHOST')
+g_USER = pwd.getpwuid(os.getuid()).pw_name
+if g_PGHOST is not None and os.path.exists(g_PGHOST):
+    g_chk_dir = os.path.join(g_PGHOST, rpt_dir)    
+else:
+    g_chk_dir = os.path.join("/tmp", rpt_dir)
+
+if not os.path.exists(g_chk_dir):
+    os.makedirs(g_chk_dir)
+
+g_outputfile = os.path.join(g_chk_dir, f"checkps_rpt_%s.html" % datetime.now().strftime("%Y%m%d%H%M%S"))
+
+NOTRACE_MD5VALUE = ['813a3b22f7a970c15620be3031ce3f85',     # empty file
+                    '2c7ab85a893283e98c931e9511add182',     # empty pg_xlog
+                    '3e5f7824496b01e651a74648519c8cb4',
+                    'e9d1c44092dfc19f4f5b2d1ab68ec00c'
+                    ]
+
+NOTRACE_SCHEMA = ['information_schema',
+                  'dbe_pldeveloper',
+                  'pg_catalog',
+                  'db4ai',
+                  'cstore'
+                  ]
+
+html_content = []
+g_opts = None
+
+class CmdOptions():
+    """
+    init the command options
+    """
+    def __init__(self):
+        self.pagehack = shutil.which('pagehack')
+        self.show_index = False
+        self.cluster_is_on = True        
+
+class CheckMd5Info(object):
+    """
+    init the command options
+    """
+    def __init__(self):
+        self.user_info = {}
+        self.HostIpOrName = ""
+        self.localhostip = ""
+        self.localnodeport = 0
+        self.localnodedatadir = ""
+        self.primaryhostid = 0
+        self.localdbstate = ""
+        self.localRole = INSTANCE_TYPE_UNDEFINED
+        self.clusternodenames = []
+        self.clusternodeips = []
+        self.clusternodeids = []
+        self.clusternodedatadirs = []
+        self.clusternodeCount = 0
+        self.filenode_map_dict = {}
+        self.database_dict = {}
+        self.pg_class_info = {}
+        self.files_dict = {}
+        self.all_files = []
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(funcName)s - %(lineno)s - %(message)s ')
+        self.logger = logging.getLogger(__name__)
+
+    def get_cluster_info(self):
+        """
+        function: get clusterInfo
+        input: NA
+        output: NA
+        """
+        self.logger.info("Getting cluster info from Static Config.")
+        
+        if os.getuid() != 0:
+            self.user_info = UserUtil.getUserInfo()
+            self.HostIpOrName = NetUtil.GetHostIpOrName()
+            
+            g_clusterInfo = dbClusterInfo()
+            g_clusterInfo.initFromStaticConfig(g_USER)
+
+            self.clusternodeCount = g_clusterInfo.nodeCount
+            if self.clusternodeCount <= 1:
+                self.logger.warning(f"Warning: local node is not in cluster, node Count is {self.clusternodeCount}.")
+                sys.exit(1)
+            
+            self.clusternodenames = g_clusterInfo.getClusterNodeNames()
+            self.clusternodeids = g_clusterInfo.getClusterNodeIds()
+            self.clusternodeips = g_clusterInfo.getClusterSshIps()[0]
+            for i in range (self.clusternodeCount):
+                self.clusternodedatadirs.append(g_clusterInfo.dbNodes[i].datanodes[0].datadir)
+            
+            if  self.HostIpOrName in self.clusternodeips:
+                self.localhostip = self.HostIpOrName
+            elif self.HostIpOrName in self.clusternodenames:
+                self.localhostip = self.clusternodeips[self.clusternodenames.index(self.HostIpOrName)]
+                
+            if self.localhostip in self.clusternodeips:
+                self.localnodedatadir = self.clusternodedatadirs[self.clusternodeips.index(self.localhostip)]
+                self.localnodeport = g_clusterInfo.dbNodes[self.clusternodeips.index(self.localhostip)].datanodes[0].port
+                
+            self.get_local_role()
+            
+            if self.localdbstate != 'Normal':
+                GaussLog.printMessage("Cluster is unavailable now \n \
+                      The cluster nodes are %s" % self.clusternodenames)
+                primarynode = input("please input the id of primary node in cluster manually: %s :" % self.clusternodeids)
+                if primarynode == '':
+                    logging.warn(f"Nothing is given, quit.")
+                    sys.exit(1)
+                primarynode = int(primarynode)
+                if int(primarynode) not in self.clusternodeids:
+                    logging.warn(f"An error id <{primarynode}> is given.")
+                    sys.exit(1)
+                self.primaryhostid = primarynode
+
+    def get_local_role(self):
+        """
+        function: get db role of localhost.
+        input : host
+        output: NA
+        """
+        self.logger.info("Getting local db role in cluster.")
+        try:
+            if not os.path.exists(os.path.join(self.localnodedatadir, "postmaster.pid")):
+                self.localRole = INSTANCE_TYPE_UNDEFINED
+                return
+            checkCmd = "gs_ctl query -D %s | grep -E 'local_role|db_state|channel'" % self.localnodedatadir
+            (status, output) = CmdUtil.retryGetstatusoutput(checkCmd)
+            if status != 0:
+                cmd = "gs_ctl query -D %s" % self.localnodedatadir
+                (status, output) = subprocess.getstatusoutput(cmd)
+                if (status != 0 and output.find("could not connect to "
+                                                "the local server") > 0):
+                    self.localRole = INSTANCE_TYPE_UNDEFINED
+
+            local_role = ""
+            db_state = ""
+            primarynodeip = ""
+            output_lines = output.split('\n')
+            for line in output_lines:
+                if 'local_role' in line:
+                    local_role = line.split(':')[1].strip()
+                if 'db_state' in line:
+                    db_state = line.split(':')[1].strip()
+                    self.localdbstate = db_state
+                if 'channel' in line:
+                    if '-->' in line:
+                        primarynodeip = re.split(r'[:"--"<>]', line)[1].strip()
+                    if '<--' in line:
+                        primarynodeip = re.split(r'[:"--"<>]', line)[5].strip()
+            if local_role == "Primary":
+                self.localRole = MASTER_INSTANCE
+            else:
+                self.localRole = STANDBY_INSTANCE
+            
+            if db_state != 'Normal':
+                logging.warn(f"Local db_stat is '{db_state}', not Normal.")
+                
+            if primarynodeip != "" and NetUtil.isIpValid(primarynodeip):
+                if primarynodeip in self.clusternodeips:
+                    self.primaryhostid = self.clusternodeips.index(primarynodeip) + 1
+        except  Exception as e:
+            raise Exception(str(e))
+
+    def get_md5value_of_primary_data(self, time_out=10):
+        """
+        Function: Collect MD5 values of all data files across cluster nodes via SSH.
+        Input: timeout
+        Output: Populates self.files_dict with per-node file-MD5 mappings.
+        """
+        hosts = copy.deepcopy(self.clusternodeips)
+        result_dict = {}
+        outputCollect = ""
+
+        self.logger.info("Checking connectivity via ping...")
+        iplist_not_avalible = NetUtil.checkIpAddressList(hosts)
+        if len(iplist_not_avalible) > 0:
+            logging.warning(f"Some hosts can't be reached: {iplist_not_avalible}")
+            hosts = [ip for ip in hosts if ip not in iplist_not_avalible]
+
+        if len(hosts) <= 1:
+            self.logger.warning("Warning: No node can be reached.")
+            sys.exit(1)
+
+        sshTool = SshTool(hosts, timeout=time_out)
+        self.logger.info(f"Getting MD5 values of data files from all hosts: {hosts}")
+        
+        tmp_datadir_list = list(set(self.clusternodedatadirs))
+        try:
+            if len(tmp_datadir_list) == 1:
+                datadir = tmp_datadir_list[0]
+                cmd = (
+                    f"find {datadir} $(find {datadir} -type l 2>/dev/null -exec readlink {{}} \\;) "
+                    r"-type f -size +0 -regex '.*/[0-9].*' -exec md5sum {} \\;"
+                )
+                resultMap, output = sshTool.getSshStatusOutput(cmd, hosts)
+                result_dict.update(resultMap)
+                outputCollect += output
+            else:
+                for host in hosts:
+                    self.logger.info(f"Getting MD5 values of data files from host [{host}]")
+                    datadir = self.clusternodedatadirs[self.clusternodeips.index(host)]
+                    cmd = (
+                        f"find {datadir} $(find {datadir} -type l 2>/dev/null -exec readlink {{}} \\;) "
+                        r"-type f -size +0 -regex '.*/[0-9].*' -exec md5sum {} \\;"
+                    )
+                    resultMap, output = sshTool.getSshStatusOutput(cmd, [host])
+                    result_dict.update(resultMap)
+                    outputCollect += "\n" + output
+        except Exception as e:
+            raise Exception(f"Failed to fetch MD5 values via SSH: {e}")
+
+        GaussLog.printMessage(f"result_dict: {result_dict}")
+        self.format_output_collect(outputCollect)
+
+    def format_output_collect(self, outputCollect):
+        """
+        Parse raw SSH output into structured per-host file-MD5 map.
+        Exclude files with known non-traceable MD5 values.
+        """
+        node_name = None
+        node_data = ""
+        lines = [line.strip() for line in outputCollect.splitlines() if line.strip()]
+        for line in lines:
+            if line.startswith("[SUCCESS]"):
+                if node_name and node_data:
+                    self.files_dict[node_name] = node_data.strip()
+                try:
+                    ip = line.split()[1].rstrip(":")
+                    node_name = self.clusternodenames[self.clusternodeips.index(ip)]
+                except (IndexError, ValueError):
+                    continue
+                node_data = ""
+            else:
+                parts = line.split(None, 1)
+                if len(parts) < 2:
+                    continue
+                md5_val, filename = parts[0], parts[1]
+                if md5_val in NOTRACE_MD5VALUE:
+                    continue
+                if filename not in self.all_files:
+                    self.all_files.append(filename)
+                node_data += line + "\n" 
+        if node_name and node_data:
+            self.files_dict[node_name] = node_data
+
+    def get_table_detail_from_datafile(self, filepath):
+        '''
+        input: filepath
+        output: relname, relkind, parttype
+        Extract relation metadata based on file path and internal mapping.
+        '''
+        output = {'relname': "-", 'relkind': "-", 'parttype': "-"}
+        parts = [p for p in filepath.strip('/').split('/') if p]    # Remove empty strings
+        if len(parts) < 2:
+            return output
+        match = re.match(r'^\d+', parts[-1])
+        dboid, tbloid = parts[-2], match.group() if match else parts[-1]
+
+        logdir = ['pg_clog', 'pg_csnlog', 'pg_xlog']
+        if dboid in logdir:
+            output['relname'] = dboid
+            return output
+        
+        if dboid == 'global':
+            dboid = '1'
+
+        relid = None
+        if tbloid in self.filenode_map_dict:
+            relid, catalog = self.filenode_map_dict[tbloid]['relid'], self.filenode_map_dict[tbloid]['catalog']
+            output['relname'] = catalog
+            
+        if self.localRole < 0:
+            return output
+    
+        if not dboid in self.database_dict.keys():
+            GaussLog.printMessage("%s may not a database oid" % dboid)
+            return output
+        if not tbloid.isdigit():
+            GaussLog.printMessage("%s may not a table oid" % tbloid)
+            return output
+        
+        if dboid not in self.pg_class_info:
+            self.get_pg_class_info(dboid)
+        for _, v in self.pg_class_info[dboid].items():
+            if v['relfilenode'] == tbloid or v['relfilenode'] == relid:
+                output['relname'] = v['relname']
+                output['relkind'] = v['relkind']
+                output['parttype'] = v['parttype']
+                    
+        return output
+
+    def read_md5_file(self, file_content):
+        """
+        Parse plain text content into dictionary: filename -> MD5.
+        Skip malformed lines.
+        """
+        result = {}
+        try:
+            for line in file_content.splitlines():
+                line = line.strip()
+                parts = line.split()
+                if len(parts) < 2:
+                    continue
+                md5_val, filename = parts[0], ' '.join(parts[1:])
+                result[filename] = md5_val
+            return result
+        except Exception as e:
+            logging.error(f"Error reading file {str(e)}")
+            return {}
+
+    def files_compare(self, primary_host, files_dict):
+        """
+        Compare file MD5 values between primary and other nodes.
+        Generate HTML table rows highlighting differences.
+        Two phases:
+          1. Files present on primary but differ on others.
+          2. Files missing on primary but exist on secondaries.
+        """
+        global html_content
+        global g_opts
+        html_table = []
+        file_dicts = {}
+
+        # Build per-host file-MD5 mapping
+        for host, content in files_dict.items():
+            file_dicts[host] = self.read_md5_file(content)
+
+        primary_dict = file_dicts.get(primary_host, {})
+        other_hosts = {h: file_dicts[h] for h in file_dicts if h != primary_host}
+
+        diff_count = 0
+        total_files = len(self.all_files)
+        self.all_files.sort()
+
+        # Phase 1: Files on primary, compare with others
+        for filename in self.all_files:
+            if filename not in primary_dict:
+                continue
+            md5_p = primary_dict[filename]
+            row_cells = []
+
+            has_diff = any(
+                other_dicts.get(filename) != md5_p and other_dicts.get(filename) != "-" 
+                for other_dicts in other_hosts.values()
+            )
+            row_class = ' class="diff"' if has_diff else ''
+            if has_diff:
+                relinfo = self.get_table_detail_from_datafile(filename)
+                relname, relkind, parttype = relinfo['relname'], relinfo['relkind'], relinfo['parttype']
+                if relname.split('.')[0] in NOTRACE_SCHEMA:
+                    continue
+                if relkind == 'i':
+                    continue
+                diff_count += 1
+                row_cells.append(f"<td{row_class}>{html.escape('/'.join(filename.split('/')[-2:]))}</td>")
+                row_cells.append(f"<td{row_class}>{html.escape(relname)}</td>")
+                row_cells.append(f"<td{row_class}>{relkind}</td>")
+                row_cells.append(f"<td{row_class}>{parttype}</td>")
+                row_cells.append(f"<td{row_class}>{md5_p}</td>")
+
+                for host in other_hosts:
+                    md5_val = other_hosts[host].get(filename, "-")
+                    cell_class = ' class="diff"' if md5_val != md5_p and md5_val != "-" else ''
+                    row_cells.append(f"<td{cell_class}>{md5_val}</td>")
+                html_table.append("        <tr>" + "".join(row_cells) + "</tr>")
+
+        # Phase 2: Files only on standby nodes (not on primary)
+        for filename in self.all_files:
+            if filename in primary_dict:
+                continue
+            row_cells = []
+            relinfo = self.get_table_detail_from_datafile(filename)
+            relname, relkind, parttype = relinfo['relname'], relinfo['relkind'], relinfo['parttype']
+            if relname.split('.')[0] in NOTRACE_SCHEMA:
+                    continue
+            if (not g_opts.show_index) and relkind == 'i':
+                    continue
+            row_class = ' class="pnone"'
+            diff_count += 1
+            row_cells.append(f"<td{row_class}>{html.escape('/'.join(filename.split('/')[-2:]))}</td>")
+            row_cells.append(f"<td{row_class}>{html.escape(relname)}</td>")
+            row_cells.append(f"<td{row_class}>{relkind}</td>")
+            row_cells.append(f"<td{row_class}>{parttype}</td>")
+            row_cells.append("<td>-</td>")
+
+            for host in other_hosts:
+                md5_val = other_hosts[host].get(filename, "-")
+                cell_class = ' class="pnone"' if md5_val != "-" else ''
+                row_cells.append(f"<td{cell_class}>{md5_val}</td>")
+            html_table.append("        <tr>" + "".join(row_cells) + "</tr>")
+
+        # Summary section
+        html_content.append(f'    <div class="summary">主节点：<strong>{primary_host}</strong>, 各节点与主节点比较，结果如下：<p>')
+        html_content.append(f'    共比较 {total_files} 个文件，发现 {diff_count} 处不一致。<p>')
+        html_content.append(f'</div>')
+        
+
+        print(f"共比较 {total_files} 个文件，发现 {diff_count} 处不一致")
+        
+        # Warning: Local DB down, cannot query table details
+        if not g_opts.cluster_is_on:
+            html_content.append('<div class="summary"> <strong>警告：</strong> <ul> <li>当前数据库不可用，无法查询表详情及复制状态。</li></div>')
+
+
+        # Table start
+        html_content.append('    <div class="table-wrapper">')
+        html_content.append('    <table>')
+
+        # Header
+        headers = [
+            "<th style='width: 20px;'>文件名</th>",
+            "<th>relname</th>", "<th>relkind</th>", "<th>parttype</th>",
+            f"<th>{html.escape(primary_host)}</th>"
+        ]
+        headers.extend(f"<th>{html.escape(h)}</th>" for h in other_hosts)
+        html_content.append("        <tr>" + "".join(headers) + "</tr>")
+        html_content.extend(html_table)
+
+    def _format_query_result(self, result):
+        """
+        Format raw query output into dictionary: relfilenode -> {relid, catalog}
+        """
+        formatted_dict = {}
+        for row in result:
+            if isinstance(row, str) and ',' not in row:
+                continue
+            row_str = row.decode('utf-8') if isinstance(row, bytes) else str(row)
+            parts = row_str.replace(',', '').replace(':', '').split()
+            if len(parts) < 7:
+                continue
+            try:
+                relid, relfilenode, catalog = parts[2], parts[4], parts[6]
+                formatted_dict[relfilenode] = {'relid': relid, 'catalog': catalog}
+            except IndexError:
+                continue
+        return formatted_dict
+
+    def get_filenode_map_info(self):
+        """
+        Read pg_filenode.map using pagehack tool to resolve system object names.
+        """
+        global g_opts
+        self.logger.info("Getting filenode_map info from global and template1.")
+        filenode_map_list = [f"{self.localnodedatadir}/global/pg_filenode.map", 
+                             f"{self.localnodedatadir}/base/1/pg_filenode.map"]  
+        
+        if g_opts.pagehack is None:
+            logging.warn("command `pagehack` may not installed, filenode_map can not be dumped.")
+            return
+            
+        for filenode_map in filenode_map_list:
+            if os.path.exists(filenode_map):
+                cmd = "%s -t filenode_map -f %s" % (g_opts.pagehack, filenode_map)
+                try:
+                    (status, output) = subprocess.getstatusoutput(cmd)
+                    if status == 0:
+                        output = output.replace("\t",'').splitlines()
+                        self.filenode_map_dict.update(self._format_query_result(output))
+                    else:
+                        logging.error("get filenode_map info: %s failed." % filenode_map)
+                except Exception as e:
+                    raise("Error: there is someting wrong when run: %s , %s" %(cmd, e))
+            else:
+                logging.warning("warning: file %s not exists." % filenode_map)
+
+    def get_datbase_info(self):
+        """
+        Query pg_database to build OID-to-database name mapping.
+        """
+        self.logger.info("Getting oid, datname in pg_database.")
+        querySql = "select oid,datname from pg_database;"
+        status, result, err_output = SqlExecutor.excuteSqlOnLocalhost(self.localnodeport, querySql)
+        if (status != 2 or err_output.strip() != ""):
+            logging.error(" Error:\n%s" % err_output)
+            sys.exit(1)
+        for i in result:
+            self.database_dict[i[0].decode('utf-8')] = i[1].decode('utf-8')
+
+    def get_pg_class_info(self, dboid):
+        """
+        Query pg_class and pg_namespace to get relation details for specified database.
+        """
+        database = self.database_dict.get(dboid)
+        if database in ['template0']:
+            return
+        self.logger.info(f"Getting pg_class_info of database: {database}.")
+        querySql = "select c.oid, n.nspname||'.'||c.relname, c.relnamespace, \
+                    case when c.relfilenode = 0 then c.oid else c.relfilenode end relfilenode, \
+                    c.relkind, c.parttype \
+                    from pg_class c join pg_namespace n \
+                    on c.relnamespace = n.oid \
+                    and c.relkind not in ('v');"
+        if not database:
+            logging.warning(f"oid <{dboid}> is not a database oid.")
+            return
+
+        status, result, err_output = SqlExecutor.excuteSqlOnLocalhost(self.localnodeport, querySql, database)
+        
+        if (status != 2 or err_output.strip() != ""):
+            logging.error(" Error:\n%s" % err_output)
+            
+        relname_dict = {}
+        for i in result:
+            oid, relname, relnamespace, relfilenode, relkind, parttype = \
+            i[0].decode('utf-8'), i[1].decode('utf-8'), i[2].decode('utf-8'), \
+            i[3].decode('utf-8'), i[4].decode('utf-8'), i[5].decode('utf-8')
+            relname_dict[oid] = {'oid': oid, 'relname': relname, 'relnamespace': relnamespace, 
+                                 'relfilenode': relfilenode, 'relkind': relkind, 'parttype': parttype}
+        self.pg_class_info[dboid] = relname_dict
+
+    def get_recv_locations(self):
+        """
+        Query pg_stat_replication from primary node to get WAL sender/receiver status.
+        """
+        sql = "select client_addr,state,sender_sent_location,receiver_write_location, receiver_flush_location, \
+            receiver_replay_location,sync_priority,sync_state from pg_stat_replication;"
+        primaryhost = self.clusternodenames[self.primaryhostid - 1]
+        (status, output) = ClusterCommand.remoteSQLCommand(
+            sql, g_USER, primaryhost, self.localnodeport,
+            False, DefaultValue.DEFAULT_DB_NAME)
+        if (status != 0):
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
+                            sql + " Error:\n%s" % str(output))
+        out_list = output.split('\n')
+        html_table = []
+        html_table.append('</table> </div> <strong> pg_stat_replication: WAL sender信息 </strong> <p> <div class="table-wrapper"> <table>')
+        html_table.append('<tr><th>client_addr</th> <th>state</th> <th>sender_sent_location</th> <th>receiver_write_location</th>'
+                           '<th>receiver_flush_location</th> <th>receiver_replay_location</th> <th>sync_priority</th> <th>sync_state</th><tr>')
+        for entry in out_list:
+            row_cells = []
+            for item in entry.split('|'):
+                row_cells.append(f"<td>{item}</td>")
+            html_table.append(' <tr>' + ''.join(row_cells) + '</tr>')
+        
+        html_content.extend(html_table)
+
+#############################################################################
+# Parse and check parameters
+#############################################################################
+def usage():
+    """
+gs_checkps is a tool used to check and compare datafile of cluster nodes.
+
+Usage:
+  gs_checkps -? | --help
+  gs_checkps -V | --version
+  gs_checkps [--show-index] [-o OUTFILE]
+
+General options:
+  -o                              Save the result to the specified file, format HTML.
+     --show-index                 Show index objects (default: hidden)
+  -? --help                       Show help information for this utility, and exit the command line mode.
+  -V --version                    Show version information.
+    """
+    print(usage.__doc__)
+
+def checkOutputFile():
+    """
+    Validate output file path and permissions.
+    """
+    try:
+        if (g_outputfile != ""):
+            DefaultValue.checkOutputFile(g_outputfile)
+        # Pre-check: attempt to write and delete the file to verify writability
+        with open(g_outputfile, 'w') as f:
+            f.write("")
+        os.remove(g_outputfile)
+    except Exception as e:
+        GaussLog.exitWithError(str(e))
+
+def parseCommandLine():
+    """
+    Parse command-line arguments and store in global g_opts.
+    """
+    global g_outputfile
+    global g_opts
+    g_opts = CmdOptions()
+    ParaObj = Parameter()
+    ParaDict = ParaObj.ParameterCommandLine("checkps")
+    if (ParaDict.__contains__("helpFlag")):
+        usage()
+        sys.exit(0)
+    if (ParaDict.__contains__("outFile")):
+        g_outputfile = ParaDict.get("outFile")
+    
+    if (ParaDict.__contains__("showIndex")):
+        g_opts.show_index = True
+
+def htmlHeader(existing_html_content=None):
+    """
+    Generate HTML header with styles and metadata.
+    Append summary notes based on runtime options.
+    """
+    global g_opts
+    if existing_html_content is None:
+        html_content = []
+    else:
+        html_content = existing_html_content  # Do not clear existing content
+    html_content.append('<!DOCTYPE html>')
+    html_content.append('<html lang="zh">')
+    html_content.append('<head>')
+    html_content.append('   <meta charset="UTF-8">')
+    html_content.append('   <title>数据文件校验结果</title>')
+    html_content.append('   <style>')
+    html_content.append('       table { border-collapse: collapse; width: 100%; min-width: 800px; }')
+    html_content.append('       th, td { padding: 15px 20px; text-align: left; border-bottom: 1px solid #e1e8ed; white-space: nowrap; }')
+    html_content.append('       th { background: linear-gradient(135deg, #3498db, #2980b9); color: white; font-weight: 600; position: sticky; top: 0; z-index: 10; }')
+    # Fix first column
+    html_content.append('       th:first-child, td:first-child { position: sticky; left: 0; background: #2c3e50; color: white; z-index: 5; box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1); }')
+    # Special styling for top-left cell
+    html_content.append('       th:first-child { z-index: 15; background: linear-gradient(135deg, #2c3e50, #34495e); }')
+    
+    html_content.append('       tr:nth-child(even) { background-color: #f9f9f9; }')
+    html_content.append('       .diff { background-color: #fedcbd; }')
+    html_content.append('       .pnone { background-color: #afdfe4; }')
+    html_content.append('       .summary { margin: 20px 0; padding: 10px; border: 1px solid #ccc; background-color: #f0f0f0; border-radius: 10px; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08); border-left: 4px solid #3498db;}')
+    
+    html_content.append('       .container { max-width: 95%; margin: 0 auto; background: white; border-radius: 15px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1); padding: 30px; overflow: hidden; }')
+    html_content.append('       .table-wrapper { overflow-x: auto; border: 1px solid #e1e8ed; border-radius: 10px; margin-bottom: 30px; background: white; position: relative; max-height: 100vh; }')
+    
+    html_content.append('   </style>')
+    html_content.append('</head>')
+    html_content.append('   <div class="container">')
+    html_content.append('<body>')
+    html_content.append('   <h1>数据文件校验结果</h1>')
+    html_content.append('   <div class="summary"><strong>说明：</strong> <ul>'
+                        f'<li>报表生成时间: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")} </li>'
+                        '<li> <span class="diff">肌色背景表示MD5值不一致 </span></li>'
+                        '<li> <span class="pnone">水色背景表示主节点不存在的文件 </span></li>'
+                        f'<li>"-" 表示该文件在对应节点中不存在或其文件的md5值为列表: {NOTRACE_MD5VALUE}中的值</li>'
+                        )
+    if g_opts.cluster_is_on:
+        html_content.append(f'<li>各数据库中模式为: {NOTRACE_SCHEMA} 的对象不展示，集群未启动的情况下无法确定对象类型，会展示所有MD5值不一致的文件</li>')
+        if not g_opts.show_index:
+            html_content.append('<li>索引类型对象默认不展示 （pg_toast.pg_toast_XXXX_index 索引在主备节点的MD5值经常会出现不一致的情况），'
+                                '如需显示索引类型对象，可加参数`--show-index`')
+    else:
+        html_content.append(f'<li>当前数据库节点不可用，对象名称无法获得</li>')
+    if g_opts.pagehack is None:
+        html_content.append(f'    <li><span style="background-color: #f0dc70">pagahack工具未安装，gs_filenode.map无法解析，部分系统对象将无法显示对象名称</span></li>')
+    html_content.append('</ul></div>')
+    return html_content
+
+def footer(html_content):
+    """
+    Append closing HTML tags.
+    """
+    html_content.append('   </table>')
+    html_content.append('   </div>')
+    html_content.append('   </div>')
+    html_content.append('</body>')
+    html_content.append('</html>')
+    return html_content
+
+def main():
+    """
+    Main execution function.
+    """
+    global html_content
+
+    parseCommandLine()
+    checkOutputFile()
+
+    manager = CheckMd5Info()
+    manager.get_cluster_info()
+    manager.get_md5value_of_primary_data()
+    manager.get_filenode_map_info()
+
+    if manager.localRole >= 0:
+        manager.get_datbase_info()
+    else:
+        g_opts.cluster_is_on = False
+        GaussLog.printMessage(f"The database on localhost is unavailable, and table details cannot be queried")
+        
+    html_content = htmlHeader(html_content)
+
+    primary_hostname = manager.clusternodenames[manager.primaryhostid - 1]
+    manager.files_compare(primary_hostname, manager.files_dict)
+
+    if g_opts.cluster_is_on:
+        manager.get_recv_locations()
+
+    html_content = footer(html_content)
+
+    try:
+        with open(g_outputfile, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(html_content))
+        print(f"✅ 结果已保存到: {g_outputfile}")
+    except Exception as e:
+        print(f"❌ 写入HTML文件失败: {str(e)}")
+        sys.exit(1)
+
+# Entry point
+if __name__ == '__main__':
+    main()

@@ -120,7 +120,7 @@ class PreinstallImplOLAP(PreinstallImpl):
             self.context.logger.debug("Modifying logPath owner")
             top_dir_file = ClusterConstants.TOP_DIR_FILE
             keylist = []
-            if (self.context.localMode):
+            if self.context.localMode and os.getuid() == 0:
                 if (os.path.exists(top_dir_file)):
                     keylist = FileUtil.readFile(top_dir_file)
                     if (keylist != []):

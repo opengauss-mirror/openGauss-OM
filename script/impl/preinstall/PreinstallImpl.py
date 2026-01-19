@@ -1042,7 +1042,7 @@ class PreinstallImpl:
                                          recursive=True, cmd_type="shell", link=True)
 
                 topDirFile = ClusterConstants.TOP_DIR_FILE
-                if os.path.exists(topDirFile):
+                if os.getuid() == 0 and os.path.exists(topDirFile):
                     keylist = FileUtil.readFile(topDirFile)
                     if keylist != []:
                         for key in keylist:

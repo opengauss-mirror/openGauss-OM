@@ -131,7 +131,7 @@ class DropNodeWithCmImpl(DropnodeImpl):
         """
         Get update cm_resource.json cmd for del host.
         """
-        get_id_cmd = "cm_ctl query -Cv | grep %s | awk 'NR=1{print $1}'" % hostName
+        get_id_cmd = "cm_ctl query -Cv | grep %s | awk 'NR=1{print $1}'" % CmdUtil.quoteCmd(hostName)
         status, output = subprocess.getstatusoutput(get_id_cmd)
         node_id = int(output)
         res_info = self.get_del_res_info(node_id)
@@ -166,7 +166,7 @@ class DropNodeWithCmImpl(DropnodeImpl):
         """
         Update dss_inst.ini.
         """
-        dss_home = EnvUtil.get_dss_home()
+        dss_home = CmdUtil.quoteCmd(EnvUtil.get_dss_home())
         dss_inst = dss_home + '/cfg/dss_inst.ini'
         get_list_cmd = "cat %s | grep DSS_NODES_LIST" % dss_inst
         status, output = subprocess.getstatusoutput(get_list_cmd)
@@ -196,7 +196,7 @@ class DropNodeWithCmImpl(DropnodeImpl):
         for node in nodes:
             stable_num += 2**(int(node.strip()[0]))
         stable_list = 0
-        vg_name = EnvUtil.getEnv("VGNAME")
+        vg_name = CmdUtil.quoteCmd(EnvUtil.getEnv("VGNAME"))
         cmd = "pg_controldata +%s| grep \"Stable instances list\"" % vg_name
         while stable_list != stable_num:
             _, output = subprocess.getstatusoutput(cmd)
@@ -321,7 +321,7 @@ class DropNodeWithCmImpl(DropnodeImpl):
             (self.envFile, gaussHome, gaussLog)
         self.logger.debug("startCMProcessedCmd: " + startCMProcessedCmd)
         CmdExecutor.execCommandWithMode(startCMProcessedCmd, self.ssh_tool, host_list=hostList)
-        queryClusterCmd = "source %s; cm_ctl query -Cv" % self.envFile
+        queryClusterCmd = "source %s; cm_ctl query -Cv" % CmdUtil.quoteCmd(self.envFile)
         self.logger.debug("queryClusterCmd: " + queryClusterCmd)
         tryCount = 0
         while tryCount <= 120:
@@ -353,7 +353,7 @@ class DropNodeWithCmImpl(DropnodeImpl):
         """
         Check if current has only one xlog.
         """
-        vg_name = EnvUtil.getEnv("VGNAME")
+        vg_name = CmdUtil.quoteCmd(EnvUtil.getEnv("VGNAME"))
         cmd = "dsscmd ls -p +%s | grep pg_xlog | wc -l" % vg_name
         status, output = subprocess.getstatusoutput(cmd)
         xlog_num = int(output)
@@ -370,8 +370,8 @@ class DropNodeWithCmImpl(DropnodeImpl):
         if self.check_one_xlog():
             return
 
-        vg_name = EnvUtil.getEnv("VGNAME")
-        dss_home = EnvUtil.get_dss_home()
+        vg_name = CmdUtil.quoteCmd(EnvUtil.getEnv("VGNAME"))
+        dss_home = CmdUtil.quoteCmd(EnvUtil.get_dss_home())
         dss_inst = dss_home + '/cfg/dss_inst.ini'
         get_list_cmd = "cat %s | grep DSS_NODES_LIST" % dss_inst
         status, output = subprocess.getstatusoutput(get_list_cmd)

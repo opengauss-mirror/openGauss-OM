@@ -161,7 +161,7 @@ class EnvUtil(object):
         output: True or False
         """
         cmd = CmdUtil.SOURCE_CMD
-        cmd += " %s" % path
+        cmd += " %s" % CmdUtil.quoteCmd(path)
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
@@ -177,6 +177,7 @@ class EnvUtil(object):
         output: string
         """
         cmd = ""
+        source_file = CmdUtil.quoteCmd(source_file)
         if source_file:
             cmd += "source %s &&" % source_file
         else:

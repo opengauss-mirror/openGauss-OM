@@ -449,11 +449,11 @@ General options:
         self.logger.log("Successfully generate xml, the xml file is %s" % self.xmlFile)
 
     def get_new_hostname_and_hostip(self):
-        gpHome = EnvUtil.getEnv("GPHOME")
+        gpHome = CmdUtil.quoteCmd(EnvUtil.getEnv("GPHOME"))
         pssh_path = "python3 %s/script/gspylib/pssh/bin/pssh" % gpHome
         for ip in self.newHostList:
             cmd = "source ~/.bashrc && source %s; %s -s -H %s 'hostname'" \
-                %(self.envFile, pssh_path, ip)
+                %(CmdUtil.quoteCmd(self.envFile), pssh_path, ip)
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0:
                 raise Exception("Failed to pssh -s -H %s 'hostname'" % ip)
@@ -508,7 +508,7 @@ General options:
         """
         check trust between primary/current host and every host in hostList
         """
-        gpHome = EnvUtil.getEnv("GPHOME")
+        gpHome = CmdUtil.quoteCmd(EnvUtil.getEnv("GPHOME"))
         psshPath = "python3 %s/script/gspylib/pssh/bin/pssh" % gpHome
         create_ssh = False
         for host in self.node_ip_list:

@@ -57,7 +57,7 @@ class OMCommand():
         if os.getuid() != 0:
             gp_home = EnvUtil.getEnv("GPHOME")
             if gp_home:
-                Current_Path = os.path.join(gp_home, "script/gspylib/common")
+                Current_Path = CmdUtil.quoteCmd(os.path.join(gp_home, "script/gspylib/common"))
 
         LocalScript = {
             "Local_Backup": os.path.normpath(

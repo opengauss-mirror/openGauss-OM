@@ -126,9 +126,9 @@ class UpgradeCmUtility(object):
         """
         Replace files to dest directory
         """
-        cp_cmd = "cd {0} && /usr/bin/cp -rf {1} {2}".format(src_dir,
+        cp_cmd = "cd {0} && /usr/bin/cp -rf {1} {2}".format(CmdUtil.quoteCmd(src_dir),
                                                             " ".join(src_file_list),
-                                                            dest_dir)
+                                                            CmdUtil.quoteCmd(dest_dir))
         self.logger.debug("Replace files command is: {0}".format(cp_cmd))
         status, _ = subprocess.getstatusoutput(cp_cmd)
         if status != 0:
@@ -140,7 +140,8 @@ class UpgradeCmUtility(object):
         """
         if os.path.isfile(backup_pkg_path):
             os.remove(backup_pkg_path)
-        compress_cmd = "cd {1} && tar -czf {0} ./*".format(backup_pkg_path, ready_backup_dir)
+        compress_cmd = "cd {1} && tar -czf {0} ./*".format(
+            CmdUtil.quoteCmd(backup_pkg_path), CmdUtil.quoteCmd(ready_backup_dir))
         status, output = subprocess.getstatusoutput(compress_cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50231"] % backup_pkg_path +

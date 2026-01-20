@@ -89,9 +89,9 @@ class StreamingBase(object):
     def __init_globals(self):
         self.cluster_info = dbClusterInfo()
         self.cluster_info.initFromStaticConfig(self.user)
-        self.gp_home = EnvUtil.getEnvironmentParameterValue("GPHOME", self.user)
-        self.pg_host = EnvUtil.getEnvironmentParameterValue("PGHOST", self.user)
-        self.gauss_home = EnvUtil.getEnvironmentParameterValue("GAUSSHOME", self.user)
+        self.gp_home = CmdUtil.quoteCmd(EnvUtil.getEnvironmentParameterValue("GPHOME", self.user))
+        self.pg_host = CmdUtil.quoteCmd(EnvUtil.getEnvironmentParameterValue("PGHOST", self.user))
+        self.gauss_home = CmdUtil.quoteCmd(EnvUtil.getEnvironmentParameterValue("GAUSSHOME", self.user))
         self.bin_path = os.path.join(os.path.realpath(self.gauss_home), 'bin')
         self.local_host = NetUtil.GetHostIpOrName()
         self.local_ip = DefaultValue.getIpByHostName()
@@ -101,7 +101,7 @@ class StreamingBase(object):
         self.streaming_xml = os.path.join(self.streaming_file_dir,
                                           StreamingConstants.STREAMING_CONFIG_XML)
         self.ssh_tool = SshTool(self.cluster_node_names, self.log_file)
-        self.mpp_file = EnvUtil.getMpprcFile()
+        self.mpp_file = CmdUtil.quoteCmd(EnvUtil.getMpprcFile())
         self._init_step_file_path()
 
     def init_cluster_conf(self):
@@ -2226,7 +2226,8 @@ class StreamingBase(object):
         cmd = ""
         for param_name, value in params_dict.items():
             cmd += " -c \"%s=%s\"" % (param_name, value)
-        guc_cmd = "source %s; gs_guc %s -Z datanode -N all -I all %s" % (EnvUtil.getMpprcFile(), guc_type, cmd)
+        guc_cmd = "source %s; gs_guc %s -Z datanode -N all -I all %s" % (
+            CmdUtil.quoteCmd(EnvUtil.getMpprcFile()), guc_type, cmd)
         (status, output) = CmdUtil.retryGetstatusoutput(guc_cmd)
         self.logger.debug("The params dict %s %s status %s, output %s." % (params_dict, guc_type, status, output))
 
@@ -2242,7 +2243,8 @@ class StreamingBase(object):
             ]
             for cm_inst in all_cms:
                 cmd = "source %s; pssh -s -H %s \"grep enable_transaction_read_only " \
-                      "%s/cm_server.conf\"" % (EnvUtil.getMpprcFile(), cm_inst.hostname, cm_inst.datadir)
+                      "%s/cm_server.conf\"" % (
+                        CmdUtil.quoteCmd(EnvUtil.getMpprcFile()), cm_inst.hostname, cm_inst.datadir)
                 (status, output) = CmdUtil.retryGetstatusoutput(cmd)
                 self.logger.debug("Check enable transaction read only status:%s, output:%s." % (status, output))
                 if status != 0 or output.find("=") < -1:

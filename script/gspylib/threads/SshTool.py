@@ -879,7 +879,7 @@ class SshTool():
                                              parallel_num,
                                              " -H ".join(hosts),
                                              CmdUtil.quoteCmd(self.__outputPath),
-                                             CmdUtil.quoteCmd(self.__errorPath), CmdUtil.quoteCmd(srcFile),
+                                             CmdUtil.quoteCmd(self.__errorPath), srcFile,
                                              CmdUtil.quoteCmd(targetDir), CmdUtil.quoteCmd(self.__resultFile))
             (status, output) = subprocess.getstatusoutput(scpCmd)
             hosts = [HostsUtil.remove_square_bracket_if_exist(host) for host in hosts]

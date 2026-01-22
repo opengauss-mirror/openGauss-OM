@@ -197,7 +197,7 @@ class EncryptedOpenssl:
 
         # cakey.pem
         cmd = (' genrsa -aes256 -f4 -passout stdin'
-               ' -out {0}/cakey.pem 2048'.format(self.keys_path))
+               ' -out {0}/cakey.pem 3072'.format(self.keys_path))
         self.__generate_cert_file(cmd, "cakey.pem", "e is 65537")
 
         # cacert.pem

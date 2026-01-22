@@ -18,10 +18,13 @@
 # ----------------------------------------------------------------------------
 # Description  : gs_upgradechk is a utility to check meta data in gaussdb after upgrade.
 #############################################################################
+import os
 
 import subprocess
 from subprocess import PIPE
+from urllib.parse import urlparse
 from upgrade_checker.utils.exception import ShellExecException
+from base_utils.os.cmd_util import CmdUtil
 
 
 class Shell(object):
@@ -66,13 +69,34 @@ class Download(object):
     @staticmethod
     def wget(url, output):
         """
-        download content of url by wget, and store it into output.
+        Download content from url to output using wget.
+        Validate url and output with whitelist to prevent command injection.
+        Only allowed to be called by installation user (user running this tool), no additional permission restrictions.
         """
-        cmd = 'wget {0} -O {1}'.format(url, output)
+        if not url:
+            raise ValueError('url cannot be empty')
+        
+        if not output:
+            raise ValueError('output path cannot be empty')
+        
+        # Only allow alphanumeric, underscore, dot, hyphen, slash, colon, question mark, equal sign, and ampersand
+        if not all(c.isalnum() or c in '._-/?&=:@/' for c in url):
+            raise ValueError('url contains invalid characters')
+
+        # output only allows alphanumeric, underscore, dot, hyphen, slash
+        if not all(c.isalnum() or c in '._-/' for c in output):
+            raise ValueError('output path contains invalid characters')
+
+        # Prohibit absolute path traversal, e.g., /etc/passwd
+        real_output = os.path.realpath(output)
+        if not real_output.startswith(os.getcwd()):
+            raise ValueError('output path is not allowed to go beyond current working directory')
+
+        # Use CmdUtil.quoteCmd to protect parameters
+        cmd = 'wget {} -O {}'.format(CmdUtil.quoteCmd(url), CmdUtil.quoteCmd(output))
         try:
             Shell.run(cmd, check=True)
         except ShellExecException as e:
-            Shell.run('rm {0} -fr'.format(output), check=False)
+            Shell.run('rm -rf -- {}'.format(CmdUtil.quoteCmd(output)), check=False)
             raise e
-
 

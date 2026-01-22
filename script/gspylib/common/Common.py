@@ -1251,7 +1251,7 @@ class DefaultValue():
             cmd = CmdUtil.getCdCmd(caDir)
             cmd += " && echo '%s' | openssl genrsa -aes256  -passout stdin -out " % \
                    (randpass)
-            cmd += "demoCA/private/cakey.pem 2048"
+            cmd += "demoCA/private/cakey.pem 3072"
             proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
             stdout, stderr = proc.communicate()
             output = stdout + stderr
@@ -1291,7 +1291,7 @@ class DefaultValue():
                                 ["GAUSS_51402"] + "Error:\n%s" % SensitiveMask.mask_pwd(output))
             cmd = CmdUtil.getCdCmd(caDir)
             cmd += " && echo '%s' | openssl genrsa -aes256 -passout stdin -out " \
-                   "server.key 2048" % (randpass)
+                   "server.key 3072" % (randpass)
             proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
             stdout, stderr = proc.communicate()
             output = stdout + stderr
@@ -1349,7 +1349,7 @@ class DefaultValue():
             randpassClient = RandomValue.getRandStr()
             cmd = CmdUtil.getCdCmd(caDir)
             cmd += " && echo '%s' | openssl genrsa -aes256  -passout stdin -out " \
-                   "client.key 2048" % (randpassClient)
+                   "client.key 3072" % (randpassClient)
             proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
             stdout, stderr = proc.communicate()
             output = stdout + stderr

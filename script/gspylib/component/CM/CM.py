@@ -15,6 +15,8 @@
 # MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 # See the Mulan PSL v2 for more details.
 #############################################################################
+from base_utils.os.cmd_util import CmdUtil
+
 try:
     import sys
 

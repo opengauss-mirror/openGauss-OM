@@ -187,13 +187,7 @@ class Dss(BaseComponent):
         The minimum ID is 0 and the maximum ID is 8.
         There are nine instances in total.
         '''
-        # 参数校验：防止命令注入
-        if not dss_home or not os.path.isdir(dss_home):
-            raise ValueError("Invalid dss_home: %s" % dss_home)
-        if user and not re.match(r'^[a-zA-Z_][a-zA-Z0-9_\-]*$', user):
-            raise ValueError("Invalid user name: %s" % user)
-        if clib_app and not os.path.isdir(clib_app):
-            raise ValueError("Invalid clib_app path: %s" % clib_app)
+        cmd_str = ''
 
         gauss_home = CmdUtil.quoteCmd(ClusterDir.get_gauss_home())
         dsscmd_path = os.path.realpath(

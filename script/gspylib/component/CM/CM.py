@@ -122,12 +122,11 @@ class CmResCtrlCmd():
     def __str__(self):
         cmd = ''
         if self.action == 'add':
-            # 使用 shlex.quote 防止命令注入
             cmd = 'cm_ctl res --add --res_name {} --res_attr={}'.format(
-                  CmdUtil.quoteCmd(self.attr_name), CmdUtil.quoteCmd(self.attr))
+                  self.attr_name, self.attr)
         elif self.action == 'edit':
             cmd = 'cm_ctl res --edit --res_name {} --add_inst={}'.format(
-                  CmdUtil.quoteCmd(self.attr_name), CmdUtil.quoteCmd(self.attr))
+                  self.attr_name, self.attr)
         return cmd
 
 
@@ -144,15 +143,14 @@ class VipCmResCtrlCmd():
     def __str__(self):
         cmd = ""
         if self.action == "add_res":
-            # 使用 shlex.quote 防止命令注入
             cmd = "cm_ctl res --add --res_name=\"%s\" --res_attr=%s" % \
-                  (CmdUtil.quoteCmd(self.name), CmdUtil.quoteCmd(self.attr))
+                  (self.name, self.attr)
         elif self.action == "del_res":
-            cmd = "cm_ctl res --del --res_name=\"%s\"" % CmdUtil.quoteCmd(self.name)
+            cmd = "cm_ctl res --del --res_name=\"%s\"" % self.name
         elif self.action == "add_inst":
             cmd = "cm_ctl res --edit --res_name=\"%s\" --add_inst=%s --inst_attr=%s" % \
-                  (CmdUtil.quoteCmd(self.name), CmdUtil.quoteCmd(self.inst), CmdUtil.quoteCmd(self.attr))
+                  (self.name, self.inst, self.attr)
         elif self.action == "del_inst":
             cmd = "cm_ctl res --edit --res_name=\"%s\" --del_inst=%s" % \
-                  (CmdUtil.quoteCmd(self.name), CmdUtil.quoteCmd(self.inst))
+                  (self.name, self.inst)
         return cmd

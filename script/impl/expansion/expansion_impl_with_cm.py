@@ -425,13 +425,12 @@ class ExpansionImplWithCm(ExpansionImpl):
         # 1.set pgxc_node_name on old nodes
         gauss_home = CmdUtil.quoteCmd(os.path.realpath(self.static_cluster_info.appPath))
         guc_path = os.path.join(gauss_home, "bin", "gs_guc")
-        # 使用 shlex.quote 对参数进行转义，防止注入
         cmd = "source %s; %s set -N all -I all -c " \
               "\\\"%s='%s'\\\"" % (CmdUtil.quoteCmd(self.envFile), guc_path,
                                    "pgxc_node_name",
-                                   CmdUtil.quoteCmd(self._get_pgxc_node_name_for_single_inst()))
+                                   self._get_pgxc_node_name_for_single_inst())
         if self.context.current_root_user:
-            su_cmd = """su - {0} -c "{1}" """.format(CmdUtil.quoteCmd(self.user), cmd)
+            su_cmd = """su - {0} -c "{1}" """.format(self.user, cmd)
         else:
             su_cmd = cmd
         self.logger.debug("Set guc parameter command: {0}".format(su_cmd))

@@ -60,6 +60,7 @@ from gspylib.common.DbClusterInfo import dbClusterInfo
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.file_util import FileUtil
 from base_utils.os.net_util import NetUtil
+from base_utils.os.cmd_util import CmdUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from base_utils.os.sshd_config import SshdConfig
 

@@ -665,7 +665,7 @@ def disRemoveIPC():
     g_logger.debug("disbale RemoveIPC.")
     distName = g_Platform.getCurrentPlatForm()[0]
     if distName.upper() in ("OPENEULER", "FUSIONOS", "KYLIN", "H3LINUX", "NINGOS"):
-        CmdUtil.execCmdList(['setenforce', 0])
+        CmdUtil.execCmdList(['setenforce', '0'])
         initFile = "/usr/lib/systemd/system/systemd-logind.service"
         if os.path.exists(initFile):
             close_cmd = "if [ `systemctl show systemd-logind | " \

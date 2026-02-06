@@ -652,7 +652,7 @@ class PostUninstallImpl:
                 else:
                     dbNodeNames = self.clusterInfo.getClusterNodeNames()
                     for dbNodeName in dbNodeNames:
-                        cmd = "pssh -s -H %s '%s'" % (CmdUtil.quoteCmd(dbNodeName), CmdUtil.quoteCmd(baseCmd))
+                        cmd = "pssh -s -H %s '%s'" % (CmdUtil.quoteCmd(dbNodeName), baseCmd)
                         (status, output) = subprocess.getstatusoutput(cmd)
                         if (status != 0):
                             message = output.strip()

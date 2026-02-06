@@ -468,16 +468,6 @@ class DN_OLAP(Kernel):
 
         if (len(peerInsts)):
             self.setPrimaryStandyConnInfo(peerInsts)
-        else:
-            tmpDict1 = {}
-            tmpDict1["synchronous_commit"] = "off"
-            self.setGucConfig(tmpDict1)
-
-        if syncNum == 0 or (syncNum == -1 and len(peerInsts) == 1):
-            tmpDict1 = {}
-            tmpDict1["synchronous_commit"] = "off"
-            self.setGucConfig(tmpDict1)
-
 
         self.modifyDummpyStandbyConfigItem()
 

@@ -2409,6 +2409,20 @@ def  cleanInstallPath():
            % (installPath, installPath)
     cmd += "(if [ -d '%s/tool' ]; then rm -rf '%s/tool'; fi)" % \
            (installPath, installPath)
+    
+    ## clear hugebin
+    cmd += " && (if [ -f '%s/gaussdb' ]; then rm -rf '%s/gaussdb'; fi)" % \
+           (installPath, installPath)
+    cmd += " && (if [ -L '%s_huge/lib' ]; then unlink '%s_huge/lib'; fi)" % \
+           (installPath, installPath)
+    cmd += " && (if [ -L '%s_huge/share' ]; then unlink '%s_huge/share'; fi)" % \
+           (installPath, installPath)
+    cmd += " && (if [ -d '%s_huge/bin' ]; then rm -rf '%s_huge/bin'; fi)" % \
+           (installPath, installPath)
+
+    g_logger.debug(
+        "Command for clean install path: %s" % cmd)
+
     CmdExecutor.execCommandLocally(cmd)
     if os.listdir(installPath):
         g_logger.log(

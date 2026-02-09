@@ -56,6 +56,7 @@ class DeviceListParams:
     REMOTE_STREAM_IP_MAP1 = 'remoteStreamIpmap1'
     REMOTE_DATA_PORT_BASE = 'remotedataPortBase'
     SSH_PORT = "sshPort"
+    
 
     @staticmethod
     def get_all_param_names():

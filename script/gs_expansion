@@ -102,6 +102,7 @@ class Expansion(ParallelBaseOM):
         self.new_hostname_list = []
         self.ssh_ports_map = {}
         self.node_ip_list = []
+        self.enable_hugebin = False
 
     def usage(self):
         """
@@ -346,6 +347,17 @@ General options:
         else:
             self.initClusterInfoFromStaticFile(self.user)
         self.node_ip_list = self.clusterInfo.getClusterSshIps()[0]
+
+        if os.getuid() == 0:
+            return
+        enablehugebin = ""
+        if self.xmlFile:
+            enablehugebin = ClusterConfigFile.getOneClusterConfigItem("enableHugeBin", self.xmlFile)
+        else:
+            enablehugebin = EnvUtil.getEnv("ENABLE_HUGEBIN")
+        if enablehugebin == "on" or enablehugebin == "1":
+            self.enable_hugebin = True
+            self.logger.info("enableHugeBin is on while expansion node.")
 
     def _set_ssh_ports_map(self):
         """

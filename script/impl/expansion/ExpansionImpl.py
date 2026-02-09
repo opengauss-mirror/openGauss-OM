@@ -274,6 +274,10 @@ class ExpansionImpl():
         azName = self.context.hostAzNameMap[backIp]
         azPriority = nodeInfo["azPriority"]
 
+        hugeconfig = ""
+        if self.context.enable_hugebin:
+            hugeconfig = '<PARAM name="enableHugeBin" value="on" />'
+
         xmlConfig = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <ROOT>
@@ -286,6 +290,7 @@ class ExpansionImpl():
         <PARAM name="gaussdbToolPath" value="{toolPath}" />
         {mappdbConfig}
         {core_path_config}
+        {hugeconfig}
         <PARAM name="clusterType" value="single-inst"/>
     </CLUSTER>
     <DEVICELIST>
@@ -305,7 +310,7 @@ class ExpansionImpl():
         """.format(clusterName = clusterName, nodeName = nodeName, backIp = backIp,
         appPath = appPath, logPath = logPath, toolPath = toolPath, core_path_config = core_path_config,
         sshIp = sshIp, port = port, dataNode = dataNode, azName = azName,
-        azPriority = azPriority, mappdbConfig = mppdbconfig)
+        azPriority = azPriority, mappdbConfig = mppdbconfig, hugeconfig = hugeconfig)
         return xmlConfig
 
     def changeUser(self):

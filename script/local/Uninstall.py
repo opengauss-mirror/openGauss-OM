@@ -63,6 +63,7 @@ class Uninstall(LocalBaseOM):
         self.method = ""
         self.action = ""
         self.del_static_cfg_file = False
+        self.enale_hugebin = False
 
     ##########################################################################
     # Help context. U:R:oC:v: 
@@ -246,6 +247,10 @@ class Uninstall(LocalBaseOM):
             self.logFile = ClusterLog.getOMLogPath(
                 ClusterConstants.LOCAL_LOG_FILE, self.user, self.installPath)
 
+        hugeval = EnvUtil.getEnv("ENABLE_HUGEBIN")
+        if hugeval == '1':
+            self.enale_hugebin = True
+
     def __initLogger(self):
         """
         function: Init logger
@@ -391,6 +396,18 @@ class Uninstall(LocalBaseOM):
                             % "other installation"
                             + " Can not delete empty installation"
                               " directory: %s." % str(e))
+        
+        # clean huge bin directory
+        if self.enale_hugebin:
+            hugepath = os.path.realpath(self.installPath) + "_huge"
+            if os.path.isdir(hugepath):
+                try:
+                    self.logger.log("deleted hugepages directory.")
+                    FileUtil.removeDirectory(os.path.join(hugepath, 'bin'))
+                    os.unlink(os.path.join(hugepath, 'lib'))
+                    os.unlink(os.path.join(hugepath, 'share'))
+                except Exception as e:
+                    self.logger.error("Failed to delete hugepages bin directory: %s." % str(e))
 
         self.logger.log("Successfully deleted installation directory.")
 

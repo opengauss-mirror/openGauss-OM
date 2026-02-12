@@ -61,7 +61,19 @@ from gspylib.component.DSS.dss_comp import DssInst
 
 cur_primaryId = 0
 MOT_PARAM_VERSION = 93.039 # corresponds to DISABLE_MOT_ENGINE = 93039 in src/common/backend/utils/init/globals.cpp in openGauss-server
+MODIFY_B_COMPA_PARAM_VERSION = 93.089
 MAX_CLOG_BUFFERS = 131072
+B_COMPATIBILITY_PARAMS1 = [
+    'dolphin.sql_mode',
+    'dolphin.lower_case_table_names',
+    'dolphin.use_const_value_as_colname',
+    'dolphin.transform_unknown_param_type_as_column_type_first',
+]
+B_COMPATIBILITY_PARAMS2 = [
+    'b_compatibility_user_host_auth',
+    'b_format_behavior_compat_options',
+    'enable_set_variable_b_format'
+]
 
 class OldVersionModules():
     """
@@ -420,6 +432,7 @@ class UpgradeImpl:
             self.checkUpgradeMode()
             self.check_compress_tbl_compatibility()
             self.check_mot_tables()
+            self.check_b_compatibility_params()
             self.check_publication_subscription()
             self.check_shared_buffers()
 
@@ -581,9 +594,58 @@ class UpgradeImpl:
                 raise Exception("Failed query mot tables for database {0}: Status: {1}. Output: {2}".format(dbname, status, output))
             self.context.logger.debug("[check_mot_table] the number of mot tables is %s" % output)
             if int(output) > 0: # has mot tables
-                self.context.logger.debug("[check_mot_table] find mot tables, need to set guc param")
+                self.context.logger.debug(
+                    "[check_mot_table] find mot tables, need to set guc param enable_mot_server = on")
                 self.context.modifyMotParam = True
                 break
+
+    def check_b_compatibility_params(self):
+        """
+        check whether to hold b compatibility params.
+        for upgrade from oldClusterNumber(<MODIFY_B_COMPA_PARAM_VERSION) to newClusterNumber(>=MODIFY_B_COMPA_PARAM_VERSION),
+        need to set guc param to hold origin values when containing b database.
+        """
+        if self.context.action != const.ACTION_AUTO_UPGRADE:
+            self.context.logger.debug("[modify_b_compa_param] no need to check b params under {%s} mode." % self.context.action)
+            return
+        self.context.logger.debug("[modify_b_compa_param] check b params, oldClusterNumber is %s and newClusterNumber is %s" %
+                                  (self.context.oldClusterNumber, self.context.newClusterNumber))
+        if not (float(self.context.oldClusterNumber) < MODIFY_B_COMPA_PARAM_VERSION and
+            float(self.context.newClusterNumber) >= MODIFY_B_COMPA_PARAM_VERSION):
+            return
+        dbnames_sql = "select datname from pg_database where datcompatibility = 'b' limit 1;"
+        (status, dbname) = self.execSqlCommandInPrimaryDN(dbnames_sql)
+        if status != 0:
+            raise Exception("Failed query database names: Status: {0}. Output: {1}".format(status, dbname))
+        if dbname == "":
+            self.context.logger.debug("[modify_b_compa_param] there is no b database, skip")
+            return
+        self.context.logger.debug("[modify_b_compa_param] check database %s" % dbname)
+        self.context.modifyBCompatibilityParam = True
+        for param in B_COMPATIBILITY_PARAMS2:
+            output = self.query_b_compatibility_param(param, dbname)
+            if output is not None:
+                self.context.bCompatibilityParamValues.append(output)
+
+    def query_b_compatibility_param(self, param, dbname):
+        """
+        Query a specific B compatibility parameter for a given database.
+
+        :param param: The parameter name to query.
+        :param dbname: The database name to query the parameter from.
+        :return: The output of the query if successful, None if the parameter is not supported.
+        :raises Exception: If the query fails for reasons other than unsupported parameter.
+        """
+        query_param_sql = "show {0}".format(param)
+        (status, output) = self.execSqlCommandInPrimaryDN(query_param_sql, database=dbname)
+        if status != 0:
+            if "unrecognized configuration parameter" in output:
+                self.context.logger.warning("Parameter {0} not supported, skipping.".format(param))
+                return None
+            else:
+                raise Exception("Failed query b param {0} for database {1}: Status: {2}. Output: {3}".format(
+                    param, dbname, status, output))
+        return output
 
     def check_publication_subscription(self):
         """
@@ -2097,6 +2159,7 @@ class UpgradeImpl:
             self.reloadCmAgent()
             self.reload_cmserver()
         self.createCheckpoint()
+        self.set_b_compatibility_param()
         self.switchDn(isRollback)
         try:
             self.waitClusterNormalDegrade()
@@ -2219,6 +2282,29 @@ class UpgradeImpl:
         self.context.logger.debug("Command for upgrade CM config files : {0}.".format(cmd))
         self.context.sshTool.executeCommand(cmd)
 
+    def set_b_compatibility_param(self):
+        """
+        Set some compatibility parameters to their original values for B databases in conf file.
+        """
+        if not self.context.modifyBCompatibilityParam:
+            return
+        dbnames_sql = "select datname from pg_database where datcompatibility = 'b' limit 1;"
+        (status, dbname) = self.execSqlCommandInPrimaryDN(dbnames_sql)
+        if status != 0:
+            raise Exception("Failed query database names: Status: {0}. Output: {1}".format(status, dbname))
+        if dbname == "":
+            self.context.logger.debug("[modify_b_compa_param] there is no b database, skip")
+            return
+        self.context.logger.debug("[modify_b_compa_param] check database %s" % dbname)
+        for param in B_COMPATIBILITY_PARAMS1:
+            output = self.query_b_compatibility_param(param, dbname)
+            if output is not None:
+                set_param_sql = "alter system set {0} = '{1}'".format(param, output)
+                (status, output) = self.execSqlCommandInPrimaryDN(set_param_sql, database=dbname)
+                if status != 0:
+                    raise Exception("Failed set b param {0} for database {1}: Status: {2}. Output: {3}".format(
+                        param, dbname, status, output))
+
     def switchDn(self, isRollback):
 
         # upgrade_cm_conf_file
@@ -2305,6 +2391,12 @@ class UpgradeImpl:
         if self.context.modifyMotParam and not isRollback:
             self.context.logger.debug("need to modify mot guc param enable_mot_server = on when upgrade")
             self.setGUCValue('enable_mot_server', 'on', action_type='set', upgrade_node=True)
+
+        if self.context.modifyBCompatibilityParam and not isRollback:
+            self.context.logger.debug("need to modify b compatibility guc params when upgrade")
+            self.setGUCValue('b_compatibility_user_host_auth', self.context.bCompatibilityParamValues[0], action_type='set', upgrade_node=True)
+            self.setGUCValue('b_format_behavior_compat_options', self.context.bCompatibilityParamValues[1], action_type='set', upgrade_node=True)
+            self.setGUCValue('enable_set_variable_b_format', self.context.bCompatibilityParamValues[2], action_type='set', upgrade_node=True)
 
         if self.context.modifyLauncherParam and not isRollback:
             self.context.logger.debug("need to modify publication and subscription guc param enable_subscription = on when upgrade")

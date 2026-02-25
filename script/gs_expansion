@@ -348,7 +348,8 @@ General options:
             self.initClusterInfoFromStaticFile(self.user)
         self.node_ip_list = self.clusterInfo.getClusterSshIps()[0]
 
-        if os.getuid() == 0:
+        if os.getuid() != 0:
+            self.logger.log("Normal user can not set hugebin, continue.")
             return
         enablehugebin = ""
         if self.xmlFile:
@@ -357,7 +358,7 @@ General options:
             enablehugebin = EnvUtil.getEnv("ENABLE_HUGEBIN")
         if enablehugebin == "on" or enablehugebin == "1":
             self.enable_hugebin = True
-            self.logger.info("enableHugeBin is on while expansion node.")
+            self.logger.log("enableHugeBin is on while expansion node.")
 
     def _set_ssh_ports_map(self):
         """

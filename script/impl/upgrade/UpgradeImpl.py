@@ -613,7 +613,7 @@ class UpgradeImpl:
         if not (float(self.context.oldClusterNumber) < MODIFY_B_COMPA_PARAM_VERSION and
             float(self.context.newClusterNumber) >= MODIFY_B_COMPA_PARAM_VERSION):
             return
-        dbnames_sql = "select datname from pg_database where datcompatibility = 'b' limit 1;"
+        dbnames_sql = "select datname from pg_database where datcompatibility in ('B', 'b') limit 1;"
         (status, dbname) = self.execSqlCommandInPrimaryDN(dbnames_sql)
         if status != 0:
             raise Exception("Failed query database names: Status: {0}. Output: {1}".format(status, dbname))
@@ -622,6 +622,10 @@ class UpgradeImpl:
             return
         self.context.logger.debug("[modify_b_compa_param] check database %s" % dbname)
         self.context.modifyBCompatibilityParam = True
+        for param in B_COMPATIBILITY_PARAMS1:
+            output = self.query_b_compatibility_param(param, dbname)
+            if output is not None:
+                self.context.dolphinParamsMap[param] = output
         for param in B_COMPATIBILITY_PARAMS2:
             output = self.query_b_compatibility_param(param, dbname)
             if output is not None:
@@ -640,7 +644,7 @@ class UpgradeImpl:
         (status, output) = self.execSqlCommandInPrimaryDN(query_param_sql, database=dbname)
         if status != 0:
             if "unrecognized configuration parameter" in output:
-                self.context.logger.warning("Parameter {0} not supported, skipping.".format(param))
+                self.context.logger.debug("Parameter {0} not supported, skipping.".format(param))
                 return None
             else:
                 raise Exception("Failed query b param {0} for database {1}: Status: {2}. Output: {3}".format(
@@ -985,7 +989,8 @@ class UpgradeImpl:
             if newCommitId != LastNewCommitId:
                 raise Exception(ErrorCode.GAUSS_529["GAUSS_52935"])
 
-    def setGUCValue(self, guc_key, guc_value, action_type="reload", upgrade_node=False):
+    def setGUCValue(self, guc_key, guc_value, action_type="reload", upgrade_node=False,
+                    remain_empty_str = False):
         """
         function: do gs_guc
         input : gucKey - parameter name
@@ -996,6 +1001,8 @@ class UpgradeImpl:
         tmp_file = ""
         if guc_value != "":
             guc_str = "%s='%s'" % (guc_key, guc_value)
+        elif remain_empty_str:
+            guc_str = "%s=''" % guc_key
         else:
             guc_str = "%s" % guc_key
         try:
@@ -1994,6 +2001,7 @@ class UpgradeImpl:
                         self.execRollbackUpgradedCatalog(scriptType="rollback-post")
                         self.prepareSql("upgrade-post")
                         self.execRollbackUpgradedCatalog(scriptType="upgrade-post")
+                        self.set_b_compatibility_param()
                         self.getLsnInfo()
                 hosts = copy.deepcopy(self.context.clusterNodes)
                 self.recordNodeStep(
@@ -2159,7 +2167,6 @@ class UpgradeImpl:
             self.reloadCmAgent()
             self.reload_cmserver()
         self.createCheckpoint()
-        self.set_b_compatibility_param()
         self.switchDn(isRollback)
         try:
             self.waitClusterNormalDegrade()
@@ -2288,22 +2295,21 @@ class UpgradeImpl:
         """
         if not self.context.modifyBCompatibilityParam:
             return
-        dbnames_sql = "select datname from pg_database where datcompatibility = 'b' limit 1;"
+        dbnames_sql = "select datname from pg_database where datcompatibility in ('B', 'b') limit 1;"
         (status, dbname) = self.execSqlCommandInPrimaryDN(dbnames_sql)
         if status != 0:
             raise Exception("Failed query database names: Status: {0}. Output: {1}".format(status, dbname))
         if dbname == "":
             self.context.logger.debug("[modify_b_compa_param] there is no b database, skip")
             return
-        self.context.logger.debug("[modify_b_compa_param] check database %s" % dbname)
-        for param in B_COMPATIBILITY_PARAMS1:
-            output = self.query_b_compatibility_param(param, dbname)
-            if output is not None:
-                set_param_sql = "alter system set {0} = '{1}'".format(param, output)
-                (status, output) = self.execSqlCommandInPrimaryDN(set_param_sql, database=dbname)
-                if status != 0:
-                    raise Exception("Failed set b param {0} for database {1}: Status: {2}. Output: {3}".format(
-                        param, dbname, status, output))
+        self.context.logger.debug("[modify_b_compa_param] set dolphin params based on database %s" % dbname)
+        set_param_sql = ""
+        for param, value in self.context.dolphinParamsMap.items():
+            set_param_sql += "alter system set {0} = '{1}';".format(param, value)
+        (status, output) = self.execSqlCommandInPrimaryDN(set_param_sql, database=dbname)
+        if status != 0:
+            raise Exception("Failed set b dolphin params for database {0}: Status: {1}. Output: {2}".format(
+                dbname, status, output))
 
     def switchDn(self, isRollback):
 
@@ -2395,7 +2401,8 @@ class UpgradeImpl:
         if self.context.modifyBCompatibilityParam and not isRollback:
             self.context.logger.debug("need to modify b compatibility guc params when upgrade")
             self.setGUCValue('b_compatibility_user_host_auth', self.context.bCompatibilityParamValues[0], action_type='set', upgrade_node=True)
-            self.setGUCValue('b_format_behavior_compat_options', self.context.bCompatibilityParamValues[1], action_type='set', upgrade_node=True)
+            self.setGUCValue('b_format_behavior_compat_options', self.context.bCompatibilityParamValues[1], action_type='set', upgrade_node=True,
+                            remain_empty_str = True)
             self.setGUCValue('enable_set_variable_b_format', self.context.bCompatibilityParamValues[2], action_type='set', upgrade_node=True)
 
         if self.context.modifyLauncherParam and not isRollback:

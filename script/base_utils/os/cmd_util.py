@@ -77,7 +77,13 @@ class CmdUtil(object):
                                         universal_newlines=uni_newlines)
         output, error = process.communicate()
         status = process.returncode
-        output = bytes.decode(output).strip()
+        if output is None:
+            output = ""
+        elif isinstance(output, bytes):
+            output = output.decode(errors="replace")
+        elif not isinstance(output, str):
+            output = str(output)
+        output = output.strip()
         return (output, error, status)
 
     @staticmethod

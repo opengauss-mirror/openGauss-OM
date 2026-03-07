@@ -448,6 +448,7 @@ class PreinstallImpl:
             DefaultValue.distributeXmlConfFile(self.context.sshTool,
                                                hosts_file, hosts,
                                                self.context.mpprcFile)
+            self.context.sshTool.scpFiles(hosts_file, packageDir, hosts, self.context.mpprcFile)
         except Exception as e:
             raise Exception(str(e))
 

@@ -3141,11 +3141,31 @@ class dbClusterInfo():
                                                               "cluster", True)
             
         # Read huge bin
+        self.set_hugebin_config(xmlRootNode)
+        
+    def set_hugebin_config(self, rootnode):
+        #check after preinstall
+        if os.getuid() != 0 and os.environ.get('ENABLE_HUGEBIN') != "1":
+            self.enable_hugebin = False
+            return
+        
+        pagesize = os.sysconf(os.sysconf_names.get('SC_PAGESIZE', os.sysconf_names.get('SC_PAGE_SIZE')))
+        if pagesize != 4096:
+            self.enable_hugebin = False
+            return
+
+        sysversion = subprocess.getoutput("uname -r")
+        major_version = int(sysversion.split('.')[0])
+        minor_version = int(sysversion.split('.')[1])
+        if major_version < 5 or (major_version == 5 and minor_version < 10):
+            self.enable_hugebin = False
+            return
+        
         _, enable_hugebin = ClusterConfigFile.readOneClusterConfigItem(
-            xmlRootNode, "enableHugeBin", "cluster")
+            rootnode, "enableHugeBin", "cluster")
         if enable_hugebin is not None and enable_hugebin.strip() == "on":
             self.enable_hugebin = True
-
+        
 
     def get_cluster_back_ip1s(self):
         # Read cluster backIp1s

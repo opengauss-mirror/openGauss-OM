@@ -130,6 +130,9 @@ class Upgrade(ParallelBaseOM):
         self.modifyBCompatibilityParam = False
         self.bCompatibilityParamValues = []
         self.dolphinParamsMap = {}
+        # check whether hold D compatibility param
+        self.modifyDCompatibilityParam = False
+        self.dCompatibilityParamValue = ""
         self.modifyLauncherParam = False
         self.hasTxnBuffersParam = True
         self.sharedBuffers = "1GB"

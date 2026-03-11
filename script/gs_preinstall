@@ -502,8 +502,7 @@ General options:
 
         # target tools
         bin_files = ['./bin/encrypt']
-        ogai_files = ['./lib/libtext_splitter_ffi.so', './lib/libonnx_wrapper.so.1',
-                      './lib/libonnxruntime.so.1', './lib/libtokenizers.so']
+        ogai_files = ['./lib/libonnx_wrapper.so.1', './lib/libonnxruntime.so.1', './lib/libtokenizers.so']
         dss_files = []
         memcheck_files = []
         if self.clusterInfo.enable_dss == 'on':

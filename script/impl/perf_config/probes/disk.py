@@ -123,7 +123,9 @@ class DiskInfo(Probe):
         partitions = DiskUtil.getMountInfo()
 
         for partition in partitions:
-            if partition.maxfile is None:
+            # psutil's sdiskpart schema varies by version/platform. Some
+            # versions do not expose maxfile/maxpath at all.
+            if hasattr(partition, "maxfile") and partition.maxfile is None:
                 continue
             device = DiskDeviceInfo(partition)
             device.detect()

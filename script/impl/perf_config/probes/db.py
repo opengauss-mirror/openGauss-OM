@@ -80,7 +80,7 @@ class DBInfo(Probe):
 
     def _read_guc_in_postgresql_conf(self, guc):
         cmdList = ['grep', guc, self.postgresql_conf, '-i']
-        output, error, status = CmdUtil.execCmdList(cmdList, noexcept=True)
+        output, error, status = CmdUtil.execCmdList(cmdList)
         if output == '':
             return
         res = None

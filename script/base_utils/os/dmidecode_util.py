@@ -211,10 +211,10 @@ class DmidecodeUtil(object):
             pass
         elif isinstance(dmitype, DMIType) or isinstance(dmitype, DMITypeCategory):
             cmd_list.append('-t')
-            cmd_list.append(dmitype.value)
+            cmd_list.append(str(dmitype.value))
         elif isinstance(dmitype, int) or isinstance(dmitype, str):
             cmd_list.append('-t')
-            cmd_list.append(dmitype)
+            cmd_list.append(str(dmitype))
         else:
             assert False
 

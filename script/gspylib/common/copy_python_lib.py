@@ -11,7 +11,7 @@ def copy_lib():
     cmd = f"cp {source} {dest}"
     (status, output) = subprocess.getstatusoutput(cmd)
     if status != 0:
-        raise Exception("cp file failed.\nError:%s\nThe cmd is: %s\n" %
+        print("cp file failed.\nError:%s\nThe cmd is: %s\n" %
                         (output, cmd))
 
     source = os.path.join(current_path, '../../../lib/_cffi_backend_3.' + \
@@ -20,7 +20,7 @@ def copy_lib():
     cmd = f"cp {source} {dest}"
     (status, output) = subprocess.getstatusoutput(cmd)
     if status != 0:
-        raise Exception("cp file failed.\nError:%s\nThe cmd is: %s\n" %
+        print("cp file failed.\nError:%s\nThe cmd is: %s\n" %
                         (output, cmd))
 
     source = os.path.join(current_path, '../../../lib/cryptography/hazmat/bindings/lib3.' + \
@@ -29,7 +29,7 @@ def copy_lib():
     cmd = f"cp {source} {dest}"
     (status, output) = subprocess.getstatusoutput(cmd)
     if status != 0:
-        raise Exception("cp file failed.\nError:%s\nThe cmd is: %s\n" %
+        print("cp file failed.\nError:%s\nThe cmd is: %s\n" %
                         (output, cmd))
 
     source = os.path.join(current_path, '../../../lib/nacl/lib3.' + \
@@ -38,5 +38,8 @@ def copy_lib():
     cmd = f"cp {source} {dest}"
     (status, output) = subprocess.getstatusoutput(cmd)
     if status != 0:
-        raise Exception("cp file failed.\nError:%s\nThe cmd is: %s\n" %
+        print("cp file failed.\nError:%s\nThe cmd is: %s\n" %
                         (output, cmd))
+
+if __name__ == "__main__":
+    copy_lib()

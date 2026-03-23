@@ -206,6 +206,18 @@ function lib_copy()
     if [ -d "${BINARYLIBS_PATH_INSTALL_TOOLS}/psycopg2" ]; then
         cp -rf ${BINARYLIBS_PATH_INSTALL_TOOLS}/psycopg2    ${PKG_TMP_DIR}/lib
     fi
+
+    ## copy multi py version lib
+    install_tools_py37="${binarylib_dir}/install_tools_py7"
+    install_tools_py311="${binarylib_dir}/install_tools_py11"
+    if [ -d "${install_tools_py37}" ]; then
+        mkdir -p ${PKG_TMP_DIR}/lib_py7
+        cp -rf ${install_tools_py37}/*    ${PKG_TMP_DIR}/lib_py7/
+    fi
+    if [ -d "${install_tools_py311}" ]; then
+        mkdir -p ${PKG_TMP_DIR}/lib_py11
+        cp -rf ${install_tools_py311}/*    ${PKG_TMP_DIR}/lib_py11/
+    fi
 }
 
 function main()

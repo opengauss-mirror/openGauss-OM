@@ -62,6 +62,7 @@ from gspylib.component.DSS.dss_comp import DssInst
 cur_primaryId = 0
 MOT_PARAM_VERSION = 93.039 # corresponds to DISABLE_MOT_ENGINE = 93039 in src/common/backend/utils/init/globals.cpp in openGauss-server
 MODIFY_B_COMPA_PARAM_VERSION = 93.089
+MODIFY_D_COMPA_PARAM_VERSION = 93.090
 MAX_CLOG_BUFFERS = 131072
 B_COMPATIBILITY_PARAMS1 = [
     'dolphin.sql_mode',
@@ -433,6 +434,7 @@ class UpgradeImpl:
             self.check_compress_tbl_compatibility()
             self.check_mot_tables()
             self.check_b_compatibility_params()
+            self.check_d_compatibility_param()
             self.check_publication_subscription()
             self.check_shared_buffers()
 
@@ -650,6 +652,39 @@ class UpgradeImpl:
                 raise Exception("Failed query b param {0} for database {1}: Status: {2}. Output: {3}".format(
                     param, dbname, status, output))
         return output
+
+    def check_d_compatibility_param(self):
+        """
+        check whether to hold d compatibility param.
+        for upgrade from oldClusterNumber(<MODIFY_D_COMPA_PARAM_VERSION) to
+        newClusterNumber(>=MODIFY_D_COMPA_PARAM_VERSION), need to set
+        d_format_behavior_compat_options to hold origin value when containing
+        d database.
+        """
+        if self.context.action != const.ACTION_AUTO_UPGRADE:
+            self.context.logger.debug("[modify_d_compa_param] no need to check d param under {%s} mode."
+                                      % self.context.action)
+            return
+        self.context.logger.debug("[modify_d_compa_param] check d param, oldClusterNumber is %s and "
+                                  "newClusterNumber is %s" %
+                                  (self.context.oldClusterNumber, self.context.newClusterNumber))
+        if not (float(self.context.oldClusterNumber) < MODIFY_D_COMPA_PARAM_VERSION and
+            float(self.context.newClusterNumber) >= MODIFY_D_COMPA_PARAM_VERSION):
+            return
+        dbnames_sql = "select datname from pg_database where datcompatibility in ('D', 'd') limit 1;"
+        (status, dbname) = self.execSqlCommandInPrimaryDN(dbnames_sql)
+        if status != 0:
+            raise Exception("Failed query database names: Status: {0}. Output: {1}".format(status, dbname))
+        if dbname == "":
+            self.context.logger.debug("[modify_d_compa_param] there is no d database, skip")
+            return
+        query_param_sql = "show d_format_behavior_compat_options"
+        (status, output) = self.execSqlCommandInPrimaryDN(query_param_sql, database=dbname)
+        if status != 0:
+            raise Exception("Failed query d param d_format_behavior_compat_options for database {0}: "
+                            "Status: {1}. Output: {2}".format(dbname, status, output))
+        self.context.modifyDCompatibilityParam = True
+        self.context.dCompatibilityParamValue = output
 
     def check_publication_subscription(self):
         """
@@ -2404,6 +2439,11 @@ class UpgradeImpl:
             self.setGUCValue('b_format_behavior_compat_options', self.context.bCompatibilityParamValues[1], action_type='set', upgrade_node=True,
                             remain_empty_str = True)
             self.setGUCValue('enable_set_variable_b_format', self.context.bCompatibilityParamValues[2], action_type='set', upgrade_node=True)
+
+        if self.context.modifyDCompatibilityParam and not isRollback:
+            self.context.logger.debug("need to set d compatibility guc param to original value when upgrade")
+            self.setGUCValue('d_format_behavior_compat_options', self.context.dCompatibilityParamValue,
+                            action_type='set', upgrade_node=True, remain_empty_str=True)
 
         if self.context.modifyLauncherParam and not isRollback:
             self.context.logger.debug("need to modify publication and subscription guc param enable_subscription = on when upgrade")
@@ -5951,6 +5991,7 @@ END;"""
         header.append("SET search_path = 'pg_catalog';")
         header.append("SET local client_min_messages = NOTICE;")
         header.append("SET local log_min_messages = NOTICE;")
+        header.append("DO $$ BEGIN IF working_version_num() >= 92975 THEN SET d_format_behavior_compat_options = ''; END IF; END $$;")
         return header
 
     def getFileNameList(self, filePathName, scriptType="_"):

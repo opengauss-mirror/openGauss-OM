@@ -259,7 +259,7 @@ General options:
             self.hostMapForDel.keys())[9:]
         for dndir_loop in \
             self.hostMapForExist[NetUtil.GetHostIpOrName()]['datadir']:
-                cmd = "gs_ctl query -D %s|grep '\<local_role\>'| " \
+                cmd = "gs_ctl query -D %s|grep -i '\<local_role\>'| " \
                       "awk -F ':' '{print $2}'" % dndir_loop
                 (status, output) = subprocess.getstatusoutput(cmd)
                 if 'Primary' not in output:

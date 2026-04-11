@@ -784,7 +784,7 @@ class GaussStat():
             if (not os.path.exists(os.path.join(dnDataDir, "postmaster.pid"))):
                 return False
 
-            checkCmd = "gs_ctl query -D %s | grep 'HA state' -A 1 | grep " \
+            checkCmd = "gs_ctl query -D %s | grep 'HA state' -A 1 | grep -i " \
                        "'local_role'" % dnDataDir
             (status, output) = CmdUtil.retryGetstatusoutput(checkCmd)
             if (status != 0):

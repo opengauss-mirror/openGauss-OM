@@ -60,6 +60,7 @@ from gspylib.component.DSS.dss_checker import DssConfig
 from gspylib.component.DSS.dss_comp import DssInst
 
 cur_primaryId = 0
+MAX_CLOG_BUFFERS = 131072
 
 class OldVersionModules():
     """
@@ -415,6 +416,8 @@ class UpgradeImpl:
             self.checkUpgradeMode()
             self.check_compress_tbl_compatibility()
             self.check_blocksize_consistent()
+            self.check_publication_subscription()
+            self.check_shared_buffers()
             
     def check_blocksize_consistent(self):
         """
@@ -542,6 +545,62 @@ class UpgradeImpl:
                                         "please set it manually, "
                                         "or rollback first.")
                 raise Exception(str(e))
+
+    def check_publication_subscription(self):
+        """
+        check if exist publication or subscription.
+        for upgrade from oldClusterNumber to newClusterNumber,
+        need to set guc param enable_subscription = on when containing publication or subscription.
+        """
+        dbnames_sql = "select datname from pg_database where datname not in ('template0');"
+        (status, output) = self.execSqlCommandInPrimaryDN(dbnames_sql)
+        if status != 0 or output == "":
+            raise Exception("Failed query database names: Status: {0}. Output: {1}".format(status, output))
+        db_list = output.split("\n")
+        for dbname in db_list:
+            publication_sql = "select count(1) from pg_publication;"
+            subscription_sql = "select count(1) from pg_subscription;"
+            (status, output) = self.execSqlCommandInPrimaryDN(publication_sql, database=dbname)
+            if status != 0 or output == "":
+                raise Exception("Failed query publications: Status: {0}. Output: {1}".format(status, output))
+            if int(output) > 0:
+                self.context.modifyLauncherParam = True
+                break
+            (status, output) = self.execSqlCommandInPrimaryDN(subscription_sql, database=dbname)
+            if status != 0 or output == "":
+                raise Exception("Failed query subscriptions: Status: {0}. Output: {1}".format(status, output))
+            if int(output) > 0:
+                self.context.modifyLauncherParam = True
+                break
+
+    def check_shared_buffers(self):
+        """
+        check shared_buffers.
+        for upgrade from oldClusterNumber to newClusterNumber, The GUC parameters clog_buffers
+        and csnlog_buffers need to be set to the same value as shared_buffers if old cluster does not define them.
+        """
+        clog_buffers_sql = "select count(1) from pg_settings where name = 'clog_buffers';"
+        (status, output) = self.execSqlCommandInPrimaryDN(clog_buffers_sql)
+        if status != 0 or output == "":
+            raise Exception("Failed query clog_buffers: Status: {0}. Output: {1}".format(status, output))
+        if int(output) == 0:
+            self.context.hasTxnBuffersParam = False
+            shared_buffers_sql = """
+     	                  SELECT
+     	                      CASE
+     	                          WHEN setting LIKE '%GB' THEN CAST(REPLACE(setting, 'GB', '') AS bigint) * 1024 * 1024 * 1024
+     	                          WHEN setting LIKE '%MB' THEN CAST(REPLACE(setting, 'MB', '') AS bigint) * 1024 * 1024
+     	                          WHEN setting LIKE '%kB' THEN CAST(REPLACE(setting, 'kB', '') AS bigint) * 1024
+     	                          ELSE CAST(setting AS bigint)
+     	                      END AS shared_buffers_bytes
+     	                  FROM pg_settings
+     	                  WHERE name = 'shared_buffers';
+     	              """
+            (status, output) = self.execSqlCommandInPrimaryDN(shared_buffers_sql)
+            if status != 0 or output == "":
+                raise Exception("Failed query shared_buffers: Status: {0}. Output: {1}".format(status, output))
+            if int(output) < MAX_CLOG_BUFFERS:
+                self.context.sharedBuffers = output
 
     def checkBakPathNotExists(self):
         """
@@ -2144,6 +2203,17 @@ class UpgradeImpl:
             self.recover_dss_dirs()
         else:
             self.process_dssfiles_onexlog()
+
+        if self.context.modifyLauncherParam and not isRollback:
+            self.context.logger.debug(
+                "need to modify publication and subscription guc param enable_subscription = on when upgrade")
+            self.setGUCValue('enable_subscription', 'on', action_type='set')
+
+        if not self.context.hasTxnBuffersParam and not isRollback:
+            self.context.logger.debug(
+                "need to set clog_buffers and csnlog_buffers the same value as shared_buffers when upgrade")
+            self.setGUCValue('clog_buffers', self.context.sharedBuffers, action_type='set')
+            self.setGUCValue('csnlog_buffers', self.context.sharedBuffers, action_type='set')
         start_cluster_time = timeit.default_timer()
         self.greyStartCluster(upgrade_sep_comps)
         end_cluster_time = timeit.default_timer() - start_cluster_time

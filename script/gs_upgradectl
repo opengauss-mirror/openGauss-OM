@@ -122,6 +122,9 @@ class Upgrade(ParallelBaseOM):
         
         # check if upgrade from 3.0.* version with compress table.
         self.check_compresstbl_compat = True
+        self.modifyLauncherParam = False
+        self.hasTxnBuffersParam = True
+        self.sharedBuffers = "1GB"
 
     def usage(self):
         """

@@ -5002,6 +5002,7 @@ class dbClusterInfo():
         input : String
         output : NA
         """
+
         fp = None
         try:
             self.name = self.__getEnvironmentParameterValue("GS_CLUSTER_NAME",
@@ -5047,6 +5048,19 @@ class dbClusterInfo():
                 fp.close()
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50204"] %
                             dynamicConfigFile + " Error:\n" + str(e))
+
+        static_info = dbClusterInfo()
+        static_info.initFromStaticConfig(user)
+
+        for dbnode in self.dbNodes:
+            static_node = static_info.getDbNodeByName(dbnode.name)
+            if not static_node:
+                continue
+            if len(dbnode.datanodes) > 0 and len(static_node.datanodes) > 0:
+                dbnode.datanodes[0].listenIps = static_node.datanodes[0].listenIps
+                dbnode.datanodes[0].haIps = static_node.datanodes[0].haIps
+                dbnode.datanodes[0].port = static_node.datanodes[0].port
+                dbnode.datanodes[0].haPort = static_node.datanodes[0].haPort
 
     def __unpackDynamicNodeInfo(self, fp, number):
         if float(number) <= 92.200:

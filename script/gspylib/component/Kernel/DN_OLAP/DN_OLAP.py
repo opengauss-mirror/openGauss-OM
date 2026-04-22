@@ -529,11 +529,27 @@ class DN_OLAP(Kernel):
                 GUCParasStrList.append(guc_paras_str)
                 i = 0
                 guc_paras_str = ""
+        if principal is None:
+            peer_dn_ips = []
+            for local_ha_ip in self.instInfo.haIps:
+                if local_ha_ip and local_ha_ip not in peer_dn_ips:
+                    peer_dn_ips.append(local_ha_ip)
+            for peer_inst in getattr(self.instInfo, "peerInstanceInfos", []):
+                for peer_ip in peer_inst.haIps:
+                    if peer_ip and peer_ip not in peer_dn_ips:
+                        peer_dn_ips.append(peer_ip)
+            for peer_ip in peer_dn_ips:
+                subnet_length = NetUtil.get_submask_len(peer_ip)
+                guc_paras_str += "-h \"host    replication    %s    %s/%s    %s\" " \
+                                 % (pg_user, peer_ip, subnet_length,
+                                    METHOD_TRUST)
         streaming_dn_ips = self.get_streaming_relate_dn_ips(self.instInfo)
         if streaming_dn_ips:
             for dn_ip in streaming_dn_ips:
-                subnet_length = NetUtil.get_submask_len(ip_address)
+                subnet_length = NetUtil.get_submask_len(dn_ip)
                 guc_paras_str += "-h \"host    all    %s    %s/%s    %s\" " \
+                                 % (pg_user, dn_ip, subnet_length, METHOD_TRUST)
+                guc_paras_str += "-h \"host    replication    %s    %s/%s    %s\" " \
                                  % (pg_user, dn_ip, subnet_length, METHOD_TRUST)
                 guc_paras_str += "-h \"host    all    all    %s/%s    %s\" " \
                                  % (dn_ip, subnet_length, METHOD_SHA)

@@ -354,6 +354,8 @@ class MergeCluster():
             cmdlist.append(
                 f"gs_guc set -D {dndir} -h 'host all {self.user} {backip}/32 trust'")
             cmdlist.append(
+                f"gs_guc set -D {dndir} -h 'host replication {self.user} {backip}/32 trust'")
+            cmdlist.append(
                 f"gs_guc set -D {dndir} -h 'host all all  {backip}/32 sha256'")
 
             if backip == localip:

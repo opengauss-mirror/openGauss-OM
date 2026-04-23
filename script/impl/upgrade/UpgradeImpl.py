@@ -2038,6 +2038,8 @@ class UpgradeImpl:
                         self.execRollbackUpgradedCatalog(scriptType="upgrade-post")
                         self.set_b_compatibility_param()
                         self.getLsnInfo()
+                self.reload_peer_replication_hba()
+                self.reload_localhost_replication_hba()
                 hosts = copy.deepcopy(self.context.clusterNodes)
                 self.recordNodeStep(
                     GreyUpgradeStep.STEP_PRE_COMMIT, nodes=hosts)
@@ -2081,6 +2083,49 @@ class UpgradeImpl:
                     self.context.logger.debug("Successfully set guc {0} to {1}".format(guc_name, guc_value))
                 except Exception as e:
                     raise Exception(str(e))
+
+    def reload_localhost_replication_hba(self):
+        """
+        Reload localhost replication HBA entry before grey upgrade pre-commit.
+        """
+        self.context.logger.debug(
+            "Start to reload localhost replication HBA entry.")
+        hba_entry = "host    replication     {0}        " \
+                    "127.0.0.1/32            {1}".format(
+                        self.context.user, "trust")
+        cmd = "source {0} ; gs_guc reload -Iall -Nall -h '{1}'".format(
+            CmdUtil.quoteCmd(self.context.userProfile), hba_entry)
+        self.context.logger.debug(
+            "Command for reloading localhost replication HBA: %s." % cmd)
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
+                            "Command:%s. Error:\n%s" % (cmd, output))
+        self.context.logger.debug(
+            "Successfully reloaded localhost replication HBA entry.")
+
+    def reload_peer_replication_hba(self):
+        """
+        Reload peer replication HBA entries before grey upgrade pre-commit.
+        """
+        self.context.logger.debug(
+            "Start to reload peer replication HBA entries.")
+        back_ips = self.context.clusterInfo.getClusterBackIps()
+        for back_ip in back_ips:
+            subnet_length = NetUtil.get_submask_len(back_ip)
+            hba_entry = "host    replication     {0}        " \
+                        "{1}/{2}            trust".format(
+                            self.context.user, back_ip, subnet_length)
+            cmd = "source {0} ; gs_guc reload -Iall -Nall -h '{1}'".format(
+                CmdUtil.quoteCmd(self.context.userProfile), hba_entry)
+            self.context.logger.debug(
+                "Command for reloading peer replication HBA: %s." % cmd)
+            (status, output) = subprocess.getstatusoutput(cmd)
+            if status != 0:
+                raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
+                                "Command:%s. Error:\n%s" % (cmd, output))
+        self.context.logger.debug(
+            "Successfully reloaded peer replication HBA entries.")
 
     def getOneNodeStep(self, nodeName):
         """

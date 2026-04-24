@@ -1999,6 +1999,12 @@ class UpgradeImpl:
                 self.setNewVersionGuc()
                 # set enable_pbe_optimization default to off from version 93.044
                 self.check_guc_default_value("enable_pbe_optimization", "93.044", "off")
+                # The new-version process may establish replication
+                # connections as soon as it starts. Reload the required HBA
+                # rules before switching binaries to avoid transient misses
+                # during the first new-version startup.
+                self.reload_peer_replication_hba()
+                self.reload_localhost_replication_hba()
                 self.recordNodeStep(GreyUpgradeStep.STEP_UPGRADE_PROCESS)
             self.progressReport()
             if currentStep < GreyUpgradeStep.STEP_UPDATE_POST_CATALOG:
@@ -2038,8 +2044,6 @@ class UpgradeImpl:
                         self.execRollbackUpgradedCatalog(scriptType="upgrade-post")
                         self.set_b_compatibility_param()
                         self.getLsnInfo()
-                self.reload_peer_replication_hba()
-                self.reload_localhost_replication_hba()
                 hosts = copy.deepcopy(self.context.clusterNodes)
                 self.recordNodeStep(
                     GreyUpgradeStep.STEP_PRE_COMMIT, nodes=hosts)
@@ -2086,7 +2090,8 @@ class UpgradeImpl:
 
     def reload_localhost_replication_hba(self):
         """
-        Reload localhost replication HBA entry before grey upgrade pre-commit.
+        Reload the localhost replication HBA entry before the first
+        new-version process switch.
         """
         self.context.logger.debug(
             "Start to reload localhost replication HBA entry.")
@@ -2106,7 +2111,8 @@ class UpgradeImpl:
 
     def reload_peer_replication_hba(self):
         """
-        Reload peer replication HBA entries before grey upgrade pre-commit.
+        Reload peer replication HBA entries before the first
+        new-version process switch.
         """
         self.context.logger.debug(
             "Start to reload peer replication HBA entries.")

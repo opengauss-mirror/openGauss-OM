@@ -3265,8 +3265,8 @@ class DefaultValue():
         :param: inst_status Primary/Standby
         return; instance id
         """
-        cmd = r"source %s; cm_ctl query -v | grep -E 'instance_state\ *:\ %s' " \
-              r"-B 4 | grep -E 'type\ *:\ Datanode' -B 5 | grep instance_id | awk " \
+        cmd = r"source %s; cm_ctl query -v | grep -E 'instance_state.*:.*%s' " \
+              r"-B 4 | grep -E 'type.*:.*Datanode' -B 5 | grep instance_id | awk " \
               r"'{print $NF}'" % (EnvUtil.getMpprcFile(), inst_status)
         (status, output) = CmdUtil.retryGetstatusoutput(cmd)
         if status != 0 or not output:

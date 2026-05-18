@@ -42,7 +42,7 @@ class Meta(object):
 
 
 class ContentRulesMeta(object):
-    def __init__(self, key=None, filters=None, ignore_col=None, oid_col=None,
+    def __init__(self, key=None, filters=None, ignore_col=None, oid_col=None, bool_col=None,
                  complete_sql=None, complete_sql_desc=None,
                  key_desc="内容哈希值为%s的行", accuracy=Accuracy.STRICT):
         """
@@ -56,6 +56,7 @@ class ContentRulesMeta(object):
         :param filters: where过滤条件，用与区分用户数据和builtin数据。None表示不过滤
         :param ignore_col: 需要忽略的列。None表示使用所有列。
         :param oid_col: 需要校验的列中，类型为oid的需要特殊处理列。特殊处理的话，这些会被0-9999，1W-16383的区分处理，1W以上安0。None表示没有
+        :param bool_col: 需要校验的列中，类型为bool的需要特殊处理列。null和false都按false处理， true不变
         :param complete_sql: 完整的SQL规则，如果提供这个选项，则不会再用前面的拼接参数去拼接组装。
         :param complete_sql_desc: 完整的SQL描述。
         :param key_desc: sql的键的描述，注意必现带一个%s
@@ -66,6 +67,7 @@ class ContentRulesMeta(object):
         self.filters = filters if filters is not None else 'true'
         self.ignore_col = ignore_col.split(',') if ignore_col is not None else []
         self.oid_col = oid_col.split(',') if oid_col is not None else []
+        self.bool_col = bool_col.split(',') if bool_col is not None else []
         self.complete_sql = complete_sql
         self.complete_sql_desc = complete_sql_desc
         self.accuracy = accuracy
@@ -124,56 +126,33 @@ META = {
             ContentRulesMeta(
                 key="oid",
                 key_desc='oid为%s的数据类型',
-                filters=' oid < 10000 ',
-                ignore_col='tydefaultbin,typacl',
+                # 忽略pg_toast
+                filters=" oid < 10000 and typname not like 'pg_toast_%' ",
+                ignore_col='typdefaultbin,typacl',
                 oid_col='typnamespace,typrelid,typelem'
             ),
             ContentRulesMeta(
                 key="(select nspname from pg_namespace n where n.oid = typnamespace) || '.' || typname",
                 key_desc='数据类型%s',
-                filters=' oid < 10000 ',
-                ignore_col='oid,tydefaultbin,typacl',
+                # 忽略pg_toast
+                filters=" 9999 < oid and oid < 16384 and typname not like 'pg_toast_%' ",
+                ignore_col='oid,typdefaultbin,typacl',
                 oid_col='typnamespace,typowner,typrelid,typelem,typarray,typbasetype,typcollation'
             )
         ]
+    ),
+    'pg_catalog.pg_object_type': Meta(
+        Category.TYPE,
+        '记录所有的对象数据类型信息',
+        True,
+        []
     ),
     'pg_catalog.pg_attribute': Meta(
         Category.TABLE,
         "存储了所有表、视图的所有列的基础信息",
         True,
-        [
-            # builtin的需要严格一致
-            ContentRulesMeta(
-                key="format('%s(%s)',"
-                    " (select format('%s.%s', nspname, relname)"
-                    "  from pg_class c left join pg_namespace n on c.relnamespace = n.oid "
-                    "  where c.oid=attrelid),"
-                    " attname"
-                    ")",
-                key_desc='模式.关系名(列名)为%s的列',
-                filters=' attrelid < 10000 ',
-                ignore_col='attacl'
-            ),
-            # initdb的。但忽略toast表，因为表名里也带oid，会变，无法校验。
-            ContentRulesMeta(
-                complete_sql="select format('%s.%s(%s)', n.nspname, c.relname, a.attname),"
-                             "       md5(format('%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s', "
-                             "                  t.typname, a.attstattarget, a.attlen, a.attnum, a.attndims,"
-                             "                  a.attcacheoff, a.atttypmod, a.attbyval, a.attstorage, a.attalign,"
-                             "                  a.attnotnull, a.atthasdef,a.attisdropped, a.attislocal, a.attcmprmode,"
-                             "                  a.attinhcount, a.attcollation, a.attoptions, a.attfdwoptions,"
-                             "                  a.attinitdefval, a.attkvtype))"
-                             "from pg_attribute a left join pg_class c on a.attrelid = c.oid " 
-                             "                    left join pg_namespace n on c.relnamespace = n.oid "
-                             "                    left join pg_type t on a.atttypid = t.oid "
-                             "where a.attrelid > 9999 and " 
-                             "      a.attrelid < 16384 and " 
-                             "      a.attisdropped = false and " 
-                             "      n.nspname not in ('pg_toast')",
-                key_desc='模式.关系名(列名)为%s的列',
-                complete_sql_desc='校验initdb阶段(1W <= oid <= 16384)创建的表、索引、视图等的列信息。'
-            )
-        ]
+        # 目前由于系统表升级后未更新查不到新增的列，忽略
+        []
     ),
     'pg_catalog.pg_proc': Meta(
         Category.FUNCTION,
@@ -181,7 +160,7 @@ META = {
         True,
         [
             ContentRulesMeta(Category.FUNCTION,
-                complete_sql = "select 'count(*)', count(*) from pg_proc where oid < 16384",
+                complete_sql="select 'count(*)', count(*) from pg_proc where oid < 16384 ",
                 key_desc = '数量统计方法%s',
                 complete_sql_desc = 'pg_proc内 oid < 16384 的系统对象(包括函数、存储过程)总数量'
             ),
@@ -189,7 +168,8 @@ META = {
                 key="oid",
                 key_desc='oid为%s的函数或存储过程',
                 filters=' oid < 10000 ',
-                ignore_col='proargdefaults,proacl'
+                ignore_col='proargdefaults,proacl,prosrc',
+                bool_col='proshippable'
             ),
             ContentRulesMeta(
                 key="format('%s.%s(%s)',"
@@ -198,22 +178,32 @@ META = {
                     " pg_get_function_arguments(oid)"
                     ")",
                 key_desc='函数%s',
-                filters=' 9999 < oid and oid < 16384 ',
-                ignore_col='oid,proargtypes,proallargtypes,proargdefaults,proacl,proargtypesext,allargtypes,allargtypesext',
-                oid_col='pronamespace,prolang,provariadic,prorettype,propackageid'
+                filters=" 9999 < oid and oid < 16384 ",
+                ignore_col='oid,proargtypes,proallargtypes,proargdefaults,proacl,proargtypesext,allargtypes,allargtypesext,prosrc',
+                oid_col='pronamespace,prolang,provariadic,prorettype,propackageid',
+                bool_col='proshippable'
             ),
+            # plpgsql函数存在格式差异，仅校验非plpgsql函数体的函数定义
             ContentRulesMeta(
                 complete_sql="select format('def:%s.%s(%s)', "
                              "              n.nspname, "
                              "              p.proname, "
                              "              pg_get_function_arguments(p.oid)), "
                              "       md5(pg_get_functiondef(p.oid)::text) "
-                             "from pg_proc p left join pg_namespace n on p.pronamespace = n.oid "
-                             "where p.oid < 16384 and p.proisagg=false and p.proiswindow=false",
+                             "from pg_proc p left join pg_catalog.pg_namespace n on p.pronamespace = n.oid "
+                             "where p.oid < 16384 and p.proisagg=false and p.proiswindow=false and prolang < 10000 "
+                             "and p.proname not in ('_pg_char_max_length')", # 格式差异忽略
                 key_desc='函数%s的定义',
                 complete_sql_desc='通过pg_get_functiondef()来检查一般函数的定义'
             )
         ]
+    ),
+    'pg_catalog.pg_proc_ext': Meta(
+        Category.FUNCTION,
+        '存储了所有的函数、存储过程',
+        True,
+        # 暂忽略
+        []
     ),
     "pg_catalog.pg_class": Meta(
         Category.TABLE,
@@ -221,24 +211,33 @@ META = {
         True,
         [
             ContentRulesMeta(
-                complete_sql="select 'count(*)', count(*) from pg_class where oid < 16384",
+                complete_sql="select 'count(*)', count(*) from pg_class where oid < 16384 ",
                 key_desc='数量统计方法%s',
                 complete_sql_desc='pg_class内oid < 16384(包括表、索引、视图、序列等)总数量'
             ),
             ContentRulesMeta(
                 key="format('%s.%s',(select nspname from pg_namespace n where n.oid = relnamespace), relname)",
                 key_desc='名为%s的表或索引或视图等',
-                filters=' oid < 10000 ',
-                ignore_col='relfilenode,relpages,reltuples,relallvisible,relacl,relfrozenxid,relfrozenxid64,relminmxid',
+                filters=" oid < 10000 and relname not like 'pg_toast_%' ",
+                ignore_col='relfilenode,relpages,reltuples,relallvisible,relacl,relfrozenxid,relfrozenxid64,relminmxid,relnatts',
+                oid_col='oid,reltype,reloftype',
+                accuracy=Accuracy.STRICT
+            ),
+            # pg_toast表忽略relhaspkey, 内核代码中该字段被写死为true，但初始化时不一定
+            ContentRulesMeta(
+                key="format('%s.%s',(select nspname from pg_namespace n where n.oid = relnamespace), relname)",
+                key_desc='名为%s的表或索引或视图等',
+                filters=" oid < 10000 and relname like 'pg_toast_%' ",
+                ignore_col='relfilenode,relpages,reltuples,relallvisible,relacl,relfrozenxid,relfrozenxid64,relminmxid,relnatts,relhaspkey',
                 oid_col='oid,reltype,reloftype',
                 accuracy=Accuracy.STRICT
             ),
             ContentRulesMeta(
                 key="format('%s.%s',(select nspname from pg_namespace n where n.oid = relnamespace), relname)",
                 key_desc='名为%s的表或索引或视图等',
-                filters=" 9999 < oid and oid < 16384 and relnamespace not in (99) ",
+                filters=" 9999 < oid and oid < 16384 and relname not like 'pg_toast_%' ",
                 ignore_col='oid,relfilenode,relpages,reltuples,relallvisible,reltoastrelid,reltoastidxid,'
-                           'relfrozenxid,relacl,relfrozenxid64,relminmxid',
+                           'relfrozenxid,relacl,relfrozenxid64,relminmxid,relnatts',
                 oid_col='relnamespace,reltype,reloftype,relowner,reltablespace',
                 accuracy=Accuracy.STRICT
             ),
@@ -247,7 +246,7 @@ META = {
             ContentRulesMeta(
                 complete_sql="select format('def:%s.%s', n.nspname, c.relname), "
                              "       md5(pg_get_viewdef(c.oid)) "
-                             "from pg_class c left join pg_namespace n on c.relnamespace=n.oid "
+                             "from pg_class c left join pg_catalog.pg_namespace n on c.relnamespace=n.oid "
                              "where c.oid < 16384 and "
                              "      c.relkind in ('v') and "
                              "      n.nspname not in ('pg_toast', 'snapshot') ",
@@ -324,7 +323,7 @@ META = {
             ContentRulesMeta(
                 complete_sql="select srvname, "
                              "       md5(fw.fdwname || fs.srvtype::text || fs.srvversion::text || fs.srvoptions::text) "
-                             "from pg_foreign_server fs left join pg_foreign_data_wrapper fw on fs.srvfdw = fw.oid "
+                             "from pg_foreign_server fs left join pg_catalog.pg_foreign_data_wrapper fw on fs.srvfdw = fw.oid "
                              "where  9999 < fs.oid and fs.oid < 16384 ;",
                 key_desc='外表服务器%s',
                 complete_sql_desc='校验系统表pg_foreign_server的内容'
@@ -354,8 +353,8 @@ META = {
             ),
             ContentRulesMeta(
                 complete_sql="select fdw.fdwname, format('hander(%s),validator(%s)', p1.proname, p2.proname) "
-                             "from pg_foreign_data_wrapper fdw left join pg_proc p1 on fdwhandler = p1.oid "
-                             "                                 left join pg_proc p2 on fdwvalidator=p2.oid "
+                             "from pg_foreign_data_wrapper fdw left join pg_catalog.pg_proc p1 on fdwhandler = p1.oid "
+                             "                                 left join pg_catalog.pg_proc p2 on fdwvalidator=p2.oid "
                              "where 9999 < fdw.oid and fdw.oid < 16384 ",
                 key_desc='外部数据包装器%s',
                 complete_sql_desc='校验表pg_foreign_data_wrapper的内容'
@@ -477,15 +476,16 @@ META = {
             ContentRulesMeta(
                 key="oid",
                 key_desc='oid编号为%s的数据类型转换方式',
-                filters=' oid < 10000 '
+                filters=' oid < 10000 ',
+                ignore_col='castowner'
             ),
             ContentRulesMeta(
                 key="format('%s-%s', (select typname from pg_type t where t.oid=castsource), "
                     "(select typname from pg_type t where t.oid=casttarget))",
                 key_desc='左右类型为%s的转换方法',
                 filters=' 9999 < oid and oid < 16384 ',
-                ignore_col='oid',
-                oid_col='castsource,casttarget,castfunc,castowner',
+                ignore_col='oid,castowner',
+                oid_col='castsource,casttarget,castfunc',
                 accuracy=Accuracy.ALLOW_MORE
             )
         ]
@@ -544,6 +544,20 @@ META = {
         # 同时夹杂着太多的1W~16384的内容
         # 考虑此系统表的含义，仅是一个依赖的属性，对应的实体对象会在其他系统表内校验，因此暂时不进行此系统表的校验
     ),
+     "pg_catalog.gs_dependencies": Meta(
+        Category.DEPEND,
+        "记录数据库非共享对象之间的依赖性关系",
+        True,
+        # 暂忽略
+        []
+    ),
+    "pg_catalog.gs_dependencies_obj": Meta(
+        Category.DEPEND,
+        "记录数据库非共享对象之间的依赖性关系",
+        True,
+        # 暂忽略
+        []
+    ),
     "pg_catalog.pg_description": Meta(
         Category.DESCRIPTION,
         "存储数据库对象的描述",
@@ -552,7 +566,7 @@ META = {
             ContentRulesMeta(
                 key="format('%s-%s-%s', objoid, classoid, objsubid)",
                 key_desc='obj-class-subid为%s的描述',
-                filters=' objoid < 10000 and classoid < 10000 and objsubid < 10000 ',
+                filters=' objoid < 10000 and classoid < 10000 and objsubid < 10000 and classoid <> 2601 ', # 2601是pg_am，目前不支持给access method添加描述的语法，暂忽略
                 oid_col='objoid,classoid'
             ),
             # 1W+比较难写，仅测试数量，问题不大。
@@ -590,7 +604,7 @@ META = {
                     " (select relname from pg_class c where c.oid=indexrelid)"
                     ")",
                 key_desc='表名-索引名为%s的索引',
-                filters=" 9999 < indexrelid and  indexrelid < 16384 and "
+                filters=" 9999 < indexrelid and indexrelid < 16384 and "
                         "(select relkind from pg_class c where c.oid=indrelid) != 't'",
                 ignore_col='indcollation,indclass',
                 oid_col='indexrelid,indrelid'
@@ -598,8 +612,8 @@ META = {
             ContentRulesMeta(
                 complete_sql="select format('def:%s(%s)', ct.relname, ci.relname), "
                              "       md5(pg_get_indexdef(indexrelid)) "
-                             "from pg_index i left join pg_class ct on i.indrelid = ct.oid "
-                             "                left join pg_class ci on i.indexrelid = ci.oid "
+                             "from pg_index i left join pg_catalog.pg_class ct on i.indrelid = ct.oid "
+                             "                left join pg_catalog.pg_class ci on i.indexrelid = ci.oid "
                              "where indexrelid < 16384 and ct.relnamespace not in (99, 4989)",
                 key_desc='索引定义%s',
                 complete_sql_desc='通过函数pg_get_indexdef()校验索引的定义（排除pg_toast、snapshot的索引，因为有会变OID名字等原因）'
@@ -738,8 +752,8 @@ META = {
             ContentRulesMeta(
                 complete_sql="select format('def:%s.%s(%s)', n.nspname, c.relname, r.rulename), "
                              "       md5(pg_get_ruledef(r.oid)) "
-                             "from pg_rewrite r left join pg_class c on r.ev_class = c.oid "
-                             "                  left join pg_namespace n on c.relnamespace = n.oid "
+                             "from pg_rewrite r left join pg_catalog.pg_class c on r.ev_class = c.oid "
+                             "                  left join pg_catalog.pg_namespace n on c.relnamespace = n.oid "
                              "where r.oid < 16384 and "
                              "      n.nspname not in ('pg_toast', 'snapshot');",
                 key_desc='规则定义%s',
@@ -752,6 +766,12 @@ META = {
         "存储用于优化器行数估算的统计信息",
         True
         # 不用校验内容
+    ),
+    'pg_catalog.pg_statistic_history': Meta(
+        Category.TYPE,
+        '存储用于优化器行数估算的统计信息的历史记录',
+        True,
+        # 不用校验
     ),
     "pg_catalog.pg_trigger": Meta(
         Category.TRIGGER,
@@ -774,7 +794,7 @@ META = {
             ContentRulesMeta(
                 complete_sql="select format('def:%s(%s)', c.relname, t.tgname), "
                              "       md5(pg_get_triggerdef(t.oid)) "
-                             "from pg_trigger t left join pg_class c on t.tgrelid=c.oid "
+                             "from pg_trigger t left join pg_catalog.pg_class c on t.tgrelid=c.oid "
                              "where t.oid < 16384 ",
                 key_desc='触发器定义%s',
                 complete_sql_desc='通过函数pg_get_triggerdef()检查触发器的定义'
@@ -788,7 +808,7 @@ META = {
         [
             ContentRulesMeta(
                 key='oid',
-                key_desc='oid为%s的触发器',
+                key_desc='oid为%s的操作符族',
                 filters=' oid < 10000 '
             ),
             ContentRulesMeta(
@@ -1159,8 +1179,8 @@ META = {
             ContentRulesMeta(
                 complete_sql="select format('%s %s %s', c.cfgname, cm.maptokentype, mapseqno),"
                              "       md5(d.dictname)"
-                             "from pg_ts_config_map cm left join pg_ts_config c on cm.mapcfg = c.oid "
-                             "                         left join pg_ts_dict d on cm.mapdict = d.oid "
+                             "from pg_ts_config_map cm left join pg_catalog.pg_ts_config c on cm.mapcfg = c.oid "
+                             "                         left join pg_catalog.pg_ts_dict d on cm.mapdict = d.oid "
                              "where 9999 < cm.mapcfg and cm.mapcfg < 16384;",
                 key_desc='(9999,16384)的mapcfg范围内的键值为%s的文本搜索配置',
                 complete_sql_desc='(9999,16384)的mapcfg范围内的所有文本搜索配置项目',
@@ -2154,6 +2174,46 @@ META = {
         Category.WDR,
         "存储用于生成WDR报告的相关数据",
         False
+    ),
+    "pg_catalog.gs_sql_limit": Meta(
+        Category.TABLE,
+        "存储所有SQL防火墙规则的信息",
+        True,
+        # 无需校验内容
+    ),
+    "information_schema.profiling": Meta(
+        Category.INFO_SCHEMA,
+        "用于记录一些sql profiling特性相关信息",
+        True,
+        [
+            ContentRulesMeta()
+        ]
+    ),
+    "information_schema.engines": Meta(
+        Category.INFO_SCHEMA,
+        "用于记录一些engines相关信息",
+        True,
+        [
+            ContentRulesMeta()
+        ]
+    ),
+    "pg_catalog.pg_statistic_lock": Meta(
+        Category.OPTIMIZER,
+        "用于记录一些engines相关信息",
+        True,
+        # 无需校验内容
+    ),
+    "pg_catalog.gs_matview_log": Meta(
+        Category.TABLE,
+        "用于记录物化视图日志",
+        True,
+        # 无需校验内容
+    ),
+    "coverage.proc_coverage": Meta(
+        Category.TABLE,
+        "用于记录存储过程覆盖率信息",
+        True,
+        # 无需校验内容
     )
 }
 

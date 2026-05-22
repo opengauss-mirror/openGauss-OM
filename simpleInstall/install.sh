@@ -161,9 +161,59 @@ function fn_get_openGauss_tar()
 
 function fn_create_file()
 {
-    mkdir -p $install_location
-    chmod -R 755 $install_location
-    chown -R $user_name:$user_grp $install_location
+    # Must not be empty
+    if [ -z "$install_location" ]; then
+        echo "Error: install_location is empty."
+        return 1
+    fi
+
+    # Must be an absolute path
+    if [[ "$install_location" != /* ]]; then
+        echo "Error: install_location must be an absolute path."
+        return 1
+    fi
+
+    # Prevent path traversal
+    if [[ "$install_location" == *..* ]]; then
+        echo "Error: install_location cannot contain path traversal characters."
+        return 1
+    fi
+
+    # Normalize path: remove trailing slash to ensure consistent matching
+    local clean_path="${install_location%/}"
+
+    # Resolve real path to prevent symlink attacks (e.g., /home/user/link_to_etc -> /etc)
+    # If the path doesn't exist yet, realpath might fail, but we still check the string
+    local real_path=$(realpath -m "$clean_path" 2>/dev/null || echo "$clean_path")
+
+    # Strict Whitelist: Only allow /opt/<subdir> or /home/<subdir>
+    # This inherently blocks /etc, /var, /root, /usr, etc.
+    if [[ ! "$real_path" =~ ^/opt/[^/]+ ]] && [[ ! "$real_path" =~ ^/home/[^/]+ ]]; then
+        echo "Error: install_location must be a subdirectory under /opt/ or /home/ (e.g., /opt/og)."
+        return 1
+    fi
+
+    # Blacklist critical system paths even under allowed prefixes (defense in depth)
+    if [[ "$real_path" == "/opt/system" ]] || [[ "$real_path" == "/home/root" ]]; then
+        echo "Error: install_location cannot be a system reserved directory."
+        return 1
+    fi
+
+    # Reject existing non-empty directories to prevent recursive chmod/chown on arbitrary paths
+    if [ -e "$real_path" ]; then
+        if [ ! -d "$real_path" ]; then
+            echo "Error: install_location exists but is not a directory."
+            return 1
+        fi
+        if [ -n "$(ls -A "$real_path" 2>/dev/null)" ]; then
+            echo "Error: install_location already exists and is not empty."
+            return 1
+        fi
+    fi
+
+    mkdir -p "$real_path"
+    chmod -R 755 "$real_path"
+    chown -R $user_name:$user_grp "$real_path"
 
     local install_location=${install_location//\//\\\/}
 

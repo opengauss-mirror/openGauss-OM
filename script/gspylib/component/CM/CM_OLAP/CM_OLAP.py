@@ -893,15 +893,24 @@ class CM_OLAP(CM):
         """
         cmd_list = []
         for res_name, _list in cm_res_info.items():
-            check_res = "cm_ctl res --list --res_name=\"%s\"" % res_name
-            stat, out= subprocess.getstatusoutput(check_res)
+            check_res_cmd = ['cm_ctl', 'res', '--list', '--res_name=%s' % res_name]
+            proc = subprocess.Popen(check_res_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            out, _ = proc.communicate()
+            stat = proc.returncode
             if stat != 0 or not out:
                 cmd_list.append(str(VipCmResCtrlCmd("add_res", res_name,
                                     attr=VipResAttr(_list[0][0]))))
             for _tup in _list:
-                check_inst = "cm_ctl res --list --res_name=\"%s\" --list_inst" \
-                             " | grep \"%s\"" % (res_name, _tup[1])
-                stat, out= subprocess.getstatusoutput(check_inst)
+                # For piped commands, use subprocess pipeline safely to avoid shell injection
+                check_inst_cmd1 = ['cm_ctl', 'res', '--list', '--res_name=%s' % res_name, '--list_inst']
+                check_inst_cmd2 = ['grep', '%s' % _tup[1]]
+                
+                proc1 = subprocess.Popen(check_inst_cmd1, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                proc2 = subprocess.Popen(check_inst_cmd2, stdin=proc1.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                proc1.stdout.close()  # Allow proc1 to receive a SIGPIPE if proc2 exits
+                out, _ = proc2.communicate()
+                stat = proc2.returncode
+                
                 if stat != 0 or not out:
                     cmd_list.append(str(VipCmResCtrlCmd("add_inst", res_name,
                                         inst=VipAddInst(_tup[2], _tup[3]),

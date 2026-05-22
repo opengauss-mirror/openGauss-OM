@@ -145,6 +145,7 @@ def run(hosts, opts, args):
                 for i in opts.opt:
                     cmd.append("-o")
                     cmd.append(i)
+            cmd.append("--")
             cmd.extend(local_path)
             cmd.append('%s:%s' % (host, remote_path))
             manager.add_task(host, cmd)

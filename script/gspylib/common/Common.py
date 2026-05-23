@@ -4370,6 +4370,25 @@ class ClusterInstanceConfig():
             para_value_map[para_key] = res[-1].split(":")[-1].strip()
         logger.debug("Get all values from dcc component res:%s." % para_value_map)
         return para_value_map
+    
+    @staticmethod
+    def retry_set_dcc_data(cmd, logger, retry_times=5):
+        """
+        function: retry set dcc data
+        :param cmd: command to execute
+        :param retry_times: retry times
+        :return: NA
+        """
+        output = ""
+        for _ in range(retry_times):
+            try:
+                (status, output) = subprocess.getstatusoutput(cmd)
+                if status == 0:
+                    return status, output
+            except Exception as err:
+                logger.warn("Exception occurred while set dcc data: %s" % str(err))
+            time.sleep(3)
+        return 1, output
 
     @staticmethod
     def set_data_on_dcc(cluster_info, logger, user, paradict):
@@ -4398,7 +4417,7 @@ class ClusterInstanceConfig():
             cmd = "source %s; %s ddb --put '%s' '%s'" % \
                   (EnvUtil.getMpprcFile(), cm_ctl, para_key, paradict[para_key])
             logger.debug("Set dcc value cmd:%s." % cmd)
-            (status, output) = subprocess.getstatusoutput(cmd)
+            (status, output) = ClusterInstanceConfig.retry_set_dcc_data(cmd, logger)
             if status != 0:
                 raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd, "Error:%s" % output)
             logger.debug("Set dcc data:%s." % output)

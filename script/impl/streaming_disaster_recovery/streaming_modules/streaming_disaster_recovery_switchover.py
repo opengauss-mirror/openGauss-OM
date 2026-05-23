@@ -55,9 +55,6 @@ class StreamingSwitchoverHandler(StreamingBase):
                 self.update_streaming_info("cluster", "promote_fail")
             raise Exception(
                 ErrorCode.GAUSS_516["GAUSS_51632"] % "switchover" + "Error:%s" % str(error))
-        finally:
-            self.remove_cluster_maintance_file_for_switchover()
-            self.remove_cluster_maintance_file()
         self.logger.log("Successfully do streaming disaster recovery switchover.")
 
     def streaming_switchover_single_inst(self):
@@ -86,13 +83,16 @@ class StreamingSwitchoverHandler(StreamingBase):
             self.streaming_failover_single_inst(stream_disaster_step,
                                                 StreamingConstants.ACTION_SWITCHOVER)
         else:
+            can_delete_maintance_file_at_rollback = False
             self.add_cluster_maintance_file_for_switchover()
             try:
                 if stream_disaster_step < 1:
+                    can_delete_maintance_file_at_rollback = True
                     self.update_streaming_info(StreamingConstants.ACTION_SWITCHOVER, "10%")
                     self.stop_cluster()
                     self.start_cluster()
                     self.streaming_disaster_set_master_cluster_in_switchover()
+                    can_delete_maintance_file_at_rollback = False
                     self.write_streaming_step("1_streaming_disaster_set_master_in_switchover")
                 if stream_disaster_step < 2:
                     self.update_streaming_info(StreamingConstants.ACTION_SWITCHOVER, "30%")
@@ -126,8 +126,9 @@ class StreamingSwitchoverHandler(StreamingBase):
                                   " \n%s" % str(error))
                 rollback_step = self.query_streaming_step()
                 self.logger.debug("Roll back switchover step:%s" % rollback_step)
-                self.remove_cluster_maintance_file_for_switchover()
-                self.remove_cluster_maintance_file()
+                if can_delete_maintance_file_at_rollback:
+                    self.remove_cluster_maintance_file_for_switchover()
+                    self.remove_cluster_maintance_file()
                 if rollback_step < 4 or (rollback_step >= 4 and
                                          self.streaming_switchover_roll_back_condition()):
                     self.streaming_switchover_roll_back(update_query=True)

@@ -88,10 +88,63 @@ function fn_check_param()
     fi
 }
 
+function fn_prepare_secure_install_tar()
+{
+    if [ `id -u` -ne 0 ]
+    then
+        echo "Only root can prepare the install package directory." >&2
+        return 1
+    fi
+    mkdir -p "$install_tar" || return 1
+    find "$install_tar" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null
+    chown root:root "$install_tar"
+    chmod 755 "$install_tar"
+    return 0
+}
+
+function fn_harden_package_tree()
+{
+    local dir="$1"
+    local f
+
+    if [ ! -d "$dir" ]
+    then
+        return 1
+    fi
+    chown root:root "$dir"
+    chmod 755 "$dir"
+    while IFS= read -r -d '' f
+    do
+        if [ -L "$f" ]
+        then
+            echo "Refusing to harden tree with symbolic link: $f" >&2
+            return 1
+        fi
+        if [ -d "$f" ]
+        then
+            chown root:root "$f"
+            chmod 755 "$f"
+        elif [ -f "$f" ]
+        then
+            chown root:root "$f"
+            chmod 644 "$f"
+        fi
+    done < <(find "$dir" -print0 2>/dev/null)
+    return 0
+}
+
+function fn_assert_install_packages_trusted()
+{
+    local pkg
+    for pkg in "$@"
+    do
+        fn_assert_package_file_trusted "$install_tar/$pkg" || return 1
+    done
+    return 0
+}
+
 function fn_get_openGauss_tar()
 {
-    mkdir -p "$install_tar" 2>/dev/null
-    chown -R $user_name:$user_grp "$install_tar"
     if [ "$system_name"X == "openEuler"X ] && [ "$system_arch"X == "aarch64"X ]
     then
         system_arch="arm"
@@ -119,43 +172,79 @@ function fn_get_openGauss_tar()
     "upgrade_sql.tar.gz"
     )
 
-    cd "$install_tar"
-    fn_check_files_exist "${necessary_files[*]}" $cur_path/../
+    fn_prepare_secure_install_tar
     if [ $? -ne 0 ]
     then
-        fn_check_files_exist "${necessary_files[*]}" .
-        if [ $? -ne 0 ] && [ "$system_name"X != "Ubuntu"X ]
+        return 1
+    fi
+
+    cd "$install_tar" || return 1
+
+    if fn_check_files_exist "${necessary_files[*]}" "$cur_path/../"
+    then
+        fn_copy_files "${necessary_files[*]}" "$cur_path/.." "$install_tar"
+        if [ $? -ne 0 ]
         then
-            url="https://opengauss.obs.cn-south-1.myhuaweicloud.com/${version}/${system_arch}/openGauss-${version}-${system_name}-64bit-all.tar.gz"
-            echo "Downloading openGauss tar from official website at ${install_tar}"
-            wget $url --timeout=30 --tries=3 && tar -zxf openGauss-${version}-${system_name}-64bit-all.tar.gz
-            if [ $? -ne 0 ]
-            then
-                echo "wget error. The $install_tar need"
-                fn_print_array "${necessary_files[*]}"
-                return 1
-            else
-                echo "wget success."
-            fi
-        else
-            echo "Can not found openGauss install pkg. The $install_tar need"
+            echo "copy Installation package error."
+            return 1
+        fi
+        echo "copy Installation package success."
+    elif [ "$system_name"X != "Ubuntu"X ]
+    then
+        local all_pkg="openGauss-${version}-${system_name}-64bit-all.tar.gz"
+        url="https://opengauss.obs.cn-south-1.myhuaweicloud.com/${version}/${system_arch}/${all_pkg}"
+        echo "Downloading openGauss tar from official website at ${install_tar}"
+        wget "$url" --timeout=30 --tries=3 -O "$install_tar/$all_pkg"
+        if [ $? -ne 0 ]
+        then
+            echo "wget error. The $install_tar need"
             fn_print_array "${necessary_files[*]}"
             return 1
         fi
-    else
-        fn_check_files_exist "${necessary_files[*]}" $install_tar
+        chown root:root "$install_tar/$all_pkg"
+        chmod 644 "$install_tar/$all_pkg"
+        fn_verify_tar_member_names "$install_tar/$all_pkg"
         if [ $? -ne 0 ]
         then
-            fn_copy_files "${necessary_files[*]}" $cur_path/.. $install_tar
-            if [ $? -ne 0 ]
-            then
-                echo "copy Installation package error."
-                return 1
-            else
-                echo "copy Installation package success."
-            fi
+            echo "Unsafe downloaded package member names."
+            return 1
         fi
+        tar -zxf "$install_tar/$all_pkg" -C "$install_tar"
+        if [ $? -ne 0 ]
+        then
+            echo "tar package error after download."
+            return 1
+        fi
+        fn_harden_package_tree "$install_tar"
+        if [ $? -ne 0 ]
+        then
+            return 1
+        fi
+        echo "wget success."
+    else
+        echo "Can not found openGauss install pkg. Place packages under $cur_path/.. or use a supported non-Ubuntu OS for download."
+        fn_print_array "${necessary_files[*]}"
+        return 1
     fi
+
+    fn_assert_install_packages_trusted "${necessary_files[@]}"
+    if [ $? -ne 0 ]
+    then
+        echo "Install package trust check failed."
+        return 1
+    fi
+
+    fn_verify_sha256sums "$install_tar/openGauss-${version}-${system_name}-64bit.sha256" "$install_tar"
+    if [ $? -ne 0 ]
+    then
+        return 1
+    fi
+    fn_verify_sha256sums "$install_tar/upgrade_sql.sha256" "$install_tar"
+    if [ $? -ne 0 ]
+    then
+        return 1
+    fi
+
     return 0
 }
 
@@ -272,6 +361,69 @@ function fn_check_user()
     return 0
 }
 
+function fn_verify_tar_member_names()
+{
+    local archive="$1"
+    local member
+
+    [ -f "$archive" ] || return 1
+
+    while IFS= read -r member; do
+        [ -z "$member" ] && continue
+        if [[ "$member" == /* ]]; then
+            echo "Unsafe tar member (absolute path): $member" >&2
+            return 1
+        fi
+        if [[ "$member" == ".." || "$member" == ../* || "$member" == */../* || "$member" == */.. ]]; then
+            echo "Unsafe tar member (path traversal): $member" >&2
+            return 1
+        fi
+    done < <(tar -tzf "$archive" 2>/dev/null)
+    return 0
+}
+
+function fn_assert_no_symlinks_under()
+{
+    local root="$1"
+
+    if find "$root" -type l -print -quit 2>/dev/null | grep -q .; then
+        echo "Unsafe install package: symbolic links are not allowed under $root" >&2
+        return 1
+    fi
+    return 0
+}
+
+function fn_resolve_file_under()
+{
+    local base="$1"
+    local relpath="$2"
+    local base_real target_real part dir
+
+    base_real=$(readlink -f "$base") || return 1
+    dir="$base"
+    for part in ${relpath//\// }; do
+        [ -z "$part" ] && continue
+        [ "$part" = "." ] && continue
+        if [ -L "$dir/$part" ]; then
+            echo "Unsafe path (symbolic link): $dir/$part" >&2
+            return 1
+        fi
+        dir="$dir/$part"
+    done
+    [ -f "$dir" ] || return 1
+    target_real=$(readlink -f "$dir") || return 1
+    case "$target_real" in
+        "$base_real"/*)
+            echo "$target_real"
+            return 0
+            ;;
+        *)
+            echo "Unsafe path (outside install directory): $target_real" >&2
+            return 1
+            ;;
+    esac
+}
+
 function fn_install()
 {
     fn_tar
@@ -282,8 +434,14 @@ function fn_install()
     else
         echo "Get openGauss Installation package and tar package success."
     fi
+    local preinstall_script
+    preinstall_script=$(fn_resolve_file_under "${install_tar}" "script/gs_preinstall")
+    if [ $? -ne 0 ] || [ -z "$preinstall_script" ]; then
+        echo "Unsafe gs_preinstall path, aborting install."
+        return 1
+    fi
     export LD_LIBRARY_PATH="${install_tar}/script/gspylib/clib:"$LD_LIBRARY_PATH
-    python3 "${install_tar}/script/gs_preinstall" -U $user_name -G $user_grp -X '/home/'$user_name'/single.xml' --sep-env-file='/home/'$user_name'/env_single'
+    python3 "$preinstall_script" -U $user_name -G $user_grp -X '/home/'$user_name'/single.xml' --sep-env-file='/home/'$user_name'/env_single'
     if [ $? -ne 0 ]
     then
         echo "Preinstall failed."
@@ -314,14 +472,33 @@ function fn_tar()
     else
         echo "Get openGauss Installation package success."
     fi
-    cd "${install_tar}"
-    tar -zxf "openGauss-${version}-${system_name}-64bit-om.tar.gz"
+    local om_pkg="openGauss-${version}-${system_name}-64bit-om.tar.gz"
+    cd "${install_tar}" || return 1
+    fn_assert_package_file_trusted "$om_pkg"
+    if [ $? -ne 0 ]
+    then
+        echo "OM package trust check failed."
+        return 1
+    fi
+    fn_verify_tar_member_names "$om_pkg"
+    if [ $? -ne 0 ]
+    then
+        echo "Unsafe OM package member names."
+        return 1
+    fi
+    tar -zxf "$om_pkg"
     if [ $? -ne 0 ]
     then
         echo "tar package error."
         return 1
     else
         echo "tar package success."
+    fi
+    fn_assert_no_symlinks_under "${install_tar}"
+    if [ $? -ne 0 ]
+    then
+        echo "Unsafe OM package content after extraction."
+        return 1
     fi
     return 0
 }

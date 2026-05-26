@@ -6,6 +6,8 @@ function fn_create_user()
 {
     user_name=$1
     user_grp=$2
+    local og_tar="/home/$user_name/openGaussTar"
+
     groupadd $user_grp 2>/dev/null
     egrep "^$user_name" /etc/passwd >& /dev/null
     if [ $? -ne 0 ]
@@ -16,8 +18,62 @@ function fn_create_user()
         echo "create user success."
     else
         echo "user has already exists."
+        if [ -d "$og_tar" ] && find "$og_tar" -mindepth 1 -print -quit 2>/dev/null | grep -q .
+        then
+            echo "Refusing to continue: $og_tar already contains files (possible untrusted packages)." >&2
+            return 1
+        fi
     fi
-    
+
+    return 0
+}
+
+function fn_assert_package_file_trusted()
+{
+    local pkg="$1"
+
+    if [ ! -f "$pkg" ]
+    then
+        echo "Package file not found: $pkg" >&2
+        return 1
+    fi
+    if [ -L "$pkg" ]
+    then
+        echo "Package must not be a symbolic link: $pkg" >&2
+        return 1
+    fi
+    if [ "$(stat -c '%u' "$pkg" 2>/dev/null)" != "0" ]
+    then
+        echo "Package must be owned by root: $pkg" >&2
+        return 1
+    fi
+    if find "$pkg" -maxdepth 0 -perm /022 2>/dev/null | grep -q .
+    then
+        echo "Package must not be group/other writable: $pkg" >&2
+        return 1
+    fi
+    return 0
+}
+
+function fn_verify_sha256sums()
+{
+    local manifest="$1"
+    local base_dir="$2"
+    local manifest_base
+
+    if [ ! -f "$manifest" ]
+    then
+        echo "SHA256 manifest not found: $manifest" >&2
+        return 1
+    fi
+    fn_assert_package_file_trusted "$manifest" || return 1
+    manifest_base=$(basename "$manifest")
+    (cd "$base_dir" && sha256sum -c "$manifest_base" --quiet)
+    if [ $? -ne 0 ]
+    then
+        echo "SHA256 verification failed for $manifest" >&2
+        return 1
+    fi
     return 0
 }
 
@@ -120,11 +176,13 @@ function fn_copy_files()
     for i in $(seq 0 $[${#files_list[*]}-1])
     do
         target_file=${files_list[i]}
-        cp $src_path/$target_file $dst_path
+        cp "$src_path/$target_file" "$dst_path/$target_file"
         if [ $? -ne 0 ]
         then
             return 1
         fi
+        chown root:root "$dst_path/$target_file"
+        chmod 644 "$dst_path/$target_file"
     done
     return 0
 }

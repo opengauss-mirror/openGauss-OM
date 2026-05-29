@@ -27,6 +27,8 @@ import getpass
 import time
 import pwd
 import pickle
+import string
+import secrets
 package_path = os.path.dirname(os.path.realpath(__file__))
 ld_path = package_path + "/gspylib/clib"
 if 'LD_LIBRARY_PATH' not in os.environ:
@@ -63,6 +65,7 @@ from base_utils.os.net_util import NetUtil
 from base_utils.os.cmd_util import CmdUtil
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from base_utils.os.sshd_config import SshdConfig
+import re
 
 
 #############################################################################
@@ -84,6 +87,9 @@ g_endTime = None
 g_mtuMap = {}
 g_itemResult = {}
 
+# 32进制字符集：0-9, a-v
+BASE32_CHARS = string.digits + 'abcdefghijklmnopqrstuv'
+BASE32_MAX_VALUE = 32 ** 5
 DEFAULT_TIMEOUT = 1500
 # single cluster will skip these items
 # because single clusters don't need to perform consistency checks and
@@ -115,7 +121,6 @@ SETITEM_SKIP = ["CheckCPU", "CheckTimeZone", "CheckOSVer", "CheckNTPD",
                 "CheckDropColumn", "CheckDiskFailure", "CheckPing",
                 "CheckNetWorkDrop", "CheckUsedPort", "CheckNICModel",
                 "CheckRouting", "CheckNetSpeed", "CheckDataDiskUsage"]
-
 
 class CmdOptions():
     """
@@ -172,7 +177,7 @@ class CheckContext():
         self.cluster = None
         self.nodes = []
         self.mpprc = None
-        self.checkID = self.genCheckID()
+        self.checkID = None
         self.thresholdDn = None
         self.outPath = os.path.join(self.basePath, "output")
         self.logFile = None
@@ -200,12 +205,15 @@ class CheckContext():
         seconds = timedelta(hours=t.tm_hour, minutes=t.tm_min,
                             seconds=t.tm_sec).seconds
         pidString = str(os.getpid())
-        return dateString + str(seconds) + pidString
+        return dateString + str(seconds) + pidString +"_"+ generate_base32_random()
 
     def setCheckID(self, checkID):
         '''
         function : set check id
         '''
+        if not re.match(r'^[a-zA-Z0-9_-]+$', checkID):
+            raise CheckException("GAUSS-53052", 
+                "Invalid check ID. Only alphanumeric characters, underscores, and hyphens are allowed.")
         self.checkID = checkID
 
     def getCacheFile(self):
@@ -277,7 +285,9 @@ class CheckContext():
 
     def loadSceneConfiguration(self, scene):
         '''
-        function : load certain scene configuration in xml file
+        function : load certain scene configuration in xml file check the value for forbidden characters
+        allowed characters: alphanumeric, _, -, :, space 
+        forbidden characters: ; | & $ ` ( ) { } < > \n \r 
         input : NA
         output : NA
         '''
@@ -290,19 +300,44 @@ class CheckContext():
         configElem = rootNode.find('configuration')
         if configElem is not None:
             for elem in list(configElem):
-                setattr(self, elem.tag, elem.text.strip())
+                value = elem.text.strip() if elem.text else ""
+                forbidden_pattern = re.compile(r'[;|&$`{}()<>\n\r]')
+                if forbidden_pattern.search(value):
+                    raise CheckException("GAUSS-53061", 
+                        "scene %s configuration element [%s] value [%s] contains forbidden characters" % (configFile,elem.tag,value))
+                setattr(self, elem.tag, value)
 
     def isCached(self):
         '''
-        function : whether the context was serialized to disk
+        Check if the context has been serialized to disk and the cache is valid.
+        
+        The cache is considered valid only if all the following conditions are met:
+        1. Cache file exists.
+        2. File owner is the current user.
+        3. File permissions are strictly 0600 (only readable/writable by owner).
+        
+        If any condition is not met, returns False.
+        
         input : NA
         output : boolean
         '''
         # Check if Cache file exists
-        if os.path.isfile(self.getCacheFile()):
+        cache_path = self.getCacheFile()
+        if os.path.isfile(cache_path):
+            if not SharedFuncs.check_file_owner(cache_path, os.getuid()):
+                g_logger.warning(
+                    "Cache file %s owned by uid %d, but current user is %d, ignoring cache." % 
+                    (cache_path, os.stat(cache_path).st_uid, os.getuid()))
+                return False
+            
+            if not SharedFuncs.check_file_mode(cache_path, DefaultValue.KEY_FILE_MODE_IN_OS):
+                g_logger.warning(
+                    "Cache file %s has insecure permissions %o, ignoring cache." % 
+                    (cache_path, os.stat(cache_path).st_mode & 0o777))
+                return False
+            
             return True
-        else:
-            return False
+        return False
 
     def clean(self):
         '''
@@ -373,12 +408,11 @@ class CheckContext():
             raise Exception(str(e))
 
     def sendTmpFile(self, host):
-
-        cmd = "if [ ! -d %s ]; then mkdir %s -p -m %s;fi" % (
-            self.tmpPath, self.tmpPath, DefaultValue.KEY_DIRECTORY_MODE)
+        safe_tmp_path = CmdUtil.quoteCmd(self.tmpPath)
+        cmd = "if [ ! -d %s ]; then mkdir %s -p -m %s;fi" % (safe_tmp_path, safe_tmp_path, DefaultValue.KEY_DIRECTORY_MODE)
         SharedFuncs.runSshCmd(cmd, host, self.user)
         SharedFuncs.sendFile(self.getCacheFile(), host, self.user,
-                                 self.tmpPath, port=g_context.ssh_port_map[host])
+                             safe_tmp_path, port=g_context.ssh_port_map[host])
 
     def dispatch(self, hosts):
         '''
@@ -521,8 +555,16 @@ def parseCommandLine():
         for node in FileUtil.readFile(ParaDict["hostfile"]):
             g_opts.nodes.append(node.strip())
     if "cid" in list(ParaDict.keys()):
-        g_context.setCheckID(ParaDict["cid"])
+        cid = ParaDict["cid"]
+        # Only append random suffix if cid doesn't already have one
+        # Pattern: ends with _XXXXX where XXXXX is 5 base32 chars
+        if re.match(r'^[a-zA-Z0-9_-]+_[0-9a-v]{5}$', cid):
+            g_context.setCheckID(cid)
+        else:
+            g_context.setCheckID(cid + "_" + generate_base32_random())
         g_opts.distributing = True
+    else:
+        g_context.checkID = g_context.genCheckID()
     if "localMode" in list(ParaDict.keys()):
         g_opts.localMode = True
     if "skipRootItems" in list(ParaDict.keys()):
@@ -1507,10 +1549,10 @@ def __prepareCmd(items, user, checkid, print_output=False):
     if checkid:
         checkIdParam = " --cid=%s " % checkid
     if g_context.routing:
-        routingParam = "--routing %s" % g_context.routing
+        routingParam = "--routing %s" % CmdUtil.quoteCmd(g_context.routing)
     cmd = "%s/gs_check -i %s %s %s -L %s -o %s -l %s %s" % (
         cmdPath, ",".join(itemsName), userParam, checkIdParam,
-        routingParam, g_context.tmpPath, g_context.logFile, printParam)
+        routingParam, CmdUtil.quoteCmd(g_context.tmpPath), CmdUtil.quoteCmd(g_context.logFile), printParam)
     return cmd
 
 
@@ -1644,9 +1686,9 @@ def formatOutput():
         tarFiles += ' *%s.zip ' % checkID
     if __checkFileExist(outputFolder, 'CheckResult_%s' % checkID):
         tarFiles += ' CheckResult_%s ' % checkID
-    tarcmd = "cd %s;tar -zcf %s %s 2>&1; chmod %s '%s'" \
-             % (outputFolder, tarFile, tarFiles,
-                DefaultValue.KEY_FILE_MODE, tarFile)
+    tarcmd = "cd %s;tar -zcf %s %s 2>&1; chmod %s %s" \
+             % (outputFolder, CmdUtil.quoteCmd(tarFile), tarFiles,
+                DefaultValue.KEY_FILE_MODE, CmdUtil.quoteCmd(tarFile))
     SharedFuncs.runShellCmd(tarcmd, g_context.user)
 
     if g_opts.format == 'default':
@@ -1725,7 +1767,7 @@ def cleanEnvironment(skiplog=False):
             g_logger.debug(str(e))
 
     # clean tmp files in all the nodes
-    cmd = r"rm -rf %s" % g_context.tmpPath
+    cmd = r"rm -rf %s" % CmdUtil.quoteCmd(g_context.tmpPath)
     if g_opts.localMode:
         SharedFuncs.runShellCmd(cmd)
     else:
@@ -1738,7 +1780,6 @@ def cleanEnvironment(skiplog=False):
             g_logger.info("Warning! Failed to clear tmp directory.")
             g_logger.debug(str(e))
 
-
 def setTimeOut():
     """
     function: set time out
@@ -1749,6 +1790,24 @@ def setTimeOut():
     # end time
     g_endTime = datetime.now() + timedelta(seconds=g_opts.timeout)
 
+def generate_base32_random():
+    """
+    Generate a cryptographically secure random number and convert it to base32.
+    
+    Returns:
+        A string of length 5 containing base32 characters
+    """
+    # Generate a secure random number in range [0, max_value)
+    random_value = secrets.randbelow(BASE32_MAX_VALUE)
+    
+    # Convert to base32 (always 5 digits)
+    result = []
+    for _ in range(5):
+        result.append(BASE32_CHARS[random_value % 32])
+        random_value = random_value // 32
+    
+    # Reverse to get correct order and join
+    return ''.join(reversed(result))
 
 if __name__ == '__main__':
     # main function

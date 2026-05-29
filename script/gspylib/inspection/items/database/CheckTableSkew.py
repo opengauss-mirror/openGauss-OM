@@ -15,6 +15,7 @@
 # See the Mulan PSL v2 for more details.
 # ----------------------------------------------------------------------------
 import os
+import shlex
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
@@ -108,9 +109,8 @@ class CheckTableSkew(BaseItem):
                 dbList.remove("template0")
                 dbList.remove("template1")
                 for db in dbList:
-                    db = db.replace("$", "\\$")
-                    cmd = "gsql -d %s -p %s -f %s" % (
-                        db, self.port, sqlFileName)
+                    cmd = "gsql -d %s -p %s -f %s" % (shlex.quote(db),
+                        self.port, shlex.quote(sqlFileName))
                     tmpout = ""
                     output = SharedFuncs.runShellCmd(cmd, self.user,
                                                      self.mpprcFile)

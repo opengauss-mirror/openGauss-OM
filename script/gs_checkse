@@ -22,6 +22,7 @@
 import os
 import sys
 import subprocess
+import shlex
 
 sys.path.append(sys.path[0] + '/../lib')
 from gspylib.threads.SshTool import SshTool
@@ -537,10 +538,10 @@ def performCheckorSetSE(action_item, flag_str, success_mesg, item_num,
             command = Local_CheckSe
         if (configFile != ""):
             cmd = "%s -t %s -X '%s' -l '%s' --database=%s %s" % (
-                command, action_item, configFile, g_opts.localLog, g_opts.database, parameters)
+                command, action_item, configFile, g_opts.localLog, shlex.quote(g_opts.database), parameters)
         else:
             cmd = "%s -t %s -l '%s' --database=%s %s" % (
-                command, action_item, g_opts.localLog, g_opts.database, parameters)
+                command, action_item, g_opts.localLog, shlex.quote(g_opts.database), parameters)
         (status, output, outputMap) = getCmdOutput(cmd)
         parRes = ""
         detail_msg = ""
@@ -1016,7 +1017,10 @@ def getCmdOutput(cmd, ssh_conf=""):
         status = {}
         outputMap = {}
         outputCollect = []
-        (statusStr, output) = subprocess.getstatusoutput(cmd)
+        cmd_args = shlex.split(cmd)
+        result = subprocess.run(cmd_args, capture_output=True, text=True)
+        statusStr = result.returncode
+        output = result.stdout + result.stderr
         if (statusStr != 0):
             status[host] = "Failure"
         else:

@@ -19,6 +19,7 @@
 import sys
 import getopt
 import getpass
+import math
 
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.GaussLog import GaussLog
@@ -103,6 +104,14 @@ General options:
             elif key == "--security-mode":
                 self.security_mode = value
             elif key == "--cluster_number":
+                try:
+                    cluster_num = float(value)
+                    # extra check: must be a finite number , exclude nan/inf
+                    if not isinstance(cluster_num, float) or not math.isfinite(cluster_num):
+                        raise ValueError
+                except ValueError:
+                    GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50205"] %
+                        ("--cluster-number", value, "must be a numeric value (e.g., 93.090)"))
                 self.cluster_number = value
             else:
                 GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50000"]

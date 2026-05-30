@@ -80,6 +80,16 @@ def initGlobals():
     # Init sshtool
     g_sshTool = SshTool(g_clusterInfo.getClusterNodeNames(), g_logger.logFile)
 
+def check_injection_char(name, value):
+    """
+        check if the parameter value contains dangerous characters
+        if it does, exit with error message.
+    """
+    dangerous_chars = ["|", ";", "&", "$", "<", ">", "`", "\\", "'", "\"",
+                       "{", "}", "(", ")", "[", "]", "~", "*", "?", "!", "\n"]
+    for ch in dangerous_chars:
+        if value.find(ch) >= 0:
+            g_logger.logExit("%s contains dangerous character: %s" % (name, ch))
 
 def checkSrcFile(srcFile):
     g_logger.log("Check whether the source file exists.")
@@ -111,11 +121,14 @@ def parseCommandLine():
         ISALLHOSTS = True
         if not checkSrcFile(args[1]):
             g_logger.logExit("Parameter error.")
+        check_injection_char("source file", args[1])
+        check_injection_char("destination path", args[2])
         SRCFILEPATH = args[1]
         DRCPATH = args[2]
     elif args[0] == "2":
         if not checkSrcFile(args[1]):
             g_logger.logExit("Parameter error.")
+        check_injection_char("source file", args[1])
         SRCFILEPATH = args[1]
         nodenamelst = args[2].split("_")
         # when the clustertype is primary-standy-dummy,the standby DNinstence ID is the third arg in "nodenamelst"

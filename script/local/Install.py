@@ -427,7 +427,7 @@ class Install(LocalBaseOM):
                   "$LD_LIBRARY_PATH && "
         # decompress tar file.
         decompress_cmd = tar_cmd + "tar -zxf \"" + cm_package + "\" -C \"" + \
-                         self.installPath + "\""
+                         self.installPath + "\" --delay-directory-restore --no-same-owner"
         self.logger.log("Decompress CM package command: " + decompress_cmd)
         status, output = subprocess.getstatusoutput(decompress_cmd)
         if status != 0:
@@ -435,6 +435,31 @@ class Install(LocalBaseOM):
             self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50217"]
                                 % cm_package + " Error: \n%s" % str(output))
         self.logger.log("Decompress CM package successfully.")
+
+    def __validate_symlinks_in_install_path(self):
+        """
+        Validate all symlinks under installPath point within installPath.
+        Raise exception if any symlink points outside installPath.
+        """
+        real_install_path = os.path.realpath(self.installPath)
+        for root, dirs, files in os.walk(self.installPath, followlinks=False):
+            for name in dirs + files:
+                full_path = os.path.join(root, name)
+                if os.path.islink(full_path):
+                    link_target = os.readlink(full_path)
+                    # Resolve absolute target
+                    if not os.path.isabs(link_target):
+                        link_target = os.path.normpath(
+                            os.path.join(root, link_target))
+                    real_target = os.path.realpath(link_target)
+                    # Check target is within installPath
+                    if not real_target.startswith(
+                            real_install_path + os.sep) and \
+                       real_target != real_install_path:
+                        self.logger.logExit(
+                            ErrorCode.GAUSS_502["GAUSS_50217"] %
+                            ("Symlink %s points outside install path: %s" %
+                             (full_path, link_target)))
 
     def generate_dss_path(self):
         """
@@ -480,12 +505,15 @@ class Install(LocalBaseOM):
         # decompress tar file.
         self.generate_install_path()
         str_cmd = cmd + "tar -xpf \"" + tar_file + "\" -C \"" + \
-                 self.installPath + "\""
+                 self.installPath + "\" --delay-directory-restore --no-same-owner"
         self.logger.debug("Decompress cmd is: %s" % str_cmd)
         status, output = subprocess.getstatusoutput(str_cmd)
         if status != 0:
             self.logger.logExit(ErrorCode.GAUSS_502["GAUSS_50217"]
                                 % tar_file + " Error: \n%s" % str(output))
+
+        # Validate all symlinks in installPath point within installPath
+        self.__validate_symlinks_in_install_path()
 
         # mv $GPHOME/script/transfer.py to $GAUSSHOME/bin/
         dirName = os.path.dirname(os.path.realpath(__file__))

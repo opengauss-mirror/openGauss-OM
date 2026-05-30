@@ -46,9 +46,8 @@ class SqlExecutor(object):
         tmpresult = None
         conn = None
         try:
-            libpath = os.path.join(EnvUtil.getEnv("GAUSSHOME"), "lib")
-            sys.path.append(libpath)
-            libc = cdll.LoadLibrary("libpq.so.5.5")
+            libpq_path = EnvUtil.get_libpgso55_env_path()
+            libc = cdll.LoadLibrary(libpq_path)
             conn_opts = "dbname = '%s' application_name = 'OM' " \
                         "options='-c xc_maintenance_mode=on'  port = %s " % \
                         (database, port)

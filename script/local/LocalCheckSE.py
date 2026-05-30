@@ -23,7 +23,7 @@ import sys
 import getopt
 import subprocess
 import re
-
+import shlex
 localDirPath = os.path.dirname(os.path.realpath(__file__))
 
 sys.path.append(sys.path[0] + "/../")
@@ -80,8 +80,26 @@ g_clusterInfo = None
 netWorkBondInfo = None
 g_readlist = None
 
+def quote_ident(identifier):
+    """
+    function : Quote identifier ,rule is to add double quotes to it, and escape internal quotes, and filter dangerous characters
+    input  : identifier
+    output : quoted identifier
+    """
 
-#############################################################################
+    # if identifier is None , raise error
+    if identifier is None:
+        raise ValueError("Identifier cannot be None")
+    
+    # convert identifier to string , and filter dangerous characters
+    identifier = str(identifier)
+    dangerous_chars = ('\x00', '\n', '\r')
+    for c in dangerous_chars:
+        identifier = identifier.replace(c, '')
+    
+    # quote identifier , and return it
+    return f'"{identifier.replace("'", "''").replace('"', '""')}"'
+
 def getValueFromFile(key):
     """
     function : Get value from file
@@ -138,7 +156,7 @@ def extractRowsCount(s):
     output : String
     """
     import re
-    match = re.search(r'\((\d+) row[s]*\)$', s)
+    match = re.search(r'\((\d+) row[s]*\)\s*$', s)
     if match:
         return int(match.group(1))
     else:
@@ -177,9 +195,17 @@ def getDatabaseInfo(data, sql_query):
     output : Instantion
     """
     port = int(getValueFromFile('port'))
-    database = g_opts.database
-    cmd = f"gsql -d {database} -p '{port}' -r -c \"{sql_query}\""
-    status, output = subprocess.getstatusoutput(cmd)
+    cmd_args = [
+        "gsql",
+        "-d", g_opts.database,
+        "-p", str(port),
+        "-r",
+        "-c", sql_query
+    ]
+    result = subprocess.run(cmd_args, capture_output=True, text=True)
+    status = 0 if result.returncode == 0 else 1
+    output = result.stdout + result.stderr
+    cmd = " ".join([shlex.quote(arg) for arg in cmd_args])
     if status != 0:
         raise Exception(ErrorCode.GAUSS_505["GAUSS_50504"] % (cmd, output))
     if "ERROR:" in output:
@@ -3577,11 +3603,11 @@ def setPublicRolAllPerm(data):
     try:
         if data[0].db[0].strip():
             for item in data[0].db:
-                sql_query = """REVOKE ALL ON %s FROM PUBLIC;""" % (item.split("|")[0].strip())
+                sql_query = """REVOKE ALL ON %s FROM PUBLIC;""" % quote_ident(item.split("|")[0].strip())
                 getDatabaseInfo(result, sql_query)
         if data[1].db[0].strip():
             for item in data[1].db:
-                sql_query = """REVOKE ALL ON SCHEMA %s FROM PUBLIC;""" % (item.split("|")[0].strip())
+                sql_query = """REVOKE ALL ON SCHEMA %s FROM PUBLIC;""" % quote_ident(item.split("|")[0].strip())
                 getDatabaseInfo(result, sql_query)
         if data[2].db[0].strip():
             set_remove_all_function(data[2].db, result)
@@ -3597,12 +3623,12 @@ def set_remove_all_function(data, result):
     for item in data:
         df = PublicRolAllPerm()
         df.db = []
-        proname = item.split("|")[0].strip()
+        proname = quote_ident(item.split("|")[0].strip())
         sql_df = """SELECT proargtypes::regtype[] AS arg_types, proargnames AS arg_names FROM pg_proc WHERE proname = '%s';""" % proname
         getDatabaseInfo(df, sql_df)
         for line in df.db:
             arg_type = extract_types(line.split("|")[0].strip())
-            sql_query = """REVOKE ALL ON FUNCTION %s(%s) FROM PUBLIC;""" % (proname, arg_type)
+            sql_query = """REVOKE ALL ON FUNCTION %s(%s) FROM PUBLIC;""" % (proname, quote_ident(arg_type))
             getDatabaseInfo(result, sql_query)
 
 def setAdminPrivileges(data):
@@ -3639,7 +3665,7 @@ def alter_role(data, result):
             role_name = item.split("|")[0].strip()
             if not role_name:
                 continue
-            sql_query = f"ALTER ROLE {role_name} {action};"
+            sql_query = f"ALTER ROLE {quote_ident(role_name)} {action};"
             getDatabaseInfo(result, sql_query)
 
 def setEnableSeparationOfDuty(data):

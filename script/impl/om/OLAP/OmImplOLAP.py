@@ -24,10 +24,12 @@ import time
 import getpass
 import os
 import pwd
+import math
 
 sys.path.append(sys.path[0] + "/../../../../")
 from gspylib.common.DbClusterInfo import queryCmd
 from gspylib.threads.SshTool import SshTool
+from base_utils.security.security_checker import SecurityChecker
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.DbClusterStatus import DbClusterStatus
 from gspylib.common.Common import DefaultValue
@@ -240,11 +242,22 @@ class OmImplOLAP(OmImpl):
         else:
             time_out = self.time_out
         if self.context.g_opts.cluster_number:
+            self.logger.log("g_opts.cluster_number %s." % self.context.g_opts.cluster_number)
+            SecurityChecker.check_injection_char(self.context.g_opts.cluster_number)
+            try:
+                cluster_num = float(self.context.g_opts.cluster_number)
+                # extra check: must be a finite number , exclude nan/inf
+                if not isinstance(cluster_num, float) or not math.isfinite(cluster_num):
+                    raise ValueError
+            except ValueError:
+                raise Exception(ErrorCode.GAUSS_502["GAUSS_50205"] %
+                               ("--cluster-number", self.context.g_opts.cluster_number, "must be a numeric value (e.g., 93.090)"))
+            cluster_number = self.context.g_opts.cluster_number
             cmd = "source %s; %s -U %s -R %s -t %s --security-mode=%s --cluster_number=%s" % (
                 self.context.g_opts.mpprcFile,
                 OMCommand.getLocalScript("Local_StartInstance"),
                 self.context.user, self.context.clusterInfo.appPath, time_out,
-                self.context.g_opts.security_mode, self.context.g_opts.cluster_number)
+                self.context.g_opts.security_mode, cluster_number)
         else:
             cmd = "source %s; %s -U %s -R %s -t %s --security-mode=%s" % (
                 self.context.g_opts.mpprcFile,

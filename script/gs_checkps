@@ -619,11 +619,22 @@ def checkOutputFile():
     Validate output file path and permissions.
     """
     try:
-        if (g_outputfile != ""):
-            DefaultValue.checkOutputFile(g_outputfile)
-        # Pre-check: attempt to write and delete the file to verify writability
-        with open(g_outputfile, 'w') as f:
-            f.write("")
+        if g_outputfile == "":
+            GaussLog.exitWithError("Output file path cannot be empty.")   
+        DefaultValue.checkOutputFile(g_outputfile)
+        # Check if the file path is a symbolic link to prevent Link Following
+        if os.path.islink(g_outputfile):
+            GaussLog.exitWithError("Output file path is a symbolic link, aborting to prevent security risks.")
+            
+        # Ensure the resolved real path matches the given path
+        real_path = os.path.realpath(g_outputfile)
+        if real_path != g_outputfile:
+            GaussLog.exitWithError("Output file path contains a symbolic link, aborting to prevent security risks.")
+            
+        # Safely create the file without following symlinks
+        # O_NOFOLLOW ensures we do not open symlinks
+        fd = os.open(g_outputfile, os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+        os.close(fd)
         os.remove(g_outputfile)
     except Exception as e:
         GaussLog.exitWithError(str(e))
@@ -743,7 +754,8 @@ def main():
     html_content = footer(html_content)
 
     try:
-        with open(g_outputfile, 'w', encoding='utf-8') as f:
+        fd = os.open(g_outputfile, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
             f.write('\n'.join(html_content))
         print(f"✅ 结果已保存到: {g_outputfile}")
     except Exception as e:

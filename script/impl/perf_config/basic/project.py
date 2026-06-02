@@ -163,7 +163,22 @@ class ProjectEnv(object):
         """
         if env is None:
             return
-        cmd = f'{CmdUtil.SOURCE_CMD} {env} && env'
+        
+        if not os.path.isfile(env):
+            Project.fatal(f'The env file {env} does not exist or is not a regular file.')
+        
+        real_env_path = os.path.realpath(env)
+        if not real_env_path.startswith('/'):
+            Project.fatal(f'The env file {real_env_path} must be an absolute path.')
+            
+        if '..' in real_env_path:
+            Project.fatal(f'The env file path {real_env_path} cannot contain path traversal characters.')
+
+        # Use shlex.quote to prevent shell injection from malicious file names
+        import shlex
+        safe_env = shlex.quote(real_env_path)
+        
+        cmd = f'{CmdUtil.SOURCE_CMD} {safe_env} && env'
         output = CmdUtil.execCmd(cmd)
         for line in output.splitlines():
             kv = line.split('=')

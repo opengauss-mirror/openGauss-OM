@@ -38,6 +38,7 @@ from base_utils.os.cmd_util import CmdUtil
 from domain_utils.cluster_file.cluster_config_file import ClusterConfigFile
 from domain_utils.cluster_file.cluster_dir import ClusterDir
 from gspylib.common.GaussLog import GaussLog
+from gspylib.common.ErrorCode import ErrorCode
 from domain_utils.cluster_file.version_info import VersionInfo
 
 """
@@ -92,6 +93,8 @@ class MergeCluster():
         if not os.path.exists(xmlfile):
             print("xmlfile is not exists.")
             exit(1)
+
+        ClusterConfigFile.checkConfigFile(xmlfile)
 
         self.xmlfile = xmlfile
 
@@ -489,8 +492,11 @@ remoteservice={port + 4}'" """
 
     def merge_cluster(self):
         self.logger.log("Begin to generate cluster config file.")
-        cmd = f"gs_om -t generateconf -X {self.xmlfile} --distribute"
-        CmdUtil.execCmd(cmd)
+        cmd_list = ['gs_om', '-t', 'generateconf', '-X', self.xmlfile, '--distribute']
+        output, error, status = CmdUtil.execCmdList(cmd_list)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"]
+                            % str(cmd_list) + " Error: \n%s" % str(output))
 
         _, output = subprocess.getstatusoutput("gs_om -t status --detail")
         self.logger.debug(output)

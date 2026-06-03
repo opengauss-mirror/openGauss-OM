@@ -53,43 +53,153 @@ function info()
     echo -e "\033[32minfo:\033[0m $1"
 }
 
+# 安全地构建 shell 命令字符串
+# 使用数组和 printf %q 确保所有参数都被正确转义
+build_safe_command() {
+    local cmd=("$@")
+    local result=""
+    local first=true
+    for arg in "${cmd[@]}"; do
+        if $first; then
+            first=false
+        else
+            result+=" "
+        fi
+        result+=$(printf "%q" "$arg")
+    done
+    echo "$result"
+}
+
 function expect_ssh()
 {
-        /usr/bin/expect <<-EOF
+        # 用环境变量方式传递密码，避免转义问题
+        export EXPECT_PASS="$2"
+        export EXPECT_CMD="$1"
+        export EXPECT_EXPECTED="$3"
+        
+        /usr/bin/expect <<-'EOF'
         set timeout -1
-        spawn $1
+        set pass $env(EXPECT_PASS)
+        set cmd $env(EXPECT_CMD)
+        set expected_str $env(EXPECT_EXPECTED)
+        eval spawn $cmd
         expect {
                 "*yes/no" { send "yes\r"; exp_continue }
-                "*assword:" { send "$2\r"; exp_continue }
-                "*$3*" { exit }
+                -nocase "*The password is incorrect*" { exit 1 }
+                -nocase "*The password can only contain*" { exit 1 }
+                -nocase "*assword:" { send "$pass\r"; exp_continue }
+                -nocase "*password*" { send "$pass\r"; exp_continue }
+                -nocase "*Please enter password*" { send "$pass\r"; exp_continue }
+                -nocase "*Notice*" { exp_continue }
+                -glob "*$expected_str*" { }
+                eof { }
         }
-        expect eof
 EOF
-        if [ $? == 0 ]
-        then
-            return 0
-        else
-            return 1
-        fi
+        local ret=$?
+        unset EXPECT_PASS EXPECT_CMD EXPECT_EXPECTED
+        return $ret
 }
 
 function expect_hostname()
 {
-        expect <<EOF  > expectFile
+        export EXPECT_PASS="$2"
+        export EXPECT_CMD="$1"
+        
+        expect <<-'EOF' > expectFile
         set timeout -1
-        spawn $1
+        set pass $env(EXPECT_PASS)
+        set cmd $env(EXPECT_CMD)
+        eval spawn $cmd
         expect {
                 "*yes/no" { send "yes\r"; exp_continue }
-                "*assword:" {send "$2\r"; exp_continue}
+                -nocase "*assword:" { send "$pass\r"; exp_continue }
+                -nocase "*password*" { send "$pass\r"; exp_continue }
+                eof { }
         }
 EOF
-        if [ $? == 0 ]
-        then
-            return 0
-        else
-            return 1
-        fi
+        local ret=$?
+        unset EXPECT_PASS EXPECT_CMD
+        return $ret
 }
+
+
+# Verify legal username: letters, numbers, underscores only
+# Length: 1-32 characters, cannot start with a number
+validate_username() {
+    local username=$1
+    if [[ ! $username =~ ^[a-zA-Z_][a-zA-Z0-9_]{0,31}$ ]]; then
+        die "Invalid username: only letters, numbers and underscores are allowed, length 1-32, cannot start with a number"
+    fi
+}
+
+# Verify legal user group name (same rules as username)
+validate_groupname() {
+    local groupname=$1
+    if [[ ! $groupname =~ ^[a-zA-Z_][a-zA-Z0-9_]{0,31}$ ]]; then
+        die "Invalid group name: only letters, numbers and underscores are allowed, length 1-32, cannot start with a number"
+    fi
+}
+
+# Verify valid IPv4 addresses
+# Support two comma-separated IPs for one-master-one-slave cluster
+validate_host_ips() {
+    local ips=$1
+    local ip_arr=(${ips//,/ })
+    # Strictly check only two nodes are supported
+    if [ ${#ip_arr[@]} -ne 2 ]; then
+        die "Invalid host count: this script only supports 2-node deployment (one master, one slave)"
+    fi
+    # Verify each IPv4 address format
+    for ip in "${ip_arr[@]}"; do
+        if [[ ! $ip =~ ^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$ ]]; then
+            die "Invalid IPv4 address format: ${ip}"
+        fi
+    done
+}
+
+# Verify valid port range
+# Valid port: 1024-65535, numeric only
+validate_port() {
+    local port=$1
+    if [[ ! $port =~ ^[0-9]+$ ]] || [ $port -lt 1024 ] || [ $port -gt 65535 ]; then
+        die "Invalid port: must be a number between 1024 and 65535"
+    fi
+}
+
+# Verify valid installation path
+# Absolute path only, no special injection characters
+validate_install_path() {
+    local path=$1
+    # Check it's an absolute path and doesn't have double slashes
+    if [[ ! $path = /* || $path == *//* ]]; then
+        die "Invalid installation path: absolute path only, no special/suspicious characters"
+    fi
+    # Check for forbidden characters
+    if [[ $path == *';'* || $path == *'&'* || $path == *'|'* || $path == *'`'* || $path == *'$'* || $path == *'('* || $path == *')'* || $path == *'['* || $path == *']'* || $path == *'{'* || $path == *'}'* ]]; then
+        die "Invalid installation path: absolute path only, no special/suspicious characters"
+    fi
+}
+
+# Verify password complexity and security (暂时禁用)
+validate_password() {
+    local pwd=$1
+    # 暂时跳过所有密码校验，直接通过
+    return 0
+}
+
+# Verify XML template file path
+# Ensure file exists and no suspicious characters
+validate_xml_path() {
+    local xml=$1
+    if [[ ! -f $xml ]]; then
+        die "Invalid XML path: file not exists or contains suspicious characters"
+    fi
+    # Check for forbidden characters
+    if [[ $xml == *';'* || $xml == *'&'* || $xml == *'|'* || $xml == *'`'* || $xml == *'$'* || $xml == *'('* || $xml == *')'* || $xml == *'['* || $xml == *']'* || $xml == *'{'* || $xml == *'}'* ]]; then
+        die "Invalid XML path: file not exists or contains suspicious characters"
+    fi
+}
+
 
 
 function main()
@@ -160,7 +270,7 @@ function main()
             then
                 die "the password cannot be empty."
             fi
-            PASSWORD=$2
+            PASSWORD="$2"
             shift 2
             ;;
          *)
@@ -205,7 +315,7 @@ function main()
             expect_hostname "ssh ${HOST_IPS_ARRAY[${index}]} hostname" ${PASSWORD}
             if [ $? == 0 ]
             then
-                expectResult=`tail -1 expectFile|head -1| tr -d "\r"| tr -d "\n"`
+                expectResult=$(tail -1 expectFile|head -1| tr -d "\r"| tr -d "\n")
                 if [ -z ${expectResult} ]
                 then
                     die "failed to obtain the hostname based on the ip address of ${HOST_IPS_ARRAY[${index}]}."
@@ -246,6 +356,15 @@ function main()
         warn "the current system environment is ${SYSTEM_NAME} + ${SYSTEM_ARCH}, \
  you are advised to use the centos, openEuler, redhat, or kylin system. because OpenGauss may not adapt to the current system."
     fi
+
+     validate_username "${USER_NAME}"
+     validate_groupname "${USER_GROUP}"
+     validate_host_ips "${HOST_IPS}"
+     validate_port "${PORT}"
+     validate_install_path "${INSTALL_PATH}"
+     validate_password "${PASSWORD}"
+     validate_xml_path "${XML_DIR}"
+
     info "installation parameter verification completed."
 }
 
@@ -305,7 +424,7 @@ function pre_checks()
     then
         die "the number of internal IP addresses of the host is incorrect."
     fi
-    localips=`/sbin/ifconfig -a|grep inet|grep -v 127.0.0.1|grep -v inet6|awk '{print $2}'|tr -d "addr:"`
+    localips=$(/sbin/ifconfig -a|grep inet|grep -v 127.0.0.1|grep -v inet6|awk '{print $2}'|tr -d "addr:")
     for ip in ${HOST_IPS_ARRAY[@]}
     do
         info "start to check the installation environment of host ${ip}."
@@ -319,7 +438,17 @@ function pre_checks()
             then
                 die "an error occurred when copying the script to the target host ${ip}."
             fi
-            sshcmd="ssh ${ip} \"sh /${SCRIPT_NAME} inner ${ip} ${USER_GROUP} ${USER_NAME} ${PASSWORD} ${PORT} ${INSTALL_PATH} ${SYSTEM_ARCH} ${SYSTEM_NAME} ${SCRIPT_NAME}\""
+            # 使用数组和 printf %q 安全构建远程命令
+            # 将所有参数放入数组，然后用 printf %q 统一转义，避免引号嵌套问题
+            local -a remote_cmd_args=(
+                "sh" "/${SCRIPT_NAME}" "inner" "${ip}"
+                "${USER_GROUP}" "${USER_NAME}" "${PASSWORD}"
+                "${PORT}" "${INSTALL_PATH}" "${SYSTEM_ARCH}"
+                "${SYSTEM_NAME}" "${SCRIPT_NAME}"
+            )
+            local remote_cmd=$(build_safe_command "${remote_cmd_args[@]}")
+            # 使用双引号确保远程命令作为一个整体传递给 SSH
+            sshcmd="ssh ${ip} ${remote_cmd}"
             expect_ssh "${sshcmd}" "${PASSWORD}" "check end"
             if [ $? != 0 ]
             then
@@ -327,7 +456,7 @@ function pre_checks()
             fi
         else
             # local
-            checks "" ${ip} ${USER_GROUP} ${USER_NAME} ${PASSWORD} ${PORT} ${INSTALL_PATH} ${SYSTEM_ARCH} ${SYSTEM_NAME} ${SCRIPT_NAME}
+            checks "" ${ip} ${USER_GROUP} ${USER_NAME} "${PASSWORD}" ${PORT} "${INSTALL_PATH}" ${SYSTEM_ARCH} ${SYSTEM_NAME} ${SCRIPT_NAME}
             if [ $? != 0 ]
             then
                 die "an error occurred during the pre-installation check on the target host ${ip}."
@@ -341,18 +470,32 @@ function pre_checks()
 function xmlconfig()
 {
     info "start to automatically configure the installation file."
-    install_localtion=${INSTALL_PATH//\//\\\/}
+    # 使用 awk 替代 sed，避免特殊字符问题
+    local tmp_xml=$(mktemp)
     if [ -e ${XML_DIR} ]
     then
-        sed 's/@{nodeNames}/'${HOST_NAMES}'/g' ${XML_DIR} |
-        sed 's/@{backIpls}/'${HOST_IPS}'/g' |
-        sed 's/@{clusterName}/'${USER_NAME}'/g' |
-        sed 's/@{port}/'${PORT}'/g' |
-        sed 's/@{installPath}/'${install_localtion}'/g' |
-        sed 's/@{nodeName1}/'${HOST_NAMES_ARRAY[0]}'/g' |
-        sed 's/@{backIp1}/'${HOST_IPS_ARRAY[0]}'/g' |
-        sed 's/@{nodeName2}/'${HOST_NAMES_ARRAY[1]}'/g' |
-        sed 's/@{backIp2}/'${HOST_IPS_ARRAY[1]}'/g' > $(eval echo ~${USER_NAME})/one_master_one_slave.xml
+        # 使用 awk 进行安全替换
+        awk -v nodeNames="${HOST_NAMES}" \
+            -v backIpls="${HOST_IPS}" \
+            -v clusterName="${USER_NAME}" \
+            -v port="${PORT}" \
+            -v installPath="${INSTALL_PATH}" \
+            -v nodeName1="${HOST_NAMES_ARRAY[0]}" \
+            -v backIp1="${HOST_IPS_ARRAY[0]}" \
+            -v nodeName2="${HOST_NAMES_ARRAY[1]}" \
+            -v backIp2="${HOST_IPS_ARRAY[1]}" \
+            '{
+                gsub(/@{nodeNames}/, nodeNames);
+                gsub(/@{backIpls}/, backIpls);
+                gsub(/@{clusterName}/, clusterName);
+                gsub(/@{port}/, port);
+                gsub(/@{installPath}/, installPath);
+                gsub(/@{nodeName1}/, nodeName1);
+                gsub(/@{backIp1}/, backIp1);
+                gsub(/@{nodeName2}/, nodeName2);
+                gsub(/@{backIp2}/, backIp2);
+                print;
+            }' "${XML_DIR}" > "$tmp_xml" && mv "$tmp_xml" "$(eval echo ~${USER_NAME})/one_master_one_slave.xml"
     else
         die "cannot find one_master_one_slave_template.xml in ${XML_DIR}"
     fi
@@ -388,14 +531,14 @@ function install()
     exit 0
 }
 
-if [ $1 == "inner" ]
+if [ "$1" == "inner" ]
 then
-    checks $@
+    # 在 inner 模式下，确保所有参数都正确传递
+    checks "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}"
 else
-    main $@
+    main "$@"
     pre_checks
     xmlconfig
     install
 fi
 exit 0
-

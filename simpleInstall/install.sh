@@ -1,9 +1,13 @@
 #!/bin/bash
 
-bash_flag=`ls -l /bin/sh | grep -o -E bash`
-if [ ! $bash_flag ]
+# `sh install.sh` may invoke bash in POSIX mode where process substitution is unsupported.
+if [ -z "${BASH_VERSION:-}" ] || shopt -q posix 2>/dev/null
 then
-    echo "You should switch shell to bash first!"
+    if command -v bash >/dev/null 2>&1
+    then
+        exec bash "$0" "$@"
+    fi
+    echo "This script requires bash. Please run: bash $0 ..." >&2
     exit 1
 fi
 
@@ -35,6 +39,8 @@ function fn_get_param()
     then
         install_location="/opt/$user_name"          #数据库安装位置(可修改)
     fi
+    echo "install_location: $install_location"
+    echo "install_tar: $install_tar"
 }
 
 function fn_prase_input_param()
@@ -95,6 +101,18 @@ function fn_prepare_secure_install_tar()
         echo "Only root can prepare the install package directory." >&2
         return 1
     fi
+    if [ -L "$install_tar" ]
+    then
+        echo "Install package path must not be a symbolic link: $install_tar" >&2
+        return 1
+    fi
+    case "$install_tar" in
+        "/home/$user_name"/*) ;;
+        *)
+            echo "Install package path must be under /home/$user_name: $install_tar" >&2
+            return 1
+            ;;
+    esac
     mkdir -p "$install_tar" || return 1
     find "$install_tar" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null
     chown root:root "$install_tar"
@@ -105,31 +123,20 @@ function fn_prepare_secure_install_tar()
 function fn_harden_package_tree()
 {
     local dir="$1"
-    local f
 
     if [ ! -d "$dir" ]
     then
         return 1
     fi
+    if find "$dir" -type l -print -quit 2>/dev/null | grep -q .
+    then
+        echo "Refusing to harden tree with symbolic link under $dir" >&2
+        return 1
+    fi
     chown root:root "$dir"
     chmod 755 "$dir"
-    while IFS= read -r -d '' f
-    do
-        if [ -L "$f" ]
-        then
-            echo "Refusing to harden tree with symbolic link: $f" >&2
-            return 1
-        fi
-        if [ -d "$f" ]
-        then
-            chown root:root "$f"
-            chmod 755 "$f"
-        elif [ -f "$f" ]
-        then
-            chown root:root "$f"
-            chmod 644 "$f"
-        fi
-    done < <(find "$dir" -print0 2>/dev/null)
+    find "$dir" -type d -exec chown root:root {} \; -exec chmod 755 {} \; 2>/dev/null
+    find "$dir" -type f -exec chown root:root {} \; -exec chmod 644 {} \; 2>/dev/null
     return 0
 }
 
@@ -145,17 +152,19 @@ function fn_assert_install_packages_trusted()
 
 function fn_get_openGauss_tar()
 {
-    if [ "$system_name"X == "openEuler"X ] && [ "$system_arch"X == "aarch64"X ]
+    package_arch=`uname -p`
+    os_version=`cat /etc/os-release | grep -w VERSION_ID | awk -F '"' '{print $2}'`
+    if [ "$system_name"X == "openEuler"X ] && [ "$package_arch"X == "aarch64"X ]
     then
         system_arch="arm"
-    elif [ "$system_name"X == "openEuler"X ] && [ "$system_arch"X == "x86_64"X ]
+    elif [ "$system_name"X == "openEuler"X ] && [ "$package_arch"X == "x86_64"X ]
     then
         system_arch="x86"
-    elif [ "$system_name"X == "centos"X ] && [ "$system_arch"X == "x86_64"X ]
+    elif [ "$system_name"X == "centos"X ] && [ "$package_arch"X == "x86_64"X ]
     then
         system_name="CentOS"
         system_arch="x86"
-    elif [ "$system_name"X == "ubuntu"X ] && [ "$system_arch"X == "x86_64"X ]
+    elif [ "$system_name"X == "ubuntu"X ] && [ "$package_arch"X == "x86_64"X ]
     then
         system_name="Ubuntu"
         system_arch="x86"
@@ -164,10 +173,14 @@ function fn_get_openGauss_tar()
         return 1
     fi
 
+    system_os_name="${system_name}${os_version}"
+    package_pre_name="${version}-${system_os_name}-${package_arch}"
+    all_tar_name="openGauss-All-${package_pre_name}.tar.gz"
+
     necessary_files=(
-    "openGauss-${version}-${system_name}-64bit-om.tar.gz"
-    "openGauss-${version}-${system_name}-64bit.sha256"
-    "openGauss-${version}-${system_name}-64bit.tar.bz2"
+    "openGauss-OM-${package_pre_name}.tar.gz"
+    "openGauss-Server-${package_pre_name}.sha256"
+    "openGauss-Server-${package_pre_name}.tar.bz2"
     "upgrade_sql.sha256"
     "upgrade_sql.tar.gz"
     )
@@ -189,27 +202,31 @@ function fn_get_openGauss_tar()
             return 1
         fi
         echo "copy Installation package success."
+        fn_harden_package_tree "$install_tar"
+        if [ $? -ne 0 ]
+        then
+            return 1
+        fi
     elif [ "$system_name"X != "Ubuntu"X ]
     then
-        local all_pkg="openGauss-${version}-${system_name}-64bit-all.tar.gz"
-        url="https://opengauss.obs.cn-south-1.myhuaweicloud.com/${version}/${system_arch}/${all_pkg}"
+        url="https://opengauss.obs.cn-south-1.myhuaweicloud.com/${version}/${system_os_name}/${system_arch}/${all_tar_name}"
         echo "Downloading openGauss tar from official website at ${install_tar}"
-        wget "$url" --timeout=30 --tries=3 -O "$install_tar/$all_pkg"
+        wget "$url" --timeout=30 --tries=3 -O "$install_tar/$all_tar_name"
         if [ $? -ne 0 ]
         then
             echo "wget error. The $install_tar need"
             fn_print_array "${necessary_files[*]}"
             return 1
         fi
-        chown root:root "$install_tar/$all_pkg"
-        chmod 644 "$install_tar/$all_pkg"
-        fn_verify_tar_member_names "$install_tar/$all_pkg"
+        chown root:root "$install_tar/$all_tar_name"
+        chmod 644 "$install_tar/$all_tar_name"
+        fn_verify_tar_member_names "$install_tar/$all_tar_name"
         if [ $? -ne 0 ]
         then
             echo "Unsafe downloaded package member names."
             return 1
         fi
-        tar -zxf "$install_tar/$all_pkg" -C "$install_tar"
+        tar -zxf "$install_tar/$all_tar_name" -C "$install_tar"
         if [ $? -ne 0 ]
         then
             echo "tar package error after download."
@@ -234,7 +251,7 @@ function fn_get_openGauss_tar()
         return 1
     fi
 
-    fn_verify_sha256sums "$install_tar/openGauss-${version}-${system_name}-64bit.sha256" "$install_tar"
+    fn_verify_sha256sums "$install_tar/openGauss-Server-${package_pre_name}.sha256" "$install_tar"
     if [ $? -ne 0 ]
     then
         return 1
@@ -250,6 +267,8 @@ function fn_get_openGauss_tar()
 
 function fn_create_file()
 {
+    echo "Preparing install directory, install_location: $install_location"
+
     # Must not be empty
     if [ -z "$install_location" ]; then
         echo "Error: install_location is empty."
@@ -257,16 +276,21 @@ function fn_create_file()
     fi
 
     # Must be an absolute path
-    if [[ "$install_location" != /* ]]; then
-        echo "Error: install_location must be an absolute path."
-        return 1
-    fi
+    case "$install_location" in
+        /*) ;;
+        *)
+            echo "Error: install_location must be an absolute path: $install_location"
+            return 1
+            ;;
+    esac
 
     # Prevent path traversal
-    if [[ "$install_location" == *..* ]]; then
-        echo "Error: install_location cannot contain path traversal characters."
-        return 1
-    fi
+    case "$install_location" in
+        *..*)
+            echo "Error: install_location cannot contain path traversal characters: $install_location"
+            return 1
+            ;;
+    esac
 
     # Normalize path: remove trailing slash to ensure consistent matching
     local clean_path="${install_location%/}"
@@ -274,28 +298,47 @@ function fn_create_file()
     # Resolve real path to prevent symlink attacks (e.g., /home/user/link_to_etc -> /etc)
     # If the path doesn't exist yet, realpath might fail, but we still check the string
     local real_path=$(realpath -m "$clean_path" 2>/dev/null || echo "$clean_path")
+    local path_rest
+
+    echo "Resolved install path: $real_path"
 
     # Strict Whitelist: Only allow /opt/<subdir> or /home/<subdir>
     # This inherently blocks /etc, /var, /root, /usr, etc.
-    if [[ ! "$real_path" =~ ^/opt/[^/]+ ]] && [[ ! "$real_path" =~ ^/home/[^/]+ ]]; then
-        echo "Error: install_location must be a subdirectory under /opt/ or /home/ (e.g., /opt/og)."
+    case "$real_path" in
+        /opt/*)
+            path_rest="${real_path#/opt/}"
+            ;;
+        /home/*)
+            path_rest="${real_path#/home/}"
+            ;;
+        *)
+            echo "Error: install_location must be a subdirectory under /opt/ or /home/ (e.g., /opt/og): $real_path"
+            return 1
+            ;;
+    esac
+    if [ -z "$path_rest" ]
+    then
+        echo "Error: install_location must be a subdirectory under /opt/ or /home/ (e.g., /opt/og): $real_path"
         return 1
     fi
 
     # Blacklist critical system paths even under allowed prefixes (defense in depth)
-    if [[ "$real_path" == "/opt/system" ]] || [[ "$real_path" == "/home/root" ]]; then
-        echo "Error: install_location cannot be a system reserved directory."
+    if [ "$real_path" = "/opt/system" ] || [ "$real_path" = "/home/root" ]
+    then
+        echo "Error: install_location cannot be a system reserved directory: $real_path"
         return 1
     fi
 
     # Reject existing non-empty directories to prevent recursive chmod/chown on arbitrary paths
     if [ -e "$real_path" ]; then
         if [ ! -d "$real_path" ]; then
-            echo "Error: install_location exists but is not a directory."
+            echo "Error: install_location exists but is not a directory: $real_path"
             return 1
         fi
         if [ -n "$(ls -A "$real_path" 2>/dev/null)" ]; then
-            echo "Error: install_location already exists and is not empty."
+            echo "Error: install_location already exists and is not empty: $real_path"
+            echo "Use an empty directory, e.g.: sh install.sh ... -D /opt/${user_name}_new"
+            echo "Or uninstall/clean the existing cluster data under $real_path before retry."
             return 1
         fi
     fi
@@ -313,7 +356,7 @@ function fn_create_file()
     fi
     sed 's/@{host_name}/'$host_name'/g' $cur_path/template.xml | sed 's/@{host_ip}/'$host_ip'/g' | sed 's/@{user_name}/'$user_name'/g' | sed 's/@{host_port}/'$host_port'/g' | sed 's/@{install_location}/'$install_location'/g' > $cur_path/single.xml
     cp $cur_path/single.xml /home/$user_name/
-    echo "create config file success."
+    echo "create config file success, install_location: $real_path, xml: /home/$user_name/single.xml"
     return 0
 }
 
@@ -415,20 +458,29 @@ function fn_verify_tar_member_names()
 {
     local archive="$1"
     local member
+    local err=0
 
     [ -f "$archive" ] || return 1
 
-    while IFS= read -r member; do
+    while IFS= read -r member
+    do
         [ -z "$member" ] && continue
-        if [[ "$member" == /* ]]; then
-            echo "Unsafe tar member (absolute path): $member" >&2
-            return 1
-        fi
-        if [[ "$member" == ".." || "$member" == ../* || "$member" == */../* || "$member" == */.. ]]; then
-            echo "Unsafe tar member (path traversal): $member" >&2
-            return 1
-        fi
-    done < <(tar -tzf "$archive" 2>/dev/null)
+        case "$member" in
+            /*)
+                echo "Unsafe tar member (absolute path): $member" >&2
+                err=1
+                break
+                ;;
+            ..|../*|*/..|*/../*)
+                echo "Unsafe tar member (path traversal): $member" >&2
+                err=1
+                break
+                ;;
+        esac
+    done <<EOF
+$(tar -tzf "$archive" 2>/dev/null)
+EOF
+    [ "$err" -eq 0 ] || return 1
     return 0
 }
 
@@ -522,7 +574,8 @@ function fn_tar()
     else
         echo "Get openGauss Installation package success."
     fi
-    local om_pkg="openGauss-${version}-${system_name}-64bit-om.tar.gz"
+
+    local om_pkg="openGauss-OM-${package_pre_name}.tar.gz"
     cd "${install_tar}" || return 1
     fn_assert_package_file_trusted "$om_pkg"
     if [ $? -ne 0 ]
@@ -537,6 +590,7 @@ function fn_tar()
         return 1
     fi
     tar -zxf "$om_pkg"
+
     if [ $? -ne 0 ]
     then
         echo "tar package error."
@@ -626,7 +680,7 @@ function main()
     fn_create_file
     if [ $? -ne 0 ]
     then
-        echo "Create file failed."
+        echo "Create file failed, install_location: $install_location"
         return 1
     else
         echo "Create file success."
@@ -644,10 +698,10 @@ function main()
     if [ $returnFlag -eq 0 ]
     then
         echo "Load demoDB [school,finance] success."
-        return 1
     elif [ $returnFlag -eq 1 ]
     then
         echo "Load demoDB failed, you can check load.log for more details."
+        return 1
     else
         echo "Input no, operation skip."
     fi

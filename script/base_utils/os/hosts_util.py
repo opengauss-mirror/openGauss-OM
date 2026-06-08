@@ -2,13 +2,14 @@ import os
 import _thread
 import ipaddress
 import socket
+import re
 
 from base_utils.os.file_util import FileUtil
 from gspylib.common.ErrorCode import ErrorCode
 from base_utils.os.net_util import NetUtil
 
+HOSTNAME_PATTERN = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9.\-]{0,63}[a-zA-Z0-9]$|^[a-zA-Z0-9]$')
 class HostsUtil:
-
     @staticmethod
     def get_ip_by_hostname_from_etc_hosts(hostname):
         """
@@ -173,3 +174,15 @@ class HostsUtil:
         if host[:1] == '[' and host[-1:] == ']':
             host = host.strip('[]')
         return host
+    
+    @staticmethod
+    def validate_hostname(hostname):
+        """
+        function: validate hostname, checked by RFC 952/RFC 1123 hostname rules.
+            if not match, throw Exception
+        input: hostname
+        output: None
+        """
+        if not hostname or not HOSTNAME_PATTERN.match(hostname):
+            raise Exception(ErrorCode.GAUSS_512["GAUSS_51221"] +
+                " Error: \nInvalid hostname '%s'. see RFC 952/RFC 1123 hostname rules." % hostname)

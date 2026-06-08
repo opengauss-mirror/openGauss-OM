@@ -68,7 +68,7 @@ class SecurityChecker(object):
         Check db injection
         """
         for rac in SecurityChecker.INJECTION_CHAR_LIST:
-            if value.find(rac) > 0:
+            if value.find(rac) >= 0:
                 raise ValidationError(ErrorCode.GAUSS_500['GAUSS_50025'] % (rac, description))
 
     @staticmethod

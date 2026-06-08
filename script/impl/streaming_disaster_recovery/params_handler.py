@@ -68,7 +68,7 @@ def check_hadr_pwd(value):
     """
     description = "disaster user password"
     # check_db_password will be used in cloud scene
-    SecurityChecker.check_db_user(description, value)
+    SecurityChecker.check_db_password(description, value)
 
 
 def check_wait_timeout(value):

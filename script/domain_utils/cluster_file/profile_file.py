@@ -18,6 +18,7 @@
 
 import os
 import subprocess
+import re
 
 from base_diff.env_variables import EnvVariables
 from gspylib.common.ErrorCode import ErrorCode
@@ -87,10 +88,10 @@ class ProfileFile:
         output:NA
         """
         # get mppfile, make sure it exists
-        if mpprcFile == "" or mpprcFile is None \
-                or mpprcFile == ClusterConstants.ETC_PROFILE \
-                or mpprcFile == ClusterConstants.BASHRC \
-                or not os.path.exists(mpprcFile):
+        if (mpprcFile == "" or mpprcFile is None
+                or mpprcFile == ClusterConstants.ETC_PROFILE
+                or mpprcFile == ClusterConstants.BASHRC
+                or not os.path.exists(mpprcFile)):
             ProfileFile.removeTmpMpp(mpprcFile)
             return
 
@@ -106,37 +107,42 @@ class ProfileFile:
         env_list = EnvVariables.filter_env_variable(env_list, mpprcFile, mpprcFile_rm)
 
         # white elements
-        list_white = ["ELK_CONFIG_DIR", "ELK_SYSTEM_TABLESPACE", "MPPDB_ENV_SEPARATE_PATH",
-                      "GPHOME", "UNPACKPATH", "PATH", "LD_LIBRARY_PATH", "PYTHONPATH",
-                      "GAUSS_WARNING_TYPE", "GAUSSHOME", "PATH", "LD_LIBRARY_PATH",
-                      "S3_CLIENT_CRT_FILE", "GAUSS_VERSION", "PGHOST", "GS_CLUSTER_NAME",
-                      "GAUSSLOG", "GAUSS_ENV", "umask"]
-        # black elements
-        list_black = ["|", ";", "&", "<", ">", "`", "\\", "!", "\n"]
+        # Only allow simple shell assignments that are safe to source later.
+        allowed_env_names = {
+            "ELK_CONFIG_DIR", "ELK_SYSTEM_TABLESPACE", "MPPDB_ENV_SEPARATE_PATH",
+            "GPHOME", "UNPACKPATH", "PATH", "LD_LIBRARY_PATH", "PYTHONPATH",
+            "GAUSS_WARNING_TYPE", "GAUSSHOME", "PATH", "LD_LIBRARY_PATH",
+            "S3_CLIENT_CRT_FILE", "GAUSS_VERSION", "PGHOST", "GS_CLUSTER_NAME",
+            "GAUSSLOG", "GAUSS_ENV", "umask", "PGDATA", "COREPATH",
+            "PGDATABASE", "PGPORT", "IP_TYPE"
+        }
+        assignment_pattern = re.compile(r"^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
+        invalid_value_chars = set("|;&<>`\\'\"{}()[]~*?!\n \t\r")
 
         # check mpprcfile
         for env in env_list:
             env = env.strip()
             if env == "":
                 continue
-            for white in list_white:
-                flag_white = 0
-                flag = env.find(white)
-                if env.startswith('export') or flag >= 0:
-                    flag_white = 1
-                    break
-            if flag_white == 0:
+            if env == "umask 077":
+                continue
+            match = assignment_pattern.match(env)
+            if not match:
                 ProfileFile.removeTmpMpp(mpprcFile_rm)
                 raise Exception(
                     ErrorCode.GAUSS_502["GAUSS_50219"] % env +
                     " There are illegal characters in %s." % host)
-            for black in list_black:
-                flag = env.find(black)
-                if (flag >= 0 and env != ""):
-                    ProfileFile.removeTmpMpp(mpprcFile_rm)
-                    raise Exception(
-                        ErrorCode.GAUSS_502["GAUSS_50219"] % env +
-                        " There are illegal characters in %s." % host)
+            if match.group(1) not in allowed_env_names:
+                ProfileFile.removeTmpMpp(mpprcFile_rm)
+                raise Exception(
+                    ErrorCode.GAUSS_502["GAUSS_50219"] % env +
+                    " There are illegal characters in %s." % host)
+            if any(char in match.group(2) for char in invalid_value_chars):
+                ProfileFile.removeTmpMpp(mpprcFile_rm)
+                raise Exception(
+                    ErrorCode.GAUSS_502["GAUSS_50219"] % env +
+                    " There are illegal characters in %s." % host)
+
 
     @staticmethod
     def sourceEnvFile(file_env):

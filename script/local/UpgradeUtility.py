@@ -165,7 +165,7 @@ def importOldVersionModules():
     function: import some needed modules from the old cluster.
     currently needed are: DbClusterInfo
     input: NA
-    output:NA
+    output: dbClusterInfo instance from install path (not initialized)
     """
     # get install directory by user name
     installDir = ClusterDir.getInstallDir(g_opts.user)
@@ -177,6 +177,71 @@ def importOldVersionModules():
     g_oldVersionModules = OldVersionModules()
     sys.path.append("%s/bin/script/util" % installDir)
     g_oldVersionModules.oldDbClusterInfoModule = __import__('DbClusterInfo')
+    return g_oldVersionModules.oldDbClusterInfoModule.dbClusterInfo()
+
+
+def _init_cluster_from_old_modules():
+    """
+    function: init cluster info from install path old DbClusterInfo module
+    input: NA
+    output: cluster info object
+    """
+    cluster_info = importOldVersionModules()
+    cluster_info.initFromStaticConfig(g_opts.user)
+    return cluster_info
+
+
+def _init_cluster_from_backup_static_config(static_config_file):
+    """
+    function: init cluster info from PGHOST backup static config
+    input: static_config_file
+    output: cluster info object
+    """
+    try:
+        cluster_info = dbClusterInfo()
+        cluster_info.initFromStaticConfig(g_opts.user, static_config_file)
+        return cluster_info
+    except Exception as e:
+        g_logger.error(str(e))
+        try:
+            return _init_cluster_from_old_modules()
+        except Exception as inner_e:
+            raise Exception(str(inner_e))
+
+
+def _init_cluster_from_xml_fallback():
+    """
+    function: init cluster info from xml using bundled DbClusterInfo module
+    input: NA
+    output: cluster info object
+    """
+    sys.path.append(sys.path[0] + "/../../gspylib/common")
+    cur_db_cluster_info_module = __import__('DbClusterInfo')
+    cluster_info = cur_db_cluster_info_module.dbClusterInfo()
+    cluster_info.initFromXml(g_opts.xmlFile)
+    return cluster_info
+
+
+def _init_cluster_from_fallback():
+    """
+    function: init cluster info when install path initialization failed
+    input: NA
+    output: cluster info object
+    """
+    g_opts.bakPath = EnvUtil.getTmpDirFromEnv() + "/"
+    static_config_file = "%s/cluster_static_config" % g_opts.bakPath
+
+    if os.path.isfile(static_config_file):
+        return _init_cluster_from_backup_static_config(static_config_file)
+    if g_opts.xmlFile and os.path.exists(g_opts.xmlFile):
+        try:
+            return _init_cluster_from_xml_fallback()
+        except Exception as e:
+            raise Exception(str(e))
+    try:
+        return _init_cluster_from_old_modules()
+    except Exception as e:
+        raise Exception(str(e))
 
 
 def initGlobals():
@@ -218,61 +283,7 @@ def initGlobals():
         g_logger.error(str(e))
         # init cluster info from install path failed
         # try to do it from backup path again
-        g_opts.bakPath = EnvUtil.getTmpDirFromEnv() + "/"
-        staticConfigFile = "%s/cluster_static_config" % g_opts.bakPath
-
-        if os.path.isfile(staticConfigFile):
-            try:
-                # import old module
-                g_oldVersionModules = OldVersionModules()
-                sys.path.append(os.path.dirname(g_opts.bakPath))
-                g_oldVersionModules.oldDbClusterInfoModule = __import__(
-                    'OldDbClusterInfo')
-                # init old cluster config
-                g_clusterInfo = \
-                    g_oldVersionModules.oldDbClusterInfoModule.dbClusterInfo()
-                g_clusterInfo.initFromStaticConfig(g_opts.user,
-                                                   staticConfigFile)
-            except Exception as e:
-                g_logger.error(str(e))
-                # maybe the old cluster is V1R5C00 TR5 version,
-                # not support specify static config file
-                # path for initFromStaticConfig function,
-                # so use new cluster format try again
-                try:
-                    g_clusterInfo = dbClusterInfo()
-                    g_clusterInfo.initFromStaticConfig(g_opts.user,
-                                                       staticConfigFile)
-                except Exception as e:
-                    g_logger.error(str(e))
-                    try:
-                        # import old module
-                        importOldVersionModules()
-                        # init old cluster config
-                        g_clusterInfo = \
-                            g_oldVersionModules \
-                                .oldDbClusterInfoModule.dbClusterInfo()
-                        g_clusterInfo.initFromStaticConfig(g_opts.user)
-                    except Exception as e:
-                        raise Exception(str(e))
-        elif g_opts.xmlFile and os.path.exists(g_opts.xmlFile):
-            try:
-                sys.path.append(sys.path[0] + "/../../gspylib/common")
-                curDbClusterInfoModule = __import__('DbClusterInfo')
-                g_clusterInfo = curDbClusterInfoModule.dbClusterInfo()
-                g_clusterInfo.initFromXml(g_opts.xmlFile)
-            except Exception as e:
-                raise Exception(str(e))
-        else:
-            try:
-                # import old module
-                importOldVersionModules()
-                # init old cluster config
-                g_clusterInfo = \
-                    g_oldVersionModules.oldDbClusterInfoModule.dbClusterInfo()
-                g_clusterInfo.initFromStaticConfig(g_opts.user)
-            except Exception as e:
-                raise Exception(str(e))
+        g_clusterInfo = _init_cluster_from_fallback()
 
     # init g_dbNode
     localHost = NetUtil.GetHostIpOrName()

@@ -137,6 +137,15 @@ def check_parameter(opts, parameter_keys, parameter_map):
                                        % "U")
             g_opts.user = strList[0]
             g_opts.group = strList[1]
+        elif key == "--time_out":
+            if not str(value).isdigit():
+                GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50003"] % (
+                    "time_out", "a nonnegative integer"))
+            time_out_val = int(value)
+            if time_out_val <= 0 or time_out_val >= 2147483647:
+                GaussLog.exitWithError(
+                    ErrorCode.GAUSS_500["GAUSS_50004"] % "time_out")
+            parameter_map[key] = time_out_val
         elif key in parameter_keys:
             parameter_map[key] = value
         elif key == "-t":

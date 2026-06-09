@@ -481,13 +481,31 @@ class Postuninstall(LocalBaseOM):
         output: NA
         """
         self.logger.debug("Cleaning user cgroup.")
-        # mkdir gauss_om dir
+        # check gauss_om lib/bin dir exist
         gaussom_lib_dir = "/home/%s/gauss_om/lib/" % self.user
         gaussom_bin_dir = "/home/%s/gauss_om/bin/" % self.user
-
         if not os.path.exists(gaussom_bin_dir) or not os.path.exists(gaussom_lib_dir) or \
             len(os.listdir(gaussom_bin_dir)) == 0 or len(os.listdir(gaussom_lib_dir)) == 0:
             return
+        
+        # check gaussom cgroup path owned by user
+        bin_owner, _ = FileUtil.getfileUser(gaussom_bin_dir)
+        lib_owner, _ = FileUtil.getfileUser(gaussom_lib_dir)
+        if bin_owner != self.user or lib_owner != self.user:
+            self.logger.logExit("Error : gaussom lib or bin path not owned by %s" % self.user)       
+            return
+
+        # check gaussom cgroup file owned by user
+        gaussom_bin_file = os.path.join(gaussom_bin_dir, "gs_cgroup")
+        file_owner, _ = FileUtil.getfileUser(gaussom_bin_file)
+        if file_owner != self.user:
+            self.logger.logExit("Error : gaussom cgroup file not owned by %s" % self.user)       
+            return
+            
+        # check gs_cgroup binary file , exist and permission denied
+        if not FileUtil.check_file_permission(gaussom_bin_file, True, False, True):
+            self.logger.logExit("Error: Failed to delete cgroup. Permission denied on %s." % gaussom_bin_file)
+
         # delete cgroup
         cmd = "export LD_LIBRARY_PATH=%s:\$LD_LIBRARY_PATH && %s/gs_cgroup -d -U %s" % (gaussom_lib_dir, gaussom_bin_dir, self.user)
         (status, output) = subprocess.getstatusoutput(cmd)

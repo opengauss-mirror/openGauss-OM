@@ -20,8 +20,16 @@ function fn_create_user()
         echo "user has already exists."
         if [ -d "$og_tar" ] && find "$og_tar" -mindepth 1 -print -quit 2>/dev/null | grep -q .
         then
-            echo "Refusing to continue: $og_tar already contains files (possible untrusted packages)." >&2
-            return 1
+            if find "$og_tar" -type l -print -quit 2>/dev/null | grep -q .
+            then
+                echo "Refusing to continue: $og_tar contains symbolic links." >&2
+                return 1
+            fi
+            if find "$og_tar" -mindepth 1 ! -user root -print -quit 2>/dev/null | grep -q .
+            then
+                echo "Refusing to continue: $og_tar contains non-root-owned files (possible untrusted packages)." >&2
+                return 1
+            fi
         fi
     fi
 
@@ -55,11 +63,31 @@ function fn_assert_package_file_trusted()
     return 0
 }
 
+function fn_sha256_manifest_target()
+{
+    local manifest_base="$1"
+
+    case "$manifest_base" in
+        openGauss-Server-*.sha256)
+            echo "${manifest_base%.sha256}.tar.bz2"
+            ;;
+        openGauss-OM-*.sha256)
+            echo "${manifest_base%.sha256}.tar.gz"
+            ;;
+        upgrade_sql.sha256)
+            echo "upgrade_sql.tar.gz"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 function fn_verify_sha256sums()
 {
     local manifest="$1"
     local base_dir="$2"
-    local manifest_base
+    local manifest_base expected_hash target_file computed_hash
 
     if [ ! -f "$manifest" ]
     then
@@ -68,12 +96,40 @@ function fn_verify_sha256sums()
     fi
     fn_assert_package_file_trusted "$manifest" || return 1
     manifest_base=$(basename "$manifest")
+
+    # openGauss 6.0+/7.0 official manifests store only the hash value.
+    expected_hash=$(tr -d '\r' < "$manifest" | awk '/^[0-9a-fA-F]{64}$/ {print tolower($0); exit}')
+    if [ -n "$expected_hash" ]
+    then
+        target_file=$(fn_sha256_manifest_target "$manifest_base")
+        if [ $? -ne 0 ] || [ -z "$target_file" ]
+        then
+            echo "Unsupported SHA256 manifest name: $manifest_base" >&2
+            return 1
+        fi
+        if [ ! -f "$base_dir/$target_file" ]
+        then
+            echo "Package file not found for SHA256 check: $base_dir/$target_file" >&2
+            return 1
+        fi
+        computed_hash=$(sha256sum "$base_dir/$target_file" | awk '{print tolower($1)}')
+        if [ "$computed_hash" != "$expected_hash" ]
+        then
+            echo "SHA256 verification failed for $base_dir/$target_file" >&2
+            return 1
+        fi
+        echo "SHA256 verification success: $target_file"
+        return 0
+    fi
+
+    # Legacy manifests in sha256sum -c format.
     (cd "$base_dir" && sha256sum -c "$manifest_base" --quiet)
     if [ $? -ne 0 ]
     then
         echo "SHA256 verification failed for $manifest" >&2
         return 1
     fi
+    echo "SHA256 verification success: $manifest_base"
     return 0
 }
 

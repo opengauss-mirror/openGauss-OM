@@ -23,13 +23,14 @@ import subprocess
 import os
 import sys
 import pwd
+import math
 
+from base_utils.security.security_checker import SecurityChecker
 from gspylib.common.GaussLog import GaussLog
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.ParameterParsecheck import Parameter
 from gspylib.common.Common import DefaultValue
 from gspylib.common.ParallelBaseOM import ParallelBaseOM
-from gspylib.threads.SshTool import SshTool
 from impl.om.OLAP.OmImplOLAP import OmImplOLAP
 from domain_utils.cluster_file.cluster_log import ClusterLog
 from base_utils.os.env_util import EnvUtil
@@ -393,7 +394,18 @@ Install options:
             if ParaDict.__contains__("security_mode"):
                 self.g_opts.security_mode = ParaDict.get("security_mode")
             if ParaDict.__contains__("cluster_number"):
-                self.g_opts.cluster_number = ParaDict.get("cluster_number")
+                cluster_number = ParaDict.get("cluster_number")
+                SecurityChecker.check_injection_char(cluster_number)
+                try:
+                    cluster_num = float(cluster_number)
+                    # extra check: must be a finite number , exclude nan/inf
+                    if not isinstance(cluster_num, float) or not math.isfinite(cluster_num):
+                        raise ValueError
+                except ValueError:
+                    self.g_logger.logExit(ErrorCode.GAUSS_502["GAUSS_50205"] %
+                        ("--cluster_number", cluster_number,
+                         "must be a numeric value (e.g., 93.090)"))
+                self.g_opts.cluster_number = cluster_number
 
     def parseStop(self, ParaDict):
         """

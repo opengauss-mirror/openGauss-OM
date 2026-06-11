@@ -32,7 +32,7 @@ import traceback
 import codecs
 
 sys.path.append(sys.path[0] + "/../../")
-
+from base_utils.security.security_checker import SecurityChecker
 from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.ErrorCode import OmError as _OmError
 from base_utils.os.file_util import FileUtil
@@ -108,7 +108,9 @@ class GaussLog:
 
         logFileList = ""
         try:
+            SecurityChecker.check_injection_char(logFile)
             dirName = os.path.dirname(logFile)
+            SecurityChecker.check_injection_char(dirName)
             # check log path
             if (not os.path.exists(dirName)):
                 try:
@@ -119,15 +121,13 @@ class GaussLog:
                     if (not os.path.isdir(dirName)):
                         os.makedirs(dirName,
                                     ConstantsBase.KEY_DIRECTORY_PERMISSION)
+                    # Use Python native API instead of Shell command
+                    with open(self.tmpFile, 'w') as f:
+                        f.write(str(topDirPath))
+                    os.chmod(self.tmpFile, 0o600)
                 except Exception as e:
                     raise Exception(ErrorCode.GAUSS_502["GAUSS_50208"] %
                                     dirName + " Error:\n%s" % str(e))
-                cmd = "echo %s > '%s' && chmod 600 '%s'" % (topDirPath, self.tmpFile, self.tmpFile)
-                (status, output) = subprocess.getstatusoutput(cmd)
-                if (status != 0):
-                    raise Exception(ErrorCode.GAUSS_502["GAUSS_50206"]
-                                    % "the top path" + " Error:\n%s." % output
-                                    + "The cmd is %s" % cmd)
             self.dir = dirName
             originalFileName = os.path.basename(logFile)
             resList = originalFileName.split(".")
@@ -141,12 +141,22 @@ class GaussLog:
                 raise Exception(
                     ErrorCode.GAUSS_502["GAUSS_50212"] % (logFile, ".log"))
 
-            # get log file list
+            # get log file list using Python native API instead of Shell
             logFileList = "%s/logFileList_%s.dat" % (self.dir, self.pid)
-            cmd = "ls %s | grep '^%s-' | grep '%s$' > %s" % (
-                self.dir, self.prefix, self.suffix, logFileList)
-            (status, output) = subprocess.getstatusoutput(cmd)
-            if status == 0:
+            fileListStatus = 0
+            try:
+                with open(logFileList, "w") as fp:
+                    try:
+                        for filename in os.listdir(self.dir):
+                            if filename.startswith(self.prefix + '-') and \
+                                    filename.endswith(self.suffix):
+                                fp.write(filename + '\n')
+                    except OSError:
+                        fileListStatus = 1
+            except Exception:
+                fileListStatus = 1
+
+            if fileListStatus == 0:
                 with open(logFileList, "r") as fp:
                     filenameList = []
                     while True:

@@ -41,14 +41,15 @@ cm_server_guc_param = []
 NODE_NAME = []
 
 # Add parameter: the logic cluster name
-PARA_CHECK_LIST = ["-t", "-h", "-m", "--mode", "-S"
+PARA_CHECK_LIST = ["-t", "-h", "-m", "--mode", "-S",
                    "-i", "-j", "-U", "-u", "-G", "-g", "--alarm-type",
                    "-n", "-g",
                    "-N", "--time-out", "--alarm-component",
                    "--parallel-jobs", '--redis-mode', "--ring-num",
                    "--virtual-ip",
                    "--nodeName", "--name", "--failure-limit", "--skip-items",
-                   "script_type=", "oldcluster_num=", "guc_string=", "setType="]
+                   "script_type=", "oldcluster_num=", "guc_string=", "setType=",
+                   "--database"]
 PATH_CHEKC_LIST = ["-M", "-o", "-f", "-X", "-P", "-s", "-R", "-Q",
                    "--position", "-B",
                    "--backupdir", "--sep-env-file", "-l", "--logpath",

@@ -269,3 +269,17 @@ class EnvUtil(object):
             return True
         else:
             return False
+
+    @staticmethod
+    def get_libpgso55_env_path():
+        """
+        function: get the full path of libpq.so.5.5 library under GAUSSHOME/lib/
+        input : NA
+        output: libpq library full path string
+        """
+        gauss_home = EnvUtil.getEnv("GAUSSHOME")
+        if not gauss_home:
+            raise Exception(ErrorCode.GAUSS_512["GAUSS_51206"] % "GAUSSHOME")
+        libpq_path = os.path.join(gauss_home, "lib", "libpq.so.5.5")
+        SecurityChecker.check_injection_char(libpq_path)
+        return libpq_path

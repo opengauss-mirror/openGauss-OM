@@ -45,9 +45,8 @@ class SqlResult(object):
         input:NA
         output:NA
         """
-        libpath = os.path.join(EnvUtil.getEnv("GAUSSHOME"), "lib")
-        sys.path.append(libpath)
-        libc = cdll.LoadLibrary("libpq.so.5.5")
+        libpq_path = EnvUtil.get_libpgso55_env_path()
+        libc = cdll.LoadLibrary(libpq_path)
         libc.PQntuples.argtypes = [c_void_p]
         libc.PQntuples.restype = c_int
         libc.PQnfields.argtypes = [c_void_p]

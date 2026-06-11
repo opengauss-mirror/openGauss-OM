@@ -17,6 +17,8 @@
 import os
 import grp
 import pwd
+import shlex
+
 from multiprocessing.dummy import Pool as ThreadPool
 from gspylib.inspection.common import SharedFuncs
 from gspylib.inspection.common.CheckItem import BaseItem
@@ -66,7 +68,7 @@ class CheckSysTable(BaseItem):
                 FileUtil.writeFile(sqlFile, [sql])
 
                 cmd = "gsql -d %s -p %s -f %s --output %s -t -A -X" % (
-                    self.database, Instance.port, sqlFile, resFile)
+                    shlex.quote(self.database), Instance.port, sqlFile, resFile)
                 if (self.mpprcFile != "" and self.mpprcFile is not None):
                     cmd = "source '%s' && %s" % (self.mpprcFile, cmd)
                 SharedFuncs.runShellCmd(cmd, self.user)

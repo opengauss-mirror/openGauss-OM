@@ -21,6 +21,7 @@ import os
 import pwd
 import time
 import re
+import shlex
 from gspylib.common.Common import DefaultValue
 from gspylib.common.ErrorCode import ErrorCode
 from os_platform.UserPlatform import g_Platform
@@ -190,7 +191,8 @@ def runSqlCmd(sql, user, host, port, tmpPath, database="postgres",
     input : String,String,String,int
     output : String
     """
-    database = database.replace('$', '\$')
+    # Quote the database name to avoid shell command injection 
+    database = shlex.quote(database)
     # Get the current time
     currentTime = time.strftime("%Y-%m-%d_%H%M%S")
     # Get the process ID
@@ -832,3 +834,30 @@ def getMaskByIP(IPAddr):
             % IPAddr
     netMask = runShellCmd(cmd)
     return netMask
+
+
+def check_file_owner(file_path, expected_uid):
+    """
+    check if the file owner is the expected uid
+    input : file_path, expected_uid
+    output : boolean
+    """
+    try:
+        stat_info = os.stat(file_path)
+        return stat_info.st_uid == expected_uid
+    except Exception:
+        return False
+
+
+def check_file_mode(file_path, expected_mode):
+    """
+    check if the file permissions match the expected mode
+    input : file_path, expected_mode
+    output : boolean
+    """
+    try:
+        stat_info = os.stat(file_path)
+        file_mode = stat_info.st_mode & 0o777
+        return file_mode == expected_mode
+    except Exception:
+        return False

@@ -27,6 +27,7 @@ warnings.simplefilter('ignore', DeprecationWarning)
 sys.path.append(sys.path[0] + "/../lib")
 import time
 import os
+import re
 import subprocess
 import pwd
 import grp
@@ -89,7 +90,6 @@ ipHostInfo = ""
 tmp_files = ""
 #tmp file name
 TMP_TRUST_FILE = "step_preinstall_file.dat"
-
 
 class PrintOnScreen():
     """
@@ -349,6 +349,7 @@ General options:
         cmd = "hostname"
         channel.exec_command(cmd)
         hostname = channel.recv(9999).decode().strip()
+        HostsUtil.validate_hostname(hostname)
         ipHostname[ip] = hostname
         ssh.close()
         return ipHostname
@@ -465,6 +466,7 @@ General options:
                 while True:
                     hostname = channel.recv(9999).decode().strip()
                     if len(hostname) != 0:
+                        HostsUtil.validate_hostname(hostname)
                         serialResult[sshIp] = hostname
                     else:
                         break
@@ -859,7 +861,7 @@ General options:
         else:
             set_cron_cmd = "crontab -l > %s && " % cron_file
         set_cron_cmd += "sed -i '/CheckSshAgent.py/d' %s;" % cron_file
-        set_cron_cmd += "echo '*/1 * * * * source ~/.bashrc;python3 %s/script/local/CheckSshAgent.py >>/dev/null 2>&1 &' >> %s" % \
+        set_cron_cmd += "echo '*/1 * * * * source ~/.bashrc;python3 %s/script/local/CheckSshAgent.py >>/dev/null 2>&1 &' >> %s;" % \
                             (gp_home, cron_file)
         if os.getuid() == 0:
             set_cron_cmd += "crontab -u %s %s ;" % (self.user, cron_file)

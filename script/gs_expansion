@@ -471,8 +471,10 @@ General options:
             if status != 0:
                 raise Exception("Failed to pssh -s -H %s 'hostname'" % ip)
             else:
-                self.new_hostname_list.append(str(output).strip())
-                self.new_hostname_ip_map[ip] = str(output).strip()
+                hostname = str(output).strip()
+                HostsUtil.validate_hostname(hostname)
+                self.new_hostname_list.append(hostname)
+                self.new_hostname_ip_map[ip] = hostname
     
     def getExpansionInfo(self):
         self._getClusterInfoDict()

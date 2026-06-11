@@ -800,6 +800,8 @@ class dbNodeInfo():
         dbInst.datadir = os.path.realpath(datadir)
 
         if (instRole == INSTANCE_ROLE_DATANODE):
+            if xlogdir != "":
+                checkPathVaild(xlogdir)
             dbInst.xlogdir = xlogdir
         else:
             dbInst.xlogdir = ""

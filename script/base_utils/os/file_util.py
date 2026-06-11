@@ -33,6 +33,7 @@ from gspylib.common.ErrorCode import ErrorCode
 from gspylib.common.Constants import Constants
 from base_utils.os.cmd_util import CmdUtil
 from base_utils.os.env_util import EnvUtil
+from base_utils.security.security_checker import SecurityChecker
 from base_utils.os.user_util import UserUtil
 from base_utils.common.fast_popen import FastPopen
 from base_utils.security.sensitive_mask import SensitiveMask
@@ -535,16 +536,22 @@ class FileUtil(object):
         input:path
         output:true
         """
-        prefix_cmd = "cd %s && ls | xargs -n 100000" % path
         if not os.path.exists(path):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % path)
-        cmd = "%s %s && %s '%s'/.[^.]*" % (prefix_cmd, CmdUtil.getRemoveCmd(
-            "directory"), CmdUtil.getRemoveCmd("directory"), path)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
+        path = SecurityChecker.check_safe_cleanup_directory(path)
+        try:
+            for item in os.listdir(path):
+                item_path = os.path.join(path, item)
+                if os.path.islink(item_path) or os.path.isfile(item_path):
+                    os.remove(item_path)
+                elif os.path.isdir(item_path):
+                    shutil.rmtree(item_path)
+                else:
+                    os.remove(item_path)
+        except Exception as e:
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50209"] % (
                     "content in the directory %s " % path) +
-                    " Error:\n%s." % output + "The cmd is %s" % cmd)
+                    " Error:\n%s." % str(e))
         return True
 
     @staticmethod

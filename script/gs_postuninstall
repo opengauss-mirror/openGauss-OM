@@ -215,8 +215,8 @@ General options:
         self.mpprcFile = EnvUtil.getEnv(DefaultValue.MPPRC_FILE_ENV)
 
         try:
-            # get tool path
-            self.clusterToolPath = ClusterDir.getPreClusterToolPath(self.xmlFile)
+            self.clusterToolPath = ClusterDir.validateXmlToolPathMatchesEnv(
+                self.user, self.xmlFile)
         except Exception as e:
             GaussLog.exitWithError(str(e))
         # if MpprcFile is null

@@ -40,6 +40,7 @@ from domain_utils.cluster_file.version_info import VersionInfo
 from base_utils.os.net_util import NetUtil
 from base_utils.os.cmd_util import CmdUtil
 from base_utils.os.env_util import EnvUtil
+from base_utils.security.security_checker import SecurityChecker
 from domain_utils.domain_common.cluster_constants import ClusterConstants
 from os_platform.linux_distro import LinuxDistro
 
@@ -817,8 +818,8 @@ class PostUninstallImpl:
             if not self.clean_gphome:
                 return
             global gphome
-            gphome = os.path.normpath(
-                self.getItemValueFromXml("gaussdbToolPath"))
+            gphome = os.path.realpath(ClusterDir.getClusterToolPath(self.user))
+            SecurityChecker.check_safe_cleanup_directory(gphome)
             cmd_list = ['rm', '-rf', ('%s/*') % gphome]
             if "HOST_IP" in os.environ.keys():
                 # Agent Mode

@@ -101,6 +101,47 @@ class ClusterDir:
             raise Exception(str(exception))
 
     @staticmethod
+    def validateXmlToolPathMatchesEnv(user, xml_file):
+        """
+        Ensure XML gaussdbToolPath matches the cluster user's GPHOME.
+        """
+        xml_path = os.path.realpath(
+            ClusterDir.getPreClusterToolPath(xml_file))
+        env_path = os.path.realpath(ClusterDir.getClusterToolPath(user))
+        if xml_path != env_path:
+            raise Exception(
+                "gaussdbToolPath [%s] does not match GPHOME environment "
+                "value [%s]." % (xml_path, env_path))
+        SecurityChecker.check_safe_cleanup_directory(env_path)
+        return env_path
+
+    @staticmethod
+    def check_om_tool_cleanup_directory(tool_path):
+        real_path = SecurityChecker.check_safe_cleanup_directory(tool_path)
+        script_dir = os.path.join(real_path, 'script')
+        if not os.path.isdir(script_dir):
+            raise Exception(
+                ErrorCode.GAUSS_502["GAUSS_50219"] % real_path +
+                " Refusing cleanup: not a valid OM tool path.")
+        return real_path
+
+    @staticmethod
+    def resolveAndValidateToolPathForCleanup(user, requested_path):
+        requested = os.path.realpath(requested_path)
+        SecurityChecker.check_safe_cleanup_directory(requested)
+        try:
+            pwd.getpwnam(user)
+            trusted = os.path.realpath(ClusterDir.getClusterToolPath(user))
+        except KeyError:
+            ClusterDir.check_om_tool_cleanup_directory(requested)
+            return requested
+        if requested != trusted:
+            raise Exception(
+                "Refuse to clean dependency outside trusted tool path %s." %
+                trusted)
+        return trusted
+
+    @staticmethod
     def getUserLogDirWithUser(user):
         """
         function : Get the log directory from user

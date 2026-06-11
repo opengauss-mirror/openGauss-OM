@@ -6,6 +6,7 @@
 # Date         : 2021-06-30
 # Description  : security_checker.py check security conditions
 #############################################################################
+import os
 import re
 from gspylib.common.ErrorCode import ErrorCode
 
@@ -26,6 +27,10 @@ class SecurityChecker(object):
     """check security conditions"""
     INJECTION_CHAR_LIST = ["|", ";", "&", "$", "<", ">", "`", "\\", "'", "\"", "{", "}", "(", ")",
                            "[", "]", "~", "*", "?", " ", "!", "\n"]
+    FORBIDDEN_CLEANUP_ROOTS = (
+        '/', '/etc', '/usr', '/var', '/boot', '/root', '/sbin', '/bin',
+        '/lib', '/lib64', '/opt', '/home',
+    )
     PWD_VALIDATION_PATTERN = r'^[A-Za-z0-9~!@#%^*\-_=+?,]+$'
     IP_PATTERN = (
         r'^(?:(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(?:\.(?!$)|$)){4}$|'  # IPv4
@@ -45,6 +50,20 @@ class SecurityChecker(object):
         if any(rac in check_value for rac in SecurityChecker.INJECTION_CHAR_LIST):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] % check_value +
                             " There are illegal characters.")
+
+    @staticmethod
+    def check_safe_cleanup_directory(path):
+        """
+        Reject cleanup of system-critical directories.
+        """
+        if not path or not str(path).strip():
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] % path +
+                            " Cleanup path is empty.")
+        real_path = os.path.realpath(path)
+        if real_path in SecurityChecker.FORBIDDEN_CLEANUP_ROOTS:
+            raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"] % real_path +
+                            " Refusing to clean system directory.")
+        return real_path
 
     @staticmethod
     def check_is_string(description, value):

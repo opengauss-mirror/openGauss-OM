@@ -21,6 +21,8 @@ import subprocess
 import re
 import pwd
 import json
+import shlex
+import time
 
 sys.path.append(sys.path[0] + "/../../../")
 from gspylib.common.ErrorCode import ErrorCode
@@ -438,7 +440,7 @@ class Kernel(BaseComponent):
                             ("data directory of the instance[%s]" %
                              str(self.instInfo)))
 
-        if (GUCParasStr == ""):
+        if not GUCParasStr:
             return
 
         # check conf file
@@ -449,20 +451,39 @@ class Kernel(BaseComponent):
         if (not os.path.exists(configFile)):
             raise Exception(ErrorCode.GAUSS_502["GAUSS_50201"] % configFile)
 
+        if isinstance(GUCParasStr, (list, tuple)):
+            guc_args = [str(arg) for arg in GUCParasStr]
+        else:
+            guc_args = shlex.split(GUCParasStr)
+
+        cmd_list = [os.path.join(self.binPath, "gs_guc"), action,
+                    "-D", self.instInfo.datadir]
+        cmd_list.extend(guc_args)
+        cmd = " ".join(shlex.quote(str(arg)) for arg in cmd_list)
+
+        def retry_exec(cmd_args, retry_time=3, sleep_time=3):
+            status, output = 1, ""
+            for _ in range(retry_time + 1):
+                output, _, status = CmdUtil.execCmdList(
+                    cmd_args, err_output=subprocess.STDOUT)
+                if status == 0:
+                    break
+                time.sleep(sleep_time)
+            return status, output
+
         if try_reload:
-            cmd_reload = "%s/gs_guc %s -D %s %s " % (self.binPath, 'reload',
-                                                     self.instInfo.datadir, GUCParasStr)
-            status, output = CmdUtil.retryGetstatusoutput(cmd_reload, 3, 3)
+            cmd_reload = [cmd_list[0], "reload", "-D", self.instInfo.datadir]
+            cmd_reload.extend(guc_args)
+            reload_cmd = " ".join(shlex.quote(str(arg)) for arg in cmd_reload)
+            status, output = retry_exec(cmd_reload, 3, 3)
             if status != 0:
-                self.logger.log("Failed to reload guc params with commander:[%s]" % cmd_reload)
+                self.logger.log("Failed to reload guc params with commander:[%s]" % reload_cmd)
             else:
                 self.logger.log("Successfully to reload guc params with commander:[%s]"
-                                % cmd_reload)
+                                % reload_cmd)
                 return
-        cmd = "%s/gs_guc %s -D %s %s " % (self.binPath, action,
-                                          self.instInfo.datadir, GUCParasStr)
         self.logger.debug("gs_guc command is: {0}".format(cmd))
-        (status, output) = CmdUtil.retryGetstatusoutput(cmd, 3, 3)
+        (status, output) = retry_exec(cmd_list, 3, 3)
         if (status != 0):
             raise Exception(ErrorCode.GAUSS_500["GAUSS_50007"] % "GUC" +
                             " Command: %s. Error:\n%s" % (cmd, output))
@@ -471,7 +492,7 @@ class Kernel(BaseComponent):
         """
         """
         i = 0
-        guc_paras_str = ""
+        guc_paras_str = []
         guc_paras_str_list = []
         if paraDict is None:
             paraDict = {}
@@ -480,12 +501,12 @@ class Kernel(BaseComponent):
             value = str(paraDict[paras])
             if (paras.startswith('dcf') and paras.endswith(('path', 'config'))):
                 value = "'%s'" % value
-            guc_paras_str += " -c \"%s=%s\" " % (paras, value)
+            guc_paras_str += ["-c", "%s=%s" % (paras, value)]
             if (i % MAX_PARA_NUMBER == 0):
                 guc_paras_str_list.append(guc_paras_str)
                 i = 0
-                guc_paras_str = ""
-        if guc_paras_str != "":
+                guc_paras_str = []
+        if guc_paras_str != []:
             guc_paras_str_list.append(guc_paras_str)
 
         for parasStr in guc_paras_str_list:

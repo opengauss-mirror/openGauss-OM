@@ -179,6 +179,7 @@ function fn_get_openGauss_tar()
 
     necessary_files=(
     "openGauss-OM-${package_pre_name}.tar.gz"
+    "openGauss-OM-${package_pre_name}.sha256"
     "openGauss-Server-${package_pre_name}.sha256"
     "openGauss-Server-${package_pre_name}.tar.bz2"
     "upgrade_sql.sha256"
@@ -252,6 +253,11 @@ function fn_get_openGauss_tar()
     fi
 
     fn_verify_sha256sums "$install_tar/openGauss-Server-${package_pre_name}.sha256" "$install_tar"
+    if [ $? -ne 0 ]
+    then
+        return 1
+    fi
+    fn_verify_sha256sums "$install_tar/openGauss-OM-${package_pre_name}.sha256" "$install_tar"
     if [ $? -ne 0 ]
     then
         return 1

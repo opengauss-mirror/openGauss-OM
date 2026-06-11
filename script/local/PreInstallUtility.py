@@ -666,32 +666,37 @@ Common options:
         input : NA
         output: NA
         """
-        if not self.mpprcFile:
-            self.mpprcFile = ProfileFile.get_user_bashrc(self.user)
         retry = 1
         node = self.clusterInfo.getDbNodeByName(node_name)
         node_ip = node.sshIps[0]
-        cmd = "source %s;pssh -s -H %s hostname" % (self.mpprcFile, node_ip)
+        pssh_path = os.path.join(get_package_path(),
+                                 "script", "gspylib", "pssh", "bin", "pssh")
+        cmd = [sys.executable, pssh_path, "-s", "-H", node_ip, "hostname"]
+        cmd_desc = " ".join(CmdUtil.quoteCmd(arg) for arg in cmd)
         while True:
-            (status, output) = subprocess.getstatusoutput(cmd)
+            (output, error, status) = CmdUtil.execCmdList(cmd, uni_newlines=True)
+            output = "%s%s" % (output or "", error or "")
             self.logger.debug("Checking hostname mapping for node [%s]. output: %s" % (node_name, output))
             if status == 0 and output.find(node_name) >= 0:
                 break
             if retry >= 3:
                 raise Exception(ErrorCode.GAUSS_512["GAUSS_51222"]
                                 + " Command: \"%s\". Error: \n%s"
-                                % (cmd, output))
+                                % (cmd_desc, output))
             retry += 1
             time.sleep(1)
 
-        hostname_cmd = "source %s;pssh -s -H %s 'cat /etc/hostname'" % (self.mpprcFile, node_ip)
-        (status, output) = subprocess.getstatusoutput(hostname_cmd)
+        hostname_cmd = [sys.executable, pssh_path, "-s", "-H", node_ip,
+                        "cat /etc/hostname"]
+        hostname_cmd_desc = " ".join(CmdUtil.quoteCmd(arg) for arg in hostname_cmd)
+        (output, error, status) = CmdUtil.execCmdList(hostname_cmd, uni_newlines=True)
+        output = "%s%s" % (output or "", error or "")
         if status == 0 and output.strip() == node_name:
             pass
         else:
             raise Exception(ErrorCode.GAUSS_512["GAUSS_51248"] % node_name
                             + " Command: \"%s\". Error: \n%s"
-                            % (hostname_cmd, output))
+                            % (hostname_cmd_desc, output))
 
     def checkPasswdIsExpires(self):
         """

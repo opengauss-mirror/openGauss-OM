@@ -25,6 +25,7 @@ import sys
 import pwd
 import time
 import json
+import re
 from datetime import datetime
 
 from gspylib.common.GaussLog import GaussLog
@@ -323,8 +324,21 @@ General options:
                         if len(u_c) > 0 and len(d_c) > 0:
                             T_Name = it["TypeName"]
                             it["Content"] = ""
-                            if T_Name in "Plan,Database":
+                            if T_Name == "Plan":
+                                # plan scene: checked content must be database name,only allow safe characters
+                                # support * to represent all databases 
+                                if not re.match(r'^[a-zA-Z0-9_\-*,]*$', u_c):
+                                    GaussLog.exitWithError(ErrorCode.GAUSS_512["GAUSS_51243"] % (u_c, T_Name, self.configFile))
                                 it["Content"] = u_c
+                            elif T_Name == "Database":
+                                # database scene: checked content must be system table or view name
+                                # table/view start with gs_ or pg_ ,only allow safe characters
+                                tb_list = u_c.replace(" ", "").split(",")
+                                for tb_name in tb_list:
+                                    if not re.match(r'^(gs_|pg_)[a-zA-Z0-9_\-]*$', tb_name):
+                                        GaussLog.exitWithError(ErrorCode.GAUSS_512["GAUSS_51243"] % (tb_name, T_Name, self.configFile))
+                                it["Content"] = u_c
+
                             else:
                                 uc = u_c.replace(" ", "").split(",")
                                 for c in uc:

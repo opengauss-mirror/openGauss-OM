@@ -2679,11 +2679,14 @@ class dbClusterInfo():
 
     def getClusterNodeNames(self):
         """
-        function : Get the cluster's node names.
+        function : Get the cluster's node names. Check the node name is safe. if any node name is unsafe, raise exception.
         input : NA
         output : NA
         """
-        return [dbNode.name for dbNode in self.dbNodes]
+        cluster_node_name = [dbNode.name for dbNode in self.dbNodes]
+        for node_name in cluster_node_name:
+            SecurityChecker.check_injection_char(node_name)
+        return cluster_node_name
 
     def getClusterNodeIds(self):
         """

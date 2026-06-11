@@ -3564,7 +3564,7 @@ class ClusterCommand():
         input : String,String,String,int
         output : String
         """
-        database = database.replace('$', '\$')
+        database = CmdUtil.quoteCmd(database)
         currentTime = datetime.utcnow().strftime("%Y-%m-%d_%H%M%S%f")
         pid = os.getpid()
         # init SQL query file
@@ -3598,6 +3598,10 @@ class ClusterCommand():
         try:
             # init hostPara
             userProfile = EnvUtil.getMpprcFile()
+            # check host name,or ip address (whitelist validation)
+            if host and not re.match(r'^[a-zA-Z0-9.:\[\]-_]+$', host):
+                raise Exception("Invalid host format: [%s] contains dangerous characters" % host)
+
             hostPara = ("-h %s" % host) if host != "" else ""
             # build shell command
             # if the user is root, switch the user to execute
@@ -3644,7 +3648,8 @@ class ClusterCommand():
         input : String,String,String,int
         output : String,String
         """
-        database = database.replace('$', '\$')
+        database = CmdUtil.quoteCmd(database)
+
         currentTime = datetime.utcnow().strftime("%Y-%m-%d_%H%M%S%f")
         pid = os.getpid()
         # clean old sql file
@@ -3692,6 +3697,9 @@ class ClusterCommand():
         # send new sql file to remote node if needed
         localHost = NetUtil.GetHostIpOrName()
         if str(localHost) != str(host):
+            # check host name,or ip address (whitelist validation)
+            if host and not re.match(r'^[a-zA-Z0-9.:\[\]-_]+$', host):
+                raise Exception("Invalid host format: [%s] contains dangerous characters" % host)
             cmd = LocalRemoteCmd.getRemoteCopyCmd(sqlFile, sqlFile, host)
             if os.getuid() == 0 and user != "":
                 cmd = "su - %s \"%s\"" % (user, cmd)

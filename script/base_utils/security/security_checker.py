@@ -7,6 +7,7 @@
 # Description  : security_checker.py check security conditions
 #############################################################################
 import re
+import os
 from gspylib.common.ErrorCode import ErrorCode
 
 
@@ -133,3 +134,29 @@ class SecurityChecker(object):
         if not re.match(SecurityChecker.IP_PATTERN, value):
             return False
         return True
+
+    @staticmethod
+    def check_path(description, value):
+        """
+        Path security check function, prevent path injection and directory traversal attacks
+
+        Args:
+            description: Description of the path for error messages
+            value: The path value to be validated
+
+        Returns:
+            Safe and normalized path string
+
+        Validation Steps:
+
+            1. Check if the path is a string type
+            2. Filter dangerous characters to prevent command injection
+            3. Normalize the path format to eliminate ambiguity
+            4. Prevent directory traversal and restrict access scope
+        """
+        SecurityChecker.check_is_string(description, value)
+        SecurityChecker.check_db_injection(description, value)
+        if '..' in value:
+            raise ValidationError(ErrorCode.GAUSS_500['GAUSS_50025'] % ('..', description))
+        normalized_path = os.path.normpath(value)
+        return normalized_path

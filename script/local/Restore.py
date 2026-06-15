@@ -23,6 +23,7 @@ import subprocess
 import getopt
 import os
 import sys
+import tarfile
 
 sys.path.append(sys.path[0] + "/../")
 from gspylib.common.ParameterParsecheck import Parameter
@@ -250,20 +251,29 @@ class LocalRestore(LocalBaseOM):
                 # Restore binary files to install path.
                 self.logger.debug("Restore binary files to install path.")
                 FileUtil.cleanDirectoryContent(self.installPath)
-                cmd = g_file.SHELL_CMD_DICT["decompressTarFile"] % (
-                self.restoreDir, tarName)
-                cmd += " && "
-                cmd += g_file.SHELL_CMD_DICT["copyFile"] % (
-                "'%s'/*" % self.binExtractName, self.installPath)
-                self.logger.debug(
-                    "Command for restoring binary files:%s." % cmd)
-                (status, output) = subprocess.getstatusoutput(cmd)
-                if (status != 0):
+                
+                source_dir = os.path.join(self.restoreDir, self.binExtractName)
+                if os.path.exists(source_dir):
+                    FileUtil.removeDirectory(source_dir)
+                    self.logger.debug("Remove old binary extract directory %s." % source_dir)
+
+                self.__extract_tar_file(tarName, self.restoreDir)
+                
+                if os.path.exists(source_dir) and os.path.isdir(source_dir):
+                    cmd = g_file.SHELL_CMD_DICT["copyFile"] % (
+                        "'%s'/*" % source_dir, self.installPath)
+                    self.logger.log(
+                        "Command for restoring binary files:%s." % cmd)
+                    (status, output) = subprocess.getstatusoutput(cmd)
+                    if (status != 0):
+                        raise Exception(ErrorCode.GAUSS_502["GAUSS_50220"] % (
+                                    "binary files to install path[%s]" % \
+                                    self.installPath) + " Error: \n%s" % output)
+                else:
                     raise Exception(ErrorCode.GAUSS_502["GAUSS_50220"] % (
                                 "binary files to install path[%s]" % \
-                                self.installPath) + " Error: \n%s" % output)
-                FileUtil.removeDirectory(
-                    os.path.join(self.restoreDir, self.binExtractName))
+                                self.installPath) + " Error: Backup file structure is incorrect")
+                FileUtil.removeDirectory(source_dir)
             except Exception as e:
                 raise Exception(str(e))
             self.logger.log("Successfully restored binary files.")
@@ -306,13 +316,9 @@ class LocalRestore(LocalBaseOM):
                         raise Exception(ErrorCode.GAUSS_502[
                                             "GAUSS_50201"] % "parameter files")
 
-                cmd = g_file.SHELL_CMD_DICT["decompressTarFile"] % (
-                self.restoreDir, tarName)
-                (status, output) = subprocess.getstatusoutput(cmd)
-                if (status != 0):
-                    raise Exception(ErrorCode.GAUSS_514[
-                                        "GAUSS_51400"] % cmd
-                                    + " Error: \n%s" % output)
+                if os.path.exists(temp_dir):
+                    FileUtil.removeDirectory(temp_dir)
+                self.__extract_tar_file(tarName, self.restoreDir)
 
                 # check hostname
                 self.logger.debug("Checking hostname.")
@@ -348,15 +354,9 @@ class LocalRestore(LocalBaseOM):
         tarFile = "%s/%s.tar" % (self.restoreDir, flag)
         if (not os.path.exists(tarFile)):
             return
-        # Decompress package on restore node
-        cmd = g_file.SHELL_CMD_DICT["decompressTarFile"] % (
-        self.restoreDir, tarFile)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if (status != 0):
-            raise Exception(ErrorCode.GAUSS_502[
-                                "GAUSS_50217"] % tarFile
-                            + " Error: \n%s." % output
-                            + "The cmd is %s " % cmd)
+        # Decompress package on restore node using secure method
+        self.__extract_tar_file(tarFile, self.restoreDir)
+        self.logger.debug("Successfully extracted %s files to %s." % (flag, self.restoreDir))
 
     def __checkHostName(self, hostnameFile):
         """
@@ -390,6 +390,38 @@ class LocalRestore(LocalBaseOM):
             raise Exception(ErrorCode.GAUSS_516["GAUSS_51637"] %
                             ("number of parameter files",
                              "the number of files requested"))
+
+    def __extract_tar_file(self, tar_file, extract_dir):
+        """
+        function: safely decompress package on restore node
+        input : tar_file, extract_dir
+        output: NA
+        """
+        real_extract_dir = os.path.realpath(extract_dir)
+        with tarfile.open(tar_file, "r:*") as archive:
+            for member in archive.getmembers():
+                member_name = member.name
+                if (os.path.isabs(member_name) or
+                        any(part == os.pardir for part in member_name.split('/'))):
+                    raise Exception(
+                        ErrorCode.GAUSS_502["GAUSS_50217"] % tar_file +
+                        " Error: \n%s" % ("Unsafe path [%s] in tar file." % member_name))
+                
+                if member.issym():
+                    link_target = member.linkname
+                    if os.path.isabs(link_target) or any(part == os.pardir for part in link_target.split('/')):
+                        raise Exception(
+                            ErrorCode.GAUSS_502["GAUSS_50217"] % tar_file +
+                            " Error: \n%s" % ("Unsafe symbolic link [%s] pointing to [%s]." % (member_name, link_target)))
+                
+                member_path = os.path.realpath(
+                    os.path.join(real_extract_dir, member_name))
+                if (os.path.commonpath([real_extract_dir, member_path]) !=
+                        real_extract_dir):
+                    raise Exception(
+                        ErrorCode.GAUSS_502["GAUSS_50217"] % tar_file +
+                        " Error: \n%s" % ("Unsafe path [%s] in tar file." % member_name))
+            archive.extractall(path=real_extract_dir)
 
     def __checkSingleParaFile(self, inst, temp_dir, paraFileList):
         """
@@ -491,6 +523,7 @@ def checkRestoreDir(restoreDir):
     """
     if (restoreDir == ""):
         GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50001"] % "P" + ".")
+
 
 
 def main():

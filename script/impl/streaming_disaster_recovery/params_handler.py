@@ -49,7 +49,7 @@ def check_xml_file(file):
     """
     if not file:
         raise ValidationError(ErrorCode.GAUSS_500['GAUSS_50001'] % 'X')
-    SecurityChecker.check_is_string('xml file path', file)
+    SecurityChecker.check_path('xml file path', file)
     if not os.path.isfile(file):
         raise ValidationError(ErrorCode.GAUSS_502["GAUSS_50201"] % file)
 
@@ -250,6 +250,8 @@ class ParamsHandler(object):
         if not self.params.xml_path or not os.path.isfile(self.params.xml_path):
             raise ValidationError(ErrorCode.GAUSS_500['GAUSS_50010']
                                   % '-X' + " XML file and json file are all not exist.")
+        # check_path : check xml path exists
+        SecurityChecker.check_path('xml path', self.params.xml_path)
         cluster_info.initFromXml(self.params.xml_path)
         remote_cluster_conf = dict()
         remote_cluster_conf.setdefault("port", cluster_info.remote_dn_base_port)

@@ -210,6 +210,10 @@ class Postuninstall(LocalBaseOM):
             self.logFile = ClusterLog.getOMLogPath(
                 ClusterConstants.LOCAL_LOG_FILE, self.user, "")
 
+        if self.action == ACTION_CLEAN_DEPENDENCY and self.user == "":
+            GaussLog.exitWithError(
+                ErrorCode.GAUSS_500["GAUSS_50001"] % "u" + ".")
+
         if self.user == "" and self.action != ACTION_CLEAN_DEPENDENCY:
             GaussLog.exitWithError(
                 ErrorCode.GAUSS_500["GAUSS_50001"] % "u" + ".")
@@ -555,6 +559,12 @@ class Postuninstall(LocalBaseOM):
         """
         function: clean script
         """
+        try:
+            self.clusterToolPath = ClusterDir.resolveAndValidateToolPathForCleanup(
+                self.user, self.clusterToolPath)
+        except Exception as e:
+            self.logger.logExit(str(e))
+
         # clean lib
         libPath = os.path.join(self.clusterToolPath, LIBPATH)
         if os.path.exists(libPath):

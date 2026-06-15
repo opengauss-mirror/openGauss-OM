@@ -145,42 +145,42 @@ General options:
                                      "LATIN6", "EUC_JP", "EUC_KR", "WIN1255",
                                      "EUC_CN",
                                      "LATIN3", "LATIN1", "ISO_8859_6", "GBK"]
-        gs_checkStr = specialStr[0]
-        if (gs_checkStr.strip() == ""):
-            return
-        for rac in VALUE_CHECK_LIST:
-            flag = gs_checkStr.find(rac)
-            if flag >= 0:
-                raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"]
-                                % specialStr + " There are illegal "
-                                               "characters in the parameter.")
-        if (len(gs_checkStr.split("=")) != 2):
-            return
-        if (gs_checkStr.split("=")[1].strip().startswith("\'") is True and
-            gs_checkStr.split("=")[1].strip().endswith("\'") is False) or \
-                (gs_checkStr.split("=")[1].strip().startswith("\'") is False
-                 and gs_checkStr.split("=")[1].strip().endswith(
-                            "\'") is True):
-            raise Exception(
-                ErrorCode.GAUSS_502["GAUSS_50219"]
-                % specialStr + " Lack of Paired Single "
-                               "Quotation Marks.value %s" % gs_checkStr)
-        if (gs_checkStr.split("=")[1].strip().startswith("\"") is True and
-            gs_checkStr.split("=")[1].strip().endswith("\"") is False) \
-                or (
-                gs_checkStr.split("=")[1].strip().startswith("\"") is False
-                and gs_checkStr.split("=")[1].strip().endswith("\"") is True):
-            raise Exception(
-                ErrorCode.GAUSS_502["GAUSS_50219"] % specialStr
-                + " Lack of double quotation marks.value %s" % gs_checkStr)
-        if gs_checkStr.split("=")[0].strip() in VALUE_CHECK_GUC_PARA_LIST and \
-                (gs_checkStr.split("=")[1].strip().strip("\'").strip(
-                    "\"").strip() not in VALUE_CHECK_ENCODING_LIST):
-            raise Exception(
-                ErrorCode.GAUSS_500["GAUSS_50011"] % (
-                    gs_checkStr.split("=")[0],
-                    gs_checkStr.split("=")[1].strip("\'").strip("\"").strip())
-                + "Please cheak parameter '--dn-guc' or '--gsinit-parameter'.")
+        for gs_checkStr in specialStr:
+            if (gs_checkStr.strip() == ""):
+                continue
+            for rac in VALUE_CHECK_LIST:
+                flag = gs_checkStr.find(rac)
+                if flag >= 0:
+                    raise Exception(ErrorCode.GAUSS_502["GAUSS_50219"]
+                                    % gs_checkStr + " There are illegal "
+                                                    "characters in the parameter.")
+            if (len(gs_checkStr.split("=")) != 2):
+                continue
+            if (gs_checkStr.split("=")[1].strip().startswith("\'") is True and
+                gs_checkStr.split("=")[1].strip().endswith("\'") is False) or \
+                    (gs_checkStr.split("=")[1].strip().startswith("\'") is False
+                     and gs_checkStr.split("=")[1].strip().endswith(
+                                "\'") is True):
+                raise Exception(
+                    ErrorCode.GAUSS_502["GAUSS_50219"]
+                    % gs_checkStr + " Lack of Paired Single "
+                                   "Quotation Marks.value %s" % gs_checkStr)
+            if (gs_checkStr.split("=")[1].strip().startswith("\"") is True and
+                gs_checkStr.split("=")[1].strip().endswith("\"") is False) \
+                    or (
+                    gs_checkStr.split("=")[1].strip().startswith("\"") is False
+                    and gs_checkStr.split("=")[1].strip().endswith("\"") is True):
+                raise Exception(
+                    ErrorCode.GAUSS_502["GAUSS_50219"] % gs_checkStr
+                    + " Lack of double quotation marks.value %s" % gs_checkStr)
+            if gs_checkStr.split("=")[0].strip() in VALUE_CHECK_GUC_PARA_LIST and \
+                    (gs_checkStr.split("=")[1].strip().strip("\'").strip(
+                        "\"").strip() not in VALUE_CHECK_ENCODING_LIST):
+                raise Exception(
+                    ErrorCode.GAUSS_500["GAUSS_50011"] % (
+                        gs_checkStr.split("=")[0],
+                        gs_checkStr.split("=")[1].strip("\'").strip("\"").strip())
+                    + "Please cheak parameter '--dn-guc' or '--gsinit-parameter'.")
 
     def parseCommandLine(self):
         """

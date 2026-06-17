@@ -65,7 +65,8 @@ class CheckMpprcFile(BaseItem):
                           "S3_CLIENT_CRT_FILE", "GAUSS_VERSION", "PGHOST",
                           "GS_CLUSTER_NAME", "GAUSSLOG",
                           "GAUSS_ENV", "KRB5_CONFIG", "PGKRBSRVNAME",
-                          "KRBHOSTNAME", "ETCD_UNSUPPORTED_ARCH"]
+                          "KRBHOSTNAME", "ETCD_UNSUPPORTED_ARCH", "UNPACKPATH",
+                          "PGDATA", "COREPATH", "PGDATABASE", "PGPORT", "IP_TYPE"]
             # black elements
             list_black = ["|", ";", "&", "<", ">", "`", "\\", "'", "\"",
                           "{", "}", "(", ")", "[", "]", "~", "*", "?",

@@ -114,7 +114,7 @@ class ProfileFile:
             "GAUSS_WARNING_TYPE", "GAUSSHOME", "PATH", "LD_LIBRARY_PATH",
             "S3_CLIENT_CRT_FILE", "GAUSS_VERSION", "PGHOST", "GS_CLUSTER_NAME",
             "GAUSSLOG", "GAUSS_ENV", "umask", "PGDATA", "COREPATH",
-            "PGDATABASE", "PGPORT", "IP_TYPE"
+            "PGDATABASE", "PGPORT", "IP_TYPE", "VGNAME", "DSS_HOME", "ENABLE_DSS"
         }
         assignment_pattern = re.compile(r"^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
         invalid_value_chars = set("|;&<>`\\'\"{}()[]~*?!\n \t\r")

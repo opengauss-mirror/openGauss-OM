@@ -82,7 +82,7 @@ function expect_ssh()
         set pass $env(EXPECT_PASS)
         set cmd $env(EXPECT_CMD)
         set expected_str $env(EXPECT_EXPECTED)
-        eval spawn $cmd
+        spawn {*}$cmd
         expect {
                 "*yes/no" { send "yes\r"; exp_continue }
                 -nocase "*The password is incorrect*" { exit 1 }
@@ -109,7 +109,7 @@ function expect_hostname()
         set timeout -1
         set pass $env(EXPECT_PASS)
         set cmd $env(EXPECT_CMD)
-        eval spawn $cmd
+        spawn {*}$cmd
         expect {
                 "*yes/no" { send "yes\r"; exp_continue }
                 -nocase "*assword:" { send "$pass\r"; exp_continue }
@@ -217,6 +217,7 @@ function main()
                 die "no cluster user values"
             fi
             USER_NAME=$2
+            validate_username "${USER_NAME}"
             shift 2
             ;;
         -G|--user_grp)
@@ -225,6 +226,7 @@ function main()
                 die "no group values"
             fi
             USER_GROUP=$2
+            validate_groupname "${USER_GROUP}"
             shift 2
             ;;
         -H|--host_ip)
@@ -247,6 +249,7 @@ function main()
                 die "no cluster xml configuration file values"
             fi
             XML_DIR=$2
+            validate_xml_path "${XML_DIR}"
             shift 2
             ;;
         -D|--install_location)
@@ -255,6 +258,7 @@ function main()
                 die "no installation directory of the openGauss program values"
             fi
             INSTALL_PATH=$2
+            validate_install_path "${INSTALL_PATH}"
             shift 2
             ;;
         -p|--port)
@@ -263,6 +267,7 @@ function main()
                 die "the port number cannot be empty."
             fi
             PORT=$2
+            validate_port "${PORT}"
             shift 2
             ;;
         -P|--password)
@@ -271,6 +276,7 @@ function main()
                 die "the password cannot be empty."
             fi
             PASSWORD="$2"
+            validate_password "${PASSWORD}"
             shift 2
             ;;
          *)
@@ -413,7 +419,11 @@ function checks()
     chown -R $4:$3 ${INSTALL_PATH}/
     if [ -f /${10} ]
     then
-        mv /${10} $(eval echo ~$4)/
+        USER_HOME=$(getent passwd "$4" | cut -d: -f6)
+        if [ -z "${USER_HOME}" ]; then
+            die "failed to get the home directory of user $4"
+        fi
+        mv /${10} "$USER_HOME"/
     fi
     echo "check end"
 }
@@ -472,34 +482,50 @@ function xmlconfig()
     info "start to automatically configure the installation file."
     # 使用 awk 替代 sed，避免特殊字符问题
     local tmp_xml=$(mktemp)
-    if [ -e ${XML_DIR} ]
+    if [ ! -e ${XML_DIR} ]
     then
-        # 使用 awk 进行安全替换
-        awk -v nodeNames="${HOST_NAMES}" \
-            -v backIpls="${HOST_IPS}" \
-            -v clusterName="${USER_NAME}" \
-            -v port="${PORT}" \
-            -v installPath="${INSTALL_PATH}" \
-            -v nodeName1="${HOST_NAMES_ARRAY[0]}" \
-            -v backIp1="${HOST_IPS_ARRAY[0]}" \
-            -v nodeName2="${HOST_NAMES_ARRAY[1]}" \
-            -v backIp2="${HOST_IPS_ARRAY[1]}" \
-            '{
-                gsub(/@{nodeNames}/, nodeNames);
-                gsub(/@{backIpls}/, backIpls);
-                gsub(/@{clusterName}/, clusterName);
-                gsub(/@{port}/, port);
-                gsub(/@{installPath}/, installPath);
-                gsub(/@{nodeName1}/, nodeName1);
-                gsub(/@{backIp1}/, backIp1);
-                gsub(/@{nodeName2}/, nodeName2);
-                gsub(/@{backIp2}/, backIp2);
-                print;
-            }' "${XML_DIR}" > "$tmp_xml" && mv "$tmp_xml" "$(eval echo ~${USER_NAME})/one_master_one_slave.xml"
-    else
+        rm -f "$tmp_xml"
         die "cannot find one_master_one_slave_template.xml in ${XML_DIR}"
     fi
-    cat $(eval echo ~${USER_NAME})/one_master_one_slave.xml
+    # 使用 awk 进行安全替换
+    awk -v nodeNames="${HOST_NAMES}" \
+        -v backIpls="${HOST_IPS}" \
+        -v clusterName="${USER_NAME}" \
+        -v port="${PORT}" \
+        -v installPath="${INSTALL_PATH}" \
+        -v nodeName1="${HOST_NAMES_ARRAY[0]}" \
+        -v backIp1="${HOST_IPS_ARRAY[0]}" \
+        -v nodeName2="${HOST_NAMES_ARRAY[1]}" \
+        -v backIp2="${HOST_IPS_ARRAY[1]}" \
+        '{
+            gsub(/@{nodeNames}/, nodeNames);
+            gsub(/@{backIpls}/, backIpls);
+            gsub(/@{clusterName}/, clusterName);
+            gsub(/@{port}/, port);
+            gsub(/@{installPath}/, installPath);
+            gsub(/@{nodeName1}/, nodeName1);
+            gsub(/@{backIp1}/, backIp1);
+            gsub(/@{nodeName2}/, nodeName2);
+            gsub(/@{backIp2}/, backIp2);
+            print;
+        }' "${XML_DIR}" > "$tmp_xml"
+    local awk_status=$?
+    # 校验 awk 执行成功且生成的 XML 文件非空
+    if [ $awk_status -ne 0 ] || [ ! -s "$tmp_xml" ]; then
+        rm -f "$tmp_xml"
+        die "failed to generate the installation XML file (awk exit status: ${awk_status})"
+    fi
+    USER_HOME=$(getent passwd "${USER_NAME}" | cut -d: -f6)
+    if [ -z "${USER_HOME}" ]; then
+        rm -f "$tmp_xml"
+        die "failed to get the home directory of user ${USER_NAME}"
+    fi
+    mv "$tmp_xml" "$USER_HOME/one_master_one_slave.xml"
+    if [ $? -ne 0 ]; then
+        rm -f "$tmp_xml"
+        die "failed to move the generated XML file to ${USER_HOME}/one_master_one_slave.xml"
+    fi
+    cat "$USER_HOME/one_master_one_slave.xml"
     info "the installation file is automatically configured"
     return 0
 }
@@ -507,10 +533,10 @@ function xmlconfig()
 function install()
 {
     info "preparing for preinstallation"
-    home_path=$(eval echo ~${USER_NAME})
+    home_path=$(getent passwd "${USER_NAME}" | cut -d: -f6)
     export LD_LIBRARY_PATH="${PACKAGE_PATH}/script/gspylib/clib:"$LD_LIBRARY_PATH
     sshcmd="python3 "${PACKAGE_PATH}"/script/gs_preinstall -U "${USER_NAME}" \
- -G "${USER_GROUP}" -X "${home_path}"/one_master_one_slave.xml --sep-env-file="${home_path}"/env_master_slave"
+ -G "${USER_GROUP}" -X "${home_path}"/one_master_one_slave.xml --sep-env-file="${home_path}"/env_master_slave --skip-os-set"
     info "cmd \"${sshcmd}\""
     expect_ssh "${sshcmd}" "${PASSWORD}" "Preinstallation succeeded"
     if [ $? != 0 ]

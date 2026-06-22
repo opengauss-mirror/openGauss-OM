@@ -98,7 +98,7 @@ def quote_ident(identifier):
         identifier = identifier.replace(c, '')
     
     # quote identifier , and return it
-    return f'"{identifier.replace("'", "''").replace('"', '""')}"'
+    return "\"" + identifier.replace("'", "''").replace('"', '""') + "\""
 
 def getValueFromFile(key):
     """

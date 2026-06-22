@@ -1737,7 +1737,7 @@ class PreinstallImpl:
         self.context.logger.debug("Start set cron for %s" %self.context.user)
         tmp_path = ClusterConfigFile.readClusterTmpMppdbPath(
             self.context.user, self.context.xmlFile)
-        gaussdb_tool_path = ClusterDir.getPreClusterToolPath(self.context.xmlFile)
+        gaussdb_tool_path = os.path.normpath(ClusterDir.getPreClusterToolPath(self.context.xmlFile))
         cron_file = "%s/gauss_cron_%s" % (tmp_path, self.context.user)
         if self.context.current_user_root:
             set_cron_cmd = "crontab -u %s -l > %s && " % (self.context.user, cron_file)

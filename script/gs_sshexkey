@@ -637,7 +637,7 @@ General options:
             for (key, value) in list(result.items()):
                 ipHostInfo += '%s  %s  %s\n' % (key, value, HOSTS_MAPPING_FLAG)
                 if value not in (self.localHost, "localhost"):
-                    if not value in list(result1.keys()):
+                    if key not in result1:
                         result1[key] = value
 
             sshIps = list(result1.keys())

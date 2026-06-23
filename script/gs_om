@@ -402,9 +402,8 @@ Install options:
                     if not isinstance(cluster_num, float) or not math.isfinite(cluster_num):
                         raise ValueError
                 except ValueError:
-                    GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50205"] %
-                        ("--cluster_number", cluster_number,
-                         "must be a numeric value (e.g., 93.090)"))
+                    GaussLog.exitWithError(ErrorCode.GAUSS_502["GAUSS_50219"] %
+                        cluster_number + " must be a numeric value (e.g., 93.090).")
                 self.g_opts.cluster_number = cluster_number
 
     def parseStop(self, ParaDict):

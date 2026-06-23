@@ -8,7 +8,7 @@ from base_utils.os.file_util import FileUtil
 from gspylib.common.ErrorCode import ErrorCode
 from base_utils.os.net_util import NetUtil
 
-HOSTNAME_PATTERN = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9.\-]{0,63}[a-zA-Z0-9]$|^[a-zA-Z0-9]$')
+HOSTNAME_PATTERN = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9._\-]{0,63}[a-zA-Z0-9]$|^[a-zA-Z0-9]$')
 class HostsUtil:
     @staticmethod
     def get_ip_by_hostname_from_etc_hosts(hostname):

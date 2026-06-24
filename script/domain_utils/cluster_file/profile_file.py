@@ -106,11 +106,8 @@ class ProfileFile:
         env_list = EnvVariables.filter_env_variable(env_list, mpprcFile, mpprcFile_rm)
 
         # white elements
-        list_white = ["ELK_CONFIG_DIR", "ELK_SYSTEM_TABLESPACE", "MPPDB_ENV_SEPARATE_PATH",
-                      "GPHOME", "UNPACKPATH", "PATH", "LD_LIBRARY_PATH", "PYTHONPATH",
-                      "GAUSS_WARNING_TYPE", "GAUSSHOME", "PATH", "LD_LIBRARY_PATH",
-                      "S3_CLIENT_CRT_FILE", "GAUSS_VERSION", "PGHOST", "GS_CLUSTER_NAME",
-                      "GAUSSLOG", "GAUSS_ENV", "umask"]
+        # 统一使用MPPRC_WHITE_LIST，与CheckMpprcFile保持一致；保留umask以兼容原有过滤行为
+        list_white = ClusterConstants.MPPRC_WHITE_LIST + ["umask"]
         # black elements
         list_black = ["|", ";", "&", "<", ">", "`", "\\", "!", "\n"]
 

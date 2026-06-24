@@ -48,7 +48,12 @@ class CheckperfImplOLAP(CheckperfImpl):
         """
         function: constructor
         """
-        CheckperfImpl.__init__(self)
+        super().__init__()
+        self.sshTool = None 
+        self.opts = None
+        self.logger = None
+        self.DWS_mode = False
+        self.clusterInfo = None
         self.recordColumn = {}
         self.recordPrevStat = {}
         self.sessionCpuColumn = []
@@ -1896,7 +1901,6 @@ class CheckperfImplOLAP(CheckperfImpl):
             cmd = "%s -t SSDPerfCheck -U %s -l %s" \
                   % (OMCommand.getLocalScript("LOCAL_PERFORMANCE_CHECK"),
                      self.opts.user, self.opts.localLog)
-            
             current_dir = os.path.dirname(os.path.realpath(__file__))
             gp_home = os.path.normpath(os.path.join(current_dir, "../../../../"))
             (status, output) = self.sshTool.getSshStatusOutput(cmd,
@@ -1920,7 +1924,7 @@ class CheckperfImplOLAP(CheckperfImpl):
                         "    %s:\n        Failed to check SSD performance." \
                         " Error: %s" % (node, outputMap[node]),
                         end="", file=outputInfo)
-            
+
             if len(noSsdNodes) > 0:
                 raise Exception(ErrorCode.GAUSS_530["GAUSS_53008"])
             # Check if any node failed

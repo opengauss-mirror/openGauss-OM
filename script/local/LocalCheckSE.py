@@ -79,6 +79,40 @@ g_clusterInfo = None
 netWorkBondInfo = None
 g_readlist = None
 
+def quote_ident(identifier):
+    """
+    function : Quote identifier ,rule is to add double quotes to it, and escape internal quotes, and filter dangerous characters
+    input  : identifier
+    output : quoted identifier
+    """
+
+    # if identifier is None , raise error
+    if identifier is None:
+        raise ValueError("Identifier cannot be None")
+
+    # convert identifier to string , and filter dangerous characters
+    identifier = str(identifier)
+    dangerous_chars = ('\x00', '\n', '\r')
+    for c in dangerous_chars:
+        identifier = identifier.replace(c, '')
+
+    if identifier == "":
+        return ""
+    # quote identifier , and return it
+    return "\"" + identifier.replace("'", "''").replace('"', '""') + "\""
+
+def quote_literal(value):
+    """
+    function : Quote literal value for SQL
+    input  : value
+    output : quoted literal
+    """
+    if value is None:
+        return "NULL"
+    value = str(value)
+    # Escape single quotes by doubling them
+    escaped_value = value.replace("'", "''")
+    return "'" + escaped_value + "'"
 
 #############################################################################
 def getValueFromFile(key):
@@ -136,8 +170,7 @@ def extractRowsCount(s):
     input  : String
     output : String
     """
-    import re
-    match = re.search(r'\((\d+) row[s]*\)$', s)
+    match = re.search(r'\((\d+) row[s]*\)', s)
     if match:
         return int(match.group(1))
     else:
@@ -146,13 +179,26 @@ def extractRowsCount(s):
 
 def extract_values(s, value):
     """
-    function : extract values
-    input  : String, String
-    output : String
+    function : extract values, filter debug/error log first, keep original row slice logic
+    input  : String, row count
+    output : list of real data lines
     """
+    clean_lines = []
+    for line in s.strip().splitlines():
+        strip_line = line.strip()
+        skip_prefix = (
+            "DEBUG:", "CONTEXT:", "LINE ", "^", "referenced column:",
+            "----", "====", "ERROR:", "WARNING:"
+        )
+        if strip_line == "" or strip_line.startswith(skip_prefix):
+            continue
+        clean_lines.append(line)
+    clean_str = "\n".join(clean_lines)
+    all_lines = clean_str.splitlines()
     row = int(value)
-    lines = s.strip().splitlines()[-row - 1:-1]
-    return lines
+    result_lines = all_lines[-row - 1:-1]
+    final = [x.strip() for x in result_lines if x.strip() != ""]
+    return final
 
 
 def extract_types(s):
@@ -182,14 +228,14 @@ def getDatabaseInfo(data, sql_query):
         raise Exception((ErrorCode.GAUSS_505["GAUSS_50502"] % "ConnectionConfiguration") +
                         ("The cmd is : %s" % cmd))
     if "ERROR:" in output:
-        raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % output)
+        raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql_query)
     value = extractRowsCount(output)
-    if not value is None:
-        data.output = value
-        if data.output > 0:
-            data.db.extend(extract_values(output, value))
-        else:
-            data.db.append("")
+    data.db = []
+    if value is not None and value > 0:
+        data.db.extend(extract_values(output, value))
+    else:
+        data.db.append("")
+    data.output = value
     return data
 
 
@@ -3537,15 +3583,45 @@ def set_remove_all_function(data, result):
     output : NA
     """
     for item in data:
-        df = PublicRolAllPerm()
-        df.db = []
-        proname = item.split("|")[0].strip()
-        sql_df = """SELECT proargtypes::regtype[] AS arg_types, proargnames AS arg_names FROM pg_proc WHERE proname = '%s';""" % proname
-        getDatabaseInfo(df, sql_df)
-        for line in df.db:
-            arg_type = extract_types(line.split("|")[0].strip())
-            sql_query = """REVOKE ALL ON FUNCTION %s(%s) FROM PUBLIC;""" % (proname, arg_type)
-            getDatabaseInfo(result, sql_query)
+        try:
+            proname = item.split("|")[0].strip()
+            g_logger.log("Processing function: %s" % proname)
+
+            success = False
+
+            try:
+                df = PublicRolAllPerm()
+                df.db = []
+                sql_df = "SELECT proname, pg_get_function_identity_arguments(oid) as args FROM pg_proc WHERE proname = %s;" % quote_literal(proname)
+                getDatabaseInfo(df, sql_df)
+
+                for line in df.db:
+                    if not line.strip():
+                        continue
+                    parts = line.split("|")
+                    func_args = parts[1].strip() if len(parts) > 1 else ""
+
+                    sql_query = "REVOKE ALL ON FUNCTION %s(%s) FROM PUBLIC;" % (quote_ident(proname), func_args)
+                    getDatabaseInfo(result, sql_query)
+                    success = True
+                    g_logger.log("Successfully revoked function: %s(%s)" % (proname, func_args))
+            except Exception as e:
+                g_logger.log("Warning: Method 1 failed: %s" % str(e))
+
+            if not success:
+                try:
+                    sql_simple = "REVOKE ALL ON FUNCTION %s FROM PUBLIC;" % quote_ident(proname)
+                    getDatabaseInfo(result, sql_simple)
+                    success = True
+                    g_logger.log("Successfully revoked function (simple): %s" % proname)
+                except Exception as e:
+                    g_logger.log("Warning: Method 2 failed: %s" % str(e))
+
+            if not success:
+                g_logger.log("Warning: All methods failed for function: %s" % proname)
+
+        except Exception as e:
+            g_logger.log("Warning: Failed to process function: %s, error: %s" % (item, str(e)))
 
 def setAdminPrivileges(data):
     """
@@ -4956,19 +5032,21 @@ if __name__ == '__main__':
     """
     main function
     """
+    import traceback
     try:
         parseCommandLine()
         checkParameter()
         initGlobals()
     except Exception as e:
         GaussLog.exitWithError(str(e))
-
     try:
         nodeIps = []
         nodeIps = getLocalIPAddr()
         doLocalCheck()
         g_logger.closeLog()
     except Exception as e:
+        tb_lines = traceback.format_exc()
+        err_msg = f"[FATAL_CRASH] Action:{g_opts.action}, Exception:{str(e)}\nFull Traceback:\n{tb_lines}"
+        g_logger.log(err_msg)
         g_logger.logExit(str(e))
-
     sys.exit(0)

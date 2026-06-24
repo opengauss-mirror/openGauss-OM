@@ -21,7 +21,6 @@
 import os
 import sys
 import subprocess
-import glob
 import getopt
 import subprocess
 import platform
@@ -208,28 +207,57 @@ def collectBlockdev():
     try:
         # If the directory of '/' is disk array, all disk prereads will be set
         devlist = DiskUtil.getDevices()
-        cmd = "mount | awk '{if( $3==\"/\" ) print $1}' |" \
-              " sed 's/\/dev\///' | sed 's/[0-9]//'"
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if (status != 0):
-            g_logger.logExit(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd
-                             + " Error: \n%s" % output)
+        root_disk = ""
+        # Identify the root disk by resolving the device number of '/'
+        # through /sys/dev/block/{major}:{minor} symlink, which points to
+        # /sys/block/{disk}/{partition}. This avoids the naming mismatch
+        # between 'mount' output (e.g. /dev/mapper/vg-root) and 'lsblk'
+        # output (e.g. dm-0), and correctly handles LVM, NVMe, SCSI, etc.
+        try:
+            root_dev_stat = os.stat("/")
+            root_major = os.major(root_dev_stat.st_dev)
+            root_minor = os.minor(root_dev_stat.st_dev)
+            sys_dev_link = "/sys/dev/block/%d:%d" % (root_major, root_minor)
+            if os.path.exists(sys_dev_link):
+                real_path = os.path.realpath(sys_dev_link)
+                # real_path like /sys/block/sda/sda3 or /sys/block/dm-0
+                # extract the disk name (parent directory basename)
+                if "/sys/block/" in real_path:
+                    parts = real_path.replace("/sys/block/", "").split("/")
+                    if parts:
+                        candidate_disk = parts[0]
+                        if candidate_disk in devlist:
+                            root_disk = candidate_disk
+        except Exception as e:
+            g_logger.log("Warning: Failed to identify root disk: %s" % str(e))
         for dev in devlist:
-            if (dev.strip() == output.strip()):
+            dev = dev.strip()
+            if not dev:
+                continue
+            if (dev == root_disk):
                 continue
             devices.append("/dev/%s" % dev)
     except Exception as e:
         data.errormsg = e.__str__()
 
     for d in devices:
-        p = subprocess.Popen(["/sbin/blockdev", "--getra", "%s" % d],
-                             shell=False, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE)
-        result = p.communicate()
-        data.errormsg += result[1].decode().strip()
-        if p.returncode:
+        try:
+            p = subprocess.Popen(["/sbin/blockdev", "--getra", "%s" % d],
+                                 shell=False, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE)
+            result = p.communicate(timeout=3)
+            data.errormsg += result[1].decode().strip()
+            if p.returncode:
+                g_logger.log("Warning: Failed to get readahead for '%s',"
+                             " skip." % d)
+                continue
+            data.ra[d] = result[0].decode().strip()
+        except subprocess.TimeoutExpired:
+            p.kill()
+            p.communicate()
+            g_logger.log("Warning: Timeout getting readahead for '%s',"
+                         " device may be faulty, skip." % d)
             continue
-        data.ra[d] = result[0].decode().strip()
 
     return data
 
@@ -426,13 +454,14 @@ def collectIOschedulers():
     data = ioschedulers()
     devices = set()
     try:
-        files = DiskUtil.getDevices()
-        for f in files:
-            fname = "/sys/block/%s/queue/scheduler" % f
-            words = fname.split("/")
-            if len(words) != 6:
+        devlist = DiskUtil.getDevices()
+        for dev in devlist:
+            dev = dev.strip()
+            if not dev:
                 continue
-            devices.add(words[3].strip())
+            if not os.path.exists("/sys/block/%s/queue/scheduler" % dev):
+                continue
+            devices.add(dev)
     except Exception as e:
         data.errormsg = e.__str__()
 
@@ -483,12 +512,14 @@ def collectIORequest():
     devices = []
 
     try:
-        files = glob.glob("/sys/block/*/queue/nr_requests")
-        for f in files:
-            words = f.split("/")
-            if len(words) != 6:
+        devlist = DiskUtil.getDevices()
+        for dev in devlist:
+            dev = dev.strip()
+            if not dev:
                 continue
-            devices.append(words[3].strip())
+            if not os.path.exists("/sys/block/%s/queue/nr_requests" % dev):
+                continue
+            devices.append(dev)
     except Exception as e:
         data.errormsg = e.__str__()
 
@@ -568,12 +599,14 @@ def collectLogicalBlock():
     devices = set()
 
     try:
-        files = glob.glob("/sys/block/*/queue/logical_block_size")
-        for f in files:
-            words = f.split("/")
-            if len(words) != 6:
+        devlist = DiskUtil.getDevices()
+        for dev in devlist:
+            dev = dev.strip()
+            if not dev:
                 continue
-            devices.add(words[3].strip())
+            if not os.path.exists("/sys/block/%s/queue/logical_block_size" % dev):
+                continue
+            devices.add(dev)
     except Exception as e:
         data.errormsg = e.__str__()
 

@@ -1909,7 +1909,7 @@ class DefaultValue():
         """
         securityModeValue = "off"
         try:
-            cmd = "ps -ux | grep \"\\-\\-securitymode\" | grep -v \"grep\""
+            cmd = "ps auxww | grep '[--]securitymode'"
             (status, output) = subprocess.getstatusoutput(cmd)
             if status != 0 and output != "":
                 raise Exception(

@@ -296,13 +296,55 @@ class DiskUtil(object):
         input: NA
         output: NA
         """
-        cmd = "fdisk -l 2>/dev/null | grep \"Disk /dev/\" | " \
-              "grep -Ev \"/dev/mapper/|loop\" | awk '{ print $2 }' | " \
-              "awk -F'/' '{ print $NF }' | sed s/:$//g"
+        cmd = "lsblk -d -n -o NAME,TYPE 2>/dev/null | " \
+              "awk '$2==\"disk\"{print $1}'"
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error: \n%s" % output)
-        return output.split('\n')
+        excluded_prefixes = ("dm-", "loop", "md", "sr", "zram")
+        devices = []
+        for line in output.split('\n'):
+            dev = line.strip()
+            if not dev:
+                continue
+            if dev.startswith(excluded_prefixes):
+                continue
+            devices.append(dev)
+        return devices
+    
+    @staticmethod
+    def obtain_disk():
+        """
+        function : Get the disk and part
+        input  : NA
+        output : disk_parts
+        """
+        cmd = "lsblk -n -o NAME,TYPE,PKNAME 2>/dev/null"
+        (status, output) = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd + " Error: \n%s" % output)
+        disk_parts = {}
+        excluded_prefixes = ("dm-", "loop", "md", "sr", "zram")
+
+        for line in output.splitlines():
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            name, dev_type = parts[0], parts[1]
+            if name.startswith(excluded_prefixes):
+                continue
+            pkname = parts[2] if len(parts) >= 3 else ""
+
+            if dev_type == "disk":
+                disk_parts.setdefault(name, [])
+            elif dev_type == "part":
+                if pkname in disk_parts:
+                    disk_parts[pkname].append("/dev/" + name)
+
+        devices = {}
+        for disk, parts in disk_parts.items():
+            devices[disk] = parts if parts else ["/dev/" + disk]
+        return devices
 
     @staticmethod
     def get_disk_dev_id(dev_name):

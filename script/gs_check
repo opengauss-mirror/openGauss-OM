@@ -325,17 +325,9 @@ class CheckContext():
         cache_path = self.getCacheFile()
         if os.path.isfile(cache_path):
             if not SharedFuncs.check_file_owner(cache_path, os.getuid()):
-                g_logger.warning(
-                    "Cache file %s owned by uid %d, but current user is %d, ignoring cache." % 
-                    (cache_path, os.stat(cache_path).st_uid, os.getuid()))
                 return False
-            
             if not SharedFuncs.check_file_mode(cache_path, DefaultValue.KEY_FILE_MODE_IN_OS):
-                g_logger.warning(
-                    "Cache file %s has insecure permissions %o, ignoring cache." % 
-                    (cache_path, os.stat(cache_path).st_mode & 0o777))
                 return False
-            
             return True
         return False
 

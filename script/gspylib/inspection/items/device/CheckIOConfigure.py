@@ -19,6 +19,7 @@ from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.file_util import FileUtil
+from script.base_utils.os.disk_util import DiskUtil
 
 deviceNeedRepair = []
 
@@ -58,17 +59,16 @@ class CheckIOConfigure(BaseItem):
         return allDiskPath
 
     def getDevices(self):
-        pathList = []
+        path_list = []
         devices = []
-        diskName = ""
-        diskDic = {}
-        diskDic = self.getDisk()
+        disk_name = ""
+        disk_dict = {}
+        disk_dict = self.getDisk()  
         if (self.cluster):
-            pathList = self.obtainDataDir(
-                self.cluster.getDbNodeByName(self.host))
+            path_list = self.obtainDataDir(self.cluster.getDbNodeByName(self.host))
         else:
-            pathList = self.obtainDiskDir()
-        for path in pathList:
+            path_list = self.obtainDiskDir()
+        for path in path_list:
             if path.find('No such file or directory') >= 0 or path.find(
                     'no file systems processed') >= 0:
                 self.result.rst = ResultStatus.ERROR
@@ -79,32 +79,23 @@ class CheckIOConfigure(BaseItem):
             output = SharedFuncs.runShellCmd(cmd)
             # Filesystem      Inodes  IUsed   IFree IUse% Mounted on
             # /dev/xvda2     2363904 233962 2129942   10% /
-            diskName = output.split('\n')[-1].split()[0]
-            for disk in diskDic.keys():
-                if diskName in diskDic[disk] and disk not in devices:
+            disk_name = output.split('\n')[-1].split()[0]
+            for disk in disk_dict.keys():
+                if disk_name in disk_dict[disk] and disk not in devices:
                     devices.append(disk)
         return devices
 
     def getDisk(self):
-        diskDic = {}
-        cmd = "fdisk -l 2>/dev/null " \
-              "| grep 'Disk /dev/' | grep -v '/dev/mapper/' " \
-              "| awk '{ print $2 }'| awk -F'/' '{ print $NF }'| sed s/:$//g"
-        output = SharedFuncs.runShellCmd(cmd)
-        for disk in output.splitlines():
-            cmd = "fdisk -l 2>/dev/null | grep '%s'" \
-                  "| grep -v '/dev/mapper/'| grep -v 'Disk /dev/'" \
-                  "| awk -F ' ' ' {print $1}'" % disk
-            output = SharedFuncs.runShellCmd(cmd)
-            if output:
-                diskDic[disk] = output.splitlines()
-            else:
-                diskDic[disk] = "/dev/" + disk
-        return diskDic
+        """
+        function: get disk name by partition
+        input: partition list
+        return: disk dict
+        """
+        return DiskUtil.obtain_disk()
 
     def collectIOschedulers(self):
         devices = set()
-        data = dict()
+        data_dict = dict()
         files = self.getDevices()
         for f in files:
             fname = "/sys/block/%s/queue/scheduler" % f

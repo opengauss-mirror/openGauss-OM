@@ -476,43 +476,85 @@ class Postuninstall(LocalBaseOM):
 
     def clean_cgroup(self):
         """
-        function: clean cgroup
+        function: clean cgroup (strengthen directory and file permission verification to prevent local privilege escalation)
         input : NA
         output: NA
         """
         self.logger.debug("Cleaning user cgroup.")
+        if os.getuid() == 0:
+            path_prefix = "/root/%s" % self.user
+        else:
+            path_prefix = "/home/%s" % self.user
         # check gauss_om lib/bin dir exist
-        gaussom_lib_dir = "/home/%s/gauss_om/lib/" % self.user
-        gaussom_bin_dir = "/home/%s/gauss_om/bin/" % self.user
-        if not os.path.exists(gaussom_bin_dir) or not os.path.exists(gaussom_lib_dir) or \
-            len(os.listdir(gaussom_bin_dir)) == 0 or len(os.listdir(gaussom_lib_dir)) == 0:
-            return
-        
-        # check gaussom cgroup path owned by user
-        bin_owner, _ = FileUtil.getfileUser(gaussom_bin_dir)
-        lib_owner, _ = FileUtil.getfileUser(gaussom_lib_dir)
-        if bin_owner != self.user or lib_owner != self.user:
-            self.logger.logExit("Error : gaussom lib or bin path not owned by %s" % self.user)       
-            return
-
-        # check gaussom cgroup file owned by user
+        gaussom_lib_dir = os.path.normpath(path_prefix + "/gauss_om/lib/")
+        gaussom_bin_dir = os.path.normpath(path_prefix + "/gauss_om/bin/")
         gaussom_bin_file = os.path.join(gaussom_bin_dir, "gs_cgroup")
-        file_owner, _ = FileUtil.getfileUser(gaussom_bin_file)
-        if file_owner != self.user:
-            self.logger.logExit("Error : gaussom cgroup file not owned by %s" % self.user)       
-            return
-            
-        # check gs_cgroup binary file , exist and permission denied
-        if not FileUtil.check_file_permission(gaussom_bin_file, True, False, True):
-            self.logger.logExit("Error: Failed to delete cgroup. Permission denied on %s." % gaussom_bin_file)
 
-        # delete cgroup
-        cmd = "export LD_LIBRARY_PATH=%s:\$LD_LIBRARY_PATH && %s/gs_cgroup -d -U %s" % (gaussom_lib_dir, gaussom_bin_dir, self.user)
+        if not os.path.exists(gaussom_bin_dir) or not os.path.exists(gaussom_lib_dir):
+            self.logger.debug("gauss_om lib/bin dir not exist, skip clean cgroup.")
+            return
+        if len(os.listdir(gaussom_bin_dir)) == 0 or len(os.listdir(gaussom_lib_dir)) == 0:
+            self.logger.debug("gauss_om lib/bin dir is empty, skip clean cgroup.")
+            return
+
+        if not os.path.isfile(gaussom_bin_file):
+            self.logger.logExit(f"Error : {gaussom_bin_file} does not exist")
+            return
+
+        try:
+            bin_owner, _ = FileUtil.getfileUser(gaussom_bin_dir)
+            lib_owner, _ = FileUtil.getfileUser(gaussom_lib_dir)
+            file_owner, _ = FileUtil.getfileUser(gaussom_bin_file)
+        except Exception as e:
+            self.logger.logExit(f"Error : Failed to get file owner/group info: {str(e)}")
+            return
+
+        if bin_owner != self.user or lib_owner != self.user or file_owner != self.user:
+            self.logger.logExit(f"Error : gaussom lib/bin/gs_cgroup not owned by {self.user}")
+            return
+
+        # Reinforcement 1: Prohibit write permissions for other/group users to prevent ordinary users from tampering with binaries
+        # Read file permission mask
+        file_stat = os.stat(gaussom_bin_file)
+        mode = file_stat.st_mode & 0o777
+        # Group writable | Other users write permission directly intercept
+        if (mode & 0o020) or (mode & 0o002):
+            self.logger.logExit(
+                f"Error : Dangerous permission on gs_cgroup {gaussom_bin_file}, "
+                f"mode={oct(mode)}, group/other has write permission, refuse to execute"
+            )
+        # Binary minimum permission requirement: owner read/write/execute 700, loose upper limit 750
+        if mode > 0o750:
+            self.logger.logExit(
+                f"Error : gs_cgroup permission too open {oct(mode)}, max allowed mode is 0750"
+            )
+
+        # Reinforcement 2: Prohibit other/group users from having write permissions on bin/lib directory permissions
+        for check_dir in [gaussom_bin_dir, gaussom_lib_dir]:
+            dir_stat = os.stat(check_dir)
+            dir_mode = dir_stat.st_mode & 0o777
+            if (dir_mode & 0o020) or (dir_mode & 0o002):
+                self.logger.logExit(
+                    f"Error : Directory {check_dir} has group/other write permission, "
+                    f"dir mode={oct(dir_mode)}, potential file replacement risk"
+                )
+
+        # Reinforcement 3: Verify binary has execute permission to prevent placing ordinary text as program
+        if not FileUtil.check_file_permission(gaussom_bin_file, True, False, True):
+            self.logger.logExit(f"Error: Failed to delete cgroup. Permission denied on {gaussom_bin_file}.")
+            return
+
+        # Reinforcement 4: Lock down directory permissions to prevent malicious so injection
+        cmd = "export LD_LIBRARY_PATH=%s:\$LD_LIBRARY_PATH && %s -d -U %s" % (
+            gaussom_lib_dir, gaussom_bin_file, self.user
+        )
+        self.logger.debug(f"Execute clean cgroup cmd: {cmd}")
         (status, output) = subprocess.getstatusoutput(cmd)
         if status != 0:
             self.logger.logExit(
-                "Error: Failed to delete cgroup " 
-                "cmd:%s. Error: \n%s" % (cmd, output))
+                "Error: Failed to delete cgroup "
+                "cmd:%s. Error: \n%s" % (cmd, output)
+            )
         self.logger.debug("Successfully cleaned user cgroup.")
 
     def cleanGroup(self):

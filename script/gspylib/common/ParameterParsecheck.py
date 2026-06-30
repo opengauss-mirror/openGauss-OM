@@ -21,6 +21,7 @@
 import os
 import getopt
 import sys
+import re
 
 sys.path.append(sys.path[0] + "/../../")
 from gspylib.common.ErrorCode import ErrorCode
@@ -562,6 +563,29 @@ class Parameter():
                                            " Invaild value: %s." % role)
 
     @staticmethod
+    def checkDatabaseName(para, db_name):
+        """
+        function: check database name 
+        input: para - parameter name 
+        input: db_name - database name
+        output: NA
+        rule:
+        1. length ≤ 63 characters
+        2. only contain letters/numbers/underscores, and start with letter
+        """
+        DB_NAME_PATTERN = "^[a-zA-Z][a-zA-Z0-9_]{0,62}$"
+        pattern = re.compile(DB_NAME_PATTERN)
+        if not db_name or db_name.strip() == "":
+            GaussLog.exitWithError(ErrorCode.GAUSS_500["GAUSS_50004"] % para[2:] + 
+                                " Database name cannot be empty.")
+        
+        if not pattern.match(db_name.strip()):
+            raise Exception(ErrorCode.GAUSS_500["GAUSS_50011"] % (para, db_name) + 
+                            " Invalid database name: must start with letter, "
+                            "only contain letters/numbers/underscores, "
+                            "and length ≤63 characters.")
+
+    @staticmethod
     def check_parse(key, value):
         """
                 function: check para supplements
@@ -581,7 +605,6 @@ class Parameter():
         input : lcGroupName
         output: NA
         """
-        import re
         PATTERN = "^[a-zA-Z0-9_]{1,63}$"
         pattern = re.compile(PATTERN)
         result = pattern.match(lcGroupName)

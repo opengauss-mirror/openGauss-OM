@@ -25,6 +25,7 @@ import os
 import sys
 import pwd
 import getopt
+import shlex
 
 GPPATH = os.getenv("GPHOME")
 sys.path.insert(0, GPPATH)
@@ -44,8 +45,7 @@ ISALLHOSTS = False
 g_logger = None
 g_clusterUser = ""
 g_clusterInfo = None
-g_sshTool = None
-
+g_sshTool = ""
 
 def usage():
     """
@@ -82,26 +82,47 @@ def initGlobals():
 
 def check_injection_char(name, value):
     """
-        check if the parameter value contains dangerous characters
-        if it does, exit with error message.
+        Check injection character in parameter value
     """
-    dangerous_chars = ["|", ";", "&", "$", "<", ">", "`", "\\", "'", "\"",
-                       "{", "}", "(", ")", "[", "]", "~", "*", "?", "!", "\n"]
+    dangerous_chars = [
+        "&&", "||", "$(", "${", "IFS",
+        "|", ";", "&", "$", "`", "'", "\"", "\\", "<", ">",
+        "(", ")", "[", "]", "{", "}", "~", "*", "?", "!", "\n", "\r"
+    ]
     for ch in dangerous_chars:
-        if value.find(ch) >= 0:
-            g_logger.logExit("%s contains dangerous character: %s" % (name, ch))
+        if ch in value:
+            g_logger.logExit(f"Parameter [{name}] contains dangerous character: [{ch}], input illegal")
+
+def normalize_abs_path(path):
+    """
+        Path normalization: force absolute path, prevent ../ path traversal, special naming
+    """
+    abs_p = os.path.abspath(path)
+    real_p = os.path.realpath(abs_p)
+    # Prevent path traversal ..
+    if ".." in real_p:
+        g_logger.logExit(f"Path [{path}] contains path traversal .., forbidden")
+    # Limit file to GPHOME directory (business whitelist)
+    ghome = os.path.abspath(GPPATH)
+    if not (real_p == ghome or real_p.startswith(ghome + os.sep)):
+        g_logger.logExit(f"Path [{path}] out of safe GPHOME scope [{ghome}]")
+    return real_p
 
 def checkSrcFile(srcFile):
     g_logger.log("Check whether the source file exists.")
-    if not os.path.isfile(srcFile):
-        g_logger.debug("The %s does not exist. " % srcFile)
+    # First check injection character and path whitelist, then check file existence
+    src_safe = normalize_abs_path(srcFile)
+    if not os.path.isfile(src_safe):
+        g_logger.debug(f"The {src_safe} does not exist or not regular file.")
         return False
-    else:
-        g_logger.log("The source file exists.")
-        return True
-
+    g_logger.log("The source file exists and passed security check.")
+    return True
 
 def parseCommandLine():
+    global SRCFILEPATH
+    global DRCPATH
+    global DNINSTANCEID
+    global ISALLHOSTS
     g_logger.log("Start parse parameter.")
     try:
         opts, args = getopt.getopt(sys.argv[1:], "")
@@ -109,74 +130,64 @@ def parseCommandLine():
             raise getopt.GetoptError("The number of parameters is not equal to 3.")
     except getopt.GetoptError as e:
         g_logger.logExit("Parameter error, Error:\n%s" % str(e))
-
-    global SRCFILEPATH
-    global DRCPATH
-    global DNINSTANCEID
-    global ISALLHOSTS
-
     if args[0] not in ['1', '2']:
         g_logger.logExit("Parameter error.")
+
+    src_raw = args[1]
+    dst_raw = args[2]
+    # Unified security validation: injection character check + path whitelist
+    check_injection_char("source file", src_raw)
+    check_injection_char("destination path", dst_raw)
+    src_safe = normalize_abs_path(src_raw)
+
     if args[0] == "1":
+        # mode 1: copy to all nodes ,dst_raw is absolute path
+        dst_safe = normalize_abs_path(dst_raw)
         ISALLHOSTS = True
-        if not checkSrcFile(args[1]):
-            g_logger.logExit("Parameter error.")
-        check_injection_char("source file", args[1])
-        check_injection_char("destination path", args[2])
-        SRCFILEPATH = args[1]
-        DRCPATH = args[2]
+        if not checkSrcFile(src_safe):
+            g_logger.logExit("Source file check failed.")
+        SRCFILEPATH = src_safe
+        DRCPATH = dst_safe
     elif args[0] == "2":
-        if not checkSrcFile(args[1]):
-            g_logger.logExit("Parameter error.")
-        check_injection_char("source file", args[1])
-        SRCFILEPATH = args[1]
-        nodenamelst = args[2].split("_")
-        # when the clustertype is primary-standy-dummy,the standby DNinstence ID is the third arg in "nodenamelst"
+        # mode 2: copy to standy node ,dst_raw is pgxc_node_name
+        dst_safe = dst_raw
+        if not checkSrcFile(src_safe):
+            g_logger.logExit("Source file check failed.")
+        SRCFILEPATH = src_safe
+        nodenamelst = dst_safe.split("_")
         if len(nodenamelst) == 3:
             DNINSTANCEID.append(nodenamelst[2])
-            return
-        # when the clustertype is primary-multi-standby,the standby DNinstence IDs are following the third parameter
-        for dnId in nodenamelst[2:]:
-            DNINSTANCEID.append(dnId)
-    else:
-        g_logger.logExit("Parameter error.")
-    g_logger.log("Successfully parse parameter.")
-
+        else:
+            for dnId in nodenamelst[2:]:
+                DNINSTANCEID.append(dnId)
+    g_logger.log("Successfully parse parameter, all input passed security filter.")
 
 def scpFileToAllHost(srcFile, drcpath):
     try:
         g_logger.log("Transfer C function file to all hosts.")
         g_sshTool.scpFiles(srcFile, drcpath, g_clusterInfo.getClusterNodeNames())
-        cmd = "chmod 600 '%s'" % drcpath
-        g_sshTool.executeCommand(cmd,
-                                 DefaultValue.SUCCESS,
-                                 g_clusterInfo.getClusterNodeNames())
+        # [Fix 3] Use shlex.quote to fully escape the target path for Shell
+        safe_dst = shlex.quote(drcpath)
+        cmd = f"chmod 600 {safe_dst}"
+        g_sshTool.executeCommand(cmd, DefaultValue.SUCCESS, g_clusterInfo.getClusterNodeNames())
     except Exception as e:
         raise Exception(ErrorCode.GAUSS_536["GAUSS_53611"] % str(e))
-
 
 def scpFileToStandy(srcFile, InstanceID):
     try:
         g_logger.log("Transfer C function file to standy node.")
-
         mirrorID = 0
         peerNode = []
-        # Get  instance mirrorID by InstanceID
         for dbNode in g_clusterInfo.dbNodes:
             for dbInst in dbNode.datanodes:
                 if str(dbInst.instanceId) == InstanceID:
                     mirrorID = dbInst.mirrorId
-
         if mirrorID == 0:
             g_logger.logExit("Failed to find primary instance mirrorId.")
-
-            # Get standy instance
         for node in g_clusterInfo.dbNodes:
             for instance in node.datanodes:
                 if instance.mirrorId == mirrorID and (instance.instanceType == 1 or instance.instanceType == 0):
                     peerNode.append(node.name)
-
-        # send SOFile to peerInstance
         (despath, sofile) = os.path.split(srcFile)
         for deshost in peerNode:
             status = g_sshTool.checkRemoteFileExist(deshost, srcFile, "")

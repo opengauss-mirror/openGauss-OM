@@ -278,7 +278,10 @@ def parseCommandLine():
     if (ParaDict.__contains__("show_detail")):
         g_opts.detail = ParaDict.get("show_detail")
     if (ParaDict.__contains__("database")):
-        g_opts.database = ParaDict.get("database")
+        if ParaDict.get("database"):
+            db_name = ParaDict.get("database")
+            Parameter.checkDatabaseName("--database", ParaDict.get("database"))
+            g_opts.database = db_name
 
 
 def getUserInfo():
@@ -534,6 +537,7 @@ def performCheckorSetSE(action_item, flag_str, success_mesg, item_num,
     parameters    :     multiple strings of parameters
     """
     try:
+        Parameter.checkDatabaseName("--database", g_opts.database)
         if command == "":
             command = Local_CheckSe
         if (configFile != ""):

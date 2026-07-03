@@ -195,6 +195,7 @@ def getDatabaseInfo(data, sql_query):
     output : Instantion
     """
     port = int(getValueFromFile('port'))
+    Parameter.checkDatabaseName("--database", g_opts.database)
     cmd_args = [
         "gsql",
         "-d", g_opts.database,
@@ -4909,6 +4910,7 @@ def parseCommandLine():
         elif (key == "--hostname"):
             g_opts.hostname = value
         elif (key == "--database"):
+            Parameter.checkDatabaseName("--database", value)
             g_opts.database = value
         Parameter.checkParaVaild(key, value)
 

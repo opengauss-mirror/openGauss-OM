@@ -60,13 +60,20 @@ class CheckMpprcFile(BaseItem):
             list_white = ["ELK_CONFIG_DIR", "ELK_SYSTEM_TABLESPACE",
                           "MPPDB_ENV_SEPARATE_PATH", "GPHOME", "PATH",
                           "LD_LIBRARY_PATH", "PYTHONPATH",
-                          "GAUSS_WARNING_TYPE", "GAUSSHOME", "PATH",
-                          "LD_LIBRARY_PATH",
+                          "GAUSS_WARNING_TYPE", "GAUSSHOME",
+                          "HOST_IP", "SSH_AGENT_PID", "SSH_AUTH_SOCK"
                           "S3_CLIENT_CRT_FILE", "GAUSS_VERSION", "PGHOST",
                           "GS_CLUSTER_NAME", "GAUSSLOG",
                           "GAUSS_ENV", "KRB5_CONFIG", "PGKRBSRVNAME",
                           "KRBHOSTNAME", "ETCD_UNSUPPORTED_ARCH", "UNPACKPATH",
-                          "PGDATA", "COREPATH", "PGDATABASE", "PGPORT", "IP_TYPE"]
+                          "PGDATA", "COREPATH", "PGDATABASE", "PGPORT", "IP_TYPE"
+                          "LC_ALL", "PYTHONIOENCODING",
+                          "KRB_HOME", "KRB5_KDC_PROFILE", "KRB5RCACHETYPE", 
+                          "MPPDB_KRB5_FILE_PATH",
+                          "ENABLE_DSS", "DSS_HOME", "DSS_SSL", "VGNAME", "DSS_MAINTAIN"
+                          "ENABLE_HUGEBIN", "RDMA_TYPE", "RDMA_CONFIG",
+                          "AGENTPATH", "AGENTLOGPATH", "WHITELIST_ENV", "OPENSSL_CONF"
+                        ]
             # black elements
             list_black = ["|", ";", "&", "<", ">", "`", "\\", "'", "\"",
                           "{", "}", "(", ")", "[", "]", "~", "*", "?",

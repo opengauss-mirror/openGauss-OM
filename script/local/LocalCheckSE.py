@@ -97,6 +97,8 @@ def quote_ident(identifier):
     for c in dangerous_chars:
         identifier = identifier.replace(c, '')
     
+    if identifier == "":
+        return ""
     # quote identifier , and return it
     return "\"" + identifier.replace("'", "''").replace('"', '""') + "\""
 
@@ -155,8 +157,7 @@ def extractRowsCount(s):
     input  : String
     output : String
     """
-    import re
-    match = re.search(r'\((\d+) row[s]*\)\s*$', s)
+    match = re.search(r'\((\d+) row[s]*\)', s)
     if match:
         return int(match.group(1))
     else:
@@ -165,13 +166,26 @@ def extractRowsCount(s):
 
 def extract_values(s, value):
     """
-    function : extract values
-    input  : String, String
-    output : String
+    function : extract values, filter debug/error log first, keep original row slice logic
+    input  : String, row count
+    output : list of real data lines
     """
+    clean_lines = []
+    for line in s.strip().splitlines():
+        strip_line = line.strip()
+        skip_prefix = (
+            "DEBUG:", "CONTEXT:", "LINE ", "^", "referenced column:",
+            "----", "====", "ERROR:", "WARNING:"
+        )
+        if strip_line == "" or strip_line.startswith(skip_prefix):
+            continue
+        clean_lines.append(line)
+    clean_str = "\n".join(clean_lines)
+    all_lines = clean_str.splitlines()
     row = int(value)
-    lines = s.strip().splitlines()[-row - 1:-1]
-    return lines
+    result_lines = all_lines[-row - 1:-1]
+    final = [x.strip() for x in result_lines if x.strip() != ""]
+    return final
 
 
 def extract_types(s):
@@ -210,14 +224,14 @@ def getDatabaseInfo(data, sql_query):
     if status != 0:
         raise Exception(ErrorCode.GAUSS_505["GAUSS_50504"] % (cmd, output))
     if "ERROR:" in output:
-        raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % output)
+        raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"])
     value = extractRowsCount(output)
-    if not value is None:
-        data.output = value
-        if data.output > 0:
-            data.db.extend(extract_values(output, value))
-        else:
-            data.db.append("")
+    data.db = []
+    if value is not None and value > 0:
+        data.db.extend(extract_values(output, value))
+    else:
+        data.db.append("")
+    data.output = value
     return data
 
 
@@ -5016,19 +5030,21 @@ if __name__ == '__main__':
     """
     main function
     """
+    import traceback
     try:
         parseCommandLine()
         checkParameter()
         initGlobals()
     except Exception as e:
         GaussLog.exitWithError(str(e))
-
     try:
         nodeIps = []
         nodeIps = getLocalIPAddr()
         doLocalCheck()
         g_logger.closeLog()
     except Exception as e:
+        tb_lines = traceback.format_exc()
+        err_msg = f"[FATAL_CRASH] Action:{g_opts.action}, Exception:{str(e)}\nFull Traceback:\n{tb_lines}"
+        g_logger.log(err_msg)
         g_logger.logExit(str(e))
-
     sys.exit(0)

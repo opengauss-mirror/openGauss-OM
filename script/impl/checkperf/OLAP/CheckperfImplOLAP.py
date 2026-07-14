@@ -50,6 +50,10 @@ class CheckperfImplOLAP(CheckperfImpl):
         """
         super().__init__()
         self.sshTool = None 
+        self.opts = None
+        self.logger = None
+        self.DWS_mode = False
+        self.clusterInfo = None
         self.recordColumn = {}
         self.recordPrevStat = {}
         self.sessionCpuColumn = []
@@ -1904,8 +1908,12 @@ class CheckperfImplOLAP(CheckperfImpl):
             outputMap = self.sshTool.parseSshOutput(self.sshTool.hostNames)
             # Track failed nodes
             failedNodes = []
+            noSsdNodes = []
+
             for node in status.keys():
-                if (status[node] == DefaultValue.SUCCESS):
+                if "GAUSS-53008" in outputMap[node]:
+                    noSsdNodes.append(outputMap[node])
+                elif status[node] == DefaultValue.SUCCESS:
                     result = outputMap[node]
                     print(
                         "    %s:\n%s" % (node, result),
@@ -1917,6 +1925,8 @@ class CheckperfImplOLAP(CheckperfImpl):
                         " Error: %s" % (node, outputMap[node]),
                         end="", file=outputInfo)
             
+            if len(noSsdNodes) > 0:
+                raise Exception(ErrorCode.GAUSS_530["GAUSS_53008"])
             # Check if any node failed
             if (len(failedNodes) != 0):
                 self.logger.debug(

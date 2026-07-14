@@ -140,7 +140,7 @@ BASE_ID_GTM = 4001
 BASE_ID_DATANODE = 6001
 
 SYSTEM_SSH_ENV = "export LD_LIBRARY_PATH=/usr/lib64"
-CHECK_SSD_CMD = "lsblk -d -o NAME,ROTA | grep '0' | awk '{print $1}'"
+CHECK_SSD_CMD = "lsblk -d -o NAME,ROTA | awk 'NR>1 && $2==0 {print $1}'"
 
 def check_content_key(content, key):
     if not (type(content) == bytes):

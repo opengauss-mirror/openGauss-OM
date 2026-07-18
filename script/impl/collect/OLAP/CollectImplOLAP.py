@@ -145,7 +145,8 @@ class CollectImplOLAP(CollectImpl):
                 self.context.logger.log("The cmd is %s " % cmd)
                 self.context.logger.logExit(
                     "rsync command not found on %s. "
-                    "Error:\n%s\n--speed-limit parameters cannot be used" % \
+                    "Please install rsync first using: yum install -y rsync "
+                    "Error:\n%s\n--speed-limit parameters cannot be used " % \
                     (self.context.nodeName[0], output))
         else:
             (status, output) = self.context.sshTool.getSshStatusOutput(
@@ -160,7 +161,8 @@ class CollectImplOLAP(CollectImpl):
             self.context.logger.log("Successfully check rsync command.")
         else:
             self.context.logger.logExit(
-                "rsync command not found on hosts: %s.\n "
+                "rsync command not found on hosts: %s.\n"
+                "Please install rsync first using: yum install -y rsync \n"
                 "--speed-limit parameters cannot be used "
                 % str(failedNodeList))
 

@@ -107,6 +107,9 @@ class Collect(ParallelBaseOM):
         """
 gs_collector is a utility to collect information about the cluster.
 
+Note: This tool depends on the rsync utility. To use gs_collector, please ensure the rsync tool is installed and configured on all nodes in advance.
+      eg. yum install -y rsync
+
 Usage:
   gs_collector -? | --help
   gs_collector -V | --version

@@ -1902,17 +1902,35 @@ class CheckperfImplOLAP(CheckperfImpl):
             (status, output) = self.sshTool.getSshStatusOutput(cmd,
                                                                gp_path=gp_home)
             outputMap = self.sshTool.parseSshOutput(self.sshTool.hostNames)
+            # Track failed nodes
+            failedNodes = []
+            noSsdNodes = []
+
             for node in status.keys():
-                if (status[node] == DefaultValue.SUCCESS):
+                if "GAUSS-53008" in outputMap[node]:
+                    noSsdNodes.append(outputMap[node])
+                elif status[node] == DefaultValue.SUCCESS:
                     result = outputMap[node]
                     print(
                         "    %s:\n%s" % (node, result),
                         end="", file=outputInfo)
                 else:
+                    failedNodes.append(node)
                     print(
                         "    %s:\n        Failed to check SSD performance." \
                         " Error: %s" % (node, outputMap[node]),
                         end="", file=outputInfo)
+            
+            if len(noSsdNodes) > 0:
+                raise Exception(ErrorCode.GAUSS_530["GAUSS_53008"])
+            # Check if any node failed
+            if (len(failedNodes) != 0):
+                self.logger.debug(
+                    "Failed to check SSD performance on (%s)." % failedNodes)
+                raise Exception(
+                    ErrorCode.GAUSS_516["GAUSS_51632"] % cmd
+                    + " Error: Failed to check SSD performance on nodes: %s." % failedNodes)
+            
             self.logger.debug("Successfully checked SSD performance.")
         except Exception as e:
             raise Exception(str(e))

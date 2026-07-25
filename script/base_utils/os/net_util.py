@@ -41,41 +41,57 @@ sys.path.insert(0, localDirPath + "/../../../lib")
 try:
     import psutil
 except ImportError as e:
-    if not bool(os.listdir(localDirPath + "/../../../lib")):
+    lib_root = os.path.abspath(os.path.join(localDirPath, "./../../../lib"))
+    lib_psutil_dir = os.path.join(lib_root, "psutil")
+    if not os.listdir(lib_root):
         raise
-    # mv psutil mode .so file by python version
-    pythonVer = str(sys.version_info[0]) + '.' + str(sys.version_info[1])
-    psutilLinux = os.path.join(localDirPath,
-                               "./../../../lib/psutil/_psutil_linux.so")
-    psutilPosix = os.path.join(localDirPath,
-                               "./../../../lib/psutil/_psutil_posix.so")
-    psutilLinuxBak = "%s_%s" % (psutilLinux, pythonVer)
-    psutilPosixBak = "%s_%s" % (psutilPosix, pythonVer)
 
-    glo_cmd = "rm -rf '%s' && cp -r '%s' '%s' " % (psutilLinux,
-                                                   psutilLinuxBak,
-                                                   psutilLinux)
-    glo_cmd += " && rm -rf '%s' && cp -r '%s' '%s' " % (psutilPosix,
-                                                        psutilPosixBak,
-                                                        psutilPosix)
-    psutilFlag = True
-    for psutilnum in range(3):
-        (status_mvPsutil, output_mvPsutil) = subprocess.getstatusoutput(
-            glo_cmd)
-        if status_mvPsutil != 0:
-            psutilFlag = False
-            time.sleep(1)
-        else:
+    pythonVer = f"{sys.version_info[0]}.{sys.version_info[1]}"
+    # 标准so路径
+    psutilLinux = os.path.join(lib_psutil_dir, "_psutil_linux.so")
+    psutilPosix = os.path.join(lib_psutil_dir, "_psutil_posix.so")
+    psutilLinuxBak = f"{psutilLinux}_{pythonVer}"
+    psutilPosixBak = f"{psutilPosix}_{pythonVer}"
+
+    # 1. 单独删除冲突ABI后缀so，独立执行，不串拷贝命令
+    abi_files = [
+        "_psutil_linux.cpython-311-aarch64-linux-gnu.so",
+        "_psutil_posix.cpython-311-aarch64-linux-gnu.so"
+    ]
+    for fname in abi_files:
+        abi_path = os.path.join(lib_psutil_dir, fname)
+        if os.path.exists(abi_path):
+            os.remove(abi_path)
+
+    # 2. 执行备份so覆盖标准so
+    glo_cmd = "rm -rf '{}' && cp -r '{}' '{}'".format(psutilLinux, psutilLinuxBak, psutilLinux)
+    glo_cmd += " && rm -rf '{}' && cp -r '{}' '{}'".format(psutilPosix, psutilPosixBak, psutilPosix)
+
+    psutilFlag = False
+    for _ in range(3):
+        status, output = subprocess.getstatusoutput(glo_cmd)
+        if status == 0:
             psutilFlag = True
             break
+        time.sleep(1)
     if not psutilFlag:
-        print("Failed to execute cmd: %s. Error:\n%s" % (glo_cmd,
-                                                         output_mvPsutil))
+        print(f"Failed to execute cmd: {glo_cmd}. Error:\n{output}")
         sys.exit(1)
-    # del error import and reload psutil
-    del sys.modules['psutil._common']
-    del sys.modules['psutil._psposix']
+
+    # 清理模块缓存
+    if "psutil._common" in sys.modules:
+        del sys.modules["psutil._common"]
+    if "psutil._psposix" in sys.modules:
+        del sys.modules["psutil._psposix"]
+
+    # 批量清理所有psutil底层扩展模块
+    remove_mods = [m for m in sys.modules if m.startswith("psutil._psutil_")]
+    for mod_name in remove_mods:
+        del sys.modules[mod_name]
+
+    # 重新导入
     import psutil
+
 
 
 

@@ -79,6 +79,9 @@ class LocalPerformanceCheck():
         diskDevList = []
         # Obtain the SSD device
         devList = DefaultValue.obtainSSDDevice()
+        # check if SSD device not exists on current node
+        if devList == []:
+            g_logger.logExit(ErrorCode.GAUSS_530["GAUSS_53008"])
         # traverse dev
         for dev in devList:
             cmd = "df -P -h | grep %s | awk '{print $6}'" % dev
@@ -91,7 +94,7 @@ class LocalPerformanceCheck():
                     diskDevList.append("%s:%s" % (dev, diskDir))
         # check if SSD disk exists on current node
         if diskDevList == []:
-            raise Exception(ErrorCode.GAUSS_530["GAUSS_53005"])
+            g_logger.logExit(ErrorCode.GAUSS_530["GAUSS_53005"])
         # Concurrent execution
         pool = ThreadPool(DefaultValue.getCpuSet())
         pool.map(self.CheckSingleSSDPerf, diskDevList)

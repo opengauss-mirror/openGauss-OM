@@ -1178,7 +1178,7 @@ def getMTUValue(node):
         addr = node
         sshIp = node
     # get all network card information
-    cmd1 = """printf \"\n\n`/sbin/ifconfig -a`\n\n\" """
+    cmd1 = """printf \"\n\n`/sbin/ifconfig -a 2>/dev/null || ip a`\n\n\" """
     if not g_opts.pwdMap:
         output = SharedFuncs.runSshCmd(cmd1, sshIp, g_context.user)
     else:

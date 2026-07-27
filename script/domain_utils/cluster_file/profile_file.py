@@ -108,14 +108,7 @@ class ProfileFile:
 
         # white elements
         # Only allow simple shell assignments that are safe to source later.
-        allowed_env_names = {
-            "ELK_CONFIG_DIR", "ELK_SYSTEM_TABLESPACE", "MPPDB_ENV_SEPARATE_PATH",
-            "GPHOME", "UNPACKPATH", "PATH", "LD_LIBRARY_PATH", "PYTHONPATH",
-            "GAUSS_WARNING_TYPE", "GAUSSHOME", "PATH", "LD_LIBRARY_PATH",
-            "S3_CLIENT_CRT_FILE", "GAUSS_VERSION", "PGHOST", "GS_CLUSTER_NAME",
-            "GAUSSLOG", "GAUSS_ENV", "umask", "PGDATA", "COREPATH",
-            "PGDATABASE", "PGPORT", "IP_TYPE", "VGNAME", "DSS_HOME", "ENABLE_DSS"
-        }
+        allowed_env_names = ClusterConstants.MPPRC_WHITE_LIST
         assignment_pattern = re.compile(r"^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
         invalid_value_chars = set("|;&<>`\\'\"{}()[]~*?!\n \t\r")
 

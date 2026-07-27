@@ -221,7 +221,7 @@ class PreinstallImpl:
         # Receives the entered password
         if flag.upper() in ("YES", "Y"):
             self.context.logger.log("Please enter password for root")
-            retry_times = 0
+            retry_times = 0            
             while True:
                 try:
                     ssh_ports_map = self.context.clusterInfo.get_cluster_nodes_ssh_port_by_ips(ip_list)
@@ -521,7 +521,6 @@ class PreinstallImpl:
                 FileUtil.changeOwner(self.context.user, onePath, recursive=True,
                                      cmd_type="shell", link=True)
             return
-
         self.context.logger.log("Installing the tools in the cluster.",
                                 "addStep")
         try:
@@ -1893,3 +1892,4 @@ class PreinstallImpl:
                             f'In upgrade process, no need to delete {rmPath}.')
             self.context.logger.logExit(str(e))
         sys.exit(0)
+

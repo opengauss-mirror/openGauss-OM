@@ -2168,7 +2168,7 @@ class StreamingBase(object):
         max_term_record = os.path.join(self.streaming_file_dir, ".max_term_record")
         if stream_disaster_step < 1:
             max_term = self.get_term_info()
-            term_key = "/%s/CMServer/status_key/term" % self.user
+            term_key = "/%s/CMServer/status_key/dn_term/0" % self.user
             para_dict = {term_key: max_term, self.backup_open_key: "0"}
             ClusterInstanceConfig.set_data_on_dcc(self.cluster_info,
                                                   self.logger, self.user, para_dict)

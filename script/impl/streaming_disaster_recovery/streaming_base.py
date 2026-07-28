@@ -1793,7 +1793,7 @@ class StreamingBase(object):
             FileUtil.removeDirectory(local_temp_secure_path)
         rand_path = os.path.join(local_temp_secure_path, StreamingConstants.HADR_KEY_RAND)
         cipher_path = os.path.join(local_temp_secure_path, StreamingConstants.HADR_KEY_CIPHER)
-        cmd_tep = "echo \"if [ -d '%s' ];then source %s && pscp --trace-id %s -H %s '%s' '%s' " \
+        cmd_tep = "echo \"if [ -d '%s' ];then source %s && pscp --trace-id '%s' -H %s '%s' '%s' " \
                   "&& rm -rf '%s';fi\" | pssh -s -H %s"
         succeed = False
         for db_node in self.cluster_info.dbNodes:

@@ -448,6 +448,7 @@ class PreinstallImpl:
             DefaultValue.distributeXmlConfFile(self.context.sshTool,
                                                hosts_file, hosts,
                                                self.context.mpprcFile)
+            self.context.sshTool.scpFiles(hosts_file, packageDir, hosts, self.context.mpprcFile)
         except Exception as e:
             raise Exception(str(e))
 
@@ -544,16 +545,19 @@ class PreinstallImpl:
                         self.context.mpprcFile)
 
             # chown chmod top path file
-            topDirFile = ClusterConstants.TOP_DIR_FILE
-            cmd = "(if [ -f '%s' ];then cat '%s' " \
-                  "| awk -F = '{print $1}' " \
-                  "| xargs chown -R -h %s:%s; rm -rf '%s';fi)" % \
-                  (topDirFile, topDirFile, self.context.user,
-                   self.context.group, topDirFile)
-            self.context.sshTool.executeCommand(cmd,
+            if os.getuid() == 0 and os.path.exists(ClusterConstants.TOP_DIR_FILE):
+                topdir = ""
+                with open(ClusterConstants.TOP_DIR_FILE) as fd:
+                    topdir = fd.readline()
+                topdir = topdir.strip() if topdir else ""
+                if os.path.exists(topdir):
+                    cmd = "if [ -d '%s' ];then chown -R -h %s:%s %s; fi;" % \
+                        (topdir, self.context.user, self.context.group, topdir)
+                    self.context.sshTool.executeCommand(cmd,
                                                 DefaultValue.SUCCESS,
                                                 [],
                                                 self.context.mpprcFile)
+                FileUtil.removeFile(ClusterConstants.TOP_DIR_FILE)
 
             # change owner of packages
             self.context.logger.debug("Changing package path permission.")
@@ -1034,7 +1038,7 @@ class PreinstallImpl:
                                          recursive=True, cmd_type="shell", link=True)
 
                 topDirFile = ClusterConstants.TOP_DIR_FILE
-                if os.path.exists(topDirFile):
+                if os.getuid() == 0 and os.path.exists(topDirFile):
                     keylist = FileUtil.readFile(topDirFile)
                     if keylist != []:
                         for key in keylist:

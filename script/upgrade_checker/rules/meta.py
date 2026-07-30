@@ -44,7 +44,7 @@ class Meta(object):
 class ContentRulesMeta(object):
     def __init__(self, key=None, filters=None, ignore_col=None, oid_col=None, bool_col=None,
                  complete_sql=None, complete_sql_desc=None,
-                 key_desc="内容哈希值为%s的行", accuracy=Accuracy.STRICT):
+                 key_desc="内容哈希值为%s的行", accuracy=Accuracy.STRICT, skip_on_dss=False):
         """
         用来生成校验一个表的内容的信息。这些入参有两种使用方式，
         1、可以使用第一行的几个入参，拼凑出来一句完成的SQL语句
@@ -61,6 +61,10 @@ class ContentRulesMeta(object):
         :param complete_sql_desc: 完整的SQL描述。
         :param key_desc: sql的键的描述，注意必现带一个%s
         :param accuracy: 校验精度, 默认严格
+        :param skip_on_dss: DSS(资源池化)模式下是否整条跳过本规则。
+                            用于直接安装与升级之间存在固有差异、无法校验的场景。
+                            注意：只能用它来"少生成"规则，不可用于生成仅DSS下存在的规则，
+                            否则该规则在非DSS基准地图内不存在，会退化为静默通过。
         """
         self.key = key
         self.key_desc = key_desc
@@ -71,6 +75,7 @@ class ContentRulesMeta(object):
         self.complete_sql = complete_sql
         self.complete_sql_desc = complete_sql_desc
         self.accuracy = accuracy
+        self.skip_on_dss = skip_on_dss
 
 
 META = {
@@ -192,7 +197,7 @@ META = {
                              "       md5(pg_get_functiondef(p.oid)::text) "
                              "from pg_proc p left join pg_catalog.pg_namespace n on p.pronamespace = n.oid "
                              "where p.oid < 16384 and p.proisagg=false and p.proiswindow=false and prolang < 10000 "
-                             "and p.proname not in ('_pg_char_max_length')", # 格式差异忽略
+                             "and p.proname not in ('_pg_char_max_length', 'to_nvarchar2')", # 格式差异忽略
                 key_desc='函数%s的定义',
                 complete_sql_desc='通过pg_get_functiondef()来检查一般函数的定义'
             )
@@ -235,9 +240,35 @@ META = {
             ContentRulesMeta(
                 key="format('%s.%s',(select nspname from pg_namespace n where n.oid = relnamespace), relname)",
                 key_desc='名为%s的表或索引或视图等',
-                filters=" 9999 < oid and oid < 16384 and relname not like 'pg_toast_%' ",
+                filters=" 9999 < oid and oid < 16384 and relname not like 'pg_toast_%' "
+                        "      and relname not in ('exception', 'bulk_exception', 'snapshot_name') ",
                 ignore_col='oid,relfilenode,relpages,reltuples,relallvisible,reltoastrelid,reltoastidxid,'
                            'relfrozenxid,relacl,relfrozenxid64,relminmxid,relnatts',
+                oid_col='relnamespace,reltype,reloftype,relowner,reltablespace',
+                accuracy=Accuracy.STRICT
+            ),
+            # exception、bulk_exception、snapshot_name：严格校验(含reloptions)，DSS下整条跳过。
+            # 直接安装时gs_initdb --enable-dss带上-G使EnableInitDBSegment生效，
+            # 内建对象被写入segment=on；升级脚本创建的对象走另一分支，因此不带该选项。
+            ContentRulesMeta(
+                key="format('%s.%s',(select nspname from pg_namespace n where n.oid = relnamespace), relname)",
+                key_desc='名为%s的表或索引或视图等',
+                filters=" 9999 < oid and oid < 16384 and "
+                        "      relname in ('exception', 'bulk_exception', 'snapshot_name') ",
+                ignore_col='oid,relfilenode,relpages,reltuples,relallvisible,reltoastrelid,reltoastidxid,'
+                           'relfrozenxid,relacl,relfrozenxid64,relminmxid,relnatts',
+                oid_col='relnamespace,reltype,reloftype,relowner,reltablespace',
+                accuracy=Accuracy.STRICT,
+                skip_on_dss=True
+            ),
+            # exception、bulk_exception、snapshot_name：忽略reloptions的弱校验，两种模式下都生成
+            ContentRulesMeta(
+                key="format('%s.%s',(select nspname from pg_namespace n where n.oid = relnamespace), relname)",
+                key_desc='名为%s的表或索引或视图等',
+                filters=" 9999 < oid and oid < 16384 and "
+                        "      relname in ('exception', 'bulk_exception', 'snapshot_name') ",
+                ignore_col='oid,relfilenode,relpages,reltuples,relallvisible,reltoastrelid,reltoastidxid,'
+                           'relfrozenxid,relacl,relfrozenxid64,relminmxid,relnatts,reloptions',
                 oid_col='relnamespace,reltype,reloftype,relowner,reltablespace',
                 accuracy=Accuracy.STRICT
             ),
@@ -595,8 +626,25 @@ META = {
             ContentRulesMeta(
                 key='indexrelid',
                 key_desc='indexrelid为%s的索引',
-                filters=' indexrelid < 10000 ',
+                filters=' indexrelid < 10000 and indexrelid <> 3480 ',
                 ignore_col='indpred,indexprs'
+            ),
+            # 3480 = pg_partition_tblspc_relfilenode_index。
+            # 其indcheckxmin在索引构建遇到broken HOT chain时才被置true，
+            # DSS下直接安装与升级的结果不一致，因此DSS下整条跳过。
+            ContentRulesMeta(
+                key='indexrelid',
+                key_desc='indexrelid为%s的索引',
+                filters=' indexrelid = 3480 ',
+                ignore_col='indpred,indexprs',
+                skip_on_dss=True
+            ),
+            # 3480 忽略indcheckxmin的弱校验，两种模式下都生成
+            ContentRulesMeta(
+                key='indexrelid',
+                key_desc='indexrelid为%s的索引',
+                filters=' indexrelid = 3480 ',
+                ignore_col='indpred,indexprs,indcheckxmin'
             ),
             ContentRulesMeta(
                 key="format('%s-%s',"

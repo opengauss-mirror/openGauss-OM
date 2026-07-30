@@ -109,6 +109,7 @@ class OpenGauss(object):
         self.version_info = ''
         self.version = ''
         self.nodename = ''
+        self.dss = False
 
     def __str__(self):
         return '{0} [ RUN - nodename {1} port {2} ]'.format(
@@ -132,6 +133,12 @@ class OpenGauss(object):
 
         res = self.query('show pgxc_node_name;')
         self.nodename = res.data[0][0]
+
+        # DSS(资源池化)模式下，部分元数据在直接安装与升级之间存在固有差异，需要放宽校验。
+        # 使用count(*)而非直接读取setting：恒返回一行，规避value()的1x1断言。
+        res = self.query("select count(*) from pg_settings "
+                         "where name = 'ss_enable_dss' and setting = 'on';")
+        self.dss = res.value() != '0'
 
         logger.log('openGauss {0} {1} (port={2} db={3}) 连接成功.'.format(
             self.version,

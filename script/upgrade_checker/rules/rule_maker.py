@@ -187,6 +187,12 @@ class RuleMaker(object):
             metas = META.get("default.default")
 
         for meta in metas.content_rules_meta:
+            # DSS模式下跳过存在固有差异、无法校验的规则。
+            # 此处是"不生成规则"，而非"生成后忽略"：vmap仅通过vmap.get(rule.sql)被动查询，
+            # 未生成的规则不会被查询，因此不会产生地图缺失告警，也无需重新生成基准地图。
+            if meta.skip_on_dss and og.dss:
+                continue
+
             # 如果提供了完整的SQL，则直接使用
             if meta.complete_sql is not None:
                 assert meta.complete_sql_desc is not None

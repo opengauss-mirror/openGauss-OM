@@ -101,7 +101,8 @@ def run(hosts):
                "-o", "NumberOfPasswordPrompts=1",
                "-o", "ServerAliveCountMax=10",
                "-o", "ServerAliveInterval=30",
-               "-o", "TCPKeepAlive=yes"]
+               "-o", "TCPKeepAlive=yes",
+               "-o", "StrictHostKeyChecking=no"]
         if opts.extra:
             extra_info = shlex.split(opts.extra)
             cmd.extend(extra_info)

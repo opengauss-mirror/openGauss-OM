@@ -88,7 +88,7 @@ class fileManage():
                                "wc -l",
         "overWriteFile": "echo '%s' > '%s'",
         "physicMemory": "cat /proc/meminfo | "
-                        "grep MemTotal",
+                        "grep -w MemTotal",
         "findFile": "(if [ -d '%s' ]; then "
                     "find '%s' -type f;fi)",
         "unzipForce": "unzip -o '%s' -d '%s'",

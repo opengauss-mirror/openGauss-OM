@@ -631,15 +631,7 @@ META = {
             ),
             # 3480 = pg_partition_tblspc_relfilenode_index。
             # 其indcheckxmin在索引构建遇到broken HOT chain时才被置true，
-            # DSS下直接安装与升级的结果不一致，因此DSS下整条跳过。
-            ContentRulesMeta(
-                key='indexrelid',
-                key_desc='indexrelid为%s的索引',
-                filters=' indexrelid = 3480 ',
-                ignore_col='indpred,indexprs',
-                skip_on_dss=True
-            ),
-            # 3480 忽略indcheckxmin的弱校验，两种模式下都生成
+            # 是运行期行为，直接安装与升级的结果不一致，故所有模式下都忽略该列。
             ContentRulesMeta(
                 key='indexrelid',
                 key_desc='indexrelid为%s的索引',

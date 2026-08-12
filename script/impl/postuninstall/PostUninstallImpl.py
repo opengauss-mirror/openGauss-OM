@@ -91,7 +91,7 @@ class PostUninstallImpl:
         try:
             self.logger.log("Check log file path.", "addStep")
             # get tool path
-            clusterPath.append(ClusterDir.getClusterToolPath(self.user))
+            clusterPath.append(self.clusterToolPath)
 
             # get tmp path
             tmpDir = DefaultValue.getTmpDir(self.user, self.xmlFile)
@@ -426,12 +426,12 @@ class PostUninstallImpl:
                     otherNodes.remove(otherNode)
 
             # clean log
-            if os.stat(ClusterDir.getClusterToolPath(self.user)).st_uid != 0 or \
+            if os.stat(self.clusterToolPath).st_uid != 0 or \
                     os.stat(self.clusterInfo.logPath).st_uid != 0:
                 cmd = "rm -rf '%s/%s'; rm -rf /tmp/gauss_*;" % (self.clusterInfo.logPath, self.user)
-                python_path = "%s/Python-2.7.9" % ClusterDir.getClusterToolPath(self.user)
+                python_path = "%s/Python-2.7.9" % self.clusterToolPath
                 if DefaultValue.non_root_owner(python_path):
-                    cmd += "rm -rf '%s/Python-2.7.9'" % ClusterDir.getClusterToolPath(self.user)
+                    cmd += "rm -rf '%s/Python-2.7.9'" % self.clusterToolPath
                 self.logger.debug("Command for deleting logs of other nodes: %s" % cmd)
                 CmdExecutor.execCommandWithMode(cmd,
                                                 self.sshTool,
@@ -486,7 +486,6 @@ class PostUninstallImpl:
             "Deleting software packages "
             "and environmental variables of the local node.")
         try:
-            self.clusterToolPath = ClusterDir.getClusterToolPath(self.user)
 
             # clean local node environment software
             path = "%s/%s" % (self.clusterToolPath, PSSHDIR)
@@ -818,7 +817,7 @@ class PostUninstallImpl:
             if not self.clean_gphome:
                 return
             global gphome
-            gphome = os.path.realpath(ClusterDir.getClusterToolPath(self.user))
+            gphome = os.path.realpath(self.clusterToolPath)
             SecurityChecker.check_safe_cleanup_directory(gphome)
             cmd_list = ['rm', '-rf', ('%s/*') % gphome]
             if "HOST_IP" in os.environ.keys():
@@ -1006,6 +1005,8 @@ class PostUninstallImpl:
                 "gs_postuninstall execution takes %s steps in total"
                 % ClusterCommand.countTotalSteps("gs_postuninstall"))
             local_host = NetUtil.GetHostIpOrName()
+            # Get cluster tool path from XML file early to avoid relying on environment variables
+            self.clusterToolPath = ClusterDir.getPreClusterToolPath(self.xmlFile)
             if (self.mpprcFile is not None and self.mpprcFile != "" and os.path.exists(self.mpprcFile)):
                 os_profile = self.mpprcFile
             else:

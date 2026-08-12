@@ -129,17 +129,21 @@ class ClusterDir:
     def resolveAndValidateToolPathForCleanup(user, requested_path):
         requested = os.path.realpath(requested_path)
         SecurityChecker.check_safe_cleanup_directory(requested)
+        # First check if requested path is a valid OM tool path
         try:
-            pwd.getpwnam(user)
-            trusted = os.path.realpath(ClusterDir.getClusterToolPath(user))
-        except KeyError:
             ClusterDir.check_om_tool_cleanup_directory(requested)
-            return requested
-        if requested != trusted:
-            raise Exception(
-                "Refuse to clean dependency outside trusted tool path %s." %
-                trusted)
-        return trusted
+        except Exception:
+            # If not valid, then try to get from environment
+            try:
+                pwd.getpwnam(user)
+                trusted = os.path.realpath(ClusterDir.getClusterToolPath(user))
+            except KeyError:
+                raise Exception("Invalid OM tool path: %s" % requested)
+            if requested != trusted:
+                raise Exception(
+                    "Refuse to clean dependency outside trusted tool path %s." %
+                    trusted)
+        return requested
 
     @staticmethod
     def getUserLogDirWithUser(user):

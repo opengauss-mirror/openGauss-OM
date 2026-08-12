@@ -217,7 +217,7 @@ def getDatabaseInfo(data, sql_query):
         "-r",
         "-c", sql_query
     ]
-    result = subprocess.run(cmd_args, capture_output=True, text=True)
+    result = subprocess.run(cmd_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     status = 0 if result.returncode == 0 else 1
     output = result.stdout + result.stderr
     cmd = " ".join([shlex.quote(arg) for arg in cmd_args])

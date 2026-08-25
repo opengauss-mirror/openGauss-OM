@@ -396,12 +396,16 @@ class PreinstallImplOLAP(PreinstallImpl):
         try:
             # remove HOST_IP info with /etc/profile and environ
             if self.context.current_user_root:
-                # remove HOST_IP info with /etc/profile and environ
-                cmd = "sed -i '/^export[ ]*HOST_IP=/d' /etc/profile"
-                CmdExecutor.execCommandWithMode(
-                    cmd,
-                    self.context.sshTool,
-                    self.context.localMode or self.context.isSingle)
+                profile_path = "/etc/profile"
+                if os.path.exists(profile_path) and os.path.isfile(profile_path) and os.access(profile_path, os.W_OK):
+                    # remove HOST_IP info with /etc/profile and environ
+                    cmd = "sed -i '/^export[ ]*HOST_IP=/d' /etc/profile"
+                    CmdExecutor.execCommandWithMode(
+                        cmd,
+                        self.context.sshTool,
+                        self.context.localMode or self.context.isSingle)
+                else:
+                    self.context.logger.debug("Skipping HOST_IP cleanup: %s does not exist or is not writable" % profile_path)
                 if "HOST_IP" in os.environ.keys():
                     os.environ.pop("HOST_IP")
         except Exception as e:

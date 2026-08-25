@@ -102,6 +102,19 @@ def quote_ident(identifier):
     # quote identifier , and return it
     return "\"" + identifier.replace("'", "''").replace('"', '""') + "\""
 
+def quote_literal(value):
+    """
+    function : Quote literal value for SQL
+    input  : value
+    output : quoted literal
+    """
+    if value is None:
+        return "NULL"
+    value = str(value)
+    # Escape single quotes by doubling them
+    escaped_value = value.replace("'", "''")
+    return "'" + escaped_value + "'"
+
 def getValueFromFile(key):
     """
     function : Get value from file
@@ -224,7 +237,7 @@ def getDatabaseInfo(data, sql_query):
     if status != 0:
         raise Exception(ErrorCode.GAUSS_505["GAUSS_50504"] % (cmd, output))
     if "ERROR:" in output:
-        raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"])
+        raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] % sql_query)
     value = extractRowsCount(output)
     data.db = []
     if value is not None and value > 0:
@@ -3636,15 +3649,45 @@ def set_remove_all_function(data, result):
     output : NA
     """
     for item in data:
-        df = PublicRolAllPerm()
-        df.db = []
-        proname = quote_ident(item.split("|")[0].strip())
-        sql_df = """SELECT proargtypes::regtype[] AS arg_types, proargnames AS arg_names FROM pg_proc WHERE proname = '%s';""" % proname
-        getDatabaseInfo(df, sql_df)
-        for line in df.db:
-            arg_type = extract_types(line.split("|")[0].strip())
-            sql_query = """REVOKE ALL ON FUNCTION %s(%s) FROM PUBLIC;""" % (proname, quote_ident(arg_type))
-            getDatabaseInfo(result, sql_query)
+        try:
+            proname = item.split("|")[0].strip()
+            g_logger.log("Processing function: %s" % proname)
+            
+            success = False
+            
+            try:
+                df = PublicRolAllPerm()
+                df.db = []
+                sql_df = "SELECT proname, pg_get_function_identity_arguments(oid) as args FROM pg_proc WHERE proname = %s;" % quote_literal(proname)
+                getDatabaseInfo(df, sql_df)
+                
+                for line in df.db:
+                    if not line.strip():
+                        continue
+                    parts = line.split("|")
+                    func_args = parts[1].strip() if len(parts) > 1 else ""
+                    
+                    sql_query = "REVOKE ALL ON FUNCTION %s(%s) FROM PUBLIC;" % (quote_ident(proname), func_args)
+                    getDatabaseInfo(result, sql_query)
+                    success = True
+                    g_logger.log("Successfully revoked function: %s(%s)" % (proname, func_args))
+            except Exception as e:
+                g_logger.log("Warning: Method 1 failed: %s" % str(e))
+            
+            if not success:
+                try:
+                    sql_simple = "REVOKE ALL ON FUNCTION %s FROM PUBLIC;" % quote_ident(proname)
+                    getDatabaseInfo(result, sql_simple)
+                    success = True
+                    g_logger.log("Successfully revoked function (simple): %s" % proname)
+                except Exception as e:
+                    g_logger.log("Warning: Method 2 failed: %s" % str(e))
+            
+            if not success:
+                g_logger.log("Warning: All methods failed for function: %s" % proname)
+                
+        except Exception as e:
+            g_logger.log("Warning: Failed to process function: %s, error: %s" % (item, str(e)))
 
 def setAdminPrivileges(data):
     """

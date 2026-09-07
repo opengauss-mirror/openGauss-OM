@@ -1037,10 +1037,16 @@ class Kerberos():
             os.makedirs(os.path.dirname(kerberos_database_file),
                         mode=dir_permission)
             passwd = RandomValue.getRandStr()
-            cmd = "source %s && echo -e '%s\n%s\n%s' | kdb5_util create -r OPENGAUSS.ORG -s -m" % \
-                  (g_opts.mpprcFile, str(passwd), str(passwd), str(passwd))
-            proc = FastPopen(cmd, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid, close_fds=True)
-            stdout, stderr = proc.communicate()
+            # Feed the master password via stdin instead of a shell pipeline
+            # to avoid exposing it in the process command line.
+            cmd = "source %s && kdb5_util create -r OPENGAUSS.ORG -s -m" % \
+                  g_opts.mpprcFile
+            proc = subprocess.Popen(["sh", "-c", cmd], stdin=PIPE,
+                                    stdout=PIPE, stderr=PIPE,
+                                    universal_newlines=True,
+                                    preexec_fn=os.setsid, close_fds=True)
+            stdout, stderr = proc.communicate("%s\n%s\n%s\n" %
+                                              (passwd, passwd, passwd))
             output = stdout + stderr
             status = proc.returncode
             # clean pwd info

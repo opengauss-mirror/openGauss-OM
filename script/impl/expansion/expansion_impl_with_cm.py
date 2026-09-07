@@ -18,6 +18,7 @@
 # Description  : expansion_impl_with_cm.py
 #############################################################################
 
+import ast
 import os
 import re
 import sys
@@ -607,6 +608,19 @@ class ExpansionImplWithCm(ExpansionImpl):
 
         return new_list
 
+    @staticmethod
+    def _escape_sed_string(value, is_pattern):
+        """
+        Escape special characters in the value for sed s/pattern/replacement/.
+        """
+        escaped = value.replace('\\', '\\\\').replace('/', '\\/')
+        if is_pattern:
+            for char in ('.', '*', '[', ']'):
+                escaped = escaped.replace(char, '\\' + char)
+        else:
+            escaped = escaped.replace('&', '\\&')
+        return escaped
+
     def update_guc_url(self, node_list):
         """
         Update ss_interconnect_url on old nodes.
@@ -615,19 +629,35 @@ class ExpansionImplWithCm(ExpansionImpl):
         conf_file = pgdata_path + os.sep + 'postgresql.conf'
         get_url_cmd_lst = ['grep', '-n', 'ss_interconnect_url', conf_file]
         (out, error, sta) = CmdUtil.execCmdList(get_url_cmd_lst)
-        url = eval(out.split('=')[-1].strip())
+        if sta != 0 or not out:
+            self.logger.debug("Failed to get ss_interconnect_url from %s" % conf_file)
+            raise Exception("Failed to get ss_interconnect_url from %s" % conf_file)
+        # take the value of the last entry in effect
+        url_value = out.splitlines()[-1].split('=', 1)[-1].strip()
+        # only strip the quotes of the value, never execute it as an expression
+        try:
+            url = ast.literal_eval(url_value)
+        except (ValueError, SyntaxError):
+            url = url_value.strip("'\"")
+        if not url:
+            self.logger.debug("Invalid ss_interconnect_url value in %s" % conf_file)
+            raise Exception("Invalid ss_interconnect_url value in %s" % conf_file)
         url_port = (url.split(',')[0]).split(':')[-1]
-        dss_port = (node_list.split(',')[0]).split(':')[-1]
-        new_url = node_list.replace(dss_port, url_port)
+        # replace the port (last field) of each entry one by one,
+        # to avoid port substring polluting other fields
+        new_url = ','.join('%s:%s' % (entry.rsplit(':', 1)[0], url_port)
+                           for entry in node_list.split(','))
 
         guc_cmd = "grep -n 'ss_interconnect_url' %s | cut -f1 -d: | xargs -I {} sed -i {}\'s/%s/%s/g' %s" % (
-                  conf_file, url, new_url, conf_file)
+                  conf_file, self._escape_sed_string(url, True),
+                  self._escape_sed_string(new_url, False), conf_file)
         self.logger.debug("Command for update ss_interconnect_url: %s" % guc_cmd)
         for node in self.old_nodes:
             ssh_tool = SshTool([node.name], timeout=300)
             pgdata_file = node.datanodes[0].datadir + os.sep + 'postgresql.conf'
             guc_cmd = "grep -n 'ss_interconnect_url' %s | cut -f1 -d: | xargs -I {} sed -i {}\'s/%s/%s/g' %s" % (
-                  pgdata_file, url, new_url, pgdata_file)
+                  pgdata_file, self._escape_sed_string(url, True),
+                  self._escape_sed_string(new_url, False), pgdata_file)
             self.logger.debug("host %s Command for update ss_interconnect_url: %s" % (node.name, guc_cmd))
             result_map, _ = ssh_tool.getSshStatusOutput(guc_cmd, [])
             if result_map[node.name] == DefaultValue.SUCCESS:

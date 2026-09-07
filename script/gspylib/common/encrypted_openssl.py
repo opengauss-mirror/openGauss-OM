@@ -30,21 +30,12 @@ try:
     sys.path.append(os.path.split(os.path.realpath(__file__))[0] + "/../../")
     from gspylib.common.Common import DefaultValue
     from base_utils.common.constantsbase import ConstantsBase
-    from base_utils.common.fast_popen import FastPopen
     from base_utils.os.env_util import EnvUtil
-    from base_utils.executor.cmd_executor import CmdExecutor
     from base_utils.executor.local_remote_cmd import LocalRemoteCmd
 
 
 except ImportError as error:
     sys.exit("[GAUSS-52200] : Unable to import module: %s." % error)
-
-
-def mock_open_ssl_passwd(cmd):
-    """
-    Mock password of cmd
-    """
-    return cmd.split("|")[1]
 
 
 class OpenSslException(Exception):
@@ -150,22 +141,26 @@ class EncryptedOpenssl:
         conf_file = os.path.realpath(os.path.join(gauss_home, "share",
                                                   "sslcert", "gsql", "openssl.cnf"))
 
-        echo_cmd = 'export OPENSSL_CONF={2} ; echo "{0}" | openssl {1}'.format(self.passwd,
-                                                                               cmd,
-                                                                               conf_file)
+        shell_cmd = 'export OPENSSL_CONF={0} ; openssl {1}'.format(conf_file,
+                                                                  cmd)
 
-        proc = FastPopen(echo_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                         close_fds=True, preexec_fn=os.setsid)
-        stdout, _ = proc.communicate(echo_cmd)
+        # Feed the password via stdin instead of a shell pipeline to avoid
+        # exposing it in the process command line.
+        proc = subprocess.Popen(["sh", "-c", shell_cmd],
+                                stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                close_fds=True, preexec_fn=os.setsid,
+                                universal_newlines=True)
+        stdout, _ = proc.communicate(self.passwd + "\n")
         if proc.returncode != 0:
             self.logger.debug("The encrypt command error "
-                              ":CMD:{0}, OUTPUT:{1}".format(mock_open_ssl_passwd(cmd), stdout))
+                              ":CMD:{0}, OUTPUT:{1}".format(cmd, stdout))
             raise OpenSslException("The encrypt command error "
-                                   ":CMD:{0}, OUTPUT:{1}".format(mock_open_ssl_passwd(cmd),
+                                   ":CMD:{0}, OUTPUT:{1}".format(cmd,
                                                                  stdout))
         if expect_str and expect_str in stdout:
             self.logger.debug("Openssl command perform successfully.")
-        CmdExecutor.execCommandWithMode(echo_cmd, None, local_mode=True)
 
     def check_certificate_file_exist(self, cert_names):
         """Check whether the certificate file is generated."""
@@ -182,7 +177,7 @@ class EncryptedOpenssl:
             self.__exec_openssl_with_shell(cmd, expect_str)
             if not self.check_certificate_file_exist([cert_name]):
                 raise OpenSslException("The command openssl error :"
-                                       " %s" % mock_open_ssl_passwd(cmd))
+                                       " %s" % cmd)
         except Exception as err:
             err_msg = str(err).replace(self.passwd, "*")
             raise Exception("Failed to generate {0}."

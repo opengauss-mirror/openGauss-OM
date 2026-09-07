@@ -38,7 +38,6 @@ try:
     from base_utils.os.grep_util import GrepUtil
     from base_utils.os.cmd_util import CmdUtil
     from base_utils.os.file_util import FileUtil
-    from base_utils.common.fast_popen import FastPopen
     from domain_utils.cluster_file.cluster_dir import ClusterDir
     from domain_utils.cluster_file.cluster_log import ClusterLog
     from gspylib.component.DSS.dss_comp import DssInst, UdevContext
@@ -770,14 +769,16 @@ class CM_OLAP(CM):
 
         for cmd in [cmd1, cmd2]:
             expect_key_word = "please enter the password*"
-            expect_cmd = 'echo "{0}" | sh {1} "{2}" "{3}"'.format(secret,
-                                                                  expect_sh,
-                                                                  expect_key_word,
-                                                                  cmd)
             logger.debug("Enryptor execute command: {0}".format(cmd))
 
-            proc = FastPopen(expect_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            stdout, _ = proc.communicate(expect_cmd)
+            # Feed the secret via stdin instead of a shell pipeline to avoid
+            # exposing it in the process command line.
+            proc = subprocess.Popen(["sh", expect_sh, expect_key_word, cmd],
+                                    stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE,
+                                    universal_newlines=True)
+            stdout, _ = proc.communicate(secret + "\n")
             if proc.returncode != 0:
                 raise Exception("Generate key file with cm_ctl failed. {0}".format(stdout))
             logger.debug("Generate key file successfully.")

@@ -28,6 +28,7 @@ import pwd
 import re
 import getpass
 import time
+import ast
 import timeit
 import traceback
 import json
@@ -3594,8 +3595,26 @@ def replaceOneInstancePgprocFile(instance):
                                         'pg_proc_mapping.txt')
     with open(pg_proc_mapping_file, 'r') as fp:
         pg_proc_dict_str = fp.read()
-    proc_dict = eval(pg_proc_dict_str)
     try:
+        # only allow dict literal, forbid any code execution
+        proc_dict = ast.literal_eval(pg_proc_dict_str)
+        if not isinstance(proc_dict, dict):
+            raise Exception("Invalid content in file %s: "
+                            "expect a dict." % pg_proc_mapping_file)
+        for proc_file_path, pg_proc_temp_file_path in proc_dict.items():
+            if not isinstance(proc_file_path, str) \
+                    or not isinstance(pg_proc_temp_file_path, str):
+                raise Exception("Invalid content in file %s: "
+                                "key and value must be string."
+                                % pg_proc_mapping_file)
+            # forbid absolute path and path traversal
+            if os.path.isabs(proc_file_path) \
+                    or os.path.isabs(pg_proc_temp_file_path) \
+                    or '..' in proc_file_path.split(os.sep) \
+                    or '..' in pg_proc_temp_file_path.split(os.sep):
+                raise Exception("Invalid path in file %s: "
+                                "path traversal is forbidden."
+                                % pg_proc_mapping_file)
         # replace pg_proc data file with pg_proc_temp data file
         for proc_file_path, pg_proc_temp_file_path in proc_dict.items():
             pg_proc_data_file = \

@@ -896,8 +896,15 @@ Common options:
             self.logger.debug("Changing user password failed. %s" % str(e))
             self.logger.logExit(ErrorCode.GAUSS_503["GAUSS_50311"] % "user")
 
-        cmd = "echo '%s:%s' | chpasswd" % (self.user, password)
-        (status, output) = CmdUtil.getstatusoutput_by_fast_popen(cmd)
+        # Feed the password via stdin instead of a shell pipeline to avoid
+        # exposing it in the process command line.
+        proc = subprocess.Popen(["chpasswd"], stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                universal_newlines=True)
+        stdout, stderr = proc.communicate("%s:%s\n" % (self.user, password))
+        status = proc.returncode
+        output = (stdout + stderr).strip()
         if status != 0:
             self.logger.logExit(
                 ErrorCode.GAUSS_503["GAUSS_50311"] % self.user

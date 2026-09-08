@@ -787,12 +787,14 @@ gs_guc set -D {dn} -c "available_zone='{azName}'"
                 for hostParam in self.context.newHostList:
                     submask_length = NetUtil.get_submask_len(hostParam)
                     cmd += " -h 'host    all    %s    %s/%s    trust'" % (self.user, hostParam, submask_length)
+                    cmd += " -h 'host    replication    %s    %s/%s    trust'" % (self.user, hostParam, submask_length)
                     cmd += self.get_add_float_ip_cmd(hostParam)
             else:
                 for hostParam in allHosts:
                     if hostExec != hostParam:
                         submask_length = NetUtil.get_submask_len(hostParam)
                         cmd += " -h 'host    all    %s    %s/%s    trust'" % (self.user, hostParam, submask_length)
+                        cmd += " -h 'host    replication    %s    %s/%s    trust'" % (self.user, hostParam, submask_length)
                         cmd += self.get_add_float_ip_cmd(hostParam)
             self.logger.debug("[%s] trustCmd:%s" % (hostExec, cmd))
             sshTool = SshTool([hostExec])

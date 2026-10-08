@@ -463,6 +463,7 @@ class ExpansionImplWithCm(ExpansionImpl):
         cmd = "source {0};gs_guc set -D {1}".format(self.envFile, new_inst.datadir)
         submask_length = NetUtil.get_submask_len(host_ip)
         cmd += " -h 'host    all    %s    %s/%s    trust'" % (self.user, host_ip, submask_length)
+        cmd += " -h 'host    replication    %s    %s/%s    trust'" % (self.user, host_ip, submask_length)
         cmd += " -h 'host    all    all    %s/%s    sha256'" % (host_ip, submask_length)
         if self.xml_cluster_info.enable_dss == 'on':
             node_ips = [node.backIps[0] for node in self.old_nodes]

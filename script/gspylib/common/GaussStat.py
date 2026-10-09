@@ -20,6 +20,7 @@
 #############################################################################
 import subprocess
 import os
+import re
 import sys
 import glob
 from multiprocessing.dummy import Pool as ThreadPool
@@ -1211,18 +1212,27 @@ class GaussStat():
                                 " Error: \n%s" % output)
 
             if (tablespace is not None and tablespace != ""):
-                cmd = "sed -i \"s/START TRANSACTION;//g\" %s && " % \
-                      pmkSqlFile_back
-                cmd += "sed -i \"s/COMMIT;//g\" %s && " % pmkSqlFile_back
-                cmd += "sed -i \"/PRIMARY KEY/d\" %s && " % pmkSqlFile_back
-                cmd += "sed -i \"/CREATE INDEX/d\" %s && " % pmkSqlFile_back
-                cmd += "sed -i \"1i\\SET default_tablespace = %s;\" %s" % \
-                       (tablespace, pmkSqlFile_back)
-                (status, output) = subprocess.getstatusoutput(cmd)
-                if (status != 0):
+                # The tablespace name will be spliced into the sed script,
+                # so it must be strictly validated to prevent command injection.
+                if (not re.match(r'^[A-Za-z0-9_]+$', tablespace)):
                     FileUtil.cleanTmpFile(pmkSqlFile_back)
-                    raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] % cmd +
-                                    " Error: \n%s" % output)
+                    raise Exception(ErrorCode.GAUSS_500["GAUSS_50024"] %
+                                    "ELK_SYSTEM_TABLESPACE")
+                sedCmdList = [
+                    ['sed', '-i', 's/START TRANSACTION;//g', pmkSqlFile_back],
+                    ['sed', '-i', 's/COMMIT;//g', pmkSqlFile_back],
+                    ['sed', '-i', '/PRIMARY KEY/d', pmkSqlFile_back],
+                    ['sed', '-i', '/CREATE INDEX/d', pmkSqlFile_back],
+                    ['sed', '-i',
+                     '1i\\SET default_tablespace = %s;' % tablespace,
+                     pmkSqlFile_back]]
+                for sedCmd in sedCmdList:
+                    (output, error, status) = CmdUtil.execCmdList(sedCmd)
+                    if (status != 0):
+                        FileUtil.cleanTmpFile(pmkSqlFile_back)
+                        raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
+                                        ' '.join(sedCmd) +
+                                        " Error: \n%s" % output)
             else:
                 if (not g_clusterInfo.isSingleInstCluster()):
                     self.logger.debug("Set installation groupt to "
@@ -1247,15 +1257,22 @@ class GaussStat():
                         raise Exception(ErrorCode.GAUSS_513["GAUSS_51300"] %
                                         cmd + " Error: \n%s" % output)
 
-                    installation_groupt = output.split('|')[-1]
-                    cmd = "sed -i \"1i\\SET default_storage_nodegroup = " \
-                          "%s;\" %s" % \
-                          (installation_groupt, pmkSqlFile_back)
-                    (status, output) = subprocess.getstatusoutput(cmd)
+                    installation_groupt = output.split('|')[-1].strip()
+                    # The node group name comes from the database and will
+                    # be spliced into the sed script, so it must be strictly
+                    # validated to prevent command injection.
+                    if (not re.match(r'^[A-Za-z0-9_]+$', installation_groupt)):
+                        raise Exception(ErrorCode.GAUSS_500["GAUSS_50024"] %
+                                        "installation node group name")
+                    sedCmd = ['sed', '-i',
+                              '1i\\SET default_storage_nodegroup = %s;' %
+                              installation_groupt, pmkSqlFile_back]
+                    (output, error, status) = CmdUtil.execCmdList(sedCmd)
                     if (status != 0):
                         FileUtil.cleanTmpFile(pmkSqlFile_back)
                         raise Exception(ErrorCode.GAUSS_514["GAUSS_51400"] %
-                                        cmd + " Error: \n%s" % output)
+                                        ' '.join(sedCmd) +
+                                        " Error: \n%s" % output)
                     self.logger.debug("Successfully set "
                                       "default_storage_nodegroup is %s in "
                                       "this session." % \

@@ -2201,6 +2201,10 @@ class DefaultValue():
         value = raw_str.replace("PHYSIC_MEMORY", dynamic_para_list[1]) \
                 .replace("MAX_MASTER_DATANUM_IN_ONENODE", dynamic_para_list[2]) \
                 .replace("N", str(ratioNum))
+        # only pure arithmetic expressions are allowed, forbid code execution
+        if not re.match(r'^[0-9+\-*/(). ]+$', value):
+            raise Exception(ErrorCode.GAUSS_516["GAUSS_51632"] %
+                            "calculate: %s " % raw_str)
         try:
             value = eval(value)
         except:

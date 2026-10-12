@@ -120,7 +120,7 @@ class OGController(object):
         Shell.run(cmd, print_desc='卸载数据库', check=True)
         
 if __name__ == "__main__":
-    og = OGController('/data/pkg/openGauss-Server-7.0.0-openEuler20.03-x86_64.tar.bz2')
+    og = OGController('/data/pkg/openGauss-Server-8.0.0-RC1-openEuler20.03-x86_64.tar.bz2')
     og.install()
     og.initdb()
     og.start(16666)

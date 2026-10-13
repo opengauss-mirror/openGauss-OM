@@ -304,7 +304,9 @@ META = {
             ContentRulesMeta(
                 key='datname',
                 key_desc='数据库%s',
-                filters=' 9999 < oid and oid < 16384 ',
+                # Initial databases can cross FirstNormalObjectId as initdb grows.
+                # Compare them by name even when their OIDs exceed this range.
+                filters=" (9999 < oid and oid < 16384) or datname in ('template0', 'postgres') ",
                 ignore_col='oid,encoding,datcollate,datctype,datlastsysoid,datfrozenxid,datacl,datfrozenxid64,datminmxid'
             )
         ]
@@ -367,7 +369,10 @@ META = {
         True,
         [
             ContentRulesMeta(
-                filters=' objoid < 16384 and classoid < 16384 ',
+                filters=" classoid < 16384 and (objoid < 16384 or "
+                        "(classoid = 'pg_catalog.pg_database'::regclass and objoid in "
+                        "(select oid from pg_catalog.pg_database "
+                        "where datname in ('template0', 'postgres')))) ",
                 oid_col='objoid,classoid',
                 accuracy=Accuracy.ALLOW_MORE
             )

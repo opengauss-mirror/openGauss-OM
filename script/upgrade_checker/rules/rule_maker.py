@@ -78,6 +78,10 @@ class PgClassItem(object):
         self.has_oid = True if meta1[4] == 't' else False
         self.kind = meta1[5]
         self.columns = meta1[6].split(',')
+        # The kernel supplies pg_index's current descriptor for old catalog
+        # tuples. Stored pg_attribute rows can still list an older schema.
+        if self.key == 'pg_catalog.pg_index':
+            self.columns = og.query('select * from pg_catalog.pg_index limit 0').attr
         if self.has_oid:
             self.columns.append('oid')
 
@@ -203,7 +207,11 @@ class RuleMaker(object):
             for col in pci.columns:
                 if col in should_ignore:
                     continue
-                val_columns.append(col)
+                if pci.key == 'pg_catalog.pg_index' and col == 'indisenable':
+                    # Match GetIndexEnableStateByTuple: legacy NULL means enabled.
+                    val_columns.append('coalesce(indisenable, true)')
+                else:
+                    val_columns.append(col)
 
             val_columns += RuleMaker.process_oid_projection(meta.oid_col)
             val_columns += RuleMaker.process_bool_projection(meta.bool_col)

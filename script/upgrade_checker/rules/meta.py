@@ -600,8 +600,16 @@ META = {
             ContentRulesMeta(
                 key='indexrelid',
                 key_desc='indexrelid为%s的索引',
-                filters=' indexrelid < 10000 ',
+                filters=' indexrelid < 10000 and indexrelid <> 3480 ',
                 ignore_col='indpred,indexprs'
+            ),
+            # Building this index over HOT-updated pg_partition tuples can set
+            # indcheckxmin. Compare its definition without this runtime flag.
+            ContentRulesMeta(
+                key='indexrelid',
+                key_desc='indexrelid为%s的索引',
+                filters=' indexrelid = 3480 ',
+                ignore_col='indpred,indexprs,indcheckxmin'
             ),
             ContentRulesMeta(
                 key="format('%s-%s',"

@@ -690,7 +690,7 @@ class UpgradeCmConfigUtility(UpgradeCmUtility):
                 shutil.move(backup_file, agent_conf_file)
                 self.logger.debug(f"Restored config from backup: {backup_file}")
             else:
-                self.logger.warning(f"No backup config found for rollback: {backup_file}")
+                self.logger.warn(f"No backup config found for rollback: {backup_file}")
         else:
             # backup entire config file
             shutil.copyfile(agent_conf_file, backup_file)

@@ -2417,7 +2417,8 @@ class UpgradeImpl:
         upgrade_sep_comps = False
         if DefaultValue.get_cm_server_num_from_static(self.context.oldClusterInfo) > 0 and \
             not EnvUtil.is_dss_mode(getpass.getuser()) and \
-            len(self.context.nodeNames) == len(self.context.clusterNodes):
+            len(self.context.nodeNames) == len(self.context.clusterNodes) and \
+            "dual-standby" not in self.context.clusterType:
             self.context.logger.log("Upgrade with seperating CM and Dn components.")
             upgrade_sep_comps = True
             

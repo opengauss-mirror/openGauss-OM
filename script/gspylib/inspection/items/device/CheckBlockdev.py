@@ -45,29 +45,37 @@ class CheckBlockdev(BaseItem):
     def getDevices(self):
         """
         """
-        cmd = "fdisk -l 2>/dev/null | grep \"Disk /dev/\"" \
-              " | grep -v \"/dev/mapper/\" | awk '{ print $2 }' " \
-              "| awk -F'/' '{ print $NF }' | sed s/:$//g"
+        cmd = "lsblk -d -n -o NAME,TYPE 2>/dev/null | " \
+              "awk '$2==\"disk\"{print $1}'"
         output = SharedFuncs.runShellCmd(cmd)
         devList = output.split('\n')
         return devList
 
 
-    def getDeviceIoctls(self, devName):
+    def getDeviceIoctls(self, dev_name):
         """
         function : Get device ioctls
-        input  : devName   device name
-        output : blockSize
+        input  : dev_name   device name
+        output : block_size
         """
-        blockSize = 0
-        cmd = g_Platform.getBlockdevCmd(devName)
-        (status, output) = subprocess.getstatusoutput(cmd)
-        if status != 0:
-            raise Exception(ErrorCode.GAUSS_504["GAUSS_50408"] % cmd +
-                            " Error: \n%s" % str(output))
+        block_size = 0
+        cmd = g_Platform.getBlockdevCmd(dev_name)
+        try:
+            p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE)
+            result = p.communicate(timeout=3)
+            output = result[0].decode().strip()
+            if p.returncode != 0:
+                raise Exception(ErrorCode.GAUSS_504["GAUSS_50408"] % cmd +
+                                " Error: \n%s" % result[1].decode().strip())
+        except subprocess.TimeoutExpired:
+            p.kill()
+            p.communicate()
+            raise Exception("Timeout getting readahead for '%s',"
+                            " device may be faulty." % dev_name)
         if str(output.strip()) != "" and output.isdigit():
-            blockSize = int(output)
-        return blockSize
+            block_size = int(output)
+        return block_size
 
 
     def collectBlockdev(self):
@@ -79,22 +87,26 @@ class CheckBlockdev(BaseItem):
         data = blockdev()
         devices = list()
         try:
-            diskName = ''
+            disk_name = ''
             # If the directory of '/' is a disk array,
             # all disk prereads will be set
             devlist = self.getDevices()
-            allDiskList = DiskUtil.getMountInfo()
-            for diskInfo in allDiskList:
+            all_disk_list = DiskUtil.getMountInfo()
+            for diskInfo in all_disk_list:
                 if (diskInfo.mountpoint == '/'):
-                    diskName = diskInfo.device.replace('/dev/', '')
+                    disk_name = diskInfo.device.replace('/dev/', '')
             for dev in devlist:
-                if (dev.strip() == diskName.strip()):
+                if (dev.strip() == disk_name.strip()):
                     continue
                 devices.append("/dev/%s" % dev)
         except Exception as e:
             data.errormsg = e.__str__()
         for d in devices:
-            data.ra[d] = self.getDeviceIoctls(d)
+            try:
+                data.ra[d] = self.getDeviceIoctls(d)
+            except Exception as e:
+                data.errormsg += "Failed to get readahead for '%s': %s\n" \
+                                 % (d, str(e))
 
         return data
 

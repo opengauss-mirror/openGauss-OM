@@ -20,6 +20,7 @@ from gspylib.inspection.common.CheckItem import BaseItem
 from gspylib.inspection.common.CheckResult import ResultStatus
 from base_utils.os.env_util import EnvUtil
 from base_utils.os.file_util import FileUtil
+from script.base_utils.os.disk_util import DiskUtil
 
 g_needRepair = []
 expectedScheduler = "32768"
@@ -47,21 +48,7 @@ class CheckIOrequestqueue(BaseItem):
         input: partition list
         return: disk dict
         """
-        devices = {}
-        cmd = "fdisk -l 2>/dev/null | grep \"Disk /dev/\" " \
-              "| grep -v \"/dev/mapper/\" | awk '{ print $2 }' " \
-              "| awk -F'/' '{ print $NF }' | sed s/:$//g"
-        output = SharedFuncs.runShellCmd(cmd)
-        for disk in output.splitlines():
-            cmd = "fdisk -l 2>/dev/null | grep \"%s\" " \
-                  "| grep -v \"Disk\" | grep -v \"/dev/mapper/\" " \
-                  "| awk '{ print $1 }'" % disk
-            output = SharedFuncs.runShellCmd(cmd)
-            if output:
-                devices[disk] = output.splitlines()
-            else:
-                devices[disk] = "/dev/" + disk
-        return devices
+        return DiskUtil.obtain_disk()
 
     def obtainDiskDir(self):
         cmd = "df -h -P /data* | grep -v 'Mounted' | awk '{print $6}'"

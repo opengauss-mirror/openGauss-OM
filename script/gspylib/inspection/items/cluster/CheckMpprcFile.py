@@ -57,15 +57,7 @@ class CheckMpprcFile(BaseItem):
             if ec_content_old in env_list:
                 env_list.remove(ec_content_old)
             # white elements
-            list_white = ["ELK_CONFIG_DIR", "ELK_SYSTEM_TABLESPACE",
-                          "MPPDB_ENV_SEPARATE_PATH", "GPHOME", "PATH",
-                          "LD_LIBRARY_PATH", "PYTHONPATH",
-                          "GAUSS_WARNING_TYPE", "GAUSSHOME", "PATH",
-                          "LD_LIBRARY_PATH",
-                          "S3_CLIENT_CRT_FILE", "GAUSS_VERSION", "PGHOST",
-                          "GS_CLUSTER_NAME", "GAUSSLOG",
-                          "GAUSS_ENV", "KRB5_CONFIG", "PGKRBSRVNAME",
-                          "KRBHOSTNAME", "ETCD_UNSUPPORTED_ARCH"]
+            list_white = ClusterConstants.MPPRC_WHITE_LIST
             # black elements
             list_black = ["|", ";", "&", "<", ">", "`", "\\", "'", "\"",
                           "{", "}", "(", ")", "[", "]", "~", "*", "?",

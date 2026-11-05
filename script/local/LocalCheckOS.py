@@ -1647,8 +1647,13 @@ def GetMountInfo(file_path):
         return None
 
     for partition in psutil.disk_partitions(all=True):
-        if os.stat(partition.mountpoint).st_dev == dev:
-            return partition.device
+        try:
+            if os.stat(partition.mountpoint).st_dev == dev:
+                return partition.device
+        except OSError:
+            # Skip stale mount points (e.g. deleted docker overlay2 layers)
+            # whose directory no longer exists in the current namespace.
+            continue
     return None
 
 def CheckBlockdev(isSetting=False):

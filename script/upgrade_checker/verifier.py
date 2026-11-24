@@ -1,23 +1,13 @@
 #!/usr/bin/env python3
-# -*- coding:utf-8 -*-
-#############################################################################
-# Copyright (c) 2023 Huawei Technologies Co.,Ltd.
-#
-# openGauss is licensed under Mulan PSL v2.
-# You can use this software according to the terms
-# and conditions of the Mulan PSL v2.
+# Copyright (c) 2023 Huawei Technologies Co., Ltd.
+# openGauss-OM is licensed under Mulan PSL v2.
+# You can use this software according to the terms and conditions of the Mulan PSL v2.
 # You may obtain a copy of Mulan PSL v2 at:
-#
 #          http://license.coscl.org.cn/MulanPSL2
-#
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS,
-# WITHOUT WARRANTIES OF ANY KIND,
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
 # EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
 # MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 # See the Mulan PSL v2 for more details.
-# ----------------------------------------------------------------------------
-# Description  : gs_upgradechk is a utility to check meta data in gaussdb after upgrade.
-#############################################################################
 """
 校验组件模块，由三个模块进行配合，进行整体的流程。
     collector：负责数据收集。连接数据库，构造校验规则Rule，并执行Rule进行数据的收集。
